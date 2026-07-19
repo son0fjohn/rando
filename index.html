@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rando — World Demo</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --apple-blue: #0A84FF;
+    --apple-grey: #E9E9EB;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #0b0d12;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+
+  /* Phone-shaped world frame, matched to the background art's aspect ratio */
+  .frame {
+    position: relative;
+    aspect-ratio: 1520 / 2688;
+    height: min(100vh, calc(100vw * 2688 / 1520));
+    width: auto;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 0 60px rgba(0,0,0,0.6);
+  }
+
+  .world-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+  }
+
+  /* Each sprite is anchored by its feet: left/top mark the ground point.
+     Character art is pre-relit (web/lit/) to match the scene's cool daylight. */
+  .sprite {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    transform-origin: 50% 100%;
+  }
+  .sprite.npc { cursor: pointer; }
+  .sprite.npc:hover img.char { filter: brightness(1.12); }
+
+  /* idle sway — pivots at the feet, staggered so nobody moves in sync */
+  .sprite.npc { animation: sway 6s ease-in-out infinite; }
+  #npc-silver  { animation-duration: 7.2s; animation-delay: 1.1s; }
+  #npc-buzzcut { animation-duration: 6.6s; animation-delay: 2.3s; }
+  #npc-cans    { animation-duration: 5.6s; animation-delay: 0.6s; }
+  @keyframes sway {
+    0%, 100% { transform: translate(-50%, -100%) rotate(-0.5deg); }
+    50%      { transform: translate(-50%, -100%) rotate(0.5deg); }
+  }
+
+  .sprite img.char {
+    position: relative;
+    z-index: 2;
+    display: block;
+    height: 100%;
+    width: auto;
+    pointer-events: none;
+    user-select: none;
+    transform-origin: bottom center;
+  }
+
+  /* Character-shaped cast shadow: squashed, flipped toward camera,
+     sheared down-left (high diffuse sun, slightly camera-right) */
+  .sprite img.cast {
+    position: absolute;
+    left: 50%;
+    bottom: 1%;
+    height: 100%;
+    width: auto;
+    z-index: 1;
+    transform-origin: bottom center;
+    transform: translateX(-50%) skewX(-29deg) scaleY(-0.22);
+    filter: brightness(0) blur(3px);
+    opacity: 0.26;
+    pointer-events: none;
+  }
+
+  /* Soft contact shadow pooled at the feet */
+  .sprite .contact {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 58%;
+    height: 4.5%;
+    transform: translate(-50%, 45%);
+    background: radial-gradient(ellipse at center, rgba(10,14,20,0.38) 0%, rgba(10,14,20,0.18) 45%, rgba(10,14,20,0) 75%);
+    border-radius: 50%;
+    z-index: 0;
+  }
+
+  .sprite .tag {
+    position: absolute;
+    top: -2%;
+    left: 50%;
+    transform: translate(-50%, -100%);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    background: rgba(255,206,61,0.85);
+    color: #241a00;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    z-index: 3;
+  }
+
+  /* --- Staging: player front-center, NPCs in two conversational pairs.
+     Leans (rotate) + mirroring (scaleX) turn the front-facing renders
+     toward their partner so the scene reads as people hanging out. --- */
+  #player { left: 50%; top: 86%; height: 30%; z-index: 50; }
+
+  /* Pair A — back-left: Rae (silver) & Miro (dreads) */
+  #npc-silver  { left: 17%; top: 50%;   height: 14%;   z-index: 20; }
+  #npc-dreads  { left: 28%; top: 51.5%; height: 14.5%; z-index: 21; }
+  /* Pair B — mid-right: Jun (buzzcut) & Koa (headphones) */
+  #npc-buzzcut { left: 71%; top: 63%;   height: 17.5%; z-index: 30; }
+  #npc-cans    { left: 84%; top: 65%;   height: 18%;   z-index: 31; }
+
+  #npc-silver  img.char { transform: rotate(2.5deg); }
+  #npc-dreads  img.char { transform: rotate(-2.5deg); }
+  #npc-buzzcut img.char { transform: scaleX(-1) rotate(-2deg); }
+  #npc-cans    img.char { transform: rotate(-2deg); }
+  /* mirrored character needs a mirrored cast so the sun stays consistent */
+  #npc-buzzcut img.cast {
+    transform: translateX(-50%) skewX(-29deg) scaleY(-0.22) scaleX(-1);
+  }
+
+  /* atmospheric perspective: farther = brighter, flatter, fainter shadow */
+  #npc-cans    img.char { filter: brightness(1.04) saturate(0.92) contrast(0.96); }
+  #npc-buzzcut img.char { filter: brightness(1.04) saturate(0.92) contrast(0.96); }
+  #npc-dreads  img.char { filter: brightness(1.09) saturate(0.84) contrast(0.91); }
+  #npc-silver  img.char { filter: brightness(1.10) saturate(0.82) contrast(0.90); }
+
+  #npc-cans    img.cast { opacity: 0.23; }
+  #npc-buzzcut img.cast { opacity: 0.23; }
+  #npc-dreads  img.cast { opacity: 0.19; }
+  #npc-silver  img.cast { opacity: 0.19; }
+
+  /* Proportion A/B toggle */
+  #proportions {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 100;
+    padding: 7px 14px;
+    border: none;
+    border-radius: 999px;
+    font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.03em;
+    background: rgba(16, 22, 32, 0.72);
+    color: #cfe4ff;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+  }
+  #proportions:hover { background: rgba(16, 22, 32, 0.88); }
+
+  /* Zone / GPS status chip — coarse shared zone + slow refresh, per spec */
+  #zone-chip {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 100;
+    padding: 8px 14px;
+    border-radius: 14px;
+    background: rgba(16, 22, 32, 0.72);
+    color: #eaf2ff;
+    backdrop-filter: blur(4px);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.35;
+  }
+  #zone-chip .zone-sub {
+    font-size: 10px;
+    font-weight: 500;
+    color: #9fb3cc;
+  }
+
+  /* Chat bubbles — message-bubble style, anchored above the speaker.
+     Public chat: Apple grey. Private chat: Apple blue. */
+  .bubble {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    /* --dx slides the bubble into frame for edge characters while the
+       tail (counter-shifted) keeps pointing at the speaker */
+    left: calc(50% + var(--dx, 0px));
+    transform: translateX(-50%);
+    transform-origin: bottom center;
+    z-index: 5;
+    max-width: 150px;
+    width: max-content;
+    padding: 7px 11px;
+    border-radius: 15px;
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.3;
+    text-align: left;
+    box-shadow: 0 2px 8px rgba(10, 14, 20, 0.18);
+    animation: bubble-pop 0.24s cubic-bezier(0.34, 1.4, 0.64, 1);
+  }
+  .bubble::after {
+    content: "";
+    position: absolute;
+    bottom: -5px;
+    left: calc(50% - var(--dx, 0px));
+    transform: translateX(-50%);
+    width: 11px;
+    height: 6px;
+    background: inherit;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+  }
+  .bubble.public  { background: var(--apple-grey); color: #1c1c1e; }
+  .bubble.private { background: var(--apple-blue); color: #fff; }
+  .bubble.private .pl {
+    display: block;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    opacity: 0.85;
+    margin-bottom: 2px;
+  }
+  .bubble.out { animation: bubble-out 0.22s forwards; }
+  /* keep the player's bubble clear of the YOU pill */
+  #player .bubble { bottom: calc(100% + 34px); }
+  /* edge characters: slide bubbles inward so they don't clip the frame */
+  #npc-silver  .bubble { --dx: 30px; }
+  #npc-dreads  .bubble { --dx: 12px; }
+  #npc-cans    .bubble { --dx: -34px; }
+  #npc-buzzcut .bubble { --dx: -10px; }
+
+  @keyframes bubble-pop {
+    from { opacity: 0; transform: translateX(-50%) scale(0.6); }
+  }
+  @keyframes bubble-out {
+    to { opacity: 0; transform: translateX(-50%) scale(0.7); }
+  }
+
+  /* --- Private chat thread view (tap an NPC) --- */
+  #chat-panel[hidden], #chat-scrim[hidden] { display: none; }
+  #chat-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 190;
+    background: rgba(8, 11, 16, 0.35);
+    animation: fade-in 0.2s;
+  }
+  #chat-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 62%;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    background: #f5f5f7;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 30px rgba(8, 11, 16, 0.35);
+    animation: slide-up 0.28s cubic-bezier(0.32, 0.9, 0.35, 1);
+  }
+  @keyframes slide-up { from { transform: translateY(100%); } }
+  @keyframes fade-in { from { opacity: 0; } }
+
+  #chat-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #e3e3e6;
+  }
+  #chat-close {
+    border: none;
+    background: none;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--apple-blue);
+    cursor: pointer;
+    padding: 2px 6px;
+  }
+  #chat-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: 50% 6%;
+    background: #dde5ee;
+  }
+  #chat-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1c1c1e;
+  }
+  #chat-npc-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #5b6b80;
+    letter-spacing: 0.04em;
+  }
+  #chat-private {
+    margin-left: auto;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--apple-blue);
+  }
+
+  #chat-thread {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    padding: 12px 10px;
+  }
+  .msg {
+    max-width: 72%;
+    padding: 8px 12px;
+    border-radius: 18px;
+    font-size: 13px;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+  .msg.me {
+    align-self: flex-end;
+    background: var(--apple-blue);
+    color: #fff;
+    border-bottom-right-radius: 5px;
+  }
+  .msg.them {
+    align-self: flex-start;
+    background: var(--apple-grey);
+    color: #1c1c1e;
+    border-bottom-left-radius: 5px;
+  }
+
+  #chat-form {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid #e3e3e6;
+  }
+  #chat-input {
+    flex: 1;
+    border: 1px solid #d5d5da;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    background: #fff;
+    color: #1c1c1e;
+    outline: none;
+  }
+  #chat-input:focus { border-color: var(--apple-blue); }
+  #chat-send {
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: var(--apple-blue);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    align-self: center;
+  }
+  #chat-send:disabled { background: #b9c3d0; cursor: default; }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <img class="world-bg" src="../assets/world/hf_20260718_115457_9b653ec4-b79e-4856-829c-87b2bd18f1bd.png" alt="World map background">
+
+    <div class="sprite" id="player">
+      <div class="tag">YOU</div>
+      <img class="cast" src="lit/player.png" alt="" aria-hidden="true">
+      <div class="contact"></div>
+      <img class="char" src="lit/player.png" alt="Player character">
+    </div>
+
+    <div class="sprite npc" id="npc-silver" title="Rae">
+      <img class="cast" src="lit/npc-silver.png" alt="" aria-hidden="true">
+      <div class="contact"></div>
+      <img class="char" src="lit/npc-silver.png" alt="Rae (NPC)">
+    </div>
+
+    <div class="sprite npc" id="npc-dreads" title="Miro">
+      <img class="cast" src="lit/npc-dreads.png" alt="" aria-hidden="true">
+      <div class="contact"></div>
+      <img class="char" src="lit/npc-dreads.png" alt="Miro (NPC)">
+    </div>
+
+    <div class="sprite npc" id="npc-buzzcut" title="Jun">
+      <img class="cast" src="lit/npc-buzzcut.png" alt="" aria-hidden="true">
+      <div class="contact"></div>
+      <img class="char" src="lit/npc-buzzcut.png" alt="Jun (NPC)">
+    </div>
+
+    <div class="sprite npc" id="npc-cans" title="Koa">
+      <img class="cast" src="lit/npc-cans.png" alt="" aria-hidden="true">
+      <div class="contact"></div>
+      <img class="char" src="lit/npc-cans.png" alt="Koa (NPC)">
+    </div>
+
+    <button id="proportions" type="button"></button>
+
+    <div id="zone-chip">
+      <div>&#128205; Itaewon &middot; Plaza Zone</div>
+      <div class="zone-sub">positions updated <span id="zmin">2</span> min ago</div>
+    </div>
+
+    <div id="chat-scrim" hidden></div>
+    <div id="chat-panel" hidden>
+      <div id="chat-header">
+        <button id="chat-close" type="button" aria-label="Close chat">&#8249;</button>
+        <img id="chat-avatar" src="" alt="">
+        <div>
+          <div id="chat-name"></div>
+          <div id="chat-npc-badge">NPC &middot; GAME HOST</div>
+        </div>
+        <div id="chat-private">&#128274; PRIVATE</div>
+      </div>
+      <div id="chat-thread"></div>
+      <form id="chat-form">
+        <input id="chat-input" type="text" placeholder="Message" autocomplete="off">
+        <button id="chat-send" type="submit" aria-label="Send">&#8593;</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // A/B the chibi-proportion test (web/chibi/) against the originals
+    // (web/lit/). Both folders hold the same five relit, feet-cropped
+    // character renders; chibi adds the head-magnified warp.
+    const btn = document.getElementById("proportions");
+    let chibi = new URLSearchParams(location.search).get("chibi") === "1";
+
+    function apply() {
+      const dir = chibi ? "chibi" : "lit";
+      document.querySelectorAll("img.char, img.cast").forEach(img => {
+        img.src = img.src.replace(/(lit|chibi)\//, dir + "/");
+      });
+      btn.textContent = chibi ? "Proportions: CHIBI" : "Proportions: ORIGINAL";
+    }
+    btn.addEventListener("click", () => { chibi = !chibi; apply(); });
+    apply();
+
+    // --- NPC roster: light game-show personality, deliberately shallow ---
+    const NPCS = {
+      "npc-silver": {
+        name: "Rae",
+        replies: [
+          "only if you don't mind being sketched while you lose",
+          "hm. fine. one round.",
+          "i draw winners and losers. mostly losers.",
+        ],
+      },
+      "npc-dreads": {
+        name: "Miro",
+        replies: [
+          "yo. no rush, the board's not going anywhere",
+          "pull up whenever",
+          "chill — winner picks the music",
+        ],
+      },
+      "npc-buzzcut": {
+        name: "Jun",
+        replies: [
+          "loser does twenty pushups. right here.",
+          "i don't do warmups",
+          "rematch. now.",
+        ],
+      },
+      "npc-cans": {
+        name: "Koa",
+        replies: [
+          "WAIT actually yes",
+          "tteokbokki stakes or nothing",
+          "too late, i already told everyone you're playing",
+        ],
+      },
+    };
+
+    // per-NPC thread state; Koa's is pre-seeded with the world-loop exchange
+    const threads = {
+      "npc-silver":  [{ who: "them", text: "you're staring. do you play or just watch?" }],
+      "npc-dreads":  [{ who: "them", text: "yo \u{1F44B} looking for a game?" }],
+      "npc-buzzcut": [{ who: "them", text: "you look like you'd lose fast. prove me wrong." }],
+      "npc-cans": [
+        { who: "me",   text: "wanna play something? \u{1F3AE}" },
+        { who: "them", text: "bet — loser buys tteokbokki" },
+      ],
+    };
+    const replyIdx = {};
+
+    // --- Private chat thread view ---
+    const scrim = document.getElementById("chat-scrim");
+    const panel = document.getElementById("chat-panel");
+    const threadEl = document.getElementById("chat-thread");
+    const nameEl = document.getElementById("chat-name");
+    const avatarEl = document.getElementById("chat-avatar");
+    const form = document.getElementById("chat-form");
+    const input = document.getElementById("chat-input");
+    let activeNpc = null;
+
+    function renderThread() {
+      threadEl.innerHTML = "";
+      threads[activeNpc].forEach(({ who, text }) => {
+        const m = document.createElement("div");
+        m.className = "msg " + who;
+        m.textContent = text;
+        threadEl.appendChild(m);
+      });
+      threadEl.scrollTop = threadEl.scrollHeight;
+    }
+
+    function openChat(id) {
+      activeNpc = id;
+      nameEl.textContent = NPCS[id].name;
+      avatarEl.src = "lit/" + id + ".png";
+      scrim.hidden = false;
+      panel.hidden = false;
+      renderThread();
+      input.focus();
+    }
+
+    function closeChat() {
+      scrim.hidden = true;
+      panel.hidden = true;
+      activeNpc = null;
+    }
+
+    document.querySelectorAll(".sprite.npc").forEach(el => {
+      el.addEventListener("click", () => openChat(el.id));
+    });
+    scrim.addEventListener("click", closeChat);
+    document.getElementById("chat-close").addEventListener("click", closeChat);
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && activeNpc) closeChat();
+    });
+
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text || !activeNpc) return;
+      const npc = activeNpc;
+      threads[npc].push({ who: "me", text });
+      input.value = "";
+      renderThread();
+      // canned NPC reply — real matching/chat backend comes later
+      const i = replyIdx[npc] = ((replyIdx[npc] ?? -1) + 1) % NPCS[npc].replies.length;
+      setTimeout(() => {
+        threads[npc].push({ who: "them", text: NPCS[npc].replies[i] });
+        if (activeNpc === npc) renderThread();
+      }, 900 + Math.random() * 600);
+    });
+
+    // --- Ambient world chat: looping public (grey) / private (blue) bubbles ---
+    const CHAT = [
+      { id: "npc-dreads",  text: "anyone up for a quick game?",            type: "public",  at: 600,   hold: 3200 },
+      { id: "npc-buzzcut", text: "who's got next on the board?",           type: "public",  at: 4400,  hold: 3200 },
+      { id: "player",      text: "wanna play something? \u{1F3AE}",        type: "private", at: 8200,  hold: 3400 },
+      { id: "npc-cans",    text: "bet — loser buys tteokbokki",       type: "private", at: 12000, hold: 3400 },
+      { id: "npc-silver",  text: "sketching by the crossing, come say hi", type: "public",  at: 15800, hold: 3200 },
+    ];
+    const LOOP_MS = 19800;
+
+    function showBubble({ id, text, type, hold }) {
+      const sprite = document.getElementById(id);
+      const b = document.createElement("div");
+      b.className = "bubble " + type;
+      if (type === "private") {
+        const pl = document.createElement("span");
+        pl.className = "pl";
+        pl.textContent = "\u{1F512} PRIVATE";
+        b.appendChild(pl);
+      }
+      b.appendChild(document.createTextNode(text));
+      sprite.appendChild(b);
+      setTimeout(() => {
+        b.classList.add("out");
+        setTimeout(() => b.remove(), 240);
+      }, hold);
+    }
+
+    function runChatLoop() {
+      CHAT.forEach(msg => setTimeout(() => showBubble(msg), msg.at));
+    }
+    runChatLoop();
+    setInterval(runChatLoop, LOOP_MS);
+
+    // slow-refresh GPS: tick the "updated N min ago" counter
+    const zmin = document.getElementById("zmin");
+    let mins = 2;
+    setInterval(() => {
+      mins = mins >= 14 ? 0 : mins + 1;
+      zmin.textContent = String(mins);
+    }, 60000);
+  </script>
+</body>
+</html>
