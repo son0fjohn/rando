@@ -50,8 +50,7 @@
     transform: translate(-50%, -100%);
     transform-origin: 50% 100%;
   }
-  .sprite.npc { cursor: pointer; }
-  .sprite.npc:hover img.char { filter: brightness(1.12); }
+  /* NPC taps are disabled for now — their minigames are a later phase */
 
   /* idle sway — pivots at the feet, staggered so nobody moves in sync */
   .sprite.npc { animation: sway 6s ease-in-out infinite; }
@@ -341,7 +340,7 @@
     color: #5b6b80;
     margin: 4px 0 12px;
   }
-  #match-card #mc-dismiss {
+  #match-card #mc-chat {
     border: none;
     border-radius: 10px;
     padding: 9px 26px;
@@ -350,7 +349,35 @@
     background: var(--apple-blue);
     color: #fff;
     cursor: pointer;
+    margin-right: 6px;
   }
+  #match-card #mc-dismiss {
+    border: 1px solid #d5d5da;
+    border-radius: 10px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    background: #fff;
+    color: #5b6b80;
+    cursor: pointer;
+  }
+
+  #chat-pill {
+    position: absolute;
+    bottom: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 110;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 999px;
+    font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--apple-blue);
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 3px 12px rgba(10, 132, 255, 0.35);
+  }
+  #chat-pill[hidden] { display: none; }
 
   /* --- Auth sheet (phone OTP signup/login) --- */
   #auth-scrim {
@@ -604,8 +631,10 @@
       <img class="mc-avatar" src="lit/player.png" alt="">
       <div id="mc-handle"></div>
       <div class="mc-sub">they're in your zone &middot; say hi</div>
-      <button id="mc-dismiss" type="button">OK</button>
+      <button id="mc-chat" type="button">Chat</button>
+      <button id="mc-dismiss" type="button">Later</button>
     </div>
+    <button id="chat-pill" type="button" hidden>&#128172; Chat</button>
 
     <div id="auth-scrim" hidden></div>
     <div id="auth-sheet" hidden>
@@ -659,122 +688,12 @@
     btn.addEventListener("click", () => { chibi = !chibi; apply(); });
     apply();
 
-    // --- NPC roster: light game-show personality, deliberately shallow ---
-    const NPCS = {
-      "npc-silver": {
-        name: "Rae",
-        replies: [
-          "only if you don't mind being sketched while you lose",
-          "hm. fine. one round.",
-          "i draw winners and losers. mostly losers.",
-        ],
-      },
-      "npc-dreads": {
-        name: "Miro",
-        replies: [
-          "yo. no rush, the board's not going anywhere",
-          "pull up whenever",
-          "chill — winner picks the music",
-        ],
-      },
-      "npc-buzzcut": {
-        name: "Jun",
-        replies: [
-          "loser does twenty pushups. right here.",
-          "i don't do warmups",
-          "rematch. now.",
-        ],
-      },
-      "npc-cans": {
-        name: "Koa",
-        replies: [
-          "WAIT actually yes",
-          "tteokbokki stakes or nothing",
-          "too late, i already told everyone you're playing",
-        ],
-      },
-    };
-
-    // per-NPC thread state; Koa's is pre-seeded with the world-loop exchange
-    const threads = {
-      "npc-silver":  [{ who: "them", text: "you're staring. do you play or just watch?" }],
-      "npc-dreads":  [{ who: "them", text: "yo \u{1F44B} looking for a game?" }],
-      "npc-buzzcut": [{ who: "them", text: "you look like you'd lose fast. prove me wrong." }],
-      "npc-cans": [
-        { who: "me",   text: "wanna play something? \u{1F3AE}" },
-        { who: "them", text: "bet — loser buys tteokbokki" },
-      ],
-    };
-    const replyIdx = {};
-
-    // --- Private chat thread view ---
-    const scrim = document.getElementById("chat-scrim");
-    const panel = document.getElementById("chat-panel");
-    const threadEl = document.getElementById("chat-thread");
-    const nameEl = document.getElementById("chat-name");
-    const avatarEl = document.getElementById("chat-avatar");
-    const form = document.getElementById("chat-form");
-    const input = document.getElementById("chat-input");
-    let activeNpc = null;
-
-    function renderThread() {
-      threadEl.innerHTML = "";
-      threads[activeNpc].forEach(({ who, text }) => {
-        const m = document.createElement("div");
-        m.className = "msg " + who;
-        m.textContent = text;
-        threadEl.appendChild(m);
-      });
-      threadEl.scrollTop = threadEl.scrollHeight;
-    }
-
-    function openChat(id) {
-      activeNpc = id;
-      nameEl.textContent = NPCS[id].name;
-      avatarEl.src = "lit/" + id + ".png";
-      scrim.hidden = false;
-      panel.hidden = false;
-      renderThread();
-      input.focus();
-    }
-
-    function closeChat() {
-      scrim.hidden = true;
-      panel.hidden = true;
-      activeNpc = null;
-    }
-
-    document.querySelectorAll(".sprite.npc").forEach(el => {
-      el.addEventListener("click", () => openChat(el.id));
-    });
-    scrim.addEventListener("click", closeChat);
-    document.getElementById("chat-close").addEventListener("click", closeChat);
-    document.addEventListener("keydown", e => {
-      if (e.key === "Escape" && activeNpc) closeChat();
-    });
-
-    form.addEventListener("submit", e => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text || !activeNpc) return;
-      const npc = activeNpc;
-      threads[npc].push({ who: "me", text });
-      input.value = "";
-      renderThread();
-      // canned NPC reply — real matching/chat backend comes later
-      const i = replyIdx[npc] = ((replyIdx[npc] ?? -1) + 1) % NPCS[npc].replies.length;
-      setTimeout(() => {
-        threads[npc].push({ who: "them", text: NPCS[npc].replies[i] });
-        if (activeNpc === npc) renderThread();
-      }, 900 + Math.random() * 600);
-    });
-
-    // --- Ambient world chat: looping public (grey) / private (blue) bubbles ---
+    // --- Ambient world chat: looping public (grey) NPC bubbles.
+    // (The scripted private thread is gone — private chat is real now,
+    // between matched accounts, handled in backend.js.)
     const CHAT = [
       { id: "npc-dreads",  text: "anyone up for a quick game?",            type: "public",  at: 600,   hold: 3200 },
       { id: "npc-buzzcut", text: "who's got next on the board?",           type: "public",  at: 4400,  hold: 3200 },
-      { id: "player",      text: "wanna play something? \u{1F3AE}",        type: "private", at: 8200,  hold: 3400 },
-      { id: "npc-cans",    text: "bet — loser buys tteokbokki",       type: "private", at: 12000, hold: 3400 },
       { id: "npc-silver",  text: "sketching by the crossing, come say hi", type: "public",  at: 15800, hold: 3200 },
     ];
     const LOOP_MS = 19800;
