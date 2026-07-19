@@ -279,6 +279,79 @@
   #open-toggle[hidden] { display: none; }
   #open-toggle:disabled { opacity: 0.6; }
 
+  #match-btn {
+    position: absolute;
+    bottom: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 110;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 999px;
+    font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.03em;
+    background: #fff;
+    color: #0A84FF;
+    cursor: pointer;
+    box-shadow: 0 3px 12px rgba(8, 11, 16, 0.3);
+  }
+  #match-btn.is-waiting {
+    background: rgba(16, 22, 32, 0.78);
+    color: #ffd60a;
+  }
+  #match-btn[hidden] { display: none; }
+  #match-btn:disabled { opacity: 0.6; }
+
+  #match-card {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 250;
+    width: min(70%, 260px);
+    background: #f5f5f7;
+    border-radius: 18px;
+    padding: 20px 18px 16px;
+    box-shadow: 0 12px 40px rgba(8, 11, 16, 0.45);
+    text-align: center;
+  }
+  #match-card[hidden] { display: none; }
+  #match-card .mc-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: #1c1c1e;
+  }
+  #match-card .mc-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: 50% 6%;
+    background: #dde5ee;
+    margin: 10px auto 6px;
+    display: block;
+  }
+  #match-card #mc-handle {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--apple-blue);
+  }
+  #match-card .mc-sub {
+    font-size: 11px;
+    color: #5b6b80;
+    margin: 4px 0 12px;
+  }
+  #match-card #mc-dismiss {
+    border: none;
+    border-radius: 10px;
+    padding: 9px 26px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--apple-blue);
+    color: #fff;
+    cursor: pointer;
+  }
+
   /* --- Auth sheet (phone OTP signup/login) --- */
   #auth-scrim {
     position: absolute;
@@ -524,6 +597,15 @@
 
     <div id="players-layer"></div>
     <button id="open-toggle" type="button" hidden>Go open</button>
+    <button id="match-btn" type="button" hidden>Match me</button>
+
+    <div id="match-card" hidden>
+      <div class="mc-title">Matched!</div>
+      <img class="mc-avatar" src="lit/player.png" alt="">
+      <div id="mc-handle"></div>
+      <div class="mc-sub">they're in your zone &middot; say hi</div>
+      <button id="mc-dismiss" type="button">OK</button>
+    </div>
 
     <div id="auth-scrim" hidden></div>
     <div id="auth-sheet" hidden>
