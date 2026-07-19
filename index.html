@@ -251,8 +251,77 @@
     to { opacity: 0; transform: translateX(-50%) scale(0.7); }
   }
 
+  /* --- Auth sheet (phone OTP signup/login) --- */
+  #auth-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 290;
+    background: rgba(8, 11, 16, 0.5);
+    backdrop-filter: blur(3px);
+  }
+  #auth-sheet {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 300;
+    width: min(78%, 300px);
+    background: #f5f5f7;
+    border-radius: 18px;
+    padding: 22px 20px 16px;
+    box-shadow: 0 12px 40px rgba(8, 11, 16, 0.45);
+    text-align: center;
+  }
+  #auth-sheet h2 {
+    margin: 0 0 2px;
+    font-size: 20px;
+    letter-spacing: 0.02em;
+    color: #1c1c1e;
+  }
+  #auth-sheet .auth-lede {
+    margin: 0 0 14px;
+    font-size: 12px;
+    color: #5b6b80;
+  }
+  #auth-sheet .step { display: flex; flex-direction: column; gap: 8px; }
+  #auth-sheet input {
+    border: 1px solid #d5d5da;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: #fff;
+    color: #1c1c1e;
+    outline: none;
+    text-align: center;
+  }
+  #auth-sheet input:focus { border-color: var(--apple-blue); }
+  #auth-sheet button {
+    border: none;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--apple-blue);
+    color: #fff;
+    cursor: pointer;
+  }
+  #auth-sheet button:disabled { background: #b9c3d0; }
+  #auth-error {
+    min-height: 16px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: #d03030;
+  }
+  #auth-sheet .auth-note {
+    margin: 6px 0 0;
+    font-size: 10px;
+    color: #8a97a8;
+  }
+  #auth-status a { color: #7fc0ff; }
+
   /* --- Private chat thread view (tap an NPC) --- */
   #chat-panel[hidden], #chat-scrim[hidden] { display: none; }
+  #auth-sheet[hidden], #auth-scrim[hidden], #auth-sheet .step[hidden] { display: none; }
   #chat-scrim {
     position: absolute;
     inset: 0;
@@ -422,6 +491,23 @@
     <div id="zone-chip">
       <div>&#128205; Itaewon &middot; Plaza Zone</div>
       <div class="zone-sub">positions updated <span id="zmin">2</span> min ago</div>
+      <div class="zone-sub" id="auth-status" hidden></div>
+    </div>
+
+    <div id="auth-scrim" hidden></div>
+    <div id="auth-sheet" hidden>
+      <h2>rando</h2>
+      <p class="auth-lede">verify your number to appear in the world</p>
+      <div class="step" id="auth-step-phone">
+        <input id="auth-phone" type="tel" placeholder="+82 10 1234 5678" autocomplete="tel">
+        <button id="auth-send" type="button">Send code</button>
+      </div>
+      <div class="step" id="auth-step-code" hidden>
+        <input id="auth-code" inputmode="numeric" placeholder="6-digit code" autocomplete="one-time-code">
+        <button id="auth-verify" type="button">Verify</button>
+      </div>
+      <div id="auth-error"></div>
+      <p class="auth-note">one account per phone number &middot; your number is never shown to anyone</p>
     </div>
 
     <div id="chat-scrim" hidden></div>
@@ -612,5 +698,6 @@
       zmin.textContent = String(mins);
     }, 60000);
   </script>
+  <script type="module" src="backend.js"></script>
 </body>
 </html>
