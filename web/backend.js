@@ -76,6 +76,25 @@ async function refreshStatus() {
   presence.onSignedIn();
 }
 
+// guest mode (phone verification suspended for the demo): anonymous
+// sign-in still creates a real authenticated session, so every RLS
+// policy, presence rule, match, and confirm works unchanged
+const guestBtn = document.getElementById("auth-guest");
+guestBtn.addEventListener("click", async () => {
+  setError("");
+  guestBtn.disabled = true;
+  const { error } = await sb.auth.signInAnonymously();
+  guestBtn.disabled = false;
+  if (error) setError(error.message);
+});
+
+document.getElementById("auth-show-phone").addEventListener("click", e => {
+  e.preventDefault();
+  document.getElementById("auth-step-phone").hidden = false;
+  document.getElementById("auth-step-guest").hidden = true;
+  phoneInput.focus();
+});
+
 sendBtn.addEventListener("click", async () => {
   setError("");
   const phone = normalizePhone(phoneInput.value);
