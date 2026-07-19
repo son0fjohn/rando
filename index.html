@@ -434,6 +434,12 @@
     cursor: pointer;
   }
   #auth-sheet button:disabled { background: #b9c3d0; }
+  #auth-sheet .auth-alt {
+    font-size: 11px;
+    color: #8a97a8;
+    text-decoration: underline;
+    margin-top: 2px;
+  }
   #auth-error {
     min-height: 16px;
     margin-top: 8px;
@@ -668,8 +674,12 @@
     <div id="auth-scrim" hidden></div>
     <div id="auth-sheet" hidden>
       <h2>rando</h2>
-      <p class="auth-lede">verify your number to appear in the world</p>
-      <div class="step" id="auth-step-phone">
+      <p class="auth-lede">jump in and appear in the world</p>
+      <div class="step" id="auth-step-guest">
+        <button id="auth-guest" type="button">Enter the world</button>
+        <a href="#" id="auth-show-phone" class="auth-alt">have a test number?</a>
+      </div>
+      <div class="step" id="auth-step-phone" hidden>
         <input id="auth-phone" type="tel" placeholder="+82 10 1234 5678" autocomplete="tel">
         <button id="auth-send" type="button">Send code</button>
       </div>
@@ -678,7 +688,7 @@
         <button id="auth-verify" type="button">Verify</button>
       </div>
       <div id="auth-error"></div>
-      <p class="auth-note">one account per phone number &middot; your number is never shown to anyone</p>
+      <p class="auth-note">guest mode &middot; phone verification returns before launch</p>
     </div>
 
     <div id="chat-scrim" hidden></div>
