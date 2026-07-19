@@ -311,12 +311,156 @@ openBtn.addEventListener("click", async () => {
   try {
     if (presence.myZone) await presence.goClosed();
     else await presence.goOpen();
+    matching.renderButton();
   } catch (e) {
     alert(e.message || String(e));
   } finally {
     openBtn.disabled = false;
   }
 });
+
+// ===================== matching =====================
+// Explicit "match me" tap -> zone-scoped queue -> server-side pairing.
+// The waiting side discovers its match by a light poll (chat gets realtime
+// in the next phase; positions never do).
+
+const MATCH_POLL_MS = 4000;
+
+const matchBtn = document.getElementById("match-btn");
+const matchCard = document.getElementById("match-card");
+const mcHandle = document.getElementById("mc-handle");
+const mcDismiss = document.getElementById("mc-dismiss");
+
+export const matching = {
+  queued: false,
+  activeMatch: null,
+  partner: null, // profile of the matched user (visible via mutual reveal)
+  pollTimer: null,
+
+  async onSignedIn() {
+    await this.loadActive();
+    this.renderButton();
+  },
+
+  onSignedOut() {
+    this.stopPolling();
+    this.queued = false;
+    this.activeMatch = null;
+    this.partner = null;
+    matchCard.hidden = true;
+    this.renderButton();
+  },
+
+  async loadActive() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    const { data: m } = await sb
+      .from("matches")
+      .select("*")
+      .eq("status", "active")
+      .or(`user_a.eq.${session.user.id},user_b.eq.${session.user.id}`)
+      .maybeSingle();
+    this.activeMatch = m ?? null;
+    if (m) {
+      const partnerId = m.user_a === session.user.id ? m.user_b : m.user_a;
+      const { data: p } = await sb
+        .from("profiles").select("id, handle, avatar").eq("id", partnerId).maybeSingle();
+      this.partner = p ?? null;
+    }
+  },
+
+  async request() {
+    const { data, error } = await sb.rpc("request_match");
+    if (error) throw error;
+    if (data && data.id) {
+      // paired immediately with someone already waiting
+      this.queued = false;
+      await this.loadActive();
+      this.showCard();
+    } else {
+      this.queued = true;
+      this.startPolling();
+    }
+    this.renderButton();
+  },
+
+  async cancel() {
+    const { data: { session } } = await sb.auth.getSession();
+    await sb.from("match_queue").delete().eq("user_id", session.user.id);
+    this.queued = false;
+    this.stopPolling();
+    this.renderButton();
+  },
+
+  startPolling() {
+    if (this.pollTimer) return;
+    this.pollTimer = setInterval(async () => {
+      await this.loadActive();
+      if (this.activeMatch) {
+        this.queued = false;
+        this.stopPolling();
+        this.showCard();
+        this.renderButton();
+      }
+    }, MATCH_POLL_MS);
+  },
+
+  stopPolling() {
+    clearInterval(this.pollTimer);
+    this.pollTimer = null;
+  },
+
+  showCard() {
+    if (!this.partner) return;
+    mcHandle.textContent = this.partner.handle;
+    matchCard.hidden = false;
+  },
+
+  renderButton() {
+    const canMatch = !!presence.myZone && !statusEl.hidden;
+    matchBtn.hidden = !canMatch || !!this.activeMatch;
+    if (this.queued) {
+      matchBtn.textContent = "Looking for someone nearby… tap to cancel";
+      matchBtn.classList.add("is-waiting");
+    } else {
+      matchBtn.textContent = "Match me";
+      matchBtn.classList.remove("is-waiting");
+    }
+  },
+};
+
+matchBtn.addEventListener("click", async () => {
+  matchBtn.disabled = true;
+  try {
+    if (matching.queued) await matching.cancel();
+    else await matching.request();
+  } catch (e) {
+    alert(e.message || String(e));
+  } finally {
+    matchBtn.disabled = false;
+  }
+});
+
+mcDismiss.addEventListener("click", () => { matchCard.hidden = true; });
+
+// keep the match button in sync with presence/auth state
+const _onSignedIn = presence.onSignedIn.bind(presence);
+presence.onSignedIn = async function () {
+  await _onSignedIn();
+  await matching.onSignedIn();
+};
+const _onSignedOut = presence.onSignedOut.bind(presence);
+presence.onSignedOut = function () {
+  _onSignedOut();
+  matching.onSignedOut();
+};
+const _goClosed = presence.goClosed.bind(presence);
+presence.goClosed = async function () {
+  await _goClosed();
+  matching.queued = false; // server trigger already dropped the queue row
+  matching.stopPolling();
+  matching.renderButton();
+};
 
 sb.auth.onAuthStateChange(() => { refreshStatus(); });
 refreshStatus();
