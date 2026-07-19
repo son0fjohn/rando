@@ -33,6 +33,20 @@
     box-shadow: 0 0 60px rgba(0,0,0,0.6);
   }
 
+  /* The pannable world: a zoomed layer larger than the frame, dragged
+     around PoGo-style. All sprites/markers live inside it in world %. */
+  #world {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 180%;               /* zoom factor 1.8 */
+    aspect-ratio: 1520 / 2688; /* keeps the art's true proportions */
+    touch-action: none;
+    cursor: grab;
+    will-change: transform;
+  }
+  #world.dragging { cursor: grabbing; }
+
   .world-bg {
     position: absolute;
     inset: 0;
@@ -41,6 +55,9 @@
     object-fit: cover;
     object-position: center top;
     display: block;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
   }
 
   /* Each sprite is anchored by its feet: left/top mark the ground point.
@@ -256,7 +273,7 @@
 
   #open-toggle {
     position: absolute;
-    bottom: 16px;
+    bottom: 58px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 110;
@@ -280,7 +297,7 @@
 
   #match-btn {
     position: absolute;
-    bottom: 62px;
+    bottom: 104px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 110;
@@ -364,7 +381,7 @@
 
   #chat-pill {
     position: absolute;
-    bottom: 62px;
+    bottom: 104px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 110;
@@ -378,6 +395,81 @@
     box-shadow: 0 3px 12px rgba(10, 132, 255, 0.35);
   }
   #chat-pill[hidden] { display: none; }
+
+  /* --- Public chat: Minecraft/Twitch-style bottom feed + inline input --- */
+  #pubchat {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 120;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+  }
+  #pubchat-feed {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 2px;
+    max-height: 128px;
+    overflow: hidden;
+  }
+  .pub-line {
+    font-size: 11px;
+    line-height: 1.35;
+    color: #fff;
+    background: rgba(10, 14, 20, 0.55);
+    border-radius: 6px;
+    padding: 3px 8px;
+    width: fit-content;
+    max-width: 82%;
+    overflow-wrap: break-word;
+  }
+  .pub-line b { color: #9fd0ff; font-weight: 700; margin-right: 5px; }
+  .pub-line.sys { color: #ffd60a; font-style: italic; }
+  #pubchat-row { display: flex; gap: 6px; pointer-events: auto; }
+  #pubchat-open {
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(16, 22, 32, 0.72);
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  #pubchat-form { display: flex; flex: 1; gap: 6px; }
+  #pubchat-form[hidden] { display: none; }
+  #pubchat-input {
+    flex: 1;
+    border: none;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    background: rgba(10, 14, 20, 0.72);
+    color: #fff;
+    outline: none;
+  }
+  #pubchat-input::placeholder { color: #93a3b8; }
+  #pubchat-send {
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: var(--apple-blue);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  /* transient anchor for zone-cluster bubbles */
+  .pub-anchor {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    pointer-events: none;
+  }
 
   /* --- Auth sheet (phone OTP signup/login) --- */
   #auth-scrim {
@@ -616,6 +708,7 @@
 </head>
 <body>
   <div class="frame">
+    <div id="world">
     <img class="world-bg" src="../assets/world/hf_20260718_115457_9b653ec4-b79e-4856-829c-87b2bd18f1bd.png" alt="World map background">
 
     <div class="sprite" id="player">
@@ -649,6 +742,9 @@
       <img class="char" src="lit/npc-cans.png" alt="Koa (NPC)">
     </div>
 
+    <div id="players-layer"></div>
+    </div><!-- /world -->
+
     <button id="proportions" type="button"></button>
 
     <div id="zone-chip">
@@ -657,9 +753,19 @@
       <div class="zone-sub" id="auth-status" hidden></div>
     </div>
 
-    <div id="players-layer"></div>
     <button id="open-toggle" type="button" hidden>Go open</button>
     <button id="match-btn" type="button" hidden>Match me</button>
+
+    <div id="pubchat" hidden>
+      <div id="pubchat-feed"></div>
+      <div id="pubchat-row">
+        <button id="pubchat-open" type="button" aria-label="Open chat">&#128172;</button>
+        <form id="pubchat-form" hidden>
+          <input id="pubchat-input" maxlength="280" placeholder="say something to the plaza&hellip;" autocomplete="off">
+          <button id="pubchat-send" type="submit" aria-label="Send">&#8593;</button>
+        </form>
+      </div>
+    </div>
 
     <div id="match-card" hidden>
       <div class="mc-title">Matched!</div>
@@ -764,6 +870,48 @@
     }
     runChatLoop();
     setInterval(runChatLoop, LOOP_MS);
+
+    // --- Camera: drag the world layer PoGo-style, clamped to its bounds ---
+    const worldEl = document.getElementById("world");
+    const frameEl = document.querySelector(".frame");
+    let camX = 0, camY = 0, dragState = null;
+
+    function clampCam() {
+      const fw = frameEl.clientWidth, fh = frameEl.clientHeight;
+      const ww = worldEl.offsetWidth, wh = worldEl.offsetHeight;
+      camX = Math.min(0, Math.max(fw - ww, camX));
+      camY = Math.min(0, Math.max(fh - wh, camY));
+    }
+    function applyCam() {
+      clampCam();
+      worldEl.style.transform = `translate3d(${camX}px, ${camY}px, 0)`;
+    }
+    worldEl.addEventListener("pointerdown", e => {
+      dragState = { x: e.clientX, y: e.clientY, cx: camX, cy: camY };
+      worldEl.setPointerCapture(e.pointerId);
+      worldEl.classList.add("dragging");
+    });
+    worldEl.addEventListener("pointermove", e => {
+      if (!dragState) return;
+      camX = dragState.cx + (e.clientX - dragState.x);
+      camY = dragState.cy + (e.clientY - dragState.y);
+      applyCam();
+    });
+    const endDrag = () => { dragState = null; worldEl.classList.remove("dragging"); };
+    worldEl.addEventListener("pointerup", endDrag);
+    worldEl.addEventListener("pointercancel", endDrag);
+    window.addEventListener("resize", applyCam);
+
+    // world-% -> camera position (used by backend.js to follow your zone)
+    window.RandoCam = {
+      centerOnPct(xPct, yPct) {
+        camX = frameEl.clientWidth / 2 - (xPct / 100) * worldEl.offsetWidth;
+        camY = frameEl.clientHeight * 0.55 - (yPct / 100) * worldEl.offsetHeight;
+        applyCam();
+      },
+    };
+    // setTimeout, not rAF: rAF never fires in throttled/background tabs
+    setTimeout(() => window.RandoCam.centerOnPct(50, 78), 0);
 
     // slow-refresh GPS: tick the "updated N min ago" counter
     const zmin = document.getElementById("zmin");

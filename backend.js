@@ -140,7 +140,9 @@ verifyBtn.addEventListener("click", async () => {
 
 const POLL_MS = 15 * 60 * 1000;      // world re-fetch cadence (slow by design)
 const HEARTBEAT_MS = 20 * 60 * 1000; // keeps presence row from going stale
-const SNAP_MAX_METERS = 3000;        // outside launch area -> not in world
+// TEST PHASE: snap to the nearest zone from anywhere on earth so the demo
+// works outside Seoul. Restore a sane radius (~3000m) for launch.
+const SNAP_MAX_METERS = Infinity;
 
 const openBtn = document.getElementById("open-toggle");
 const zoneNameEl = document.getElementById("zone-name");
@@ -289,6 +291,16 @@ export const presence = {
           '<img class="cast" src="lit/player.png" alt="" aria-hidden="true">' +
           '<div class="contact"></div>' +
           '<img class="char" src="lit/player.png" alt="Player nearby">';
+        // natural staging: deterministic mirror + lean per cluster slot so
+        // groups read as people hanging out, not a lineup facing the camera
+        const lean = [-2.5, 1.5, -1.5, 2.5, 0][i % 5];
+        const mirrored = i % 2 === 1;
+        const charImg = el.querySelector("img.char");
+        charImg.style.transform = (mirrored ? "scaleX(-1) " : "") + `rotate(${lean}deg)`;
+        if (mirrored) {
+          el.querySelector("img.cast").style.transform =
+            "translateX(-50%) skewX(-29deg) scaleY(-0.22) scaleX(-1)";
+        }
         playersLayer.appendChild(el);
       });
     }
@@ -298,6 +310,9 @@ export const presence = {
       playerSprite.style.left = this.myZone.marker_x + "%";
       playerSprite.style.top = this.myZone.marker_y + "%";
       playerSprite.style.height = this.markerScale(Number(this.myZone.marker_y)) + "%";
+      if (window.RandoCam) {
+        window.RandoCam.centerOnPct(Number(this.myZone.marker_x), Number(this.myZone.marker_y));
+      }
     } else {
       playerSprite.hidden = true;
     }
@@ -677,6 +692,136 @@ presence.goClosed = async function () {
   matching.queued = false; // server trigger already dropped the queue row
   matching.stopPolling();
   matching.renderButton();
+};
+
+// ===================== public chat =====================
+// Real world-wide public messages: Twitch/Minecraft-style bottom feed +
+// inline input (no takeover panel). Sender identity in the feed is the
+// pseudonymous handle; the floating bubble anchors to the sender's ZONE
+// cluster, not a specific sprite — presence stays identity-free.
+
+const pubEl = document.getElementById("pubchat");
+const pubFeed = document.getElementById("pubchat-feed");
+const pubForm = document.getElementById("pubchat-form");
+const pubInput = document.getElementById("pubchat-input");
+const pubOpenBtn = document.getElementById("pubchat-open");
+
+export const pubchat = {
+  channel: null,
+  myId: null,
+
+  async onSignedIn() {
+    const { data: { session } } = await sb.auth.getSession();
+    this.myId = session.user.id;
+    pubEl.hidden = false;
+    pubFeed.innerHTML = "";
+    const { data } = await sb
+      .from("public_messages")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(25);
+    (data ?? []).reverse().forEach(m => this.addLine(m));
+    this.subscribe();
+  },
+
+  onSignedOut() {
+    if (this.channel) { sb.removeChannel(this.channel); this.channel = null; }
+    pubEl.hidden = true;
+    pubForm.hidden = true;
+    pubOpenBtn.hidden = false;
+  },
+
+  subscribe() {
+    if (this.channel) sb.removeChannel(this.channel);
+    this.channel = sb
+      .channel("pubchat")
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "public_messages" },
+        p => { this.addLine(p.new); this.bubble(p.new); })
+      .subscribe();
+  },
+
+  addLine(m, sys = false) {
+    const line = document.createElement("div");
+    line.className = "pub-line" + (sys ? " sys" : "");
+    if (!sys) {
+      const b = document.createElement("b");
+      b.textContent = m.handle;
+      line.appendChild(b);
+    }
+    line.appendChild(document.createTextNode(sys ? m : m.body));
+    pubFeed.appendChild(line);
+    while (pubFeed.children.length > 30) pubFeed.firstChild.remove();
+  },
+
+  bubble(m) {
+    // own message floats over your character; others float over the
+    // sender's zone cluster (never a specific person)
+    let host;
+    if (m.sender === this.myId && !playerSprite.hidden) {
+      host = playerSprite;
+    } else {
+      const zone = presence.zones.find(z => z.id === m.zone_id);
+      if (!zone) return;
+      host = document.createElement("div");
+      host.className = "pub-anchor";
+      host.style.left = zone.marker_x + "%";
+      host.style.top = zone.marker_y + "%";
+      host.style.height = presence.markerScale(Number(zone.marker_y)) + "%";
+      document.getElementById("world").appendChild(host);
+    }
+    const b = document.createElement("div");
+    b.className = "bubble public";
+    b.textContent = m.body;
+    host.appendChild(b);
+    setTimeout(() => {
+      b.classList.add("out");
+      setTimeout(() => {
+        b.remove();
+        if (host.classList.contains("pub-anchor")) host.remove();
+      }, 240);
+    }, 4000);
+  },
+
+  async send(text) {
+    const { error } = await sb.from("public_messages").insert({ body: text });
+    if (error) {
+      this.addLine(/open/i.test(error.message)
+        ? "go open to talk in public chat"
+        : error.message, true);
+    }
+  },
+};
+
+pubOpenBtn.addEventListener("click", () => {
+  pubForm.hidden = false;
+  pubOpenBtn.hidden = true;
+  pubInput.focus();
+});
+pubForm.addEventListener("submit", async e => {
+  e.preventDefault();
+  const text = pubInput.value.trim();
+  if (!text) return;
+  pubInput.value = "";
+  await pubchat.send(text);
+});
+pubInput.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    pubForm.hidden = true;
+    pubOpenBtn.hidden = false;
+  }
+});
+
+// the matching wrapper already chains onto presence handlers; add pubchat
+const _pOnSignedIn = presence.onSignedIn.bind(presence);
+presence.onSignedIn = async function () {
+  await _pOnSignedIn();
+  await pubchat.onSignedIn();
+};
+const _pOnSignedOut = presence.onSignedOut.bind(presence);
+presence.onSignedOut = function () {
+  _pOnSignedOut();
+  pubchat.onSignedOut();
 };
 
 sb.auth.onAuthStateChange(() => { refreshStatus(); });
