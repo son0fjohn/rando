@@ -264,9 +264,21 @@ export const presence = {
   async heartbeat() {
     if (!this.myZone) return;
     const { data: { session } } = await sb.auth.getSession();
-    // same zone_id -> allowed by the trigger; just refreshes updated_at
-    await sb.from("presence")
-      .upsert({ user_id: session.user.id, zone_id: this.myZone.id });
+    // live location on the slow cadence: re-resolve the zone each beat
+    // (the DB trigger still enforces the 15-min zone-change limit)
+    let zone = this.myZone;
+    try { zone = await this.resolveZone(); } catch { /* keep current */ }
+    const { error } = await sb.from("presence")
+      .upsert({ user_id: session.user.id, zone_id: zone.id });
+    if (error) {
+      // zone change rejected (too soon) — heartbeat the current zone
+      await sb.from("presence")
+        .upsert({ user_id: session.user.id, zone_id: this.myZone.id });
+    } else if (zone.id !== this.myZone.id) {
+      this.myZone = zone;
+      this.renderToggle();
+      await this.refreshWorld();
+    }
   },
 
   startPolling() {

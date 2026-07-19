@@ -63,8 +63,8 @@ export const world3d = {
     frameEl.prepend(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x7fc4ef);
-    this.scene.fog = new THREE.Fog(0xcfe3f2, 300, 1100);
+    this.scene.background = new THREE.Color(0x64b5f0); // the art's clear blue
+    this.scene.fog = new THREE.Fog(0xd6e6f4, 320, 1200);
     this.camera = new THREE.PerspectiveCamera(50, w / h, 1, 2500);
 
     this.scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x8fa3b8, 1.15));
@@ -88,56 +88,97 @@ export const world3d = {
     this.applyCamera();
   },
 
+  // canvas-generated texture helper
+  canvasTex(w, h, draw) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    draw(c.getContext("2d"));
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  },
+
+  // Palette + design from the original painted world: pale tiled ground,
+  // slate-blue roads with light sidewalk borders, white flat-roofed
+  // buildings with dark window bands, blue sky and clouds. No trees.
   buildTerrain() {
-    const flat = { flatShading: true };
+    // ground: light cool grey with a faint large tile grid
+    const groundTex = this.canvasTex(256, 256, g => {
+      g.fillStyle = "#cfd7df";
+      g.fillRect(0, 0, 256, 256);
+      g.strokeStyle = "#c0cad4";
+      g.lineWidth = 2;
+      for (let i = 0; i <= 256; i += 64) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
+        g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke();
+      }
+    });
+    groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+    groundTex.repeat.set(56, 56);
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(1400, 48),
-      new THREE.MeshLambertMaterial({ color: 0xccd4dd }));
+      new THREE.PlaneGeometry(2800, 2800),
+      new THREE.MeshLambertMaterial({ map: groundTex }));
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
 
-    const plaza = new THREE.Mesh(
-      new THREE.CircleGeometry(130, 40),
-      new THREE.MeshLambertMaterial({ color: 0xc2cbd6 }));
-    plaza.rotation.x = -Math.PI / 2;
-    plaza.position.y = 0.15;
-    this.scene.add(plaza);
-
-    const roadMat = new THREE.MeshLambertMaterial({ color: 0x71809b });
+    // roads: slate blue with pale sidewalk borders
+    const roadMat = new THREE.MeshLambertMaterial({ color: 0x6f7e95 });
+    const curbMat = new THREE.MeshLambertMaterial({ color: 0xe3e9f0 });
     const mkRoad = (len, wdt, x, z, rotY) => {
+      const g = new THREE.Group();
       const r = new THREE.Mesh(new THREE.BoxGeometry(len, 0.4, wdt), roadMat);
-      r.position.set(x, 0.2, z);
-      r.rotation.y = rotY;
-      this.scene.add(r);
+      r.position.y = 0.2;
+      g.add(r);
+      for (const side of [-1, 1]) {
+        const c = new THREE.Mesh(new THREE.BoxGeometry(len, 0.5, 2.6), curbMat);
+        c.position.set(0, 0.25, side * (wdt / 2 + 1.3));
+        g.add(c);
+      }
+      g.position.set(x, 0, z);
+      g.rotation.y = rotY;
+      this.scene.add(g);
     };
-    mkRoad(1500, 26, 0, 40, 0);
-    mkRoad(1500, 26, -50, 0, Math.PI / 2);
-    mkRoad(1100, 20, 150, -120, 0.5);
+    mkRoad(2000, 26, 0, 40, 0);
+    mkRoad(2000, 26, -50, 0, Math.PI / 2);
+    mkRoad(1400, 20, 150, -120, 0.5);
 
+    // buildings: white boxes with dark horizontal window bands
     const rand = mulberry32(20260719);
-    const shades = [0xf2f5f8, 0xe6ebf1, 0xdfe6ee, 0xd8e0e9];
+    const shades = ["#f2f5f8", "#e9eef4", "#e0e7ee"];
     for (let i = 0; i < 26; i++) {
       const a = rand() * Math.PI * 2;
       const r = 190 + rand() * 420;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       if (Math.abs(x) < 110 && Math.abs(z) < 110) continue;
-      const bw = 34 + rand() * 60, bh = 24 + rand() * 95, bd = 34 + rand() * 60;
+      const bw = 34 + rand() * 60, bh = 24 + rand() * 80, bd = 34 + rand() * 60;
+      const base = shades[i % shades.length];
+      const bands = bh > 60 ? 3 : bh > 38 ? 2 : 1;
+      const sideTex = this.canvasTex(128, 128, g => {
+        g.fillStyle = base;
+        g.fillRect(0, 0, 128, 128);
+        const bandH = 16;
+        for (let b = 0; b < bands; b++) {
+          const y = 20 + b * (86 / bands);
+          g.fillStyle = "#54718f";
+          g.fillRect(8, y, 112, bandH);
+          g.strokeStyle = "#e8eef5";
+          g.lineWidth = 2;
+          for (let wx = 8; wx <= 120; wx += 16) {
+            g.beginPath(); g.moveTo(wx, y); g.lineTo(wx, y + bandH); g.stroke();
+          }
+        }
+      });
+      const sideMat = new THREE.MeshLambertMaterial({ map: sideTex });
+      const topMat = new THREE.MeshLambertMaterial({ color: base });
       const b = new THREE.Mesh(
         new THREE.BoxGeometry(bw, bh, bd),
-        new THREE.MeshLambertMaterial({ color: shades[i % shades.length], ...flat }));
+        [sideMat, sideMat, topMat, topMat, sideMat, sideMat]);
       b.position.set(x, bh / 2, z);
       b.rotation.y = (rand() - 0.5) * 0.6;
       this.scene.add(b);
     }
-    for (let i = 0; i < 16; i++) {
-      const a = rand() * Math.PI * 2;
-      const r = 90 + rand() * 260;
-      const t = new THREE.Mesh(
-        new THREE.ConeGeometry(7 + rand() * 5, 16 + rand() * 10, 7),
-        new THREE.MeshLambertMaterial({ color: 0x4d7d5a, ...flat }));
-      t.position.set(Math.cos(a) * r, 9, Math.sin(a) * r);
-      this.scene.add(t);
-    }
+
+    // sky: clouds only — no ground clutter
     const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
     for (let i = 0; i < 7; i++) {
       const c = new THREE.Mesh(new THREE.PlaneGeometry(90 + rand() * 80, 24 + rand() * 18), cloudMat);
