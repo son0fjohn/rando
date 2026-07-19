@@ -44,6 +44,7 @@ export const world3d = {
   camGoal: null,               // eased recenter target
   target: new THREE.Vector3(0, 0, 0),
   followPos: null,
+  observing: false,            // true after a pan: camera roams free
   player: null, playerShadow: null,
   remoteGroup: null,
   zoneRings: new THREE.Group(),
@@ -192,6 +193,7 @@ export const world3d = {
       const pos = groundPos(Number(opts.mx), Number(opts.my));
       this.player = this.addCharacter(opts.src, pos);
       this.followPos = pos.clone();
+      this.observing = false; // going open snaps attention back to you
     } else {
       this.followPos = null;
     }
@@ -252,41 +254,74 @@ export const world3d = {
   },
 
   recenter() {
+    this.observing = false;
     this.camGoal = { ...this.CAM_DEFAULT };
   },
 
+  // One-finger drag PANS (free observer); two fingers pinch-zoom, twist to
+  // rotate, move vertically together to tilt. Desktop: drag pans, wheel
+  // zooms, right-click or Ctrl+drag orbits. Recenter returns to follow.
   bindControls() {
     const el = this.renderer.domElement;
     const pointers = new Map();
-    let pinch0 = null;
+    let gesture = null;
+    el.addEventListener("contextmenu", e => e.preventDefault());
     el.addEventListener("pointerdown", e => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { el.setPointerCapture(e.pointerId); } catch {}
+      this.camGoal = null;
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
-        pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), dist: this.cam.dist };
+        gesture = {
+          type: "two",
+          d0: Math.hypot(a.x - b.x, a.y - b.y),
+          a0: Math.atan2(b.y - a.y, b.x - a.x),
+          midY0: (a.y + b.y) / 2,
+          dist0: this.cam.dist, theta0: this.cam.theta, elev0: this.cam.elev,
+        };
+      } else if (pointers.size === 1) {
+        gesture = { type: (e.button === 2 || e.ctrlKey) ? "orbit" : "pan" };
       }
       el.style.cursor = "grabbing";
-      this.camGoal = null;
     });
     el.addEventListener("pointermove", e => {
       if (!pointers.has(e.pointerId)) return;
       const prev = pointers.get(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pinch0 && pointers.size >= 2) {
+      if (gesture && gesture.type === "two" && pointers.size >= 2) {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
-        this.cam.dist = Math.min(420, Math.max(70, pinch0.dist * (pinch0.d / d)));
-      } else if (pointers.size === 1) {
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        this.cam.dist = Math.min(420, Math.max(70, gesture.dist0 * (gesture.d0 / d)));
+        this.cam.theta = gesture.theta0 + (ang - gesture.a0);
+        this.cam.elev = Math.min(1.25, Math.max(0.22,
+          gesture.elev0 + ((a.y + b.y) / 2 - gesture.midY0) * 0.004));
+        this.applyCamera();
+      } else if (gesture && gesture.type === "orbit") {
         this.cam.theta -= (e.clientX - prev.x) * 0.006;
         this.cam.elev = Math.min(1.25, Math.max(0.22, this.cam.elev + (e.clientY - prev.y) * 0.004));
+        this.applyCamera();
+      } else if (gesture && gesture.type === "pan") {
+        this.observing = true; // free observer mode until recenter
+        const k = this.cam.dist * 0.0016;
+        const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+        const sin = Math.sin(this.cam.theta), cos = Math.cos(this.cam.theta);
+        this.target.x += (-cos * dx - sin * dy) * k;
+        this.target.z += (sin * dx - cos * dy) * k;
+        this.target.x = Math.max(-650, Math.min(650, this.target.x));
+        this.target.z = Math.max(-650, Math.min(650, this.target.z));
+        this.applyCamera();
       }
-      this.applyCamera();
     });
     const up = e => {
       pointers.delete(e.pointerId);
-      if (pointers.size < 2) pinch0 = null;
-      if (!pointers.size) el.style.cursor = "grab";
+      if (pointers.size < 2 && gesture && gesture.type === "two") {
+        gesture = pointers.size === 1 ? { type: "pan" } : null;
+      }
+      if (!pointers.size) {
+        gesture = null;
+        el.style.cursor = "grab";
+      }
     };
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
@@ -306,11 +341,13 @@ export const world3d = {
   },
 
   tick() {
-    // glide the camera target toward the followed position
-    const goal = this.followPos ?? new THREE.Vector3(0, 0, 0);
-    if (this.target.distanceTo(goal) > 0.5) {
-      this.target.lerp(goal, 0.18);
-      this.applyCamera();
+    // glide the camera target home — unless the user is roaming free
+    if (!this.observing) {
+      const goal = this.followPos ?? new THREE.Vector3(0, 0, 0);
+      if (this.target.distanceTo(goal) > 0.5) {
+        this.target.lerp(goal, 0.18);
+        this.applyCamera();
+      }
     }
     if (this.camGoal) {
       const c = this.cam, g = this.camGoal;
