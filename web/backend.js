@@ -426,6 +426,11 @@ export const matching = {
       matchBtn.textContent = "Match me";
       matchBtn.classList.remove("is-waiting");
     }
+    // matched: show the chat pill (unless the panel is already open)
+    const pill = document.getElementById("chat-pill");
+    const panelOpen = !document.getElementById("chat-panel").hidden;
+    pill.hidden = statusEl.hidden || !this.activeMatch || !this.partner || panelOpen;
+    if (!pill.hidden) pill.textContent = "\u{1F4AC} Chat · " + this.partner.handle;
   },
 };
 
@@ -442,6 +447,115 @@ matchBtn.addEventListener("click", async () => {
 });
 
 mcDismiss.addEventListener("click", () => { matchCard.hidden = true; });
+
+// ===================== real-time chat =====================
+// Real persisted messages between the two match participants, delivered
+// live over Supabase Realtime (which enforces the same RLS as reads).
+
+const cScrim = document.getElementById("chat-scrim");
+const cPanel = document.getElementById("chat-panel");
+const cThread = document.getElementById("chat-thread");
+const cName = document.getElementById("chat-name");
+const cAvatar = document.getElementById("chat-avatar");
+const cBadge = document.getElementById("chat-npc-badge");
+const cForm = document.getElementById("chat-form");
+const cInput = document.getElementById("chat-input");
+const chatPill = document.getElementById("chat-pill");
+const mcChat = document.getElementById("mc-chat");
+
+export const chat = {
+  channel: null,
+  seen: new Set(),
+  myId: null,
+
+  async openPanel() {
+    if (!matching.activeMatch || !matching.partner) return;
+    const { data: { session } } = await sb.auth.getSession();
+    this.myId = session.user.id;
+    cName.textContent = matching.partner.handle;
+    cAvatar.src = "lit/player.png";
+    cBadge.textContent = "MATCHED · SAME ZONE";
+    cThread.innerHTML = "";
+    this.seen.clear();
+    const { data: history } = await sb
+      .from("messages")
+      .select("*")
+      .eq("match_id", matching.activeMatch.id)
+      .order("created_at");
+    (history ?? []).forEach(m => this.append(m));
+    this.subscribe();
+    cScrim.hidden = false;
+    cPanel.hidden = false;
+    matchCard.hidden = true;
+    chatPill.hidden = true;
+    cInput.focus();
+  },
+
+  closePanel() {
+    cScrim.hidden = true;
+    cPanel.hidden = true;
+    this.unsubscribe();
+    matching.renderButton();
+  },
+
+  subscribe() {
+    this.unsubscribe();
+    const matchId = matching.activeMatch.id;
+    this.channel = sb
+      .channel("match-" + matchId)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: "match_id=eq." + matchId },
+        payload => this.append(payload.new))
+      .subscribe();
+  },
+
+  unsubscribe() {
+    if (this.channel) {
+      sb.removeChannel(this.channel);
+      this.channel = null;
+    }
+  },
+
+  append(m) {
+    if (this.seen.has(m.id)) return;
+    this.seen.add(m.id);
+    const el = document.createElement("div");
+    el.className = "msg " + (m.sender === this.myId ? "me" : "them");
+    el.textContent = m.body;
+    cThread.appendChild(el);
+    cThread.scrollTop = cThread.scrollHeight;
+  },
+
+  async send(text) {
+    const { data, error } = await sb
+      .from("messages")
+      .insert({ match_id: matching.activeMatch.id, sender: this.myId, body: text })
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    if (data) this.append(data); // optimistic; realtime echo deduped by id
+  },
+};
+
+cForm.addEventListener("submit", async e => {
+  e.preventDefault();
+  const text = cInput.value.trim();
+  if (!text || !matching.activeMatch) return;
+  cInput.value = "";
+  try {
+    await chat.send(text);
+  } catch (err) {
+    alert(err.message || String(err));
+  }
+});
+
+mcChat.addEventListener("click", () => chat.openPanel());
+chatPill.addEventListener("click", () => chat.openPanel());
+cScrim.addEventListener("click", () => chat.closePanel());
+document.getElementById("chat-close").addEventListener("click", () => chat.closePanel());
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !cPanel.hidden) chat.closePanel();
+});
 
 // keep the match button in sync with presence/auth state
 const _onSignedIn = presence.onSignedIn.bind(presence);
