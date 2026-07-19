@@ -140,9 +140,8 @@ verifyBtn.addEventListener("click", async () => {
 
 const POLL_MS = 15 * 60 * 1000;      // world re-fetch cadence (slow by design)
 const HEARTBEAT_MS = 20 * 60 * 1000; // keeps presence row from going stale
-// TEST PHASE: snap to the nearest zone from anywhere on earth so the demo
-// works outside Seoul. Restore a sane radius (~3000m) for launch.
-const SNAP_MAX_METERS = Infinity;
+const SNAP_MAX_METERS = 3000;        // fixed-zone radius; beyond it -> auto zone
+const CELL_DEG = 0.02;               // ~2.2km coarse grid for auto zones
 
 const openBtn = document.getElementById("open-toggle");
 const zoneNameEl = document.getElementById("zone-name");
@@ -188,8 +187,10 @@ export const presence = {
     return 2 * R * Math.asin(Math.sqrt(a));
   },
 
-  // ON-DEVICE zone snap: coordinates are read locally and only compared
-  // against public zone centers; they never leave this function.
+  // ON-DEVICE zone snap: coordinates are read locally. Within 3km of a
+  // fixed launch zone you snap to it; anywhere else your position is
+  // rounded to a ~2.2km grid CELL on-device and only that coarse cell is
+  // sent (ensure_auto_zone rejects anything finer than the grid).
   async resolveZone() {
     if (!this.zones.length) {
       const { data } = await sb.from("zones").select("*");
@@ -202,15 +203,31 @@ export const presence = {
       console.warn("[rando] DEV zone override active:", z.name);
       return z;
     }
-    const pos = await new Promise((res, rej) =>
-      navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+    let lat, lng;
+    if (params.get("devlat") && params.get("devlng")) {
+      lat = Number(params.get("devlat"));
+      lng = Number(params.get("devlng"));
+      console.warn("[rando] DEV coordinates override active");
+    } else {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+      lat = pos.coords.latitude;
+      lng = pos.coords.longitude;
+    }
     let best = null, bestD = Infinity;
-    for (const z of this.zones) {
-      const d = this.haversine(pos.coords.latitude, pos.coords.longitude, z.lat, z.lng);
+    for (const z of this.zones.filter(z => z.kind !== "auto")) {
+      const d = this.haversine(lat, lng, z.lat, z.lng);
       if (d < bestD) { best = z; bestD = d; }
     }
-    if (bestD > SNAP_MAX_METERS) throw new Error("You're outside the Itaewon launch area");
-    return best;
+    if (best && bestD <= SNAP_MAX_METERS) return best;
+    // outside the launch area: coarse grid cell, computed on-device
+    const cellLat = Number((Math.round(lat / CELL_DEG) * CELL_DEG).toFixed(6));
+    const cellLng = Number((Math.round(lng / CELL_DEG) * CELL_DEG).toFixed(6));
+    const { data: zone, error } = await sb.rpc("ensure_auto_zone",
+      { p_cell_lat: cellLat, p_cell_lng: cellLng });
+    if (error) throw error;
+    if (!this.zones.some(z => z.id === zone.id)) this.zones.push(zone);
+    return zone;
   },
 
   async goOpen() {
@@ -256,6 +273,13 @@ export const presence = {
   async refreshWorld() {
     const { data, error } = await sb.rpc("get_world");
     if (error) return;
+    // fetch any zones we haven't seen (auto zones from other areas)
+    const missing = [...new Set((data ?? []).map(r => r.zone_id))]
+      .filter(id => !this.zones.some(z => z.id === id));
+    if (missing.length) {
+      const { data: newZones } = await sb.from("zones").select("*").in("id", missing);
+      (newZones ?? []).forEach(z => this.zones.push(z));
+    }
     this.lastFetch = Date.now();
     this.renderWorld(data ?? []);
     this.renderFreshness();
@@ -331,12 +355,12 @@ export const presence = {
     openBtn.hidden = signedOut;
     if (signedOut) { playerSprite.hidden = false; return; } // pre-auth: decorative world
     if (this.myZone) {
-      openBtn.textContent = "You're open · " + this.myZone.name + " — go invisible";
       openBtn.classList.add("is-open");
+      openBtn.title = "You're open · " + this.myZone.name + " — tap to go invisible";
       zoneNameEl.textContent = this.myZone.name;
     } else {
-      openBtn.textContent = "Go open";
       openBtn.classList.remove("is-open");
+      openBtn.title = "Go open";
       zoneNameEl.textContent = "invisible";
       playerSprite.hidden = true;
     }
@@ -458,17 +482,17 @@ export const matching = {
     const canMatch = !!presence.myZone && !statusEl.hidden;
     matchBtn.hidden = !canMatch || !!this.activeMatch;
     if (this.queued) {
-      matchBtn.textContent = "Looking for someone nearby… tap to cancel";
+      matchBtn.title = "Looking for someone nearby… tap to cancel";
       matchBtn.classList.add("is-waiting");
     } else {
-      matchBtn.textContent = "Match me";
+      matchBtn.title = "Match me";
       matchBtn.classList.remove("is-waiting");
     }
-    // matched: show the chat pill (unless the panel is already open)
+    // matched: show the chat icon (unless the panel is already open)
     const pill = document.getElementById("chat-pill");
     const panelOpen = !document.getElementById("chat-panel").hidden;
     pill.hidden = statusEl.hidden || !this.activeMatch || !this.partner || panelOpen;
-    if (!pill.hidden) pill.textContent = "\u{1F4AC} Chat · " + this.partner.handle;
+    if (!pill.hidden) pill.title = "Chat · " + this.partner.handle;
   },
 };
 

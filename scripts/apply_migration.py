@@ -24,6 +24,8 @@ def run_sql(sql: str):
         headers={
             "Authorization": f"Bearer {token()}",
             "Content-Type": "application/json",
+            # Cloudflare fronting api.supabase.com rejects urllib's default UA
+            "User-Agent": "rando-migrations/1.0",
         },
         method="POST",
     )
