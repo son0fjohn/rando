@@ -170,6 +170,34 @@
 
   #recenter { color: #cfe4ff; }
 
+  /* DOM overlays (bubbles, YOU tag) pinned to 3D points by world3d.js */
+  #bubble-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+  }
+  .bubble-anchor {
+    position: absolute;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+  .bubble-anchor .tag {
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    background: rgba(255, 206, 61, 0.85);
+    color: #241a00;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  }
+
   /* Zone / GPS status chip — coarse shared zone + slow refresh, per spec */
   #zone-chip {
     position: absolute;
@@ -773,42 +801,7 @@
 </head>
 <body>
   <div class="frame">
-    <div id="world">
-    <img class="world-bg" src="../assets/world/hf_20260718_115457_9b653ec4-b79e-4856-829c-87b2bd18f1bd.png" alt="World map background">
-
-    <div class="sprite" id="player">
-      <div class="tag">YOU</div>
-      <img class="cast" src="lit/player.png" alt="" aria-hidden="true">
-      <div class="contact"></div>
-      <img class="char" src="lit/player.png" alt="Player character">
-    </div>
-
-    <div class="sprite npc" id="npc-silver" title="Rae">
-      <img class="cast" src="lit/npc-silver.png" alt="" aria-hidden="true">
-      <div class="contact"></div>
-      <img class="char" src="lit/npc-silver.png" alt="Rae (NPC)">
-    </div>
-
-    <div class="sprite npc" id="npc-dreads" title="Miro">
-      <img class="cast" src="lit/npc-dreads.png" alt="" aria-hidden="true">
-      <div class="contact"></div>
-      <img class="char" src="lit/npc-dreads.png" alt="Miro (NPC)">
-    </div>
-
-    <div class="sprite npc" id="npc-buzzcut" title="Jun">
-      <img class="cast" src="lit/npc-buzzcut.png" alt="" aria-hidden="true">
-      <div class="contact"></div>
-      <img class="char" src="lit/npc-buzzcut.png" alt="Jun (NPC)">
-    </div>
-
-    <div class="sprite npc" id="npc-cans" title="Koa">
-      <img class="cast" src="lit/npc-cans.png" alt="" aria-hidden="true">
-      <div class="contact"></div>
-      <img class="char" src="lit/npc-cans.png" alt="Koa (NPC)">
-    </div>
-
-    <div id="players-layer"></div>
-    </div><!-- /world -->
+    <div id="bubble-layer"></div>
 
     <div id="side-actions">
       <button id="open-toggle" class="icon-btn" type="button" hidden title="Go open">&#128065;</button>
@@ -893,163 +886,6 @@
     </div>
   </div>
 
-  <script>
-    // --- Ambient world chat: looping public (grey) NPC bubbles.
-    // (The scripted private thread is gone — private chat is real now,
-    // between matched accounts, handled in backend.js.)
-    const CHAT = [
-      { id: "npc-dreads",  text: "anyone up for a quick game?",            type: "public",  at: 600,   hold: 3200 },
-      { id: "npc-buzzcut", text: "who's got next on the board?",           type: "public",  at: 4400,  hold: 3200 },
-      { id: "npc-silver",  text: "sketching by the crossing, come say hi", type: "public",  at: 15800, hold: 3200 },
-    ];
-    const LOOP_MS = 19800;
-
-    function showBubble({ id, text, type, hold }) {
-      const sprite = document.getElementById(id);
-      const b = document.createElement("div");
-      b.className = "bubble " + type;
-      if (type === "private") {
-        const pl = document.createElement("span");
-        pl.className = "pl";
-        pl.textContent = "\u{1F512} PRIVATE";
-        b.appendChild(pl);
-      }
-      b.appendChild(document.createTextNode(text));
-      sprite.appendChild(b);
-      setTimeout(() => {
-        b.classList.add("out");
-        setTimeout(() => b.remove(), 240);
-      }, hold);
-    }
-
-    function runChatLoop() {
-      CHAT.forEach(msg => setTimeout(() => showBubble(msg), msg.at));
-    }
-    runChatLoop();
-    setInterval(runChatLoop, LOOP_MS);
-
-    // --- Camera: PoGo-style. Pinch (or scroll) to zoom, drag to pan
-    // freely — the view STAYS where you put it. Going open / changing
-    // zones glides the world under your avatar; the recenter button
-    // glides back to you any time. (True rotation needs 3D/multi-angle
-    // art — a flat painted scene can't orbit.)
-    const worldEl = document.getElementById("world");
-    const frameEl = document.querySelector(".frame");
-    const recenterBtn = document.getElementById("recenter");
-    const AVATAR_SCREEN_Y = 0.58; // avatar's home spot on screen when centered
-    const Z_MIN = 1.0, Z_MAX = 2.4;
-    let zoom = 1.45;
-    let camX = 0, camY = 0;
-    let dragState = null, pinchState = null;
-    let followTarget = null;      // {x,y} world-% while open
-    const pointers = new Map();
-
-    worldEl.style.width = zoom * 100 + "%";
-
-    function clampCam() {
-      const fw = frameEl.clientWidth, fh = frameEl.clientHeight;
-      const ww = worldEl.offsetWidth, wh = worldEl.offsetHeight;
-      camX = Math.min(0, Math.max(fw - ww, camX));
-      camY = Math.min(0, Math.max(fh - wh, camY));
-    }
-    function applyCam(animate) {
-      clampCam();
-      worldEl.style.transition = animate
-        ? "transform 0.55s cubic-bezier(0.25, 0.8, 0.35, 1)"
-        : "none";
-      worldEl.style.transform = `translate3d(${camX}px, ${camY}px, 0)`;
-    }
-    function centerOn(xPct, yPct, animate) {
-      camX = frameEl.clientWidth / 2 - (xPct / 100) * worldEl.offsetWidth;
-      camY = frameEl.clientHeight * AVATAR_SCREEN_Y - (yPct / 100) * worldEl.offsetHeight;
-      applyCam(animate);
-    }
-    // zoom around a focal point (frame coords) so it stays put on screen
-    function applyZoom(newZ, fx, fy) {
-      newZ = Math.min(Z_MAX, Math.max(Z_MIN, newZ));
-      if (newZ === zoom) return;
-      const oldW = worldEl.offsetWidth;
-      zoom = newZ;
-      worldEl.style.width = zoom * 100 + "%";
-      const scale = worldEl.offsetWidth / oldW;
-      camX = fx - (fx - camX) * scale;
-      camY = fy - (fy - camY) * scale;
-      applyCam(false);
-    }
-
-    worldEl.addEventListener("pointerdown", e => {
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      try { worldEl.setPointerCapture(e.pointerId); } catch {}
-      if (pointers.size === 2) {
-        const [a, b] = [...pointers.values()];
-        pinchState = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: zoom };
-        dragState = null;
-      } else if (pointers.size === 1) {
-        dragState = { x: e.clientX, y: e.clientY, cx: camX, cy: camY };
-        worldEl.classList.add("dragging");
-      }
-    });
-    worldEl.addEventListener("pointermove", e => {
-      if (!pointers.has(e.pointerId)) return;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pinchState && pointers.size >= 2) {
-        const [a, b] = [...pointers.values()];
-        const d = Math.hypot(a.x - b.x, a.y - b.y);
-        const fr = frameEl.getBoundingClientRect();
-        applyZoom(pinchState.z0 * (d / pinchState.d0),
-          (a.x + b.x) / 2 - fr.left, (a.y + b.y) / 2 - fr.top);
-      } else if (dragState) {
-        camX = dragState.cx + (e.clientX - dragState.x);
-        camY = dragState.cy + (e.clientY - dragState.y);
-        applyCam(false);
-      }
-    });
-    const endPointer = e => {
-      pointers.delete(e.pointerId);
-      if (pointers.size < 2) pinchState = null;
-      if (pointers.size === 0) {
-        dragState = null;
-        worldEl.classList.remove("dragging");
-      }
-    };
-    worldEl.addEventListener("pointerup", endPointer);
-    worldEl.addEventListener("pointercancel", endPointer);
-    worldEl.addEventListener("wheel", e => {
-      e.preventDefault();
-      const fr = frameEl.getBoundingClientRect();
-      applyZoom(zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12),
-        e.clientX - fr.left, e.clientY - fr.top);
-    }, { passive: false });
-    window.addEventListener("resize", () => applyCam(false));
-
-    recenterBtn.addEventListener("click", () => {
-      if (followTarget) centerOn(followTarget.x, followTarget.y, true);
-    });
-
-    // used by backend.js: follow(x,y) while open, clearFollow() when invisible
-    window.RandoCam = {
-      centerOnPct(xPct, yPct) { centerOn(xPct, yPct, true); },
-      follow(xPct, yPct) {
-        followTarget = { x: Number(xPct), y: Number(yPct) };
-        recenterBtn.hidden = false;
-        centerOn(followTarget.x, followTarget.y, true);
-      },
-      clearFollow() {
-        followTarget = null;
-        recenterBtn.hidden = true;
-      },
-    };
-    // setTimeout, not rAF: rAF never fires in throttled/background tabs
-    setTimeout(() => centerOn(50, 78, false), 0);
-
-    // slow-refresh GPS: tick the "updated N min ago" counter
-    const zmin = document.getElementById("zmin");
-    let mins = 2;
-    setInterval(() => {
-      mins = mins >= 14 ? 0 : mins + 1;
-      zmin.textContent = String(mins);
-    }, 60000);
-  </script>
   <script type="module" src="backend.js"></script>
 </body>
 </html>
