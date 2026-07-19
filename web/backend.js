@@ -312,10 +312,12 @@ export const presence = {
       playerSprite.style.top = this.myZone.marker_y + "%";
       playerSprite.style.height = this.markerScale(Number(this.myZone.marker_y)) + "%";
       if (window.RandoCam) {
-        window.RandoCam.centerOnPct(Number(this.myZone.marker_x), Number(this.myZone.marker_y));
+        // follow-cam: your avatar keeps its screen spot, the world moves
+        window.RandoCam.follow(this.myZone.marker_x, this.myZone.marker_y);
       }
     } else {
       playerSprite.hidden = true;
+      if (window.RandoCam) window.RandoCam.clearFollow();
     }
   },
 
