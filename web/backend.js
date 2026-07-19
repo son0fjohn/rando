@@ -287,10 +287,11 @@ export const presence = {
         el.style.top = zone.marker_y + "%";
         el.style.height = this.markerScale(Number(zone.marker_y)) + "%";
         el.style.zIndex = String(Math.round(Number(zone.marker_y)));
+        const src = outfitSrc(p.avatar);
         el.innerHTML =
-          '<img class="cast" src="lit/player.png" alt="" aria-hidden="true">' +
+          `<img class="cast" src="${src}" alt="" aria-hidden="true">` +
           '<div class="contact"></div>' +
-          '<img class="char" src="lit/player.png" alt="Player nearby">';
+          `<img class="char" src="${src}" alt="Player nearby">`;
         // natural staging: deterministic mirror + lean per cluster slot so
         // groups read as people hanging out, not a lineup facing the camera
         const lean = [-2.5, 1.5, -1.5, 2.5, 0][i % 5];
@@ -447,6 +448,7 @@ export const matching = {
   showCard() {
     if (!this.partner) return;
     mcHandle.textContent = this.partner.handle;
+    document.querySelector("#match-card .mc-avatar").src = outfitSrc(this.partner.avatar);
     matchCard.hidden = false;
   },
 
@@ -507,7 +509,7 @@ export const chat = {
     const { data: { session } } = await sb.auth.getSession();
     this.myId = session.user.id;
     cName.textContent = matching.partner.handle;
-    cAvatar.src = "lit/player.png";
+    cAvatar.src = outfitSrc(matching.partner.avatar);
     cBadge.textContent = "MATCHED · SAME ZONE";
     cThread.innerHTML = "";
     this.seen.clear();
@@ -694,6 +696,74 @@ presence.goClosed = async function () {
   matching.renderButton();
 };
 
+// ===================== avatar / outfit =====================
+// profiles.avatar = {"outfit": <key>} drives how your character renders
+// for everyone. Others see your new outfit on their next world poll.
+
+const OUTFITS = [
+  "red-tank", "alien-tee", "varsity-jacket", "green-hoodie", "grey-hoodie",
+  "navy-shirt-jacket", "red-plaid-flannel", "black-vest", "black-jean-jacket",
+];
+
+export function outfitSrc(avatar) {
+  const key = avatar && OUTFITS.includes(avatar.outfit) ? avatar.outfit : null;
+  return key && key !== "red-tank" ? "lit/outfits/" + key + ".png" : "lit/player.png";
+}
+
+const outfitBtn = document.getElementById("outfit-btn");
+const outfitSheet = document.getElementById("outfit-sheet");
+const outfitGrid = document.getElementById("outfit-grid");
+
+export const avatar = {
+  mine: { outfit: "red-tank" },
+
+  async load() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    const { data } = await sb.from("profiles").select("avatar").eq("id", session.user.id).maybeSingle();
+    if (data && data.avatar) this.mine = data.avatar;
+    this.applyOwn();
+    outfitBtn.hidden = false;
+  },
+
+  applyOwn() {
+    const src = outfitSrc(this.mine);
+    playerSprite.querySelector("img.char").src = src;
+    playerSprite.querySelector("img.cast").src = src;
+  },
+
+  async pick(key) {
+    this.mine = { ...this.mine, outfit: key };
+    this.applyOwn();
+    this.renderGrid();
+    const { data: { session } } = await sb.auth.getSession();
+    await sb.from("profiles").update({ avatar: this.mine }).eq("id", session.user.id);
+  },
+
+  renderGrid() {
+    outfitGrid.innerHTML = "";
+    for (const key of OUTFITS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "outfit-thumb" + (this.mine.outfit === key ? " selected" : "");
+      const img = document.createElement("img");
+      img.src = key === "red-tank" ? "lit/player.png" : "lit/outfits/" + key + ".png";
+      img.alt = key;
+      b.appendChild(img);
+      b.addEventListener("click", () => this.pick(key));
+      outfitGrid.appendChild(b);
+    }
+  },
+};
+
+outfitBtn.addEventListener("click", () => {
+  avatar.renderGrid();
+  outfitSheet.hidden = !outfitSheet.hidden;
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") outfitSheet.hidden = true;
+});
+
 // ===================== public chat =====================
 // Real world-wide public messages: Twitch/Minecraft-style bottom feed +
 // inline input (no takeover panel). Sender identity in the feed is the
@@ -817,11 +887,14 @@ const _pOnSignedIn = presence.onSignedIn.bind(presence);
 presence.onSignedIn = async function () {
   await _pOnSignedIn();
   await pubchat.onSignedIn();
+  await avatar.load();
 };
 const _pOnSignedOut = presence.onSignedOut.bind(presence);
 presence.onSignedOut = function () {
   _pOnSignedOut();
   pubchat.onSignedOut();
+  outfitBtn.hidden = true;
+  outfitSheet.hidden = true;
 };
 
 sb.auth.onAuthStateChange(() => { refreshStatus(); });
