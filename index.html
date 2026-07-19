@@ -939,10 +939,16 @@
     runChatLoop();
     setInterval(runChatLoop, LOOP_MS);
 
-    // --- Camera: drag the world layer PoGo-style, clamped to its bounds ---
+    // --- Camera: PoGo-style follow-cam. While you're open, the camera is
+    // glued to your character: YOUR AVATAR HOLDS ONE SCREEN SPOT and the
+    // world glides underneath. Dragging peeks around; on release the
+    // camera snaps back to you. When invisible: free pan.
     const worldEl = document.getElementById("world");
     const frameEl = document.querySelector(".frame");
+    const AVATAR_SCREEN_Y = 0.58; // avatar's fixed vertical spot on screen
     let camX = 0, camY = 0, dragState = null;
+    let followTarget = null;      // {x,y} world-% while open
+    let snapTimer = null;
 
     function clampCam() {
       const fw = frameEl.clientWidth, fh = frameEl.clientHeight;
@@ -950,11 +956,23 @@
       camX = Math.min(0, Math.max(fw - ww, camX));
       camY = Math.min(0, Math.max(fh - wh, camY));
     }
-    function applyCam() {
+    function applyCam(animate) {
       clampCam();
+      worldEl.style.transition = animate
+        ? "transform 0.55s cubic-bezier(0.25, 0.8, 0.35, 1)"
+        : "none";
       worldEl.style.transform = `translate3d(${camX}px, ${camY}px, 0)`;
     }
+    function centerOn(xPct, yPct, animate) {
+      camX = frameEl.clientWidth / 2 - (xPct / 100) * worldEl.offsetWidth;
+      camY = frameEl.clientHeight * AVATAR_SCREEN_Y - (yPct / 100) * worldEl.offsetHeight;
+      applyCam(animate);
+    }
+    function snapBack() {
+      if (followTarget) centerOn(followTarget.x, followTarget.y, true);
+    }
     worldEl.addEventListener("pointerdown", e => {
+      clearTimeout(snapTimer);
       dragState = { x: e.clientX, y: e.clientY, cx: camX, cy: camY };
       worldEl.setPointerCapture(e.pointerId);
       worldEl.classList.add("dragging");
@@ -963,23 +981,29 @@
       if (!dragState) return;
       camX = dragState.cx + (e.clientX - dragState.x);
       camY = dragState.cy + (e.clientY - dragState.y);
-      applyCam();
+      applyCam(false);
     });
-    const endDrag = () => { dragState = null; worldEl.classList.remove("dragging"); };
+    const endDrag = () => {
+      dragState = null;
+      worldEl.classList.remove("dragging");
+      clearTimeout(snapTimer);
+      snapTimer = setTimeout(snapBack, 700); // brief look-around, then home
+    };
     worldEl.addEventListener("pointerup", endDrag);
     worldEl.addEventListener("pointercancel", endDrag);
-    window.addEventListener("resize", applyCam);
+    window.addEventListener("resize", () => (followTarget ? snapBack() : applyCam(false)));
 
-    // world-% -> camera position (used by backend.js to follow your zone)
+    // used by backend.js: follow(x,y) while open, clearFollow() when invisible
     window.RandoCam = {
-      centerOnPct(xPct, yPct) {
-        camX = frameEl.clientWidth / 2 - (xPct / 100) * worldEl.offsetWidth;
-        camY = frameEl.clientHeight * 0.55 - (yPct / 100) * worldEl.offsetHeight;
-        applyCam();
+      centerOnPct(xPct, yPct) { centerOn(xPct, yPct, true); },
+      follow(xPct, yPct) {
+        followTarget = { x: Number(xPct), y: Number(yPct) };
+        centerOn(followTarget.x, followTarget.y, true);
       },
+      clearFollow() { followTarget = null; },
     };
     // setTimeout, not rAF: rAF never fires in throttled/background tabs
-    setTimeout(() => window.RandoCam.centerOnPct(50, 78), 0);
+    setTimeout(() => centerOn(50, 78, false), 0);
 
     // slow-refresh GPS: tick the "updated N min ago" counter
     const zmin = document.getElementById("zmin");
