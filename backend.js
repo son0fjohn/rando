@@ -698,18 +698,34 @@ presence.goClosed = async function () {
   matching.renderButton();
 };
 
-// ===================== avatar / outfit =====================
-// profiles.avatar = {"outfit": <key>} drives how your character renders
-// for everyone. Others see your new outfit on their next world poll.
+// ===================== avatar / looks =====================
+// profiles.avatar = {"look": "<category>__<key>"} drives how your character
+// renders for everyone. Each look is a complete pose-consistent render —
+// the source art is baked full characters, so hair/outfit/skin can't be
+// mixed until the layered art pass. Others see changes on their next poll.
 
-const OUTFITS = [
-  "red-tank", "alien-tee", "varsity-jacket", "green-hoodie", "grey-hoodie",
-  "navy-shirt-jacket", "red-plaid-flannel", "black-vest", "black-jean-jacket",
+const LOOKS = [
+  { id: "outfits__red-tank",          cat: "Outfit", label: "Red tank" },
+  { id: "outfits__varsity-jacket",    cat: "Outfit", label: "Varsity" },
+  { id: "outfits__green-hoodie",      cat: "Outfit", label: "Green hoodie" },
+  { id: "outfits__navy-shirt-jacket", cat: "Outfit", label: "Navy jacket" },
+  { id: "outfits__red-plaid-flannel", cat: "Outfit", label: "Flannel" },
+  { id: "hair__asymmetric-spiky",     cat: "Hair",   label: "Spiky" },
+  { id: "hair__bob-straight-bangs",   cat: "Hair",   label: "Bob bangs" },
+  { id: "hair__bob-side-swept",       cat: "Hair",   label: "Side swept" },
+  { id: "hair__long-straight-2",      cat: "Hair",   label: "Long" },
+  { id: "skin__medium-tan",           cat: "Skin",   label: "Tan" },
+  { id: "extras__headphones",         cat: "Extras", label: "Headphones" },
+  { id: "extras__glasses",            cat: "Extras", label: "Glasses" },
 ];
+const LOOK_CATS = ["Outfit", "Hair", "Skin", "Extras"];
+const DEFAULT_LOOK = "outfits__red-tank";
 
 export function outfitSrc(avatar) {
-  const key = avatar && OUTFITS.includes(avatar.outfit) ? avatar.outfit : null;
-  return key && key !== "red-tank" ? "lit/outfits/" + key + ".png" : "lit/player.png";
+  let id = avatar && avatar.look;
+  if (!id && avatar && avatar.outfit) id = "outfits__" + avatar.outfit; // legacy shape
+  if (!LOOKS.some(l => l.id === id)) id = DEFAULT_LOOK;
+  return "lit/looks/" + id + ".png";
 }
 
 const outfitBtn = document.getElementById("outfit-btn");
@@ -717,13 +733,18 @@ const outfitSheet = document.getElementById("outfit-sheet");
 const outfitGrid = document.getElementById("outfit-grid");
 
 export const avatar = {
-  mine: { outfit: "red-tank" },
+  mine: { look: DEFAULT_LOOK },
+  tab: "Outfit",
 
   async load() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return;
     const { data } = await sb.from("profiles").select("avatar").eq("id", session.user.id).maybeSingle();
-    if (data && data.avatar) this.mine = data.avatar;
+    if (data && data.avatar) {
+      const legacy = data.avatar.outfit ? "outfits__" + data.avatar.outfit : null;
+      const id = data.avatar.look ?? legacy;
+      this.mine = { look: LOOKS.some(l => l.id === id) ? id : DEFAULT_LOOK };
+    }
     this.applyOwn();
     outfitBtn.hidden = false;
   },
@@ -734,8 +755,8 @@ export const avatar = {
     playerSprite.querySelector("img.cast").src = src;
   },
 
-  async pick(key) {
-    this.mine = { ...this.mine, outfit: key };
+  async pick(id) {
+    this.mine = { look: id };
     this.applyOwn();
     this.renderGrid();
     const { data: { session } } = await sb.auth.getSession();
@@ -743,16 +764,29 @@ export const avatar = {
   },
 
   renderGrid() {
+    // tabs
+    const tabsEl = document.getElementById("outfit-tabs");
+    tabsEl.innerHTML = "";
+    for (const cat of LOOK_CATS) {
+      const t = document.createElement("button");
+      t.type = "button";
+      t.className = "look-tab" + (this.tab === cat ? " active" : "");
+      t.textContent = cat;
+      t.addEventListener("click", () => { this.tab = cat; this.renderGrid(); });
+      tabsEl.appendChild(t);
+    }
+    // grid for the active tab
     outfitGrid.innerHTML = "";
-    for (const key of OUTFITS) {
+    for (const look of LOOKS.filter(l => l.cat === this.tab)) {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "outfit-thumb" + (this.mine.outfit === key ? " selected" : "");
+      b.className = "outfit-thumb" + (this.mine.look === look.id ? " selected" : "");
+      b.title = look.label;
       const img = document.createElement("img");
-      img.src = key === "red-tank" ? "lit/player.png" : "lit/outfits/" + key + ".png";
-      img.alt = key;
+      img.src = "lit/looks/" + look.id + ".png";
+      img.alt = look.label;
       b.appendChild(img);
-      b.addEventListener("click", () => this.pick(key));
+      b.addEventListener("click", () => this.pick(look.id));
       outfitGrid.appendChild(b);
     }
   },

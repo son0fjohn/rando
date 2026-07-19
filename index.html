@@ -432,11 +432,36 @@
     letter-spacing: 0.04em;
     margin: 0 0 10px 4px;
   }
+  #outfit-sheet .os-note {
+    font-weight: 500;
+    color: #7f92aa;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  #outfit-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .look-tab {
+    border: none;
+    border-radius: 999px;
+    padding: 6px 13px;
+    font: 600 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #223047;
+    color: #9fb3cc;
+    cursor: pointer;
+  }
+  .look-tab.active {
+    background: var(--apple-blue);
+    color: #fff;
+  }
   #outfit-grid {
     display: flex;
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 4px;
+    min-height: 88px;
   }
   .outfit-thumb {
     flex: 0 0 auto;
@@ -818,9 +843,10 @@
     <button id="open-toggle" type="button" hidden>Go open</button>
     <button id="match-btn" type="button" hidden>Match me</button>
 
-    <button id="outfit-btn" type="button" hidden>Outfit</button>
+    <button id="outfit-btn" type="button" hidden>Style</button>
     <div id="outfit-sheet" hidden>
-      <p class="os-title">PICK YOUR OUTFIT</p>
+      <p class="os-title">PICK YOUR LOOK <span class="os-note">one look at a time &middot; mix &amp; match comes with the layered art pass</span></p>
+      <div id="outfit-tabs"></div>
       <div id="outfit-grid"></div>
     </div>
 
