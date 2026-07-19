@@ -564,6 +564,54 @@
     pointer-events: none;
   }
 
+  /* --- Nickname sheet (mirrors the auth sheet look) --- */
+  #nick-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 270;
+    background: rgba(8, 11, 16, 0.5);
+    backdrop-filter: blur(3px);
+  }
+  #nick-sheet {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 280;
+    width: min(78%, 300px);
+    background: #f5f5f7;
+    border-radius: 18px;
+    padding: 22px 20px 16px;
+    box-shadow: 0 12px 40px rgba(8, 11, 16, 0.45);
+    text-align: center;
+  }
+  #nick-sheet h2 { margin: 0 0 2px; font-size: 20px; color: #1c1c1e; }
+  #nick-sheet .step { display: flex; flex-direction: column; gap: 8px; }
+  #nick-sheet input {
+    border: 1px solid #d5d5da;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: #fff;
+    color: #1c1c1e;
+    outline: none;
+    text-align: center;
+  }
+  #nick-sheet input:focus { border-color: var(--apple-blue); }
+  #nick-sheet button {
+    border: none;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--apple-blue);
+    color: #fff;
+    cursor: pointer;
+  }
+  #nick-sheet button:disabled { background: #b9c3d0; }
+  #nick-error { min-height: 16px; margin-top: 8px; font-size: 11px; color: #d03030; }
+  #nick-sheet[hidden], #nick-scrim[hidden] { display: none; }
+
   /* --- Auth sheet (phone OTP signup/login) --- */
   #auth-scrim {
     position: absolute;
@@ -841,6 +889,18 @@
       <div class="mc-sub">they're in your zone &middot; say hi</div>
       <button id="mc-chat" type="button">Chat</button>
       <button id="mc-dismiss" type="button">Later</button>
+    </div>
+
+    <div id="nick-scrim" hidden></div>
+    <div id="nick-sheet" hidden>
+      <h2>pick a nickname</h2>
+      <p class="auth-lede">your public name in the world &middot; no real names needed</p>
+      <div class="step">
+        <input id="nick-input" type="text" maxlength="20" placeholder="nickname" autocomplete="off">
+        <button id="nick-save" type="button">Save</button>
+        <a href="#" id="nick-skip" class="auth-alt">keep my random name</a>
+      </div>
+      <div id="nick-error"></div>
     </div>
 
     <div id="auth-scrim" hidden></div>

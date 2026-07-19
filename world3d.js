@@ -63,8 +63,8 @@ export const world3d = {
     frameEl.prepend(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x64b5f0); // the art's clear blue
-    this.scene.fog = new THREE.Fog(0xd6e6f4, 320, 1200);
+    this.scene.background = new THREE.Color(0x3b8ed8);
+    this.scene.fog = new THREE.Fog(0xdcebf6, 340, 1250);
     this.camera = new THREE.PerspectiveCamera(50, w / h, 1, 2500);
 
     this.scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x8fa3b8, 1.15));
@@ -102,11 +102,53 @@ export const world3d = {
   // slate-blue roads with light sidewalk borders, white flat-roofed
   // buildings with dark window bands, blue sky and clouds. No trees.
   buildTerrain() {
+    // sky: deep azure overhead easing to pale at the horizon (the art's
+    // gradient), rendered on an inverted dome so fog can't wash it out
+    const skyTex = this.canvasTex(16, 256, g => {
+      const grad = g.createLinearGradient(0, 0, 0, 256);
+      grad.addColorStop(0, "#2f83d2");
+      grad.addColorStop(0.55, "#6cb2e6");
+      grad.addColorStop(1, "#e2f1fa");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 16, 256);
+    });
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(1800, 24, 12),
+      new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
+    this.scene.add(sky);
+
+    // puffy cumulus clouds ringing the horizon, always facing the camera
+    const cloudTex = this.canvasTex(256, 128, g => {
+      g.fillStyle = "rgba(255,255,255,0)";
+      g.fillRect(0, 0, 256, 128);
+      const puffs = [[60, 84, 34], [104, 66, 44], [152, 72, 40], [196, 88, 30], [128, 92, 46]];
+      for (const [x, y, r] of puffs) {
+        const rg = g.createRadialGradient(x, y, r * 0.2, x, y, r);
+        rg.addColorStop(0, "rgba(255,255,255,1)");
+        rg.addColorStop(0.75, "rgba(255,255,255,0.95)");
+        rg.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = rg;
+        g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      }
+    });
+    const cloudRand = mulberry32(777);
+    for (let i = 0; i < 10; i++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: cloudTex, transparent: true, opacity: 0.95, fog: false,
+      }));
+      const a = cloudRand() * Math.PI * 2;
+      const r = 950 + cloudRand() * 450;
+      s.position.set(Math.cos(a) * r, 130 + cloudRand() * 260, Math.sin(a) * r);
+      const w = 220 + cloudRand() * 240;
+      s.scale.set(w, w * 0.42, 1);
+      this.scene.add(s);
+    }
+
     // ground: light cool grey with a faint large tile grid
     const groundTex = this.canvasTex(256, 256, g => {
-      g.fillStyle = "#cfd7df";
+      g.fillStyle = "#dae1e8";
       g.fillRect(0, 0, 256, 256);
-      g.strokeStyle = "#c0cad4";
+      g.strokeStyle = "#cdd6df";
       g.lineWidth = 2;
       for (let i = 0; i <= 256; i += 64) {
         g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
@@ -122,8 +164,8 @@ export const world3d = {
     this.scene.add(ground);
 
     // roads: slate blue with pale sidewalk borders
-    const roadMat = new THREE.MeshLambertMaterial({ color: 0x6f7e95 });
-    const curbMat = new THREE.MeshLambertMaterial({ color: 0xe3e9f0 });
+    const roadMat = new THREE.MeshLambertMaterial({ color: 0x76849b });
+    const curbMat = new THREE.MeshLambertMaterial({ color: 0xe9eef4 });
     const mkRoad = (len, wdt, x, z, rotY) => {
       const g = new THREE.Group();
       const r = new THREE.Mesh(new THREE.BoxGeometry(len, 0.4, wdt), roadMat);
@@ -144,7 +186,7 @@ export const world3d = {
 
     // buildings: white boxes with dark horizontal window bands
     const rand = mulberry32(20260719);
-    const shades = ["#f2f5f8", "#e9eef4", "#e0e7ee"];
+    const shades = ["#f6f8fa", "#eff3f7", "#e7edf3"];
     for (let i = 0; i < 26; i++) {
       const a = rand() * Math.PI * 2;
       const r = 190 + rand() * 420;
@@ -178,14 +220,6 @@ export const world3d = {
       this.scene.add(b);
     }
 
-    // sky: clouds only — no ground clutter
-    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
-    for (let i = 0; i < 7; i++) {
-      const c = new THREE.Mesh(new THREE.PlaneGeometry(90 + rand() * 80, 24 + rand() * 18), cloudMat);
-      c.position.set((rand() - 0.5) * 1400, 330 + rand() * 130, (rand() - 0.5) * 1400);
-      c.rotation.x = -Math.PI / 2;
-      this.scene.add(c);
-    }
   },
 
   registerZones(zones) {
