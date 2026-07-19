@@ -68,6 +68,14 @@ async function refreshStatus() {
   statusEl.hidden = false;
   statusEl.innerHTML = "";
   statusEl.append("you: " + (profile ? profile.handle : "(no profile)") + " · ");
+  const edit = document.createElement("a");
+  edit.href = "#";
+  edit.textContent = "name";
+  edit.addEventListener("click", e => {
+    e.preventDefault();
+    nickname.show(profile ? profile.handle : "");
+  });
+  statusEl.append(edit, " · ");
   const out = document.createElement("a");
   out.href = "#";
   out.textContent = "sign out";
@@ -77,8 +85,67 @@ async function refreshStatus() {
     await sb.auth.signOut();
   });
   statusEl.append(out);
+  // first run: an auto-generated handle means no nickname was chosen yet
+  if (profile && /^rando-[0-9a-f]{6}$/.test(profile.handle) && !nickname.dismissed) {
+    nickname.show(profile.handle);
+  }
   presence.onSignedIn();
 }
+
+// ===================== nickname =====================
+const nickScrim = document.getElementById("nick-scrim");
+const nickSheet = document.getElementById("nick-sheet");
+const nickInput = document.getElementById("nick-input");
+const nickSave = document.getElementById("nick-save");
+const nickError = document.getElementById("nick-error");
+
+export const nickname = {
+  dismissed: false,
+
+  show(current) {
+    nickInput.value = /^rando-[0-9a-f]{6}$/.test(current) ? "" : current;
+    nickError.textContent = "";
+    nickScrim.hidden = false;
+    nickSheet.hidden = false;
+    nickInput.focus();
+  },
+
+  hide() {
+    nickScrim.hidden = true;
+    nickSheet.hidden = true;
+  },
+
+  async save() {
+    const name = nickInput.value.trim();
+    if (name.length < 2 || name.length > 20) {
+      nickError.textContent = "2–20 characters";
+      return;
+    }
+    nickSave.disabled = true;
+    const { data: { session } } = await sb.auth.getSession();
+    const { error } = await sb.from("profiles")
+      .update({ handle: name }).eq("id", session.user.id);
+    nickSave.disabled = false;
+    if (error) {
+      nickError.textContent = /duplicate|unique/i.test(error.message)
+        ? "that name's taken — try another"
+        : error.message;
+      return;
+    }
+    this.dismissed = true;
+    this.hide();
+    refreshStatus();
+  },
+};
+
+nickSave.addEventListener("click", () => nickname.save());
+nickInput.addEventListener("keydown", e => { if (e.key === "Enter") nickname.save(); });
+document.getElementById("nick-skip").addEventListener("click", e => {
+  e.preventDefault();
+  nickname.dismissed = true;
+  nickname.hide();
+});
+nickScrim.addEventListener("click", () => { nickname.dismissed = true; nickname.hide(); });
 
 // guest mode (phone verification suspended for the demo): anonymous
 // sign-in still creates a real authenticated session, so every RLS
