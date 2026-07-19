@@ -168,23 +168,23 @@
   #npc-dreads  img.cast { opacity: 0.19; }
   #npc-silver  img.cast { opacity: 0.19; }
 
-  /* Proportion A/B toggle */
-  #proportions {
+  /* Recenter (glide the camera back to your avatar) */
+  #recenter {
     position: absolute;
-    top: 12px;
     right: 12px;
-    z-index: 100;
-    padding: 7px 14px;
+    bottom: 104px;
+    z-index: 110;
+    width: 38px;
+    height: 38px;
     border: none;
-    border-radius: 999px;
-    font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    letter-spacing: 0.03em;
+    border-radius: 50%;
     background: rgba(16, 22, 32, 0.72);
     color: #cfe4ff;
+    font-size: 17px;
     cursor: pointer;
     backdrop-filter: blur(4px);
   }
-  #proportions:hover { background: rgba(16, 22, 32, 0.88); }
+  #recenter[hidden] { display: none; }
 
   /* Zone / GPS status chip — coarse shared zone + slow refresh, per spec */
   #zone-chip {
@@ -399,7 +399,7 @@
   /* --- Outfit picker --- */
   #outfit-btn {
     position: absolute;
-    top: 52px;
+    top: 12px;
     right: 12px;
     z-index: 100;
     padding: 7px 14px;
@@ -832,7 +832,7 @@
     <div id="players-layer"></div>
     </div><!-- /world -->
 
-    <button id="proportions" type="button"></button>
+    <button id="recenter" type="button" hidden aria-label="Recenter on your character">&#9678;</button>
 
     <div id="zone-chip">
       <div>&#128205; Itaewon &middot; <span id="zone-name">&hellip;</span></div>
@@ -915,22 +915,6 @@
   </div>
 
   <script>
-    // A/B the chibi-proportion test (web/chibi/) against the originals
-    // (web/lit/). Both folders hold the same five relit, feet-cropped
-    // character renders; chibi adds the head-magnified warp.
-    const btn = document.getElementById("proportions");
-    let chibi = new URLSearchParams(location.search).get("chibi") === "1";
-
-    function apply() {
-      const dir = chibi ? "chibi" : "lit";
-      document.querySelectorAll("img.char, img.cast").forEach(img => {
-        img.src = img.src.replace(/(lit|chibi)\//, dir + "/");
-      });
-      btn.textContent = chibi ? "Proportions: CHIBI" : "Proportions: ORIGINAL";
-    }
-    btn.addEventListener("click", () => { chibi = !chibi; apply(); });
-    apply();
-
     // --- Ambient world chat: looping public (grey) NPC bubbles.
     // (The scripted private thread is gone — private chat is real now,
     // between matched accounts, handled in backend.js.)
@@ -965,16 +949,23 @@
     runChatLoop();
     setInterval(runChatLoop, LOOP_MS);
 
-    // --- Camera: PoGo-style follow-cam. While you're open, the camera is
-    // glued to your character: YOUR AVATAR HOLDS ONE SCREEN SPOT and the
-    // world glides underneath. Dragging peeks around; on release the
-    // camera snaps back to you. When invisible: free pan.
+    // --- Camera: PoGo-style. Pinch (or scroll) to zoom, drag to pan
+    // freely — the view STAYS where you put it. Going open / changing
+    // zones glides the world under your avatar; the recenter button
+    // glides back to you any time. (True rotation needs 3D/multi-angle
+    // art — a flat painted scene can't orbit.)
     const worldEl = document.getElementById("world");
     const frameEl = document.querySelector(".frame");
-    const AVATAR_SCREEN_Y = 0.58; // avatar's fixed vertical spot on screen
-    let camX = 0, camY = 0, dragState = null;
+    const recenterBtn = document.getElementById("recenter");
+    const AVATAR_SCREEN_Y = 0.58; // avatar's home spot on screen when centered
+    const Z_MIN = 1.0, Z_MAX = 2.4;
+    let zoom = 1.45;
+    let camX = 0, camY = 0;
+    let dragState = null, pinchState = null;
     let followTarget = null;      // {x,y} world-% while open
-    let snapTimer = null;
+    const pointers = new Map();
+
+    worldEl.style.width = zoom * 100 + "%";
 
     function clampCam() {
       const fw = frameEl.clientWidth, fh = frameEl.clientHeight;
@@ -994,39 +985,80 @@
       camY = frameEl.clientHeight * AVATAR_SCREEN_Y - (yPct / 100) * worldEl.offsetHeight;
       applyCam(animate);
     }
-    function snapBack() {
-      if (followTarget) centerOn(followTarget.x, followTarget.y, true);
+    // zoom around a focal point (frame coords) so it stays put on screen
+    function applyZoom(newZ, fx, fy) {
+      newZ = Math.min(Z_MAX, Math.max(Z_MIN, newZ));
+      if (newZ === zoom) return;
+      const oldW = worldEl.offsetWidth;
+      zoom = newZ;
+      worldEl.style.width = zoom * 100 + "%";
+      const scale = worldEl.offsetWidth / oldW;
+      camX = fx - (fx - camX) * scale;
+      camY = fy - (fy - camY) * scale;
+      applyCam(false);
     }
+
     worldEl.addEventListener("pointerdown", e => {
-      clearTimeout(snapTimer);
-      dragState = { x: e.clientX, y: e.clientY, cx: camX, cy: camY };
-      worldEl.setPointerCapture(e.pointerId);
-      worldEl.classList.add("dragging");
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { worldEl.setPointerCapture(e.pointerId); } catch {}
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinchState = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: zoom };
+        dragState = null;
+      } else if (pointers.size === 1) {
+        dragState = { x: e.clientX, y: e.clientY, cx: camX, cy: camY };
+        worldEl.classList.add("dragging");
+      }
     });
     worldEl.addEventListener("pointermove", e => {
-      if (!dragState) return;
-      camX = dragState.cx + (e.clientX - dragState.x);
-      camY = dragState.cy + (e.clientY - dragState.y);
-      applyCam(false);
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinchState && pointers.size >= 2) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const fr = frameEl.getBoundingClientRect();
+        applyZoom(pinchState.z0 * (d / pinchState.d0),
+          (a.x + b.x) / 2 - fr.left, (a.y + b.y) / 2 - fr.top);
+      } else if (dragState) {
+        camX = dragState.cx + (e.clientX - dragState.x);
+        camY = dragState.cy + (e.clientY - dragState.y);
+        applyCam(false);
+      }
     });
-    const endDrag = () => {
-      dragState = null;
-      worldEl.classList.remove("dragging");
-      clearTimeout(snapTimer);
-      snapTimer = setTimeout(snapBack, 700); // brief look-around, then home
+    const endPointer = e => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchState = null;
+      if (pointers.size === 0) {
+        dragState = null;
+        worldEl.classList.remove("dragging");
+      }
     };
-    worldEl.addEventListener("pointerup", endDrag);
-    worldEl.addEventListener("pointercancel", endDrag);
-    window.addEventListener("resize", () => (followTarget ? snapBack() : applyCam(false)));
+    worldEl.addEventListener("pointerup", endPointer);
+    worldEl.addEventListener("pointercancel", endPointer);
+    worldEl.addEventListener("wheel", e => {
+      e.preventDefault();
+      const fr = frameEl.getBoundingClientRect();
+      applyZoom(zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12),
+        e.clientX - fr.left, e.clientY - fr.top);
+    }, { passive: false });
+    window.addEventListener("resize", () => applyCam(false));
+
+    recenterBtn.addEventListener("click", () => {
+      if (followTarget) centerOn(followTarget.x, followTarget.y, true);
+    });
 
     // used by backend.js: follow(x,y) while open, clearFollow() when invisible
     window.RandoCam = {
       centerOnPct(xPct, yPct) { centerOn(xPct, yPct, true); },
       follow(xPct, yPct) {
         followTarget = { x: Number(xPct), y: Number(yPct) };
+        recenterBtn.hidden = false;
         centerOn(followTarget.x, followTarget.y, true);
       },
-      clearFollow() { followTarget = null; },
+      clearFollow() {
+        followTarget = null;
+        recenterBtn.hidden = true;
+      },
     };
     // setTimeout, not rAF: rAF never fires in throttled/background tabs
     setTimeout(() => centerOn(50, 78, false), 0);
