@@ -549,6 +549,90 @@ cForm.addEventListener("submit", async e => {
   }
 });
 
+// ===================== mutual tap-confirm =====================
+// Both participants must independently confirm; blind-until-both is
+// enforced by RLS (you can only read your own confirm row), so this UI
+// can only ever show: not-confirmed / you-confirmed / both-confirmed.
+
+const ENC_POLL_MS = 5000;
+const encBtn = document.getElementById("enc-confirm");
+const encState = document.getElementById("enc-state");
+
+export const encounter = {
+  timer: null,
+
+  async refresh() {
+    if (!matching.activeMatch) return;
+    const { data, error } = await sb.rpc("encounter_status", { p_match: matching.activeMatch.id });
+    if (error || !data || !data.length) return;
+    this.render(data[0]);
+  },
+
+  render({ i_confirmed, encounter_complete }) {
+    if (encounter_complete) {
+      encBtn.hidden = true;
+      encState.hidden = false;
+      encState.className = "complete";
+      encState.textContent = "\u{1F389} Encounter confirmed by both of you";
+      this.stopPolling();
+    } else if (i_confirmed) {
+      encBtn.hidden = true;
+      encState.hidden = false;
+      encState.className = "";
+      encState.textContent = "You've confirmed this encounter ✓";
+    } else {
+      encBtn.hidden = false;
+      encState.hidden = true;
+    }
+  },
+
+  async confirm() {
+    const { data: { session } } = await sb.auth.getSession();
+    const { error } = await sb.from("encounter_confirms")
+      .insert({ match_id: matching.activeMatch.id, user_id: session.user.id });
+    // duplicate confirm (PK conflict) is fine — state is already ours
+    if (error && !/duplicate|23505/.test(error.message + (error.code ?? ""))) throw error;
+    await this.refresh();
+    // ensure we're polling for completion even if the panel-open sequence
+    // was still in flight when the user tapped confirm
+    if (!this.timer) this.startPolling();
+  },
+
+  startPolling() {
+    this.stopPolling();
+    this.timer = setInterval(() => this.refresh(), ENC_POLL_MS);
+  },
+
+  stopPolling() {
+    clearInterval(this.timer);
+    this.timer = null;
+  },
+};
+
+encBtn.addEventListener("click", async () => {
+  encBtn.disabled = true;
+  try {
+    await encounter.confirm();
+  } catch (e) {
+    alert(e.message || String(e));
+  } finally {
+    encBtn.disabled = false;
+  }
+});
+
+// tie encounter state to the chat panel lifecycle
+const _openPanel = chat.openPanel.bind(chat);
+chat.openPanel = async function () {
+  await _openPanel();
+  await encounter.refresh();
+  encounter.startPolling();
+};
+const _closePanel = chat.closePanel.bind(chat);
+chat.closePanel = function () {
+  _closePanel();
+  encounter.stopPolling();
+};
+
 mcChat.addEventListener("click", () => chat.openPanel());
 chatPill.addEventListener("click", () => chat.openPanel());
 cScrim.addEventListener("click", () => chat.closePanel());

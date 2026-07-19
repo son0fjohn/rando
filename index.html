@@ -517,6 +517,35 @@
     color: var(--apple-blue);
   }
 
+  #encounter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-bottom: 1px solid #e3e3e6;
+    background: #fbfbfd;
+  }
+  #enc-confirm {
+    border: 1px solid var(--apple-blue);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 11.5px;
+    font-weight: 700;
+    background: #fff;
+    color: var(--apple-blue);
+    cursor: pointer;
+  }
+  #enc-confirm:disabled { opacity: 0.6; }
+  #enc-confirm[hidden] { display: none; }
+  #enc-state {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #5b6b80;
+  }
+  #enc-state.complete { color: #1f9d4d; }
+  #enc-state[hidden] { display: none; }
+
   #chat-thread {
     flex: 1;
     display: flex;
@@ -662,6 +691,10 @@
           <div id="chat-npc-badge">NPC &middot; GAME HOST</div>
         </div>
         <div id="chat-private">&#128274; PRIVATE</div>
+      </div>
+      <div id="encounter-bar">
+        <button id="enc-confirm" type="button">&#129309; We met in person</button>
+        <span id="enc-state" hidden></span>
       </div>
       <div id="chat-thread"></div>
       <form id="chat-form">
