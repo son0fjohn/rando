@@ -168,23 +168,7 @@
   #npc-dreads  img.cast { opacity: 0.19; }
   #npc-silver  img.cast { opacity: 0.19; }
 
-  /* Recenter (glide the camera back to your avatar) */
-  #recenter {
-    position: absolute;
-    right: 12px;
-    bottom: 104px;
-    z-index: 110;
-    width: 38px;
-    height: 38px;
-    border: none;
-    border-radius: 50%;
-    background: rgba(16, 22, 32, 0.72);
-    color: #cfe4ff;
-    font-size: 17px;
-    cursor: pointer;
-    backdrop-filter: blur(4px);
-  }
-  #recenter[hidden] { display: none; }
+  #recenter { color: #cfe4ff; }
 
   /* Zone / GPS status chip — coarse shared zone + slow refresh, per spec */
   #zone-chip {
@@ -271,52 +255,61 @@
   #players-layer .sprite.remote { pointer-events: none; }
   #player[hidden] { display: none; }
 
-  #open-toggle {
+  /* Right-edge icon stack: open/invisible, match, chat, recenter —
+     kept clear of the bottom chat feed */
+  #side-actions {
     position: absolute;
-    bottom: 58px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 10px;
+    bottom: 64px;
     z-index: 110;
-    padding: 11px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+  }
+  .icon-btn {
+    width: 42px;
+    height: 42px;
     border: none;
-    border-radius: 999px;
-    font: 700 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    letter-spacing: 0.03em;
-    background: var(--apple-blue);
+    border-radius: 50%;
+    font-size: 19px;
+    line-height: 1;
+    cursor: pointer;
+    background: rgba(16, 22, 32, 0.75);
     color: #fff;
-    cursor: pointer;
-    box-shadow: 0 4px 16px rgba(10, 132, 255, 0.4);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 10px rgba(8, 11, 16, 0.35);
+    position: relative;
   }
-  #open-toggle.is-open {
-    background: rgba(16, 22, 32, 0.78);
-    color: #cfe4ff;
-    box-shadow: 0 2px 10px rgba(8, 11, 16, 0.4);
-  }
-  #open-toggle[hidden] { display: none; }
-  #open-toggle:disabled { opacity: 0.6; }
+  .icon-btn[hidden] { display: none; }
+  .icon-btn:disabled { opacity: 0.6; }
 
-  #match-btn {
-    position: absolute;
-    bottom: 104px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 110;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 999px;
-    font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    letter-spacing: 0.03em;
-    background: #fff;
-    color: #0A84FF;
-    cursor: pointer;
-    box-shadow: 0 3px 12px rgba(8, 11, 16, 0.3);
+  #open-toggle.is-open {
+    background: var(--apple-blue);
+    box-shadow: 0 3px 14px rgba(10, 132, 255, 0.45);
   }
+  /* invisible state: greyed eye with a slash */
+  #open-toggle:not(.is-open)::after {
+    content: "";
+    position: absolute;
+    left: 9px;
+    right: 9px;
+    top: 50%;
+    height: 2px;
+    background: #ff5d5d;
+    transform: rotate(-38deg);
+    border-radius: 2px;
+  }
+
+  #match-btn { background: #fff; }
   #match-btn.is-waiting {
     background: rgba(16, 22, 32, 0.78);
-    color: #ffd60a;
+    animation: waiting-pulse 1.6s ease-in-out infinite;
   }
-  #match-btn[hidden] { display: none; }
-  #match-btn:disabled { opacity: 0.6; }
+  @keyframes waiting-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 214, 10, 0.5); }
+    50% { box-shadow: 0 0 0 9px rgba(255, 214, 10, 0); }
+  }
 
   #match-card {
     position: absolute;
@@ -379,22 +372,7 @@
     cursor: pointer;
   }
 
-  #chat-pill {
-    position: absolute;
-    bottom: 104px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 110;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 999px;
-    font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--apple-blue);
-    color: #fff;
-    cursor: pointer;
-    box-shadow: 0 3px 12px rgba(10, 132, 255, 0.35);
-  }
-  #chat-pill[hidden] { display: none; }
+  #chat-pill { background: var(--apple-blue); }
 
   /* --- Outfit picker --- */
   #outfit-btn {
@@ -832,16 +810,18 @@
     <div id="players-layer"></div>
     </div><!-- /world -->
 
-    <button id="recenter" type="button" hidden aria-label="Recenter on your character">&#9678;</button>
+    <div id="side-actions">
+      <button id="open-toggle" class="icon-btn" type="button" hidden title="Go open">&#128065;</button>
+      <button id="match-btn" class="icon-btn" type="button" hidden title="Match me">&#127922;</button>
+      <button id="chat-pill" class="icon-btn" type="button" hidden title="Chat">&#128172;</button>
+      <button id="recenter" class="icon-btn" type="button" hidden aria-label="Recenter on your character" title="Recenter">&#9678;</button>
+    </div>
 
     <div id="zone-chip">
-      <div>&#128205; Itaewon &middot; <span id="zone-name">&hellip;</span></div>
+      <div>&#128205; <span id="zone-name">&hellip;</span></div>
       <div class="zone-sub">positions updated <span id="zmin">&ndash;</span> min ago</div>
       <div class="zone-sub" id="auth-status" hidden></div>
     </div>
-
-    <button id="open-toggle" type="button" hidden>Go open</button>
-    <button id="match-btn" type="button" hidden>Match me</button>
 
     <button id="outfit-btn" type="button" hidden>Style</button>
     <div id="outfit-sheet" hidden>
@@ -869,7 +849,6 @@
       <button id="mc-chat" type="button">Chat</button>
       <button id="mc-dismiss" type="button">Later</button>
     </div>
-    <button id="chat-pill" type="button" hidden>&#128172; Chat</button>
 
     <div id="auth-scrim" hidden></div>
     <div id="auth-sheet" hidden>
