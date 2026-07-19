@@ -2,6 +2,10 @@
 // Loaded as an ES module by web/index.html.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+import { world3d } from "./world3d.js";
+
+world3d.init(document.querySelector(".frame"));
+const bubbleLayer = document.getElementById("bubble-layer");
 
 // ?acct=2 gives this tab its own session storage so two accounts can be
 // tested side by side on one machine (dev convenience, no product effect)
@@ -146,8 +150,7 @@ const CELL_DEG = 0.02;               // ~2.2km coarse grid for auto zones
 const openBtn = document.getElementById("open-toggle");
 const zoneNameEl = document.getElementById("zone-name");
 const zminEl = document.getElementById("zmin");
-const playersLayer = document.getElementById("players-layer");
-const playerSprite = document.getElementById("player");
+const recenterBtn = document.getElementById("recenter");
 
 export const presence = {
   zones: [],
@@ -160,6 +163,7 @@ export const presence = {
     if (!this.zones.length) {
       const { data } = await sb.from("zones").select("*");
       this.zones = data ?? [];
+      world3d.registerZones(this.zones);
     }
     // restore an existing open session (e.g. page reload while open)
     const { data: { session } } = await sb.auth.getSession();
@@ -175,7 +179,9 @@ export const presence = {
     clearInterval(this.heartbeatTimer);
     this.pollTimer = this.heartbeatTimer = null;
     this.myZone = null;
-    playersLayer.innerHTML = "";
+    world3d.setRemotes([]);
+    world3d.setPlayer(null);
+    this.removeYouTag();
     this.renderToggle();
   },
 
@@ -285,63 +291,48 @@ export const presence = {
     this.renderFreshness();
   },
 
-  markerScale(y) {
-    const t = Math.min(1, Math.max(0, (y - 40) / 40));
-    return 11 + t * 15; // sprite height 11%..26% by depth
+  youTag: null,
+
+  ensureYouTag() {
+    if (this.youTag && this.youTag.isConnected) return;
+    this.youTag = document.createElement("div");
+    this.youTag.className = "bubble-anchor";
+    const t = document.createElement("div");
+    t.className = "tag";
+    t.textContent = "YOU";
+    this.youTag.appendChild(t);
+    bubbleLayer.appendChild(this.youTag);
+    world3d.anchorAtPlayer(this.youTag, 17.5);
+  },
+
+  removeYouTag() {
+    if (this.youTag) { this.youTag.remove(); this.youTag = null; }
   },
 
   renderWorld(rows) {
-    playersLayer.innerHTML = "";
     const byZone = new Map();
+    const remotes = [];
     for (const r of rows) {
-      if (r.is_self) continue; // own character is the #player sprite
-      if (!byZone.has(r.zone_id)) byZone.set(r.zone_id, []);
-      byZone.get(r.zone_id).push(r);
-    }
-    for (const [zoneId, people] of byZone) {
-      const zone = this.zones.find(z => z.id === zoneId);
+      if (r.is_self) continue; // own character is the followed billboard
+      const zone = this.zones.find(z => z.id === r.zone_id);
       if (!zone) continue;
-      people.forEach((p, i) => {
-        // small index-based cluster offsets: same marker, gently fanned out;
-        // server-side row shuffle means slots reshuffle every poll
-        const dx = (i % 2 ? -1 : 1) * Math.ceil((i + 1) / 2) * 4;
-        const el = document.createElement("div");
-        el.className = "sprite remote";
-        el.style.left = (Number(zone.marker_x) + dx) + "%";
-        el.style.top = zone.marker_y + "%";
-        el.style.height = this.markerScale(Number(zone.marker_y)) + "%";
-        el.style.zIndex = String(Math.round(Number(zone.marker_y)));
-        const src = outfitSrc(p.avatar);
-        el.innerHTML =
-          `<img class="cast" src="${src}" alt="" aria-hidden="true">` +
-          '<div class="contact"></div>' +
-          `<img class="char" src="${src}" alt="Player nearby">`;
-        // natural staging: deterministic mirror + lean per cluster slot so
-        // groups read as people hanging out, not a lineup facing the camera
-        const lean = [-2.5, 1.5, -1.5, 2.5, 0][i % 5];
-        const mirrored = i % 2 === 1;
-        const charImg = el.querySelector("img.char");
-        charImg.style.transform = (mirrored ? "scaleX(-1) " : "") + `rotate(${lean}deg)`;
-        if (mirrored) {
-          el.querySelector("img.cast").style.transform =
-            "translateX(-50%) skewX(-29deg) scaleY(-0.22) scaleX(-1)";
-        }
-        playersLayer.appendChild(el);
-      });
+      const slot = byZone.get(r.zone_id) ?? 0;
+      byZone.set(r.zone_id, slot + 1);
+      remotes.push({ src: outfitSrc(r.avatar), mx: zone.marker_x, my: zone.marker_y, slot });
     }
-    // own sprite: at my zone marker while open, hidden while closed
+    world3d.setRemotes(remotes);
+    // own billboard: at my zone marker while open, absent while closed;
+    // the 3D camera follows it (avatar keeps its screen spot)
     if (this.myZone) {
-      playerSprite.hidden = false;
-      playerSprite.style.left = this.myZone.marker_x + "%";
-      playerSprite.style.top = this.myZone.marker_y + "%";
-      playerSprite.style.height = this.markerScale(Number(this.myZone.marker_y)) + "%";
-      if (window.RandoCam) {
-        // follow-cam: your avatar keeps its screen spot, the world moves
-        window.RandoCam.follow(this.myZone.marker_x, this.myZone.marker_y);
-      }
+      world3d.setPlayer({
+        src: outfitSrc(avatar.mine),
+        mx: this.myZone.marker_x,
+        my: this.myZone.marker_y,
+      });
+      this.ensureYouTag();
     } else {
-      playerSprite.hidden = true;
-      if (window.RandoCam) window.RandoCam.clearFollow();
+      world3d.setPlayer(null);
+      this.removeYouTag();
     }
   },
 
@@ -353,7 +344,8 @@ export const presence = {
   renderToggle() {
     const signedOut = statusEl.hidden;
     openBtn.hidden = signedOut;
-    if (signedOut) { playerSprite.hidden = false; return; } // pre-auth: decorative world
+    recenterBtn.hidden = signedOut;
+    if (signedOut) return;
     if (this.myZone) {
       openBtn.classList.add("is-open");
       openBtn.title = "You're open · " + this.myZone.name + " — tap to go invisible";
@@ -362,7 +354,6 @@ export const presence = {
       openBtn.classList.remove("is-open");
       openBtn.title = "Go open";
       zoneNameEl.textContent = "invisible";
-      playerSprite.hidden = true;
     }
   },
 };
@@ -774,9 +765,14 @@ export const avatar = {
   },
 
   applyOwn() {
-    const src = outfitSrc(this.mine);
-    playerSprite.querySelector("img.char").src = src;
-    playerSprite.querySelector("img.cast").src = src;
+    // re-place the player billboard with the new look (if open)
+    if (presence.myZone) {
+      world3d.setPlayer({
+        src: outfitSrc(this.mine),
+        mx: presence.myZone.marker_x,
+        my: presence.myZone.marker_y,
+      });
+    }
   },
 
   async pick(id) {
@@ -887,29 +883,23 @@ export const pubchat = {
   bubble(m) {
     // own message floats over your character; others float over the
     // sender's zone cluster (never a specific person)
-    let host;
-    if (m.sender === this.myId && !playerSprite.hidden) {
-      host = playerSprite;
-    } else {
-      const zone = presence.zones.find(z => z.id === m.zone_id);
-      if (!zone) return;
-      host = document.createElement("div");
-      host.className = "pub-anchor";
-      host.style.left = zone.marker_x + "%";
-      host.style.top = zone.marker_y + "%";
-      host.style.height = presence.markerScale(Number(zone.marker_y)) + "%";
-      document.getElementById("world").appendChild(host);
-    }
+    const host = document.createElement("div");
+    host.className = "bubble-anchor";
     const b = document.createElement("div");
     b.className = "bubble public";
     b.textContent = m.body;
     host.appendChild(b);
+    bubbleLayer.appendChild(host);
+    if (m.sender === this.myId && presence.myZone) {
+      world3d.anchorAtPlayer(host);
+    } else {
+      const zone = presence.zones.find(z => z.id === m.zone_id);
+      if (!zone) { host.remove(); return; }
+      world3d.anchorAtZone(host, zone.marker_x, zone.marker_y);
+    }
     setTimeout(() => {
       b.classList.add("out");
-      setTimeout(() => {
-        b.remove();
-        if (host.classList.contains("pub-anchor")) host.remove();
-      }, 240);
+      setTimeout(() => host.remove(), 240);
     }, 4000);
   },
 
@@ -956,6 +946,37 @@ presence.onSignedOut = function () {
   outfitBtn.hidden = true;
   outfitSheet.hidden = true;
 };
+
+// ===================== ambience & camera chrome =====================
+recenterBtn.addEventListener("click", () => world3d.recenter());
+
+// looping grey NPC bubbles keep the plaza feeling alive
+const AMBIENCE = [
+  { id: "npc-dreads",  text: "anyone up for a quick game?",            at: 600,   hold: 3200 },
+  { id: "npc-buzzcut", text: "who's got next on the board?",           at: 4400,  hold: 3200 },
+  { id: "npc-silver",  text: "sketching by the crossing, come say hi", at: 15800, hold: 3200 },
+];
+
+function npcBubble({ id, text, hold }) {
+  const host = document.createElement("div");
+  host.className = "bubble-anchor";
+  const b = document.createElement("div");
+  b.className = "bubble public";
+  b.textContent = text;
+  host.appendChild(b);
+  bubbleLayer.appendChild(host);
+  world3d.anchorAtNpc(host, id);
+  setTimeout(() => {
+    b.classList.add("out");
+    setTimeout(() => host.remove(), 240);
+  }, hold);
+}
+
+function runAmbience() {
+  AMBIENCE.forEach(m => setTimeout(() => npcBubble(m), m.at));
+}
+runAmbience();
+setInterval(runAmbience, 19800);
 
 sb.auth.onAuthStateChange(() => { refreshStatus(); });
 refreshStatus();
