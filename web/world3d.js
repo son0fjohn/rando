@@ -280,7 +280,10 @@ export const world3d = {
           dist0: this.cam.dist, theta0: this.cam.theta, elev0: this.cam.elev,
         };
       } else if (pointers.size === 1) {
-        gesture = { type: (e.button === 2 || e.ctrlKey) ? "orbit" : "pan" };
+        // locked on your character while open: one finger orbits around
+        // you (no ghost/spectator pan); free pan only while invisible
+        gesture = { type: this.followPos ? "orbit"
+          : (e.button === 2 || e.ctrlKey) ? "orbit" : "pan" };
       }
       el.style.cursor = "grabbing";
     });
