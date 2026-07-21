@@ -48,6 +48,50 @@ function cone(r, h, mat, seg = 10) {
   return new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), mat);
 }
 
+// teardrop via lathe: pointed tip at y=0, round bulge above — the v2 set's
+// arm/ear silhouette. profile bulge/height tweakable per use.
+function teardrop(mat, bulge = 1, height = 3.2) {
+  const pts = [];
+  const P = [[0.02, 0], [0.42, 0.35], [0.78, 0.95], [0.97, 1.75], [0.88, 2.45], [0.5, 2.95], [0.02, 3.2]];
+  for (const [x, y] of P) pts.push(new THREE.Vector2(x * bulge, y * (height / 3.2)));
+  return new THREE.Mesh(new THREE.LatheGeometry(pts, 14), mat);
+}
+
+// head: wider than tall, flattened face, tapered chin (vertex-sculpted)
+function headGeometry() {
+  const geo = new THREE.SphereGeometry(5.2, 30, 24);
+  const pos = geo.attributes.position;
+  const r = 5.2;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    // gently flatten the face front
+    if (z > r * 0.62) z = r * 0.62 + (z - r * 0.62) * 0.55;
+    // mild chin taper
+    if (y < 0) {
+      const t = -y / r;
+      x *= 1 - 0.12 * t;
+      z *= 1 - 0.06 * t;
+    }
+    x *= 1.06;   // a touch wider than tall
+    y *= 0.98;
+    pos.setXYZ(i, x, y, z);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// spherical face patch so eye decals curve WITH the head
+function eyePatch(tex, side) {
+  const geo = new THREE.SphereGeometry(5.26, 16, 16,
+    Math.PI / 2 - 0.23, 0.46,   // phi: patch centered on +Z
+    Math.PI * 0.355, Math.PI * 0.23);
+  const mesh = new THREE.Mesh(geo,
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02, side: THREE.FrontSide }));
+  mesh.rotation.y = side * 0.34;
+  mesh.scale.set(1.06, 0.98, 1); // follow the head sculpt
+  return mesh;
+}
+
 // ---------- eye decal drawing (256x256 canvas per eye) ----------
 function eyeTexture(style, irisHex, side) {
   const c = document.createElement("canvas");
@@ -71,15 +115,23 @@ function eyeTexture(style, irisHex, side) {
     el(cx - 22, cy - 44, 17, 24); g.fillStyle = "rgba(255,255,255,0.95)"; g.fill();
     el(cx + 22, cy + 44, 9, 12); g.fillStyle = "rgba(255,255,255,0.55)"; g.fill();
   } else if (style === "hollowoval") {
+    // light halo behind the dark stroke so linework reads on dark bodies
+    el(cx, cy, 54, 84); g.lineWidth = 32; g.strokeStyle = "rgba(255,255,255,0.85)"; g.stroke();
     el(cx, cy, 54, 84); g.lineWidth = 20; g.strokeStyle = DARK; g.stroke();
   } else if (style === "lineblush") {
-    g.lineWidth = 22; g.lineCap = "round"; g.strokeStyle = DARK;
+    g.lineCap = "round";
+    g.lineWidth = 34; g.strokeStyle = "rgba(255,255,255,0.85)";
+    g.beginPath(); g.moveTo(cx - 52, cy - 10); g.lineTo(cx + 52, cy - 10); g.stroke();
+    g.lineWidth = 22; g.strokeStyle = DARK;
     g.beginPath(); g.moveTo(cx - 52, cy - 10); g.lineTo(cx + 52, cy - 10); g.stroke();
     // blush on the outer cheek (mirrored per side)
     el(cx + side * 46, cy + 74, 40, 22);
-    g.fillStyle = "rgba(255,138,160,0.75)"; g.fill();
+    g.fillStyle = "rgba(255,138,160,0.85)"; g.fill();
   } else if (style === "sleepy") {
-    g.lineWidth = 22; g.lineCap = "round"; g.strokeStyle = DARK;
+    g.lineCap = "round";
+    g.lineWidth = 34; g.strokeStyle = "rgba(255,255,255,0.85)";
+    g.beginPath(); g.arc(cx, cy - 34, 58, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+    g.lineWidth = 22; g.strokeStyle = DARK;
     g.beginPath(); g.arc(cx, cy - 34, 58, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
   } else if (style === "spiral") {
     el(cx, cy, 60, 88); g.fillStyle = "#f4f4f4"; g.fill();
@@ -104,75 +156,86 @@ export function makeCharacter(rawCfg) {
     const bodyHex = BODY_HEX[cfg.body];
     const mat = new THREE.MeshLambertMaterial({ color: bodyHex });
 
-    // body + feet
-    const body = sphere(3.4, mat, 1, 1.05, 1);
-    body.position.y = 3.8;
+    // egg body: slightly wider low, narrower at the neck
+    const body = sphere(3.15, mat, 1, 1.12, 0.95);
+    const bpos = body.geometry.attributes.position;
+    for (let i = 0; i < bpos.count; i++) {
+      const y = bpos.getY(i);
+      const w = 1 + 0.16 * Math.max(0, -y / 3.15);
+      bpos.setX(i, bpos.getX(i) * w);
+      bpos.setZ(i, bpos.getZ(i) * w);
+    }
+    body.geometry.computeVertexNormals();
+    body.position.y = 3.9;
     group.add(body);
+
+    // rounded-wedge feet: long, flat, slight toe
     refs.feet = [];
     for (const s of [-1, 1]) {
-      const foot = sphere(1.55, mat, 1.1, 0.55, 1.45);
-      foot.position.set(s * 1.7, 0.85, 0.7);
+      const foot = sphere(1.5, mat, 1.05, 0.52, 1.6);
+      const fpos = foot.geometry.attributes.position;
+      for (let i = 0; i < fpos.count; i++) {
+        const z = fpos.getZ(i);
+        if (z > 0) fpos.setY(i, fpos.getY(i) * (1 - 0.28 * (z / 1.5))); // toe slims
+      }
+      foot.geometry.computeVertexNormals();
+      foot.position.set(s * 1.75, 0.8, 0.8);
       group.add(foot);
       refs.feet.push(foot);
     }
 
-    // stub arms (fixed style in v2), pivot at shoulder for the waddle
+    // hanging teardrop arms, pointed tips down, pivot at the shoulder
     refs.arms = [];
     for (const s of [-1, 1]) {
       const pivot = new THREE.Group();
-      pivot.position.set(s * 3.1, 5.6, 0);
-      const arm = sphere(1.35, mat, 0.62, 1.25, 0.62);
-      arm.position.y = -1.5;
+      pivot.position.set(s * 3.0, 6.1, 0);
+      const arm = teardrop(mat, 0.95, 3.4);
+      arm.position.y = -3.5; // lathe tip at pivot-3.5, bulge up toward shoulder
       pivot.add(arm);
-      pivot.rotation.z = s * 0.35;
+      pivot.rotation.z = s * 0.24;
       group.add(pivot);
       refs.arms.push(pivot);
     }
 
-    // head (mouthless, per the v2 set)
+    // head (mouthless, per the v2 set): sculpted wide/flat-faced/chin-tapered
     const headG = new THREE.Group();
-    headG.position.y = 10.1;
+    headG.position.y = 10.3;
     refs.head = headG;
-    headG.add(sphere(5.1, mat, 1, 0.96, 0.98));
+    headG.add(new THREE.Mesh(headGeometry(), mat));
 
-    // eyes: canvas decals hugging the face
+    // eyes: canvas decals on spherical patches that curve with the face
     const irisHex = IRIS_HEX[cfg.iris];
     for (const s of [-1, 1]) {
-      const tex = eyeTexture(cfg.eyes, irisHex, s);
-      const plane = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.5, 2.5),
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02 }));
-      plane.position.set(s * 1.85, 0.55, 4.42);
-      plane.rotation.y = s * 0.28;
-      headG.add(plane);
+      headG.add(eyePatch(eyeTexture(cfg.eyes, irisHex, s), s));
     }
 
     // head shapes (all tinted the body color, like the reference sheets)
     const H = cfg.head;
     if (H === "teardrop") {
-      const p = cone(1.25, 3.1, mat);
-      p.position.set(0, 4.9, -0.2);
+      const p = cone(1.5, 3.9, mat);
+      p.position.set(0, 5.35, -0.2);
       p.rotation.x = -0.12;
       headG.add(p);
     } else if (H === "catears") {
       for (const s of [-1, 1]) {
-        const e = cone(1.35, 2.7, mat);
-        e.position.set(s * 2.9, 4.4, 0);
-        e.rotation.z = -s * 0.3;
+        const e = cone(1.25, 2.6, mat);
+        e.position.set(s * 2.25, 5.2, 0);
+        e.rotation.z = -s * 0.14;
         headG.add(e);
       }
     } else if (H === "devilhorns") {
       for (const s of [-1, 1]) {
         const h = cone(0.85, 2.3, mat);
-        h.position.set(s * 2.7, 4.35, 0);
-        h.rotation.z = -s * 0.55;
+        h.position.set(s * 2.6, 4.7, 0);
+        h.rotation.z = -s * 0.5;
         headG.add(h);
       }
     } else if (H === "floppyears") {
       for (const s of [-1, 1]) {
-        const e = sphere(1.6, mat, 0.55, 1.6, 0.7);
-        e.position.set(s * 3.7, 1.1, 0);
-        e.rotation.z = s * 0.95;
+        // big hanging teardrop lobes draping from high on the head
+        const e = teardrop(mat, 1.35, 6.6);
+        e.position.set(s * 5.5, -4.2, 0);
+        e.rotation.z = s * 0.55;
         headG.add(e);
       }
     } else if (H === "twinhorns") {
@@ -184,20 +247,20 @@ export function makeCharacter(rawCfg) {
       }
     } else if (H === "smallspikes") {
       for (const s of [-1, 1]) {
-        const sp = cone(0.7, 1.7, mat);
-        sp.position.set(s * 1.9, 4.85, 0);
-        sp.rotation.z = -s * 0.25;
+        const sp = cone(0.7, 1.8, mat);
+        sp.position.set(s * 1.9, 5.15, 0);
+        sp.rotation.z = -s * 0.22;
         headG.add(sp);
       }
     } else if (H === "notailspike") {
-      const center = cone(1.1, 3.7, mat);
-      center.position.set(0, 5.1, -0.3);
-      center.rotation.x = -0.14;
+      const center = cone(1.15, 4.3, mat);
+      center.position.set(0, 5.9, -0.2);
+      center.rotation.x = -0.12;
       headG.add(center);
       for (const s of [-1, 1]) {
-        const sp = cone(0.75, 2.1, mat);
-        sp.position.set(s * 2.5, 4.3, 0);
-        sp.rotation.z = -s * 0.5;
+        const sp = cone(0.85, 2.5, mat);
+        sp.position.set(s * 2.7, 4.7, 0);
+        sp.rotation.z = -s * 0.45;
         headG.add(sp);
       }
     }
@@ -237,6 +300,40 @@ export function makeCharacter(rawCfg) {
     },
   };
   return api;
+}
+
+// dev harness: render configs at front/3-quarter/side angles into one
+// JPEG sheet (data URL) so shapes can be reviewed against the references
+export function characterSheet(cfgs, cell = 200) {
+  const angles = [0, 0.7, Math.PI / 2];
+  const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  r.setSize(cell, cell);
+  const out = document.createElement("canvas");
+  out.width = cell * angles.length;
+  out.height = cell * cfgs.length;
+  const g2 = out.getContext("2d");
+  g2.fillStyle = "#a9a9a9";
+  g2.fillRect(0, 0, out.width, out.height);
+  cfgs.forEach((cfg, row) => {
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xa9a9a9);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x999999, 1.15));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun.position.set(40, 60, 50);
+    scene.add(sun);
+    const ch = makeCharacter(cfg);
+    scene.add(ch.group);
+    angles.forEach((a, col) => {
+      ch.group.rotation.y = -a;
+      const cam = new THREE.PerspectiveCamera(32, 1, 1, 300);
+      cam.position.set(0, 9.5, 34);
+      cam.lookAt(0, 8.2, 0);
+      r.render(scene, cam);
+      g2.drawImage(r.domElement, col * cell, row * cell, cell, cell);
+    });
+  });
+  r.dispose();
+  return out.toDataURL("image/jpeg", 0.78);
 }
 
 // portrait thumbnail for chat headers / match cards (data URL)
