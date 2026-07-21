@@ -464,11 +464,31 @@
   }
   #outfit-grid {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    overflow-x: auto;
+    align-items: center;
     padding-bottom: 4px;
-    min-height: 88px;
+    min-height: 46px;
   }
+  .swatch {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    cursor: pointer;
+    padding: 0;
+  }
+  .swatch.selected { border-color: var(--apple-blue); }
+  .part-chip {
+    padding: 9px 15px;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background: #223047;
+    color: #cfe4ff;
+    font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    cursor: pointer;
+  }
+  .part-chip.selected { border-color: var(--apple-blue); color: #fff; }
   .outfit-thumb {
     flex: 0 0 auto;
     width: 62px;
@@ -866,7 +886,7 @@
 
     <button id="outfit-btn" type="button" hidden>Style</button>
     <div id="outfit-sheet" hidden>
-      <p class="os-title">PICK YOUR LOOK <span class="os-note">one look at a time &middot; mix &amp; match comes with the layered art pass</span></p>
+      <p class="os-title">CUSTOMIZE YOUR RANDO <span class="os-note">mix anything &middot; colors, parts, extras</span></p>
       <div id="outfit-tabs"></div>
       <div id="outfit-grid"></div>
     </div>

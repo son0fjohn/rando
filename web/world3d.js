@@ -4,6 +4,7 @@
 // relit renders used everywhere else. DOM bubbles/tags anchor to 3D
 // points via projection each tick.
 import * as THREE from "https://esm.sh/three@0.160.0";
+import { makeCharacter } from "./character3d.js";
 
 const PCT = 5.2; // world units per art-% (zone marker coords come as %)
 const CHAR_H = 15;
@@ -261,16 +262,44 @@ export const world3d = {
     return { sprite, shadow };
   },
 
-  setPlayer(opts) { // { src, mx, my } | null
+  chars: new Set(),      // every live modular character (for animation)
+  remoteRecs: [],
+
+  makeChar(avatarCfg, pos, parent) {
+    const api = makeCharacter(avatarCfg);
+    api.group.position.copy(pos);
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 24),
+      new THREE.MeshBasicMaterial({ color: 0x0a0e14, transparent: true, opacity: 0.25 }));
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.scale.set(5.4, 2.6, 1);
+    shadow.position.set(pos.x, 0.42, pos.z);
+    parent.add(api.group);
+    parent.add(shadow);
+    const rec = { api, shadow, walkTarget: null };
+    this.chars.add(rec);
+    return rec;
+  },
+
+  removeChar(rec, parent) {
+    parent.remove(rec.api.group);
+    parent.remove(rec.shadow);
+    this.chars.delete(rec);
+  },
+
+  setPlayer(opts) { // { avatar, mx, my } | null
+    const prevPos = this.player ? this.player.api.group.position.clone() : null;
     if (this.player) {
-      this.scene.remove(this.player.sprite);
-      this.scene.remove(this.player.shadow);
+      this.removeChar(this.player, this.scene);
       this.player = null;
     }
     if (opts) {
       const pos = groundPos(Number(opts.mx), Number(opts.my));
-      this.player = this.addCharacter(opts.src, pos);
-      this.followPos = pos.clone();
+      // zone change while already in world: walk there instead of teleporting
+      const spawnAt = prevPos && prevPos.distanceTo(pos) > 1 ? prevPos : pos;
+      this.player = this.makeChar(opts.avatar, spawnAt, this.scene);
+      if (!spawnAt.equals(pos)) this.player.walkTarget = pos.clone();
+      this.followPos = this.player.api.group.position; // live ref: camera tracks walking
       this.observing = false; // going open snaps attention back to you
     } else {
       this.followPos = null;
@@ -278,13 +307,18 @@ export const world3d = {
     this.needsRender = true;
   },
 
-  setRemotes(list) { // [{ src, mx, my, slot }]
+  setRemotes(list) { // [{ avatar, mx, my, slot }]
+    for (const rec of this.remoteRecs) this.removeChar(rec, this.remoteGroup);
+    this.remoteRecs = [];
     this.remoteGroup.clear();
     for (const r of list) {
-      const dx = (r.slot % 2 ? -1 : 1) * Math.ceil((r.slot + 1) / 2) * 7;
-      const dz = ((r.slot % 3) - 1) * 4;
+      const dx = (r.slot % 2 ? -1 : 1) * Math.ceil((r.slot + 1) / 2) * 9;
+      const dz = ((r.slot % 3) - 1) * 5;
       const pos = groundPos(Number(r.mx), Number(r.my)).add(new THREE.Vector3(dx, 0, dz));
-      this.addCharacter(r.src, pos, r.slot % 2 === 1, this.remoteGroup);
+      const rec = this.makeChar(r.avatar, pos, this.remoteGroup);
+      // face roughly inward toward the cluster for a hanging-out feel
+      rec.api.group.rotation.y = Math.atan2(-dx, 6);
+      this.remoteRecs.push(rec);
     }
     this.needsRender = true;
   },
@@ -305,7 +339,7 @@ export const world3d = {
   },
   anchorAtPlayer(el, headY = CHAR_H + 1) {
     this.anchor(el, () =>
-      this.player ? this.player.sprite.position.clone().setY(headY) : null);
+      this.player ? this.player.api.group.position.clone().setY(headY) : null);
   },
   placeAnchor(a) {
     if (!a.el.isConnected) return false;
@@ -421,7 +455,35 @@ export const world3d = {
     this.needsRender = true;
   },
 
+  lastT: 0,
+
   tick() {
+    const t = performance.now() / 1000;
+    const dt = Math.min(0.2, t - this.lastT || 0.016);
+    this.lastT = t;
+
+    // animate characters: walking movement + idle/waddle cycles
+    if (this.chars.size) this.needsRender = true;
+    for (const rec of this.chars) {
+      if (rec.walkTarget) {
+        const gp = rec.api.group.position;
+        const d = new THREE.Vector3().subVectors(rec.walkTarget, gp);
+        d.y = 0;
+        const dist = d.length();
+        if (dist < 0.4) {
+          rec.walkTarget = null;
+          rec.api.walking = false;
+        } else {
+          rec.api.walking = true;
+          rec.api.group.rotation.y = Math.atan2(d.x, d.z);
+          d.normalize().multiplyScalar(Math.min(dist, dt * 16));
+          gp.add(d);
+        }
+      }
+      rec.api.tick(t);
+      rec.shadow.position.set(rec.api.group.position.x, 0.42, rec.api.group.position.z);
+    }
+
     // glide the camera target home — unless the user is roaming free
     if (!this.observing) {
       const goal = this.followPos ?? new THREE.Vector3(0, 0, 0);
