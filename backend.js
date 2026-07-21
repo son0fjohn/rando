@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import { world3d } from "./world3d.js";
+import { PART_OPTIONS, DEFAULT_AVATAR, normalizeAvatar, avatarThumb } from "./character3d.js";
 
 world3d.init(document.querySelector(".frame"));
 const bubbleLayer = document.getElementById("bubble-layer");
@@ -397,14 +398,14 @@ export const presence = {
       if (!zone) continue;
       const slot = byZone.get(r.zone_id) ?? 0;
       byZone.set(r.zone_id, slot + 1);
-      remotes.push({ src: outfitSrc(r.avatar), mx: zone.marker_x, my: zone.marker_y, slot });
+      remotes.push({ avatar: normalizeAvatar(r.avatar), mx: zone.marker_x, my: zone.marker_y, slot });
     }
     world3d.setRemotes(remotes);
-    // own billboard: at my zone marker while open, absent while closed;
+    // own character: at my zone marker while open, absent while closed;
     // the 3D camera follows it (avatar keeps its screen spot)
     if (this.myZone) {
       world3d.setPlayer({
-        src: outfitSrc(avatar.mine),
+        avatar: avatar.mine,
         mx: this.myZone.marker_x,
         my: this.myZone.marker_y,
       });
@@ -544,7 +545,7 @@ export const matching = {
   showCard() {
     if (!this.partner) return;
     mcHandle.textContent = this.partner.handle;
-    document.querySelector("#match-card .mc-avatar").src = outfitSrc(this.partner.avatar);
+    document.querySelector("#match-card .mc-avatar").src = avatarThumb(this.partner.avatar);
     matchCard.hidden = false;
   },
 
@@ -605,7 +606,7 @@ export const chat = {
     const { data: { session } } = await sb.auth.getSession();
     this.myId = session.user.id;
     cName.textContent = matching.partner.handle;
-    cAvatar.src = outfitSrc(matching.partner.avatar);
+    cAvatar.src = avatarThumb(matching.partner.avatar);
     cBadge.textContent = "MATCHED · SAME ZONE";
     cThread.innerHTML = "";
     this.seen.clear();
@@ -792,70 +793,51 @@ presence.goClosed = async function () {
   matching.renderButton();
 };
 
-// ===================== avatar / looks =====================
-// profiles.avatar = {"look": "<category>__<key>"} drives how your character
-// renders for everyone. Each look is a complete pose-consistent render —
-// the source art is baked full characters, so hair/outfit/skin can't be
-// mixed until the layered art pass. Others see changes on their next poll.
+// ===================== avatar / customization =====================
+// profiles.avatar = { color, accent, ears, arms, wings, eyes, accessory }
+// — parametric slots + tints on the modular 3D character. Any historical
+// avatar shape normalizes to a valid config. Others see changes on their
+// next world poll.
 
-const LOOKS = [
-  { id: "outfits__red-tank",          cat: "Outfit", label: "Red tank" },
-  { id: "outfits__varsity-jacket",    cat: "Outfit", label: "Varsity" },
-  { id: "outfits__green-hoodie",      cat: "Outfit", label: "Green hoodie" },
-  { id: "outfits__navy-shirt-jacket", cat: "Outfit", label: "Navy jacket" },
-  { id: "outfits__red-plaid-flannel", cat: "Outfit", label: "Flannel" },
-  { id: "hair__asymmetric-spiky",     cat: "Hair",   label: "Spiky" },
-  { id: "hair__bob-straight-bangs",   cat: "Hair",   label: "Bob bangs" },
-  { id: "hair__bob-side-swept",       cat: "Hair",   label: "Side swept" },
-  { id: "hair__long-straight-2",      cat: "Hair",   label: "Long" },
-  { id: "skin__medium-tan",           cat: "Skin",   label: "Tan" },
-  { id: "extras__headphones",         cat: "Extras", label: "Headphones" },
-  { id: "extras__glasses",            cat: "Extras", label: "Glasses" },
+const TABS = [
+  { key: "color",     label: "Color" },
+  { key: "accent",    label: "Accent" },
+  { key: "ears",      label: "Ears" },
+  { key: "arms",      label: "Arms" },
+  { key: "wings",     label: "Wings" },
+  { key: "eyes",      label: "Eyes" },
+  { key: "accessory", label: "Extras" },
 ];
-const LOOK_CATS = ["Outfit", "Hair", "Skin", "Extras"];
-const DEFAULT_LOOK = "outfits__red-tank";
-
-export function outfitSrc(avatar) {
-  let id = avatar && avatar.look;
-  if (!id && avatar && avatar.outfit) id = "outfits__" + avatar.outfit; // legacy shape
-  if (!LOOKS.some(l => l.id === id)) id = DEFAULT_LOOK;
-  return "lit/looks/" + id + ".png";
-}
 
 const outfitBtn = document.getElementById("outfit-btn");
 const outfitSheet = document.getElementById("outfit-sheet");
 const outfitGrid = document.getElementById("outfit-grid");
 
 export const avatar = {
-  mine: { look: DEFAULT_LOOK },
-  tab: "Outfit",
+  mine: { ...DEFAULT_AVATAR },
+  tab: "color",
 
   async load() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return;
     const { data } = await sb.from("profiles").select("avatar").eq("id", session.user.id).maybeSingle();
-    if (data && data.avatar) {
-      const legacy = data.avatar.outfit ? "outfits__" + data.avatar.outfit : null;
-      const id = data.avatar.look ?? legacy;
-      this.mine = { look: LOOKS.some(l => l.id === id) ? id : DEFAULT_LOOK };
-    }
+    this.mine = normalizeAvatar(data && data.avatar);
     this.applyOwn();
     outfitBtn.hidden = false;
   },
 
   applyOwn() {
-    // re-place the player billboard with the new look (if open)
     if (presence.myZone) {
       world3d.setPlayer({
-        src: outfitSrc(this.mine),
+        avatar: this.mine,
         mx: presence.myZone.marker_x,
         my: presence.myZone.marker_y,
       });
     }
   },
 
-  async pick(id) {
-    this.mine = { look: id };
+  async pick(key, value) {
+    this.mine = { ...this.mine, [key]: value };
     this.applyOwn();
     this.renderGrid();
     const { data: { session } } = await sb.auth.getSession();
@@ -863,29 +845,30 @@ export const avatar = {
   },
 
   renderGrid() {
-    // tabs
     const tabsEl = document.getElementById("outfit-tabs");
     tabsEl.innerHTML = "";
-    for (const cat of LOOK_CATS) {
-      const t = document.createElement("button");
-      t.type = "button";
-      t.className = "look-tab" + (this.tab === cat ? " active" : "");
-      t.textContent = cat;
-      t.addEventListener("click", () => { this.tab = cat; this.renderGrid(); });
-      tabsEl.appendChild(t);
-    }
-    // grid for the active tab
-    outfitGrid.innerHTML = "";
-    for (const look of LOOKS.filter(l => l.cat === this.tab)) {
+    for (const t of TABS) {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "outfit-thumb" + (this.mine.look === look.id ? " selected" : "");
-      b.title = look.label;
-      const img = document.createElement("img");
-      img.src = "lit/looks/" + look.id + ".png";
-      img.alt = look.label;
-      b.appendChild(img);
-      b.addEventListener("click", () => this.pick(look.id));
+      b.className = "look-tab" + (this.tab === t.key ? " active" : "");
+      b.textContent = t.label;
+      b.addEventListener("click", () => { this.tab = t.key; this.renderGrid(); });
+      tabsEl.appendChild(b);
+    }
+    outfitGrid.innerHTML = "";
+    const isColor = this.tab === "color" || this.tab === "accent";
+    for (const value of PART_OPTIONS[this.tab]) {
+      const b = document.createElement("button");
+      b.type = "button";
+      if (isColor) {
+        b.className = "swatch" + (this.mine[this.tab] === value ? " selected" : "");
+        b.style.background = value;
+        b.title = value;
+      } else {
+        b.className = "part-chip" + (this.mine[this.tab] === value ? " selected" : "");
+        b.textContent = value;
+      }
+      b.addEventListener("click", () => this.pick(this.tab, value));
       outfitGrid.appendChild(b);
     }
   },
