@@ -1,202 +1,207 @@
-// Rando modular character: procedural chibi built from simple volumes to
-// match the turnaround (big round head, small body, stub arms, bean feet).
-// Every part is a slot + tint so customization is parametric, not assets.
-// The API surface (makeCharacter -> { group, setConfig, tick }) is the
-// contract a future rigged GLB base can implement as a drop-in swap.
+// Rando modular character, v2 — matches the organized reference set in
+// "rando avatar v2": 10 body colors, 6 eye styles (2 with a colorable
+// iris), 8 head shapes, mouthless face. Bodies are single-tint; eyes are
+// canvas-drawn decals so linework styles (spiral, hollow, lines) render
+// exactly. API (makeCharacter -> { group, config, setConfig, tick }) is
+// the contract a future rigged GLB base can implement as a drop-in swap.
 import * as THREE from "https://esm.sh/three@0.160.0";
 
+export const BODY_HEX = {
+  white:  "#e7e7e7", black: "#212120", grey:   "#848483", navy: "#21365f",
+  skyblue:"#91dcfb", green: "#b3e8b1", orange: "#fa7a12", pink: "#fdbed0",
+  purple: "#9b62d1", red:   "#fb4b49",
+};
+export const IRIS_HEX = {
+  blue: "#4a7dd6", black: "#23272e", grey: "#9aa3ae", brown: "#7a4f2b",
+  red:  "#c8452c", orange: "#e8842c", green: "#3f9e5f",
+};
+// eye styles with a distinct iris shape to tint; linework styles are not
+export const IRIS_CAPABLE = ["default", "anime"];
+
 export const PART_OPTIONS = {
-  color:  ["#f4f6f8", "#ffd9e0", "#cfe6ff", "#d8f4d8", "#fff3c4", "#e6d9ff", "#ffc9a8", "#aeb6c2"],
-  accent: ["#8fb7de", "#e8899a", "#f2b84b", "#7fc98f", "#9a86d9", "#e2704e", "#5b6a7d"],
-  ears:      ["none", "round", "cat", "bunny"],
-  arms:      ["stub", "long", "tiny"],
-  wings:     ["none", "angel", "bat"],
-  eyes:      ["oval", "dot", "sleepy"],
-  accessory: ["none", "headphones", "halo", "antenna"],
+  body: Object.keys(BODY_HEX),
+  eyes: ["default", "anime", "hollowoval", "lineblush", "sleepy", "spiral"],
+  iris: Object.keys(IRIS_HEX),
+  head: ["none", "teardrop", "catears", "devilhorns", "floppyears", "twinhorns", "smallspikes", "notailspike"],
 };
 
-export const DEFAULT_AVATAR = {
-  color: "#f4f6f8", accent: "#8fb7de",
-  ears: "round", arms: "stub", wings: "none", eyes: "oval", accessory: "none",
-};
+export const DEFAULT_AVATAR = { body: "white", eyes: "default", iris: "black", head: "none" };
 
-// accept any historical avatar jsonb shape and return a valid config
 export function normalizeAvatar(raw) {
   const cfg = { ...DEFAULT_AVATAR };
   if (raw && typeof raw === "object") {
     for (const k of Object.keys(DEFAULT_AVATAR)) {
-      if (k === "color" || k === "accent") {
-        if (typeof raw[k] === "string" && /^#[0-9a-f]{6}$/i.test(raw[k])) cfg[k] = raw[k];
-      } else if (PART_OPTIONS[k] && PART_OPTIONS[k].includes(raw[k])) {
-        cfg[k] = raw[k];
-      }
+      if (PART_OPTIONS[k].includes(raw[k])) cfg[k] = raw[k];
     }
   }
   return cfg;
 }
 
-const DARK = 0x3a3f45;
+const DARK = "#2b2f36";
 
 function sphere(r, mat, sx = 1, sy = 1, sz = 1, seg = 20) {
   const m = new THREE.Mesh(new THREE.SphereGeometry(r, seg, Math.max(8, seg - 4)), mat);
   m.scale.set(sx, sy, sz);
   return m;
 }
+function cone(r, h, mat, seg = 10) {
+  return new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), mat);
+}
+
+// ---------- eye decal drawing (256x256 canvas per eye) ----------
+function eyeTexture(style, irisHex, side) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d");
+  const cx = 128, cy = 118;
+  const el = (x, y, rx, ry) => { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); };
+
+  if (style === "default") {
+    el(cx, cy, 62, 92); g.fillStyle = DARK; g.fill();
+    el(cx, cy + 4, 48, 76); g.fillStyle = irisHex; g.fill();
+    el(cx, cy + 14, 26, 42); g.fillStyle = "#15181d"; g.fill();
+    el(cx - 20, cy - 38, 14, 20); g.fillStyle = "rgba(255,255,255,0.92)"; g.fill();
+  } else if (style === "anime") {
+    el(cx, cy, 66, 96); g.fillStyle = DARK; g.fill();
+    const grad = g.createLinearGradient(0, cy - 80, 0, cy + 88);
+    grad.addColorStop(0, "#ffffff");
+    grad.addColorStop(0.28, irisHex);
+    grad.addColorStop(1, "#0c0e12");
+    el(cx, cy + 3, 54, 84); g.fillStyle = grad; g.fill();
+    el(cx - 22, cy - 44, 17, 24); g.fillStyle = "rgba(255,255,255,0.95)"; g.fill();
+    el(cx + 22, cy + 44, 9, 12); g.fillStyle = "rgba(255,255,255,0.55)"; g.fill();
+  } else if (style === "hollowoval") {
+    el(cx, cy, 54, 84); g.lineWidth = 20; g.strokeStyle = DARK; g.stroke();
+  } else if (style === "lineblush") {
+    g.lineWidth = 22; g.lineCap = "round"; g.strokeStyle = DARK;
+    g.beginPath(); g.moveTo(cx - 52, cy - 10); g.lineTo(cx + 52, cy - 10); g.stroke();
+    // blush on the outer cheek (mirrored per side)
+    el(cx + side * 46, cy + 74, 40, 22);
+    g.fillStyle = "rgba(255,138,160,0.75)"; g.fill();
+  } else if (style === "sleepy") {
+    g.lineWidth = 22; g.lineCap = "round"; g.strokeStyle = DARK;
+    g.beginPath(); g.arc(cx, cy - 34, 58, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+  } else if (style === "spiral") {
+    el(cx, cy, 60, 88); g.fillStyle = "#f4f4f4"; g.fill();
+    g.lineWidth = 12; g.strokeStyle = DARK;
+    el(cx, cy, 60, 88); g.stroke();
+    for (const s of [0.62, 0.36, 0.13]) {
+      el(cx, cy, 60 * s, 88 * s); g.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 export function makeCharacter(rawCfg) {
   const group = new THREE.Group();
   const refs = {};
   let cfg = normalizeAvatar(rawCfg);
-  let mats = {};
 
   function build() {
     group.clear();
-    mats = {
-      body: new THREE.MeshLambertMaterial({ color: cfg.color }),
-      accent: new THREE.MeshLambertMaterial({ color: cfg.accent }),
-      dark: new THREE.MeshLambertMaterial({ color: DARK }),
-    };
+    const bodyHex = BODY_HEX[cfg.body];
+    const mat = new THREE.MeshLambertMaterial({ color: bodyHex });
 
-    // body
-    const body = sphere(3.4, mats.body, 1, 1.05, 1);
+    // body + feet
+    const body = sphere(3.4, mat, 1, 1.05, 1);
     body.position.y = 3.8;
     group.add(body);
-
-    // feet
     refs.feet = [];
     for (const s of [-1, 1]) {
-      const foot = sphere(1.55, mats.body, 1.1, 0.55, 1.45);
+      const foot = sphere(1.55, mat, 1.1, 0.55, 1.45);
       foot.position.set(s * 1.7, 0.85, 0.7);
       group.add(foot);
       refs.feet.push(foot);
     }
 
-    // arms: pivot at the shoulder so walk-swing works
+    // stub arms (fixed style in v2), pivot at shoulder for the waddle
     refs.arms = [];
-    const armLen = { stub: 1, long: 1.5, tiny: 0.6 }[cfg.arms];
     for (const s of [-1, 1]) {
       const pivot = new THREE.Group();
       pivot.position.set(s * 3.1, 5.6, 0);
-      const arm = sphere(1.35, mats.body, 0.62, 1.25 * armLen, 0.62);
-      arm.position.y = -1.5 * armLen;
+      const arm = sphere(1.35, mat, 0.62, 1.25, 0.62);
+      arm.position.y = -1.5;
       pivot.add(arm);
       pivot.rotation.z = s * 0.35;
       group.add(pivot);
       refs.arms.push(pivot);
     }
 
-    // head: everything face/ear/hat related lives in this group
+    // head (mouthless, per the v2 set)
     const headG = new THREE.Group();
     headG.position.y = 10.1;
     refs.head = headG;
-    const head = sphere(5.1, mats.body, 1, 0.96, 0.98);
-    headG.add(head);
+    headG.add(sphere(5.1, mat, 1, 0.96, 0.98));
 
-    // eyes: flattened dark spheres embedded in the head surface
-    const eyeScale = { oval: [0.62, 1.05], dot: [0.5, 0.55], sleepy: [0.72, 0.45] }[cfg.eyes];
+    // eyes: canvas decals hugging the face
+    const irisHex = IRIS_HEX[cfg.iris];
     for (const s of [-1, 1]) {
-      const eye = sphere(1, mats.dark, eyeScale[0], eyeScale[1], 0.3, 14);
-      eye.position.set(s * 1.85, 0.55, 4.35);
-      headG.add(eye);
-    }
-    // subtle smile
-    const smile = new THREE.Mesh(
-      new THREE.TorusGeometry(0.62, 0.09, 6, 12, Math.PI * 0.7), mats.dark);
-    smile.position.set(0, -1.15, 4.55);
-    smile.rotation.set(0.15, 0, Math.PI + Math.PI * 0.15);
-    headG.add(smile);
-
-    // ears
-    if (cfg.ears === "round") {
-      for (const s of [-1, 1]) {
-        const ear = sphere(1.5, mats.body, 1, 1, 0.55);
-        ear.position.set(s * 3.4, 3.8, 0);
-        headG.add(ear);
-        const inner = sphere(0.85, mats.accent, 1, 1, 0.3);
-        inner.position.set(s * 3.5, 3.9, 0.55);
-        headG.add(inner);
-      }
-    } else if (cfg.ears === "cat") {
-      for (const s of [-1, 1]) {
-        const ear = new THREE.Mesh(new THREE.ConeGeometry(1.35, 2.7, 10), mats.body);
-        ear.position.set(s * 2.9, 4.6, 0);
-        ear.rotation.z = -s * 0.35;
-        headG.add(ear);
-        const inner = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.5, 10), mats.accent);
-        inner.position.set(s * 2.95, 4.5, 0.5);
-        inner.rotation.z = -s * 0.35;
-        headG.add(inner);
-      }
-    } else if (cfg.ears === "bunny") {
-      for (const s of [-1, 1]) {
-        const ear = sphere(1.1, mats.body, 0.5, 2.3, 0.4);
-        ear.position.set(s * 2.2, 6.2, -0.3);
-        ear.rotation.z = -s * 0.18;
-        headG.add(ear);
-        const inner = sphere(0.7, mats.accent, 0.35, 1.7, 0.2);
-        inner.position.set(s * 2.25, 6.2, 0.15);
-        inner.rotation.z = -s * 0.18;
-        headG.add(inner);
-      }
+      const tex = eyeTexture(cfg.eyes, irisHex, s);
+      const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.5, 2.5),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02 }));
+      plane.position.set(s * 1.85, 0.55, 4.42);
+      plane.rotation.y = s * 0.28;
+      headG.add(plane);
     }
 
-    // accessory
-    if (cfg.accessory === "headphones") {
-      const band = new THREE.Mesh(
-        new THREE.TorusGeometry(4.4, 0.4, 8, 20, Math.PI), mats.dark);
-      band.position.y = 1.2;
-      headG.add(band);
+    // head shapes (all tinted the body color, like the reference sheets)
+    const H = cfg.head;
+    if (H === "teardrop") {
+      const p = cone(1.25, 3.1, mat);
+      p.position.set(0, 4.9, -0.2);
+      p.rotation.x = -0.12;
+      headG.add(p);
+    } else if (H === "catears") {
       for (const s of [-1, 1]) {
-        const cup = sphere(1.25, mats.accent, 0.6, 1, 1);
-        cup.position.set(s * 4.6, 0.4, 0);
-        headG.add(cup);
+        const e = cone(1.35, 2.7, mat);
+        e.position.set(s * 2.9, 4.4, 0);
+        e.rotation.z = -s * 0.3;
+        headG.add(e);
       }
-    } else if (cfg.accessory === "halo") {
-      const halo = new THREE.Mesh(
-        new THREE.TorusGeometry(2.6, 0.32, 8, 24),
-        new THREE.MeshBasicMaterial({ color: 0xffd75e }));
-      halo.position.y = 6.6;
-      halo.rotation.x = Math.PI / 2.15;
-      headG.add(halo);
-    } else if (cfg.accessory === "antenna") {
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 2.6, 8), mats.dark);
-      stem.position.y = 6;
-      headG.add(stem);
-      const bob = sphere(0.55, mats.accent);
-      bob.position.y = 7.4;
-      headG.add(bob);
+    } else if (H === "devilhorns") {
+      for (const s of [-1, 1]) {
+        const h = cone(0.85, 2.3, mat);
+        h.position.set(s * 2.7, 4.35, 0);
+        h.rotation.z = -s * 0.55;
+        headG.add(h);
+      }
+    } else if (H === "floppyears") {
+      for (const s of [-1, 1]) {
+        const e = sphere(1.6, mat, 0.55, 1.6, 0.7);
+        e.position.set(s * 3.7, 1.1, 0);
+        e.rotation.z = s * 0.95;
+        headG.add(e);
+      }
+    } else if (H === "twinhorns") {
+      for (const s of [-1, 1]) {
+        const h = sphere(1.0, mat, 0.8, 1.5, 0.8);
+        h.position.set(s * 1.6, 4.9, 0);
+        h.rotation.z = -s * 0.2;
+        headG.add(h);
+      }
+    } else if (H === "smallspikes") {
+      for (const s of [-1, 1]) {
+        const sp = cone(0.7, 1.7, mat);
+        sp.position.set(s * 1.9, 4.85, 0);
+        sp.rotation.z = -s * 0.25;
+        headG.add(sp);
+      }
+    } else if (H === "notailspike") {
+      const center = cone(1.1, 3.7, mat);
+      center.position.set(0, 5.1, -0.3);
+      center.rotation.x = -0.14;
+      headG.add(center);
+      for (const s of [-1, 1]) {
+        const sp = cone(0.75, 2.1, mat);
+        sp.position.set(s * 2.5, 4.3, 0);
+        sp.rotation.z = -s * 0.5;
+        headG.add(sp);
+      }
     }
     group.add(headG);
-
-    // wings: attach behind the body, flap in tick()
-    refs.wings = [];
-    if (cfg.wings !== "none") {
-      for (const s of [-1, 1]) {
-        const pivot = new THREE.Group();
-        pivot.position.set(s * 1.7, 6.3, -2.6);
-        let wing;
-        if (cfg.wings === "angel") {
-          wing = new THREE.Group();
-          const w1 = sphere(1.7, mats.body, 1.25, 0.6, 0.3);
-          const w2 = sphere(1.25, mats.body, 1.1, 0.5, 0.3);
-          w2.position.set(s * 1.3, -1.0, 0);
-          wing.add(w1, w2);
-        } else { // bat
-          const shape = new THREE.Shape();
-          shape.moveTo(0, 0);
-          shape.quadraticCurveTo(s * 2.6, 1.6, s * 3.6, 0.4);
-          shape.quadraticCurveTo(s * 2.9, -0.4, s * 2.6, -1.2);
-          shape.quadraticCurveTo(s * 1.6, -0.7, 0, -0.9);
-          wing = new THREE.Mesh(
-            new THREE.ShapeGeometry(shape),
-            new THREE.MeshLambertMaterial({ color: cfg.accent, side: THREE.DoubleSide }));
-        }
-        wing.rotation.y = s * 0.5;
-        pivot.add(wing);
-        group.add(pivot);
-        refs.wings.push({ pivot, side: s });
-      }
-    }
   }
 
   build();
@@ -210,7 +215,6 @@ export function makeCharacter(rawCfg) {
     },
     walking: false,
     phase: Math.random() * Math.PI * 2,
-    // procedural life: idle bob / waddle walk / wing flap
     tick(t) {
       const p = t * (this.walking ? 9 : 2) + this.phase;
       const s = Math.sin(p);
@@ -229,9 +233,6 @@ export function makeCharacter(rawCfg) {
         refs.feet[0].position.y = 0.85;
         refs.feet[1].position.y = 0.85;
         refs.head.rotation.z = Math.sin(p * 0.7) * 0.03;
-      }
-      for (const w of refs.wings) {
-        w.pivot.rotation.y = w.side * (0.25 + Math.sin(t * (this.walking ? 10 : 3.2) + this.phase) * 0.35);
       }
     },
   };

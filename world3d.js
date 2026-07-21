@@ -8,11 +8,17 @@ import { makeCharacter } from "./character3d.js";
 
 const PCT = 5.2; // world units per art-% (zone marker coords come as %)
 const CHAR_H = 15;
+// NPCs are preset v2 characters now — same modular system as players,
+// distinct personality via parts. Pairs face each other (hanging out).
 const NPC_DEFS = [
-  { id: "npc-silver",  src: "lit/npc-silver.png",  mx: 17, my: 50, mirror: false },
-  { id: "npc-dreads",  src: "lit/npc-dreads.png",  mx: 28, my: 51.5, mirror: false },
-  { id: "npc-buzzcut", src: "lit/npc-buzzcut.png", mx: 71, my: 63, mirror: true },
-  { id: "npc-cans",    src: "lit/npc-cans.png",    mx: 84, my: 65, mirror: false },
+  { id: "npc-silver",  mx: 17, my: 50,   partner: "npc-dreads",
+    preset: { body: "grey",   eyes: "sleepy",  head: "floppyears" } },
+  { id: "npc-dreads",  mx: 28, my: 51.5, partner: "npc-silver",
+    preset: { body: "navy",   eyes: "default", iris: "brown", head: "teardrop" } },
+  { id: "npc-buzzcut", mx: 71, my: 63,   partner: "npc-cans",
+    preset: { body: "red",    eyes: "anime",   iris: "orange", head: "smallspikes" } },
+  { id: "npc-cans",    mx: 84, my: 65,   partner: "npc-buzzcut",
+    preset: { body: "orange", eyes: "spiral",  head: "notailspike" } },
 ];
 
 function groundPos(mx, my) {
@@ -26,16 +32,6 @@ function mulberry32(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-const texCache = new Map();
-function loadTex(src, cb) {
-  if (texCache.has(src)) { cb(texCache.get(src)); return; }
-  new THREE.TextureLoader().load(src, tex => {
-    tex.colorSpace = THREE.SRGBColorSpace;
-    texCache.set(src, tex);
-    cb(tex);
-  });
 }
 
 export const world3d = {
@@ -77,7 +73,15 @@ export const world3d = {
     this.scene.add(this.zoneRings);
     this.remoteGroup = new THREE.Group();
     this.scene.add(this.remoteGroup);
-    NPC_DEFS.forEach(n => this.addCharacter(n.src, groundPos(n.mx, n.my), n.mirror));
+    for (const n of NPC_DEFS) {
+      const pos = groundPos(n.mx, n.my);
+      const rec = this.makeChar(n.preset, pos, this.scene);
+      const partner = NPC_DEFS.find(d => d.id === n.partner);
+      if (partner) {
+        const pp = groundPos(partner.mx, partner.my);
+        rec.api.group.rotation.y = Math.atan2(pp.x - pos.x, pp.z - pos.z);
+      }
+    }
 
     this.bindControls();
     window.addEventListener("resize", () => this.resize());
@@ -238,28 +242,6 @@ export const world3d = {
       this.zoneRings.add(ring);
     }
     this.needsRender = true;
-  },
-
-  addCharacter(src, pos, mirror = false, parent = this.scene) {
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, alphaTest: 0.05 }));
-    sprite.center.set(0.5, 0); // feet anchor
-    sprite.position.copy(pos);
-    loadTex(src, tex => {
-      sprite.material.map = tex;
-      sprite.material.needsUpdate = true;
-      const aspect = tex.image.width / tex.image.height;
-      sprite.scale.set(CHAR_H * aspect * (mirror ? -1 : 1), CHAR_H, 1);
-      this.needsRender = true;
-    });
-    const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 24),
-      new THREE.MeshBasicMaterial({ color: 0x0a0e14, transparent: true, opacity: 0.25 }));
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.scale.set(CHAR_H * 0.34, CHAR_H * 0.15, 1);
-    shadow.position.set(pos.x, 0.4, pos.z);
-    parent.add(sprite);
-    parent.add(shadow);
-    return { sprite, shadow };
   },
 
   chars: new Set(),      // every live modular character (for animation)
