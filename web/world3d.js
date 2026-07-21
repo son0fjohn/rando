@@ -117,19 +117,22 @@ export const world3d = {
       new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
     this.scene.add(sky);
 
-    // puffy cumulus clouds ringing the horizon, always facing the camera
+    // cel-style cumulus like the original art: solid white rounded tops,
+    // flat bases, cool blue shading tucked underneath — no airbrush fuzz
     const cloudTex = this.canvasTex(256, 128, g => {
-      g.fillStyle = "rgba(255,255,255,0)";
-      g.fillRect(0, 0, 256, 128);
-      const puffs = [[60, 84, 34], [104, 66, 44], [152, 72, 40], [196, 88, 30], [128, 92, 46]];
+      const puffs = [[52, 76, 28], [94, 58, 40], [144, 62, 36], [190, 76, 26], [120, 80, 42]];
+      g.fillStyle = "#c9dff0"; // under-shadow pass, nudged down
       for (const [x, y, r] of puffs) {
-        const rg = g.createRadialGradient(x, y, r * 0.2, x, y, r);
-        rg.addColorStop(0, "rgba(255,255,255,1)");
-        rg.addColorStop(0.75, "rgba(255,255,255,0.95)");
-        rg.addColorStop(1, "rgba(255,255,255,0)");
-        g.fillStyle = rg;
+        g.beginPath(); g.arc(x, y + 8, r, 0, Math.PI * 2); g.fill();
+      }
+      g.fillStyle = "#ffffff"; // solid body
+      for (const [x, y, r] of puffs) {
         g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
       }
+      g.fillRect(34, 66, 184, 26);   // unify the base into one mass
+      g.fillStyle = "#d6e7f4";       // thin shading strip along the base
+      g.fillRect(40, 86, 172, 8);
+      g.clearRect(0, 94, 256, 34);   // hard flat cut — cel look
     });
     const cloudRand = mulberry32(777);
     for (let i = 0; i < 10; i++) {
