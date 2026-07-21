@@ -3,7 +3,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import { world3d } from "./world3d.js";
-import { PART_OPTIONS, DEFAULT_AVATAR, normalizeAvatar, avatarThumb } from "./character3d.js";
+import {
+  PART_OPTIONS, DEFAULT_AVATAR, normalizeAvatar, avatarThumb,
+  BODY_HEX, IRIS_HEX, IRIS_CAPABLE,
+} from "./character3d.js";
 
 world3d.init(document.querySelector(".frame"));
 const bubbleLayer = document.getElementById("bubble-layer");
@@ -799,14 +802,12 @@ presence.goClosed = async function () {
 // avatar shape normalizes to a valid config. Others see changes on their
 // next world poll.
 
+// v2 categories; Iris only appears for eye styles with a colorable iris
 const TABS = [
-  { key: "color",     label: "Color" },
-  { key: "accent",    label: "Accent" },
-  { key: "ears",      label: "Ears" },
-  { key: "arms",      label: "Arms" },
-  { key: "wings",     label: "Wings" },
-  { key: "eyes",      label: "Eyes" },
-  { key: "accessory", label: "Extras" },
+  { key: "body", label: "Body" },
+  { key: "eyes", label: "Eyes" },
+  { key: "iris", label: "Iris" },
+  { key: "head", label: "Head" },
 ];
 
 const outfitBtn = document.getElementById("outfit-btn");
@@ -815,7 +816,7 @@ const outfitGrid = document.getElementById("outfit-grid");
 
 export const avatar = {
   mine: { ...DEFAULT_AVATAR },
-  tab: "color",
+  tab: "body",
 
   async load() {
     const { data: { session } } = await sb.auth.getSession();
@@ -845,9 +846,14 @@ export const avatar = {
   },
 
   renderGrid() {
+    // iris tab only exists while the chosen eye style has a colorable iris
+    const visibleTabs = TABS.filter(t =>
+      t.key !== "iris" || IRIS_CAPABLE.includes(this.mine.eyes));
+    if (!visibleTabs.some(t => t.key === this.tab)) this.tab = "body";
+
     const tabsEl = document.getElementById("outfit-tabs");
     tabsEl.innerHTML = "";
-    for (const t of TABS) {
+    for (const t of visibleTabs) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "look-tab" + (this.tab === t.key ? " active" : "");
@@ -855,14 +861,15 @@ export const avatar = {
       b.addEventListener("click", () => { this.tab = t.key; this.renderGrid(); });
       tabsEl.appendChild(b);
     }
+
     outfitGrid.innerHTML = "";
-    const isColor = this.tab === "color" || this.tab === "accent";
+    const swatchHex = this.tab === "body" ? BODY_HEX : this.tab === "iris" ? IRIS_HEX : null;
     for (const value of PART_OPTIONS[this.tab]) {
       const b = document.createElement("button");
       b.type = "button";
-      if (isColor) {
+      if (swatchHex) {
         b.className = "swatch" + (this.mine[this.tab] === value ? " selected" : "");
-        b.style.background = value;
+        b.style.background = swatchHex[value];
         b.title = value;
       } else {
         b.className = "part-chip" + (this.mine[this.tab] === value ? " selected" : "");
