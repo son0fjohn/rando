@@ -73,6 +73,27 @@ const ZONE_FLAVOR = [
   { lat: 37.5289, lng: 126.9944, build: 0.25, green: 0.85 }, // Bogwang
 ];
 
+// minimal studio env for PMREM: warm key overhead, cool sky fill, ground
+// bounce — approximates a model-viewer's IBL without an extra module
+function makeEnvScene() {
+  const s = new THREE.Scene();
+  s.background = new THREE.Color(0x9db8cc);
+  const panel = (color, intensity, w, h, pos, lookAt) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity) }),
+    );
+    m.position.set(...pos);
+    m.lookAt(...lookAt);
+    s.add(m);
+  };
+  panel(0xfff2d9, 6, 10, 10, [0, 14, 6], [0, 0, 0]);    // warm key, high front
+  panel(0xdfeeff, 2.2, 14, 8, [-12, 6, -6], [0, 0, 0]); // cool fill, back-left
+  panel(0xdfeeff, 1.6, 14, 8, [12, 4, -4], [0, 0, 0]);  // soft fill, right
+  panel(0xb8c9a8, 1.2, 20, 20, [0, -8, 0], [0, 0, 0]);  // grass bounce below
+  return s;
+}
+
 function mulberry32(seed) {
   return () => {
     seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
@@ -111,6 +132,12 @@ export const world3d = {
     this.scene.background = new THREE.Color(M.skyTop);
     this.scene.fog = new THREE.Fog(M.fog, 340, 1250);
     this.camera = new THREE.PerspectiveCamera(50, w / h, 1, 2500);
+
+    // IBL for the GLB characters (PBR materials only — the Lambert world
+    // ignores scene.environment, so the locked style is untouched)
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(makeEnvScene(), 0.04).texture;
+    pmrem.dispose();
 
     this.scene.add(new THREE.HemisphereLight(M.hemiSky, M.hemiGround, M.hemiInt));
     const sun = new THREE.DirectionalLight(M.sunCol, M.sunInt);
