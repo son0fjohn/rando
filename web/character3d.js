@@ -6,6 +6,7 @@
 // the contract a future rigged GLB base can implement as a drop-in swap.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import * as SkeletonUtils from "https://esm.sh/three@0.160.0/examples/jsm/utils/SkeletonUtils.js";
 
 export const BODY_HEX = {
   white:  "#e7e7e7", black: "#212120", grey:   "#848483", navy: "#21365f",
@@ -337,15 +338,34 @@ export function characterSheet(cfgs, cell = 200) {
   return out.toDataURL("image/jpeg", 0.78);
 }
 
-// ---- GLB evaluation path (?glb=1): the Tripo/Meshy base model in place
-// of the procedural body. The file is a static mesh (no rig), so tick()
-// can only do whole-body motion. Tint = material color multiplied over
-// the baked near-white texture.
+// ---- GLB path (?glb=1): the rigged Tripo/Meshy model in place of the
+// procedural body. walking.glb ships a 33-joint skeleton but no baked
+// clips, so tick() drives the bones directly (sine walk/idle cycles).
+// Tint = material color multiplied over the baked near-white texture.
 let glbTemplate = null;
-export function loadGLBTemplate(url = "models/base.glb") {
+const depth = n => { let d = 0; while (n.parent) { d++; n = n.parent; } return d; };
+export function loadGLBTemplate(url = "models/walking.glb") {
   if (!glbTemplate) {
     glbTemplate = new GLTFLoader().loadAsync(url).then(g => {
       const src = g.scene;
+      // Tripo exports identity bone transforms (rest pose lives only in the
+      // inverse-bind matrices) — rebuild each bone's local TRS from them so
+      // the model stands upright and joints pivot at their true positions.
+      src.updateWorldMatrix(true, true);
+      src.traverse(o => {
+        if (!o.isSkinnedMesh) return;
+        const skel = o.skeleton;
+        const bindWorld = skel.boneInverses.map(m => m.clone().invert());
+        const order = [...skel.bones.keys()].sort((a, b) => depth(skel.bones[a]) - depth(skel.bones[b]));
+        for (const i of order) {
+          const b = skel.bones[i];
+          b.parent.updateWorldMatrix(true, false);
+          new THREE.Matrix4().copy(b.parent.matrixWorld).invert()
+            .multiply(bindWorld[i])
+            .decompose(b.position, b.quaternion, b.scale);
+          b.updateMatrixWorld(true);
+        }
+      });
       const box = new THREE.Box3().setFromObject(src);
       const size = new THREE.Vector3();
       box.getSize(size);
@@ -362,15 +382,20 @@ export function loadGLBTemplate(url = "models/base.glb") {
   return glbTemplate;
 }
 
+// NOTE: this export's skin weights are ~100% on Root (Tripo rig-only
+// download), so bone animation cannot move limbs. Until the animated
+// export (real weights + walk clip) is dropped in, tick() does a
+// whole-body waddle; swap to AnimationMixer when that file lands.
 export async function makeGLBCharacter(rawCfg) {
   const cfg = normalizeAvatar(rawCfg);
   const template = await loadGLBTemplate();
-  const group = template.clone(true);
+  const group = SkeletonUtils.clone(template);
   const tint = new THREE.Color(BODY_HEX[cfg.body]);
   group.traverse(o => {
-    if (o.isMesh) {
+    if (o.isMesh || o.isSkinnedMesh) {
       o.material = o.material.clone();
       o.material.color = tint.clone();
+      o.frustumCulled = false; // bind-pose bounds lie once bones move
     }
   });
   return {
@@ -380,13 +405,18 @@ export async function makeGLBCharacter(rawCfg) {
     walking: false,
     phase: Math.random() * Math.PI * 2,
     tick(t) {
-      const p = t * (this.walking ? 9 : 2) + this.phase;
+      const inner = group.children[0];
       if (this.walking) {
-        group.position.y = Math.abs(Math.sin(p)) * 0.55;
-        group.rotation.z = Math.sin(p) * 0.07;
+        const p = t * 9 + this.phase;
+        const s = Math.sin(p);
+        group.position.y = Math.abs(s) * 0.5;
+        inner.rotation.z = s * 0.09;
+        inner.rotation.x = Math.abs(Math.cos(p)) * 0.06;
       } else {
+        const p = t * 2 + this.phase;
         group.position.y = Math.sin(p) * 0.16;
-        group.rotation.z = 0;
+        inner.rotation.z = 0;
+        inner.rotation.x = 0;
       }
     },
   };
