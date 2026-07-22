@@ -86,6 +86,26 @@ Original prompt (verbatim):
 > yet. Vertical format suitable for a mobile screen, with the globe
 > curvature filling most of the frame.
 
+## Texture generation pack (to make the in-app map match the reference)
+
+Generate each with the locked recipe (master reference + style ref
+attached). Square format. Save into `assets/world/textures/` with these
+exact names; the engine wires them in on arrival.
+
+| File                  | Prompt subject (prepend to the template)                          |
+|-----------------------|-------------------------------------------------------------------|
+| `grass-tile.png`      | "seamless tileable grass texture, soft stylized green lawn with subtle mow variation, top-down" |
+| `asphalt-tile.png`    | "seamless tileable asphalt road texture, soft grey with faint wear, top-down" |
+| `plaza-tile.png`      | "seamless tileable light paving-stone plaza texture, top-down"    |
+| `facade-a.png`        | "flat front-on building facade, white plaster, grid of simple windows and balconies, blank signs, 3 storeys" |
+| `facade-b.png`        | "flat front-on building facade, cream shopfront lower floor with awning, simple windows above, blank signs" |
+| `facade-c.png`        | "flat front-on building facade, cool grey office style, horizontal window bands, rooftop AC units visible" |
+| `facade-d.png`        | "flat front-on building facade, mixed small shops, colorful accents, blank abstracted signage" |
+| `landmark-arcade.png` | "small landmark arcade building with orange curved roof and red double doors, three-quarter view" |
+
+Rules: no readable text anywhere; keep lighting flat/neutral (the engine
+lights the scene); facades must fill the frame edge-to-edge, front-on.
+
 ## Night palette (engine mode, derived from the day table)
 
 | Element        | Hex       |
