@@ -5,6 +5,7 @@
 // day/night slot. Standalone review scene: no backend, no characters.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import { makeGLBCharacter } from "./character3d.js";
 
 const R = 800;          // ground dome radius
 const CELL = 150;       // road grid spacing (one tile = one cell)
@@ -28,35 +29,35 @@ const MODELS = {
 // by palms, tall glass at the back corners, mid-rises on the middle ring,
 // storefronts hugging the plaza, trees in the open blocks. yaw faces front.
 const PLACEMENTS = [
-  { kind: "bldg_station",  x: 0,    z: -285, yaw: 0 },
-  { kind: "tree_palm",     x: -50,  z: -276, yaw: 0.6 },
-  { kind: "tree_palm",     x: 52,   z: -278, yaw: -0.5 },
-  { kind: "bldg_tower",    x: -168, z: -290, yaw: 0.3 },
-  { kind: "bldg_highrise", x: 162,  z: -295, yaw: -0.25 },
-  { kind: "bldg_highrise", x: -278, z: -190, yaw: 0.6 },
-  { kind: "bldg_tower",    x: 275,  z: -195, yaw: -0.55 },
+  // radial layout: arms at N / NE / NW / SE / SW / S, hex ring at r=300.
+  // landmark arcade crowns the north arm, skyline behind the back ring,
+  // storefronts in the gaps around the plaza, trees filling the wedges.
+  { kind: "bldg_station",  x: 0,    z: -345, yaw: 0 },
+  { kind: "tree_palm",     x: -44,  z: -330, yaw: 0.6 },
+  { kind: "tree_palm",     x: 46,   z: -332, yaw: -0.5 },
+  { kind: "bldg_tower",    x: -140, z: -262, yaw: 0.25 },
+  { kind: "bldg_highrise", x: 148,  z: -260, yaw: -0.25 },
+  { kind: "bldg_highrise", x: -286, z: -168, yaw: 0.55 },
+  { kind: "bldg_tower",    x: 288,  z: -172, yaw: -0.5 },
 
-  { kind: "bldg_pastel",   x: -190, z: -180, yaw: 0.5 },
-  { kind: "bldg_brick",    x: 195,  z: -185, yaw: -0.5 },
-  { kind: "bldg_urban",    x: -195, z: -35,  yaw: 1.35 },
-  { kind: "bldg_brick",    x: 198,  z: -40,  yaw: -1.35 },
-  { kind: "bldg_urban",    x: -280, z: 40,   yaw: 1.2 },
-  { kind: "bldg_pastel",   x: 282,  z: 35,   yaw: -1.2 },
+  { kind: "bldg_pastel",   x: -178, z: -78,  yaw: 1.05 },
+  { kind: "bldg_brick",    x: 182,  z: -80,  yaw: -1.05 },
+  { kind: "bldg_urban",    x: -128, z: -138, yaw: 0.55 },
+  { kind: "bldg_brick",    x: -195, z: 132,  yaw: 2.05 },
+  { kind: "bldg_urban",    x: 198,  z: 128,  yaw: -2.05 },
+  { kind: "bldg_pastel",   x: 118,  z: 172,  yaw: -2.5 },
 
-  { kind: "bldg_store",    x: -68,  z: -70,  yaw: 0.8 },
-  { kind: "bldg_store",    x: 72,   z: -68,  yaw: -0.8 },
-  { kind: "bldg_store",    x: -70,  z: 72,   yaw: 2.3 },
-  { kind: "bldg_store",    x: 74,   z: 70,   yaw: -2.3 },
+  { kind: "bldg_store",    x: 44,   z: -76,  yaw: -0.55 },
+  { kind: "bldg_store",    x: -46,  z: -74,  yaw: 0.55 },
+  { kind: "bldg_store",    x: -44,  z: 78,   yaw: 2.6 },
+  { kind: "bldg_store",    x: 46,   z: 76,   yaw: -2.6 },
 
-  { kind: "bldg_brick",    x: -180, z: 165,  yaw: 2.1 },
-  { kind: "bldg_urban",    x: 185,  z: 160,  yaw: -2.1 },
-
-  { kind: "tree_green", x: -120, z: -120 }, { kind: "tree_green", x: 118, z: -125 },
-  { kind: "tree_green", x: -235, z: -110 }, { kind: "tree_green", x: 240, z: -105 },
-  { kind: "tree_green", x: -110, z: 108 },  { kind: "tree_green", x: 115, z: 105 },
-  { kind: "tree_green", x: -230, z: 170 },  { kind: "tree_green", x: 235, z: 175 },
-  { kind: "tree_green", x: -90,  z: 210 },  { kind: "tree_green", x: 95,  z: 215 },
-  { kind: "tree_palm",  x: -300, z: -60 },  { kind: "tree_palm",  x: 302, z: -65 },
+  { kind: "tree_green", x: -105, z: 28 },   { kind: "tree_green", x: 108, z: 25 },
+  { kind: "tree_green", x: -170, z: -8 },   { kind: "tree_green", x: 172, z: -12 },
+  { kind: "tree_green", x: -95,  z: -195 }, { kind: "tree_green", x: 98,  z: -198 },
+  { kind: "tree_green", x: -120, z: 175 },  { kind: "tree_green", x: 68,  z: 205 },
+  { kind: "tree_green", x: -35,  z: 240 },  { kind: "tree_green", x: 150, z: 250 },
+  { kind: "tree_palm",  x: -245, z: 55 },   { kind: "tree_palm",  x: 248, z: 52 },
 ];
 
 const domeY = (x, z) => Math.sqrt(Math.max(0, R * R - x * x - z * z)) - R;
@@ -77,12 +78,32 @@ export const world2 = {
     this.scene.background = new THREE.Color(0xbcd9ee); // pale horizon fallback
     this.camera = new THREE.PerspectiveCamera(46, w / h, 1, 6000);
 
-    this.scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x8fa3b8, 1.1));
-    const sun = new THREE.DirectionalLight(0xfff2d9, 1.2);
-    sun.position.set(160, 300, 180);
-    this.scene.add(sun);
+    this.hemi = new THREE.HemisphereLight(0xeaf6ff, 0x8fa3b8, 1.1);
+    this.scene.add(this.hemi);
+    this.sun = new THREE.DirectionalLight(0xfff2d9, 1.2);
+    this.sun.position.set(160, 300, 180);
+    this.scene.add(this.sun);
 
-    const loads = [this.buildGround(), this.setSky("day"), this.placeModels()];
+    // IBL so the GLB characters get their model-viewer sheen here too
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const env = new THREE.Scene();
+    env.background = new THREE.Color(0x9db8cc);
+    const panel = (color, intensity, pw, ph, p) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity) }));
+      m.position.set(...p);
+      m.lookAt(0, 0, 0);
+      env.add(m);
+    };
+    panel(0xfff2d9, 6, 10, 10, [0, 14, 6]);
+    panel(0xdfeeff, 2.2, 14, 8, [-12, 6, -6]);
+    panel(0xdfeeff, 1.6, 14, 8, [12, 4, -4]);
+    panel(0xb8c9a8, 1.2, 20, 20, [0, -8, 0]);
+    this.scene.environment = pmrem.fromScene(env, 0.04).texture;
+    pmrem.dispose();
+
+    const mode = new URLSearchParams(location.search).get("sky") === "night" ? "night" : "day";
+    const loads = [this.buildGround(), this.setSky(mode), this.placeModels(), this.placeCharacters()];
     this.ready = Promise.all(loads);
 
     // simple orbit for review
@@ -103,9 +124,45 @@ export const world2 = {
     }, { passive: true });
 
     this.applyCamera();
-    const loop = () => { requestAnimationFrame(loop); this.renderer.render(this.scene, this.camera); };
+    const frame = () => {
+      const t = performance.now() / 1000;
+      this.tickChars(t);
+      this.renderer.render(this.scene, this.camera);
+    };
+    const loop = () => { requestAnimationFrame(loop); frame(); };
     loop();
-    setInterval(() => this.renderer.render(this.scene, this.camera), 120); // throttled-tab fallback
+    setInterval(frame, 120); // throttled-tab fallback
+  },
+
+  chars: [],
+  async placeCharacters() {
+    // a few residents so scale and motion read; walker orbits the plaza
+    const defs = [
+      { body: "white",   x: 16,  z: 14 },
+      { body: "pink",    x: -30, z: -78 },
+      { body: "skyblue", walker: true },
+    ];
+    for (const d of defs) {
+      const c = await makeGLBCharacter({ body: d.body });
+      if (!d.walker) c.group.position.set(d.x, domeY(d.x, d.z), d.z);
+      c.walkerDef = d;
+      this.scene.add(c.group);
+      this.chars.push(c);
+    }
+  },
+
+  tickChars(t) {
+    for (const c of this.chars) {
+      if (c.walkerDef?.walker) {
+        const a = t * 0.16;
+        const r = 46;
+        const x = Math.sin(a) * r, z = Math.cos(a) * r;
+        c.walking = true;
+        c.group.position.set(x, domeY(x, z), z);
+        c.group.rotation.y = a + Math.PI / 2; // face along the path
+      }
+      c.tick(t);
+    }
   },
 
   applyCamera() {
@@ -125,55 +182,30 @@ export const world2 = {
   },
 
   async buildGround() {
-    // dome cap with planar-projected UVs so the grass+road tile repeats on a
-    // CELL grid; roads land on x ≡ 0 (mod CELL), z ≡ 0 (mod CELL)
+    // dome cap with planar UVs over the single baked radial map (composited
+    // from the two road-wrapper tiles: 6 arms, hex ring, paved plaza)
     const cap = new THREE.SphereGeometry(R, 160, 80, 0, Math.PI * 2, 0, 0.72);
     cap.translate(0, -R, 0);
     const pos = cap.attributes.position;
     const uv = cap.attributes.uv;
+    const SPAN = 800;
     for (let i = 0; i < pos.count; i++) {
-      uv.setXY(i, (pos.getX(i) / CELL) + 0.5, (pos.getZ(i) / CELL) + 0.5);
+      uv.setXY(i, pos.getX(i) / SPAN + 0.5, pos.getZ(i) / SPAN + 0.5);
     }
-    const grass = await this.loadTex("world2/road_grass.jpg");
-    grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
-    grass.anisotropy = 8;
-    this.scene.add(new THREE.Mesh(cap, new THREE.MeshLambertMaterial({ map: grass })));
-
-    // concrete plaza decal, feathered into the grass, roads width-matched
-    const img = await new Promise((res, rej) => {
-      const i = new Image();
-      i.onload = () => res(i); i.onerror = rej;
-      i.src = "world2/road_plaza.jpg";
-    });
-    const cv = document.createElement("canvas");
-    cv.width = cv.height = img.width;
-    const ctx = cv.getContext("2d");
-    ctx.drawImage(img, 0, 0);
-    const feather = ctx.createRadialGradient(
-      cv.width / 2, cv.height / 2, cv.width * 0.483,
-      cv.width / 2, cv.height / 2, cv.width * 0.498);
-    feather.addColorStop(0, "rgba(0,0,0,1)");
-    feather.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.globalCompositeOperation = "destination-in";
-    ctx.fillStyle = feather;
-    ctx.fillRect(0, 0, cv.width, cv.height);
-    const plazaTex = new THREE.CanvasTexture(cv);
-    plazaTex.colorSpace = THREE.SRGBColorSpace;
-    plazaTex.anisotropy = 8;
-    const pg = new THREE.PlaneGeometry(PLAZA, PLAZA, 24, 24);
-    pg.rotateX(-Math.PI / 2);
-    const pp = pg.attributes.position;
-    for (let i = 0; i < pp.count; i++) {
-      pp.setY(i, domeY(pp.getX(i), pp.getZ(i)) + 0.35); // hug the dome curve
-    }
-    pg.computeVertexNormals();
-    this.scene.add(new THREE.Mesh(pg, new THREE.MeshLambertMaterial({
-      map: plazaTex, transparent: true, depthWrite: false,
-    })));
+    const map = await this.loadTex("world2/ground_radial.jpg");
+    map.wrapS = map.wrapT = THREE.ClampToEdgeWrapping; // edges are pure grass
+    map.anisotropy = 8;
+    this.scene.add(new THREE.Mesh(cap, new THREE.MeshLambertMaterial({ map })));
   },
 
   async setSky(mode) {
-    // day is present; night image not delivered yet — same slot, drop-in later
+    const LOOKS = {
+      day:   { cap: 0x1e6fd8, bg: 0xbcd9ee, hemi: 1.1,  sun: 1.2,
+               hemiSky: 0xeaf6ff, hemiGnd: 0x8fa3b8, sunCol: 0xfff2d9 },
+      night: { cap: 0x02092c, bg: 0x0a1230, hemi: 0.5,  sun: 0.4,
+               hemiSky: 0x4a5f8a, hemiGnd: 0x1c2438, sunCol: 0xa8c2e8 },
+    };
+    const look = LOOKS[mode] ?? LOOKS.day;
     try {
       const tex = await this.loadTex(`world2/sky_${mode}.jpg`);
       tex.wrapS = THREE.MirroredRepeatWrapping; // seam-free wrap of the backdrop
@@ -185,15 +217,21 @@ export const world2 = {
         this.sky.position.y = 430;
         this.sky.rotation.y = Math.PI / 2; // park the mirror axis behind the camera
         this.scene.add(this.sky);
-        // cap the cylinder with the sky's zenith color so looking up stays clean
-        const cap = new THREE.Mesh(new THREE.CircleGeometry(1900, 72),
-          new THREE.MeshBasicMaterial({ color: 0x1e6fd8 }));
-        cap.rotation.x = Math.PI / 2;
-        cap.position.y = 1725;
-        this.scene.add(cap);
+        this.skyCap = new THREE.Mesh(new THREE.CircleGeometry(1900, 72),
+          new THREE.MeshBasicMaterial({ color: look.cap }));
+        this.skyCap.rotation.x = Math.PI / 2;
+        this.skyCap.position.y = 1725;
+        this.scene.add(this.skyCap);
       }
       this.sky.material.map = tex;
       this.sky.material.needsUpdate = true;
+      this.skyCap.material.color.set(look.cap);
+      this.scene.background = new THREE.Color(look.bg);
+      this.hemi.color.set(look.hemiSky);
+      this.hemi.groundColor.set(look.hemiGnd);
+      this.hemi.intensity = look.hemi;
+      this.sun.color.set(look.sunCol);
+      this.sun.intensity = look.sun;
     } catch {
       console.warn(`world2: sky_${mode}.jpg missing — keeping current sky`);
     }
