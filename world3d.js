@@ -208,11 +208,26 @@ export const world3d = {
 
     // ground: open grass, per the globe reference — roads/buildings/trees
     // arrive from real geometry in loadWorld()
-    const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(1500, 48),
-      new THREE.MeshLambertMaterial({ color: M.grass }));
+    const groundMat = new THREE.MeshLambertMaterial({ color: M.grass });
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(1500, 48), groundMat);
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
+    this.texIfExists("textures/grass-tile.jpg", tex => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(100, 100);
+      groundMat.map = tex;
+      groundMat.color.set(0xffffff); // texture carries the color; lights carry the mode
+      groundMat.needsUpdate = true;
+    });
+  },
+
+  // optional generated texture: applied when present, silent when absent
+  texIfExists(url, onload) {
+    new THREE.TextureLoader().load(url, tex => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      onload(tex);
+      this.needsRender = true;
+    }, undefined, () => {});
   },
 
   // Real Itaewon: roads baked from OpenStreetMap (scripts/fetch_roads.py),
@@ -242,6 +257,9 @@ export const world3d = {
           if (len < 0.5) continue;
           const ang = Math.atan2(dx, dz);
           const g = new THREE.BoxGeometry(w, 0.5, len);
+          // scale v so the asphalt texture repeats every ~26u along the road
+          const uv = g.attributes.uv;
+          for (let ui = 0; ui < uv.count; ui++) uv.setY(ui, uv.getY(ui) * (len / 26));
           g.applyMatrix4(new THREE.Matrix4().makeRotationY(ang)
             .setPosition((x + x2) / 2, 0.25, (z + z2) / 2));
           roadGeos.push(g);
@@ -259,9 +277,14 @@ export const world3d = {
         }
       }
     }
-    this.scene.add(new THREE.Mesh(
-      mergeGeometries(roadGeos),
-      new THREE.MeshLambertMaterial({ color: M.road })));
+    const roadMat = new THREE.MeshLambertMaterial({ color: M.road });
+    this.scene.add(new THREE.Mesh(mergeGeometries(roadGeos), roadMat));
+    this.texIfExists("textures/asphalt-tile.jpg", tex => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      roadMat.map = tex;
+      roadMat.color.set(0xffffff);
+      roadMat.needsUpdate = true;
+    });
 
     // zone flavor fields (gaussian falloff around zone centers)
     const flavors = ZONE_FLAVOR.map(f => ({ p: geoPos(f.lat, f.lng), build: f.build, green: f.green }));
@@ -280,6 +303,7 @@ export const world3d = {
     const bodyGeos = bodyCols.map(() => []);
     const accGeos = accCols.map(() => []);
     const winGeos = [];
+    const facadeGeos = [[], [], [], []]; // one bucket per facade sheet a-d
     const usedLots = new Set();
     // gathering plazas: keep zone centers clear of structures
     const nearZoneCenter = (x, z, rad) =>
@@ -316,6 +340,32 @@ export const world3d = {
         tg.applyMatrix4(rot().setPosition(px, h + 7.2, pz));
         bodyGeos[bi].push(tg);
       }
+      // generated facade sheets wrap all four faces (texture applied when
+      // the file exists); v repeats per ~24u of height, u per ~24u of width.
+      // Mostly quiet facades; the loud colorful one (d) is a rare accent
+      // on low-rise only, per the reference's balance.
+      const fr = rand();
+      let fi = fr < 0.38 ? 0 : fr < 0.7 ? 1 : fr < 0.92 ? 2 : 3;
+      if (fi === 3 && h > 28) fi = Math.floor(rand() * 3);
+      const faces = [
+        { w: fw, off: [0, 0, fd / 2 + 0.12], ry: 0 },
+        { w: fw, off: [0, 0, -fd / 2 - 0.12], ry: Math.PI },
+        { w: fd, off: [fw / 2 + 0.12, 0, 0], ry: Math.PI / 2 },
+        { w: fd, off: [-fw / 2 - 0.12, 0, 0], ry: -Math.PI / 2 },
+      ];
+      for (const f of faces) {
+        const fg = new THREE.PlaneGeometry(f.w, h);
+        const fuv = fg.attributes.uv;
+        for (let ui = 0; ui < fuv.count; ui++) {
+          fuv.setXY(ui, fuv.getX(ui) * Math.max(1, Math.round(f.w / 24)),
+                        fuv.getY(ui) * Math.max(1, Math.round(h / 24)));
+        }
+        const local = new THREE.Matrix4().makeRotationY(f.ry)
+          .setPosition(f.off[0], 0, f.off[2]);
+        fg.applyMatrix4(rot().setPosition(px, h / 2, pz).multiply(local));
+        facadeGeos[fi].push(fg);
+      }
+
       // window quads on front/back faces — cool glass by day, warm glow
       // at night (per STYLE.md)
       if (rand() < 0.65) {
@@ -345,6 +395,31 @@ export const world3d = {
         emissive: M.winEmis,
         emissiveIntensity: NIGHT ? 1 : 0,
       })));
+
+    // facade meshes appear only once their texture loads (silent fallback
+    // to the plain colored boxes otherwise)
+    ["a", "b", "c", "d"].forEach((k, i) => {
+      if (!facadeGeos[i].length) return;
+      this.texIfExists("textures/facade-" + k + ".jpg", tex => {
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        this.scene.add(new THREE.Mesh(
+          mergeGeometries(facadeGeos[i]),
+          new THREE.MeshLambertMaterial({ map: tex })));
+      });
+    });
+
+    // paved gathering plazas at fixed zone centers
+    this.texIfExists("textures/plaza-tile.jpg", tex => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(5, 5);
+      const plazaMat = new THREE.MeshLambertMaterial({ map: tex });
+      for (const f of flavors) {
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(52, 36), plazaMat);
+        disc.rotation.x = -Math.PI / 2;
+        disc.position.set(f.p.x, 0.22, f.p.z);
+        this.scene.add(disc);
+      }
+    });
 
     // trees: green-zone weighted, clear of roads and lots
     const trunkGeos = [];
