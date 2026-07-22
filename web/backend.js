@@ -401,16 +401,16 @@ export const presence = {
       if (!zone) continue;
       const slot = byZone.get(r.zone_id) ?? 0;
       byZone.set(r.zone_id, slot + 1);
-      remotes.push({ avatar: normalizeAvatar(r.avatar), mx: zone.marker_x, my: zone.marker_y, slot });
+      remotes.push({ avatar: normalizeAvatar(r.avatar), lat: zone.lat, lng: zone.lng, slot });
     }
     world3d.setRemotes(remotes);
-    // own character: at my zone marker while open, absent while closed;
-    // the 3D camera follows it (avatar keeps its screen spot)
+    // own character: at my zone's real position while open, absent while
+    // closed; the 3D camera follows it (avatar keeps its screen spot)
     if (this.myZone) {
       world3d.setPlayer({
         avatar: avatar.mine,
-        mx: this.myZone.marker_x,
-        my: this.myZone.marker_y,
+        lat: this.myZone.lat,
+        lng: this.myZone.lng,
       });
       this.ensureYouTag();
     } else {
@@ -831,8 +831,8 @@ export const avatar = {
     if (presence.myZone) {
       world3d.setPlayer({
         avatar: this.mine,
-        mx: presence.myZone.marker_x,
-        my: presence.myZone.marker_y,
+        lat: presence.myZone.lat,
+        lng: presence.myZone.lng,
       });
     }
   },
@@ -964,7 +964,7 @@ export const pubchat = {
     } else {
       const zone = presence.zones.find(z => z.id === m.zone_id);
       if (!zone) { host.remove(); return; }
-      world3d.anchorAtZone(host, zone.marker_x, zone.marker_y);
+      world3d.anchorAtZone(host, zone.lat, zone.lng);
     }
     setTimeout(() => {
       b.classList.add("out");
