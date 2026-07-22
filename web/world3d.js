@@ -5,7 +5,11 @@
 // points via projection each tick.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { mergeGeometries } from "https://esm.sh/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js";
-import { makeCharacter } from "./character3d.js";
+import { makeCharacter, makeGLBCharacter } from "./character3d.js";
+
+// ?glb=1 renders the PLAYER with the generated Tripo/Meshy base model
+// (evaluation only; NPCs/remotes stay procedural)
+const GLB_MODE = new URLSearchParams(location.search).get("glb") === "1";
 
 const CHAR_H = 15;
 
@@ -486,8 +490,8 @@ export const world3d = {
   chars: new Set(),      // every live modular character (for animation)
   remoteRecs: [],
 
-  makeChar(avatarCfg, pos, parent) {
-    const api = makeCharacter(avatarCfg);
+  makeChar(avatarCfg, pos, parent, apiOverride) {
+    const api = apiOverride ?? makeCharacter(avatarCfg);
     api.group.position.copy(pos);
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(1, 24),
@@ -518,10 +522,23 @@ export const world3d = {
       const pos = geoPos(opts.lat, opts.lng);
       // zone change while already in world: walk there instead of teleporting
       const spawnAt = prevPos && prevPos.distanceTo(pos) > 1 ? prevPos : pos;
-      this.player = this.makeChar(opts.avatar, spawnAt, this.scene);
-      if (!spawnAt.equals(pos)) this.player.walkTarget = pos.clone();
-      this.followPos = this.player.api.group.position; // live ref: camera tracks walking
-      this.observing = false; // going open snaps attention back to you
+      const install = api => {
+        this.player = this.makeChar(opts.avatar, spawnAt, this.scene, api);
+        if (!spawnAt.equals(pos)) this.player.walkTarget = pos.clone();
+        this.followPos = this.player.api.group.position; // live ref: camera tracks walking
+        this.observing = false; // going open snaps attention back to you
+        this.needsRender = true;
+      };
+      if (GLB_MODE) {
+        const token = (this._glbToken = (this._glbToken ?? 0) + 1);
+        makeGLBCharacter(opts.avatar).then(api => {
+          if (token !== this._glbToken) return;
+          if (this.player) { this.removeChar(this.player, this.scene); this.player = null; }
+          install(api);
+        }).catch(() => install(undefined)); // fall back to procedural
+      } else {
+        install(undefined);
+      }
     } else {
       this.followPos = null;
     }

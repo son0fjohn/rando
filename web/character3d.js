@@ -5,6 +5,7 @@
 // exactly. API (makeCharacter -> { group, config, setConfig, tick }) is
 // the contract a future rigged GLB base can implement as a drop-in swap.
 import * as THREE from "https://esm.sh/three@0.160.0";
+import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
 export const BODY_HEX = {
   white:  "#e7e7e7", black: "#212120", grey:   "#848483", navy: "#21365f",
@@ -334,6 +335,61 @@ export function characterSheet(cfgs, cell = 200) {
   });
   r.dispose();
   return out.toDataURL("image/jpeg", 0.78);
+}
+
+// ---- GLB evaluation path (?glb=1): the Tripo/Meshy base model in place
+// of the procedural body. The file is a static mesh (no rig), so tick()
+// can only do whole-body motion. Tint = material color multiplied over
+// the baked near-white texture.
+let glbTemplate = null;
+export function loadGLBTemplate(url = "models/base.glb") {
+  if (!glbTemplate) {
+    glbTemplate = new GLTFLoader().loadAsync(url).then(g => {
+      const src = g.scene;
+      const box = new THREE.Box3().setFromObject(src);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      src.scale.setScalar(15 / size.y); // normalize to CHAR_H
+      const box2 = new THREE.Box3().setFromObject(src);
+      src.position.y -= box2.min.y;     // feet on the ground
+      src.position.x -= (box2.min.x + box2.max.x) / 2;
+      src.position.z -= (box2.min.z + box2.max.z) / 2;
+      const holder = new THREE.Group();
+      holder.add(src);
+      return holder;
+    });
+  }
+  return glbTemplate;
+}
+
+export async function makeGLBCharacter(rawCfg) {
+  const cfg = normalizeAvatar(rawCfg);
+  const template = await loadGLBTemplate();
+  const group = template.clone(true);
+  const tint = new THREE.Color(BODY_HEX[cfg.body]);
+  group.traverse(o => {
+    if (o.isMesh) {
+      o.material = o.material.clone();
+      o.material.color = tint.clone();
+    }
+  });
+  return {
+    group,
+    get config() { return { ...cfg }; },
+    setConfig() {}, // evaluation build only
+    walking: false,
+    phase: Math.random() * Math.PI * 2,
+    tick(t) {
+      const p = t * (this.walking ? 9 : 2) + this.phase;
+      if (this.walking) {
+        group.position.y = Math.abs(Math.sin(p)) * 0.55;
+        group.rotation.z = Math.sin(p) * 0.07;
+      } else {
+        group.position.y = Math.sin(p) * 0.16;
+        group.rotation.z = 0;
+      }
+    },
+  };
 }
 
 // portrait thumbnail for chat headers / match cards (data URL)
