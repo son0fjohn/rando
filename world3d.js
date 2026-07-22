@@ -304,7 +304,26 @@ export const world3d = {
     const accGeos = accCols.map(() => []);
     const winGeos = [];
     const facadeGeos = [[], [], [], []]; // one bucket per facade sheet a-d
-    const usedLots = new Set();
+    // true collision: placed footprint circles, bucketed for fast lookup
+    const placed = new Map(); // "bx,bz" -> [{x, z, r}]
+    const BUCKET = 64;
+    const collides = (x, z, r) => {
+      const bx = Math.floor(x / BUCKET), bz = Math.floor(z / BUCKET);
+      for (let i = bx - 1; i <= bx + 1; i++) {
+        for (let j = bz - 1; j <= bz + 1; j++) {
+          for (const p of placed.get(i + "," + j) ?? []) {
+            const d2 = (x - p.x) ** 2 + (z - p.z) ** 2;
+            if (d2 < (r + p.r + 2) ** 2) return true;
+          }
+        }
+      }
+      return false;
+    };
+    const occupy = (x, z, r) => {
+      const k = Math.floor(x / BUCKET) + "," + Math.floor(z / BUCKET);
+      if (!placed.has(k)) placed.set(k, []);
+      placed.get(k).push({ x, z, r });
+    };
     // gathering plazas: keep zone centers clear of structures
     const nearZoneCenter = (x, z, rad) =>
       flavors.some(f => (x - f.p.x) ** 2 + (z - f.p.z) ** 2 < rad * rad);
@@ -316,11 +335,12 @@ export const world3d = {
       const px = c.x + Math.cos(c.ang) * off * side;
       const pz = c.z - Math.sin(c.ang) * off * side;
       if (nearZoneCenter(px, pz, 78)) continue;
-      const lot = Math.round(px / 36) + "," + Math.round(pz / 36);
-      if (usedLots.has(lot)) continue;
-      usedLots.add(lot);
-      mark(px, pz);
       const fw = 16 + rand() * 14, fd = 16 + rand() * 14;
+      // half-diagonal covers the footprint at any rotation
+      const rad = Math.hypot(fw, fd) / 2;
+      if (collides(px, pz, rad)) continue;
+      occupy(px, pz, rad);
+      mark(px, pz);
       let h = 10 + D * (14 + rand() * 46);
       // keep sightlines open around gathering plazas: low-rise near centers
       if (nearZoneCenter(px, pz, 170)) h = Math.min(h, 20);
