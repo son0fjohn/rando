@@ -390,7 +390,9 @@ export async function makeGLBCharacter(rawCfg) {
   const cfg = normalizeAvatar(rawCfg);
   const template = await loadGLBTemplate();
   const group = SkeletonUtils.clone(template);
-  const tint = new THREE.Color(BODY_HEX[cfg.body]);
+  // 1.18 ≈ 1/0.85: cancels the baked texture's grey base albedo so the
+  // tint multiply lands on the true body color (white stays white)
+  const tint = new THREE.Color(BODY_HEX[cfg.body]).multiplyScalar(1.18);
   group.traverse(o => {
     if (o.isMesh || o.isSkinnedMesh) {
       o.material = o.material.clone();
