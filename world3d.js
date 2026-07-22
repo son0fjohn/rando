@@ -4,26 +4,50 @@
 // relit renders used everywhere else. DOM bubbles/tags anchor to 3D
 // points via projection each tick.
 import * as THREE from "https://esm.sh/three@0.160.0";
+import { mergeGeometries } from "https://esm.sh/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js";
 import { makeCharacter } from "./character3d.js";
 
-const PCT = 5.2; // world units per art-% (zone marker coords come as %)
 const CHAR_H = 15;
-// NPCs are preset v2 characters now — same modular system as players,
-// distinct personality via parts. Pairs face each other (hanging out).
+
+// Geographic world: coordinates ARE real Itaewon geography, projected the
+// same way scripts/fetch_roads.py bakes the OSM roads.
+const GEO_CENTER = [37.5346, 126.9946]; // Itaewon station
+const GEO_SCALE = 0.55;                 // world units per metre
+const WORLD_EDGE = 1050;                // far positions clamp to this radius
+
+function geoPos(lat, lng) {
+  const mLat = 110540.0, mLng = 111320.0 * Math.cos(GEO_CENTER[0] * Math.PI / 180);
+  let x = (Number(lng) - GEO_CENTER[1]) * mLng * GEO_SCALE;
+  let z = -(Number(lat) - GEO_CENTER[0]) * mLat * GEO_SCALE; // north = -z
+  const d = Math.hypot(x, z);
+  if (d > WORLD_EDGE) { // visitors far outside Itaewon appear at the map
+    x *= WORLD_EDGE / d; // edge in their true real-world direction
+    z *= WORLD_EDGE / d;
+  }
+  return new THREE.Vector3(x, 0, z);
+}
+
+// NPCs at real spots: one pair in Gyeongnidan, one by Itaewon station.
 const NPC_DEFS = [
-  { id: "npc-silver",  mx: 17, my: 50,   partner: "npc-dreads",
+  { id: "npc-silver",  lat: 37.5390, lng: 126.9884, partner: "npc-dreads",
     preset: { body: "grey",   eyes: "sleepy",  head: "floppyears" } },
-  { id: "npc-dreads",  mx: 28, my: 51.5, partner: "npc-silver",
+  { id: "npc-dreads",  lat: 37.5389, lng: 126.9892, partner: "npc-silver",
     preset: { body: "navy",   eyes: "default", iris: "brown", head: "teardrop" } },
-  { id: "npc-buzzcut", mx: 71, my: 63,   partner: "npc-cans",
+  { id: "npc-buzzcut", lat: 37.5349, lng: 126.9951, partner: "npc-cans",
     preset: { body: "red",    eyes: "anime",   iris: "orange", head: "smallspikes" } },
-  { id: "npc-cans",    mx: 84, my: 65,   partner: "npc-buzzcut",
+  { id: "npc-cans",    lat: 37.5347, lng: 126.9958, partner: "npc-buzzcut",
     preset: { body: "orange", eyes: "spiral",  head: "notailspike" } },
 ];
 
-function groundPos(mx, my) {
-  return new THREE.Vector3((mx - 50) * PCT, 0, (my - 60) * PCT);
-}
+// zone character: density weight for buildings (urban) vs greenery
+const ZONE_FLAVOR = [
+  { lat: 37.5346, lng: 126.9946, build: 1.0,  green: 0.05 }, // Itaewon station
+  { lat: 37.5349, lng: 126.9941, build: 0.95, green: 0.05 }, // Hamilton Alley
+  { lat: 37.5392, lng: 126.9887, build: 0.7,  green: 0.3 },  // Gyeongnidan
+  { lat: 37.5340, lng: 126.9868, build: 0.55, green: 0.35 }, // Noksapyeong
+  { lat: 37.5418, lng: 126.9882, build: 0.3,  green: 0.9 },  // Haebangchon
+  { lat: 37.5289, lng: 126.9944, build: 0.25, green: 0.85 }, // Bogwang
+];
 
 function mulberry32(seed) {
   return () => {
@@ -74,14 +98,15 @@ export const world3d = {
     this.remoteGroup = new THREE.Group();
     this.scene.add(this.remoteGroup);
     for (const n of NPC_DEFS) {
-      const pos = groundPos(n.mx, n.my);
+      const pos = geoPos(n.lat, n.lng);
       const rec = this.makeChar(n.preset, pos, this.scene);
       const partner = NPC_DEFS.find(d => d.id === n.partner);
       if (partner) {
-        const pp = groundPos(partner.mx, partner.my);
+        const pp = geoPos(partner.lat, partner.lng);
         rec.api.group.rotation.y = Math.atan2(pp.x - pos.x, pp.z - pos.z);
       }
     }
+    this.loadWorld(); // async: real roads + zone-flavored buildings/trees
 
     this.bindControls();
     window.addEventListener("resize", () => this.resize());
@@ -152,82 +177,145 @@ export const world3d = {
       this.scene.add(s);
     }
 
-    // ground: light cool grey with a faint large tile grid
-    const groundTex = this.canvasTex(256, 256, g => {
-      g.fillStyle = "#dae1e8";
-      g.fillRect(0, 0, 256, 256);
-      g.strokeStyle = "#cdd6df";
-      g.lineWidth = 2;
-      for (let i = 0; i <= 256; i += 64) {
-        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
-        g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke();
-      }
-    });
-    groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
-    groundTex.repeat.set(56, 56);
+    // ground: open grass, per the globe reference — roads/buildings/trees
+    // arrive from real geometry in loadWorld()
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(2800, 2800),
-      new THREE.MeshLambertMaterial({ map: groundTex }));
+      new THREE.CircleGeometry(1500, 48),
+      new THREE.MeshLambertMaterial({ color: 0x79b356 }));
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
+  },
 
-    // roads: slate blue with pale sidewalk borders
-    const roadMat = new THREE.MeshLambertMaterial({ color: 0x76849b });
-    const curbMat = new THREE.MeshLambertMaterial({ color: 0xe9eef4 });
-    const mkRoad = (len, wdt, x, z, rotY) => {
-      const g = new THREE.Group();
-      const r = new THREE.Mesh(new THREE.BoxGeometry(len, 0.4, wdt), roadMat);
-      r.position.y = 0.2;
-      g.add(r);
-      for (const side of [-1, 1]) {
-        const c = new THREE.Mesh(new THREE.BoxGeometry(len, 0.5, 2.6), curbMat);
-        c.position.set(0, 0.25, side * (wdt / 2 + 1.3));
-        g.add(c);
-      }
-      g.position.set(x, 0, z);
-      g.rotation.y = rotY;
-      this.scene.add(g);
-    };
-    mkRoad(2000, 26, 0, 40, 0);
-    mkRoad(2000, 26, -50, 0, Math.PI / 2);
-    mkRoad(1400, 20, 150, -120, 0.5);
+  // Real Itaewon: roads baked from OpenStreetMap (scripts/fetch_roads.py),
+  // buildings placed along actual road frontage with density driven by
+  // zone character (urban clusters), trees filling the green zones.
+  async loadWorld() {
+    let data;
+    try {
+      data = await (await fetch("roads.json")).json();
+    } catch { return; }
+    const rand = mulberry32(4207);
+    const WID = { primary: 24, secondary: 19, tertiary: 15, residential: 11, pedestrian: 8, unclassified: 11 };
 
-    // buildings: white boxes with dark horizontal window bands
-    const rand = mulberry32(20260719);
-    const shades = ["#f6f8fa", "#eff3f7", "#e7edf3"];
-    for (let i = 0; i < 26; i++) {
-      const a = rand() * Math.PI * 2;
-      const r = 190 + rand() * 420;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (Math.abs(x) < 110 && Math.abs(z) < 110) continue;
-      const bw = 34 + rand() * 60, bh = 24 + rand() * 80, bd = 34 + rand() * 60;
-      const base = shades[i % shades.length];
-      const bands = bh > 60 ? 3 : bh > 38 ? 2 : 1;
-      const sideTex = this.canvasTex(128, 128, g => {
-        g.fillStyle = base;
-        g.fillRect(0, 0, 128, 128);
-        const bandH = 16;
-        for (let b = 0; b < bands; b++) {
-          const y = 20 + b * (86 / bands);
-          g.fillStyle = "#54718f";
-          g.fillRect(8, y, 112, bandH);
-          g.strokeStyle = "#e8eef5";
-          g.lineWidth = 2;
-          for (let wx = 8; wx <= 120; wx += 16) {
-            g.beginPath(); g.moveTo(wx, y); g.lineTo(wx, y + bandH); g.stroke();
+    const roadGeos = [];
+    const occupied = new Set(); // 25u cells covered by roads/buildings
+    const mark = (x, z) => occupied.add(Math.round(x / 25) + "," + Math.round(z / 25));
+    const candidates = [];
+    for (const road of data.roads) {
+      const w = WID[road.t] ?? 11;
+      const pts = road.p;
+      for (let i = 0; i < pts.length; i++) {
+        const [x, z] = pts[i];
+        if (i < pts.length - 1) {
+          const [x2, z2] = pts[i + 1];
+          const dx = x2 - x, dz = z2 - z;
+          const len = Math.hypot(dx, dz);
+          if (len < 0.5) continue;
+          const ang = Math.atan2(dx, dz);
+          const g = new THREE.BoxGeometry(w, 0.5, len);
+          g.applyMatrix4(new THREE.Matrix4().makeRotationY(ang)
+            .setPosition((x + x2) / 2, 0.25, (z + z2) / 2));
+          roadGeos.push(g);
+          const steps = Math.max(1, Math.floor(len / 22));
+          for (let s = 0; s <= steps; s++) {
+            const t = s / steps, px = x + dx * t, pz = z + dz * t;
+            mark(px, pz);
+            if (road.t !== "pedestrian") candidates.push({ x: px, z: pz, ang, w });
           }
         }
-      });
-      const sideMat = new THREE.MeshLambertMaterial({ map: sideTex });
-      const topMat = new THREE.MeshLambertMaterial({ color: base });
-      const b = new THREE.Mesh(
-        new THREE.BoxGeometry(bw, bh, bd),
-        [sideMat, sideMat, topMat, topMat, sideMat, sideMat]);
-      b.position.set(x, bh / 2, z);
-      b.rotation.y = (rand() - 0.5) * 0.6;
-      this.scene.add(b);
+        if (i > 0 && i < pts.length - 1) {
+          const jg = new THREE.CylinderGeometry(w / 2, w / 2, 0.5, 10);
+          jg.applyMatrix4(new THREE.Matrix4().setPosition(x, 0.25, z));
+          roadGeos.push(jg);
+        }
+      }
     }
+    this.scene.add(new THREE.Mesh(
+      mergeGeometries(roadGeos),
+      new THREE.MeshLambertMaterial({ color: 0x9599a2 })));
 
+    // zone flavor fields (gaussian falloff around zone centers)
+    const flavors = ZONE_FLAVOR.map(f => ({ p: geoPos(f.lat, f.lng), build: f.build, green: f.green }));
+    const fieldAt = (x, z, key) => {
+      let v = 0;
+      for (const f of flavors) {
+        const d2 = (x - f.p.x) ** 2 + (z - f.p.z) ** 2;
+        v = Math.max(v, f[key] * Math.exp(-d2 / (2 * 260 * 260)));
+      }
+      return v;
+    };
+
+    // buildings: colorful smooth boxes with accent roof slabs
+    const bodyCols = [0xf4f1ea, 0xefe8dd, 0xe9eef2, 0xf7f7f7, 0xddd8cf];
+    const accCols = [0xe2704e, 0x58b0a2, 0xf2b84b, 0x5a7fc2, 0xd95f79, 0x7fc98f, 0xc9524a];
+    const bodyGeos = bodyCols.map(() => []);
+    const accGeos = accCols.map(() => []);
+    const usedLots = new Set();
+    // gathering plazas: keep zone centers clear of structures
+    const nearZoneCenter = (x, z, rad) =>
+      flavors.some(f => (x - f.p.x) ** 2 + (z - f.p.z) ** 2 < rad * rad);
+    for (const c of candidates) {
+      const D = fieldAt(c.x, c.z, "build");
+      if (rand() > D * 0.34) continue;
+      const side = rand() < 0.5 ? -1 : 1;
+      const off = c.w / 2 + 9 + rand() * 15;
+      const px = c.x + Math.cos(c.ang) * off * side;
+      const pz = c.z - Math.sin(c.ang) * off * side;
+      if (nearZoneCenter(px, pz, 60)) continue;
+      const lot = Math.round(px / 36) + "," + Math.round(pz / 36);
+      if (usedLots.has(lot)) continue;
+      usedLots.add(lot);
+      mark(px, pz);
+      const fw = 16 + rand() * 14, fd = 16 + rand() * 14;
+      const h = 10 + D * (14 + rand() * 46);
+      const bi = Math.floor(rand() * bodyCols.length);
+      // reference look: mostly quiet white/grey, occasional colour pop
+      const ai = rand() < 0.38 ? Math.floor(rand() * accCols.length) : -1;
+      const rot = () => new THREE.Matrix4().makeRotationY(c.ang);
+      const bg = new THREE.BoxGeometry(fw, h, fd);
+      bg.applyMatrix4(rot().setPosition(px, h / 2, pz));
+      bodyGeos[bi].push(bg);
+      const rg = new THREE.BoxGeometry(fw + 2, 2.2, fd + 2);
+      rg.applyMatrix4(rot().setPosition(px, h + 1.1, pz));
+      if (ai >= 0) accGeos[ai].push(rg);
+      else bodyGeos[bi].push(rg);
+      if (h > 34 && rand() < 0.5) {
+        const tg = new THREE.BoxGeometry(fw * 0.6, 10, fd * 0.6);
+        tg.applyMatrix4(rot().setPosition(px, h + 7.2, pz));
+        bodyGeos[bi].push(tg);
+      }
+    }
+    bodyGeos.forEach((arr, i) => arr.length && this.scene.add(new THREE.Mesh(
+      mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: bodyCols[i] }))));
+    accGeos.forEach((arr, i) => arr.length && this.scene.add(new THREE.Mesh(
+      mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: accCols[i] }))));
+
+    // trees: green-zone weighted, clear of roads and lots
+    const trunkGeos = [];
+    const canopyCols = [0x5e9c46, 0x6fae4f, 0x4f8f3e];
+    const canopyGeos = canopyCols.map(() => []);
+    for (let i = 0; i < 1500; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 1000;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (occupied.has(Math.round(x / 25) + "," + Math.round(z / 25))) continue;
+      if (nearZoneCenter(x, z, 40)) continue;
+      const G = fieldAt(x, z, "green") + 0.06;
+      if (rand() > G * 0.75) continue;
+      const tg = new THREE.CylinderGeometry(1.2, 1.5, 7, 7);
+      tg.applyMatrix4(new THREE.Matrix4().setPosition(x, 3.5, z));
+      trunkGeos.push(tg);
+      const ci = Math.floor(rand() * canopyCols.length);
+      const cr = 5 + rand() * 3;
+      const cg = new THREE.SphereGeometry(cr, 10, 8);
+      cg.applyMatrix4(new THREE.Matrix4().setPosition(x, 7 + cr * 0.7, z));
+      canopyGeos[ci].push(cg);
+    }
+    if (trunkGeos.length) this.scene.add(new THREE.Mesh(
+      mergeGeometries(trunkGeos), new THREE.MeshLambertMaterial({ color: 0x8a6a48 })));
+    canopyGeos.forEach((arr, i) => arr.length && this.scene.add(new THREE.Mesh(
+      mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: canopyCols[i] }))));
+
+    this.needsRender = true;
   },
 
   registerZones(zones) {
@@ -237,8 +325,8 @@ export const world3d = {
         new THREE.RingGeometry(11, 13.5, 40),
         new THREE.MeshBasicMaterial({ color: 0x8fc2ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
-      const p = groundPos(Number(z.marker_x), Number(z.marker_y));
-      ring.position.set(p.x, 0.3, p.z);
+      const p = geoPos(z.lat, z.lng);
+      ring.position.set(p.x, 0.35, p.z);
       this.zoneRings.add(ring);
     }
     this.needsRender = true;
@@ -269,14 +357,14 @@ export const world3d = {
     this.chars.delete(rec);
   },
 
-  setPlayer(opts) { // { avatar, mx, my } | null
+  setPlayer(opts) { // { avatar, lat, lng } | null
     const prevPos = this.player ? this.player.api.group.position.clone() : null;
     if (this.player) {
       this.removeChar(this.player, this.scene);
       this.player = null;
     }
     if (opts) {
-      const pos = groundPos(Number(opts.mx), Number(opts.my));
+      const pos = geoPos(opts.lat, opts.lng);
       // zone change while already in world: walk there instead of teleporting
       const spawnAt = prevPos && prevPos.distanceTo(pos) > 1 ? prevPos : pos;
       this.player = this.makeChar(opts.avatar, spawnAt, this.scene);
@@ -289,14 +377,14 @@ export const world3d = {
     this.needsRender = true;
   },
 
-  setRemotes(list) { // [{ avatar, mx, my, slot }]
+  setRemotes(list) { // [{ avatar, lat, lng, slot }]
     for (const rec of this.remoteRecs) this.removeChar(rec, this.remoteGroup);
     this.remoteRecs = [];
     this.remoteGroup.clear();
     for (const r of list) {
       const dx = (r.slot % 2 ? -1 : 1) * Math.ceil((r.slot + 1) / 2) * 9;
       const dz = ((r.slot % 3) - 1) * 5;
-      const pos = groundPos(Number(r.mx), Number(r.my)).add(new THREE.Vector3(dx, 0, dz));
+      const pos = geoPos(r.lat, r.lng).add(new THREE.Vector3(dx, 0, dz));
       const rec = this.makeChar(r.avatar, pos, this.remoteGroup);
       // face roughly inward toward the cluster for a hanging-out feel
       rec.api.group.rotation.y = Math.atan2(-dx, 6);
@@ -310,14 +398,14 @@ export const world3d = {
     this.anchors.push({ el, getPos });
     this.placeAnchor(this.anchors[this.anchors.length - 1]);
   },
-  anchorAtZone(el, mx, my, headY = CHAR_H + 1) {
-    const p = groundPos(Number(mx), Number(my));
+  anchorAtZone(el, lat, lng, headY = CHAR_H + 1) {
+    const p = geoPos(lat, lng);
     this.anchor(el, () => new THREE.Vector3(p.x, headY, p.z));
   },
   anchorAtNpc(el, npcId) {
     const n = NPC_DEFS.find(n => n.id === npcId);
     if (!n) return;
-    this.anchorAtZone(el, n.mx, n.my);
+    this.anchorAtZone(el, n.lat, n.lng);
   },
   anchorAtPlayer(el, headY = CHAR_H + 1) {
     this.anchor(el, () =>
@@ -405,8 +493,8 @@ export const world3d = {
         const sin = Math.sin(this.cam.theta), cos = Math.cos(this.cam.theta);
         this.target.x += (-cos * dx - sin * dy) * k;
         this.target.z += (sin * dx - cos * dy) * k;
-        this.target.x = Math.max(-650, Math.min(650, this.target.x));
-        this.target.z = Math.max(-650, Math.min(650, this.target.z));
+        this.target.x = Math.max(-1100, Math.min(1100, this.target.x));
+        this.target.z = Math.max(-1100, Math.min(1100, this.target.z));
         this.applyCamera();
       }
     });
