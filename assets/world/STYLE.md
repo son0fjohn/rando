@@ -52,9 +52,50 @@ Prompt template (fill the bracket, keep the rest verbatim):
 > fields, cute miniature diorama proportions, clean and uncluttered,
 > no text or signage, no outlines, no low-poly faceting
 
-TODO(owner): paste the EXACT original prompt + model/settings used to
-generate the master reference below, so future sessions reproduce it:
+### Original recipe (locked 2026-07-22)
 
-```
-(original Higgsfield prompt + settings go here)
-```
+Tool: Higgsfield · Model: "ChatGPT Image 2" · Quality: 2K · Vertical format
+Reference images attached to every generation:
+1. COMPOSITION ref — WarioWare-style curved globe title screen (semi-circle
+   ground, roads radiating from a central landmark cluster, rounded clouds
+   framing the curved horizon). Save as `ref-composition_warioware-globe.png`.
+2. STYLE ref — smooth soft-shaded urban PS2-era scene (layered building
+   density, overhead wires, warm/cool mixed lighting, atmospheric depth).
+   Save as `ref-style_smooth-urban.png`.
+
+Original prompt (verbatim):
+
+> Use the first image as the composition and layout reference — a curved,
+> semi-circle globe-like ground surface viewed from a slight downward angle
+> so the curvature is visible, with roads/paths radiating outward from a
+> central point where a small cluster of buildings and landmarks sits, blue
+> sky with rounded clouds framing the curved horizon.
+> Use the second image as the strict rendering style and material reference
+> — match its exact look: smooth, soft-shaded 3D surfaces (not harsh
+> flat-faceted low-poly), realistic-feeling but still stylized textures on
+> the ground and buildings, layered urban density with buildings at varied
+> heights, overhead wires/cables for atmosphere, warm and cool lighting
+> mixed together, soft atmospheric depth.
+> Generate a world map globe combining these: the curved WarioWare-style
+> composition and road layout from the first image, rendered in the smooth
+> urban style and material quality of the second image. Include a few small
+> building clusters positioned around the globe (not just at the center),
+> open uncluttered ground/road areas so characters remain clearly visible
+> when placed on it, warm ambient lighting. No readable text, logos, or
+> signage — keep any sign-like shapes blank or abstracted. No characters
+> yet. Vertical format suitable for a mobile screen, with the globe
+> curvature filling most of the frame.
+
+## Night palette (engine mode, derived from the day table)
+
+| Element        | Hex       |
+|----------------|-----------|
+| Sky zenith     | `#0b1a38` |
+| Sky mid        | `#23406e` |
+| Sky horizon    | `#547499` |
+| Fog            | `#1c2c49` |
+| Cloud tint     | `#c2cfe2` |
+| Grass          | `#3d5c40` |
+| Road           | `#474c59` |
+| Window glow    | `#ffc86e` (emissive; windows are cool glass `#9db4c8` by day) |
+| Moonlight      | `#a8c2e8` |
