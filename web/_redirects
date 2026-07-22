@@ -1,0 +1,2 @@
+# the app used to live under /web/ — keep old links working
+/web/*  /:splat  301

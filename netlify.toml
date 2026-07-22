@@ -1,0 +1,5 @@
+# Deploy only the app itself (~5MB), not the art-source repo (~180MB).
+# Reference art, character sources, and pipeline scripts stay in git but
+# never need to be on the CDN.
+[build]
+  publish = "web"
