@@ -1,0 +1,7 @@
+{
+  "buildCommand": "",
+  "outputDirectory": "web",
+  "redirects": [
+    { "source": "/web/:path*", "destination": "/:path*", "permanent": true }
+  ]
+}
