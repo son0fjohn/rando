@@ -39,6 +39,26 @@ const NPC_DEFS = [
     preset: { body: "orange", eyes: "spiral",  head: "notailspike" } },
 ];
 
+// day/night mode: auto from local time, ?mode=night|day overrides.
+// Palettes are the law from assets/world/STYLE.md.
+const modeParam = new URLSearchParams(location.search).get("mode");
+const hourNow = new Date().getHours();
+export const NIGHT = modeParam === "night" ||
+  (modeParam !== "day" && (hourNow >= 19 || hourNow < 6.5));
+const M = NIGHT ? {
+  skyTop: "#0b1a38", skyMid: "#23406e", skyHor: "#547499",
+  fog: 0x1c2c49, hemiSky: 0x4a5f8a, hemiGround: 0x1c2438, hemiInt: 0.72,
+  sunCol: 0xa8c2e8, sunInt: 0.5, cloudBody: "#d8e2f2", cloudShade: "#8fa0bd",
+  cloudTint: 0xc2cfe2, cloudOp: 0.8, grass: 0x3d5c40, road: 0x474c59,
+  winCol: 0x2e2a22, winEmis: 0xffc86e,
+} : {
+  skyTop: "#2f83d2", skyMid: "#6cb2e6", skyHor: "#e2f1fa",
+  fog: 0xdcebf6, hemiSky: 0xeaf6ff, hemiGround: 0x8fa3b8, hemiInt: 1.15,
+  sunCol: 0xfff2d9, sunInt: 1.15, cloudBody: "#ffffff", cloudShade: "#c9dff0",
+  cloudTint: 0xffffff, cloudOp: 0.95, grass: 0x79b356, road: 0x9599a2,
+  winCol: 0x9db4c8, winEmis: 0x000000,
+};
+
 // zone character: density weight for buildings (urban) vs greenery
 const ZONE_FLAVOR = [
   { lat: 37.5346, lng: 126.9946, build: 1.0,  green: 0.05 }, // Itaewon station
@@ -84,12 +104,12 @@ export const world3d = {
     frameEl.prepend(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x3b8ed8);
-    this.scene.fog = new THREE.Fog(0xdcebf6, 340, 1250);
+    this.scene.background = new THREE.Color(M.skyTop);
+    this.scene.fog = new THREE.Fog(M.fog, 340, 1250);
     this.camera = new THREE.PerspectiveCamera(50, w / h, 1, 2500);
 
-    this.scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x8fa3b8, 1.15));
-    const sun = new THREE.DirectionalLight(0xfff2d9, 1.15);
+    this.scene.add(new THREE.HemisphereLight(M.hemiSky, M.hemiGround, M.hemiInt));
+    const sun = new THREE.DirectionalLight(M.sunCol, M.sunInt);
     sun.position.set(120, 200, 80);
     this.scene.add(sun);
 
@@ -136,11 +156,20 @@ export const world3d = {
     // gradient), rendered on an inverted dome so fog can't wash it out
     const skyTex = this.canvasTex(16, 256, g => {
       const grad = g.createLinearGradient(0, 0, 0, 256);
-      grad.addColorStop(0, "#2f83d2");
-      grad.addColorStop(0.55, "#6cb2e6");
-      grad.addColorStop(1, "#e2f1fa");
+      grad.addColorStop(0, M.skyTop);
+      grad.addColorStop(0.55, M.skyMid);
+      grad.addColorStop(1, M.skyHor);
       g.fillStyle = grad;
       g.fillRect(0, 0, 16, 256);
+      if (NIGHT) { // scatter of stars in the upper sky
+        g.fillStyle = "rgba(255,255,255,0.9)";
+        let s = 12345;
+        for (let i = 0; i < 40; i++) {
+          s = (s * 16807) % 2147483647;
+          const x = s % 16, y = (s >> 4) % 120;
+          g.fillRect(x, y, 1, 1);
+        }
+      }
     });
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(1800, 24, 12),
@@ -151,23 +180,23 @@ export const world3d = {
     // flat bases, cool blue shading tucked underneath — no airbrush fuzz
     const cloudTex = this.canvasTex(256, 128, g => {
       const puffs = [[52, 76, 28], [94, 58, 40], [144, 62, 36], [190, 76, 26], [120, 80, 42]];
-      g.fillStyle = "#c9dff0"; // under-shadow pass, nudged down
+      g.fillStyle = M.cloudShade; // under-shadow pass, nudged down
       for (const [x, y, r] of puffs) {
         g.beginPath(); g.arc(x, y + 8, r, 0, Math.PI * 2); g.fill();
       }
-      g.fillStyle = "#ffffff"; // solid body
+      g.fillStyle = M.cloudBody; // solid body
       for (const [x, y, r] of puffs) {
         g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
       }
       g.fillRect(34, 66, 184, 26);   // unify the base into one mass
-      g.fillStyle = "#d6e7f4";       // thin shading strip along the base
+      g.fillStyle = M.cloudShade;    // thin shading strip along the base
       g.fillRect(40, 86, 172, 8);
       g.clearRect(0, 94, 256, 34);   // hard flat cut — cel look
     });
     const cloudRand = mulberry32(777);
     for (let i = 0; i < 10; i++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: cloudTex, transparent: true, opacity: 0.95, fog: false,
+        map: cloudTex, transparent: true, opacity: M.cloudOp, color: M.cloudTint, fog: false,
       }));
       const a = cloudRand() * Math.PI * 2;
       const r = 950 + cloudRand() * 450;
@@ -181,7 +210,7 @@ export const world3d = {
     // arrive from real geometry in loadWorld()
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(1500, 48),
-      new THREE.MeshLambertMaterial({ color: 0x79b356 }));
+      new THREE.MeshLambertMaterial({ color: M.grass }));
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
   },
@@ -232,7 +261,7 @@ export const world3d = {
     }
     this.scene.add(new THREE.Mesh(
       mergeGeometries(roadGeos),
-      new THREE.MeshLambertMaterial({ color: 0x9599a2 })));
+      new THREE.MeshLambertMaterial({ color: M.road })));
 
     // zone flavor fields (gaussian falloff around zone centers)
     const flavors = ZONE_FLAVOR.map(f => ({ p: geoPos(f.lat, f.lng), build: f.build, green: f.green }));
@@ -250,6 +279,7 @@ export const world3d = {
     const accCols = [0xe2704e, 0x58b0a2, 0xf2b84b, 0x5a7fc2, 0xd95f79, 0x7fc98f, 0xc9524a];
     const bodyGeos = bodyCols.map(() => []);
     const accGeos = accCols.map(() => []);
+    const winGeos = [];
     const usedLots = new Set();
     // gathering plazas: keep zone centers clear of structures
     const nearZoneCenter = (x, z, rad) =>
@@ -261,13 +291,15 @@ export const world3d = {
       const off = c.w / 2 + 9 + rand() * 15;
       const px = c.x + Math.cos(c.ang) * off * side;
       const pz = c.z - Math.sin(c.ang) * off * side;
-      if (nearZoneCenter(px, pz, 60)) continue;
+      if (nearZoneCenter(px, pz, 78)) continue;
       const lot = Math.round(px / 36) + "," + Math.round(pz / 36);
       if (usedLots.has(lot)) continue;
       usedLots.add(lot);
       mark(px, pz);
       const fw = 16 + rand() * 14, fd = 16 + rand() * 14;
-      const h = 10 + D * (14 + rand() * 46);
+      let h = 10 + D * (14 + rand() * 46);
+      // keep sightlines open around gathering plazas: low-rise near centers
+      if (nearZoneCenter(px, pz, 170)) h = Math.min(h, 20);
       const bi = Math.floor(rand() * bodyCols.length);
       // reference look: mostly quiet white/grey, occasional colour pop
       const ai = rand() < 0.38 ? Math.floor(rand() * accCols.length) : -1;
@@ -284,11 +316,35 @@ export const world3d = {
         tg.applyMatrix4(rot().setPosition(px, h + 7.2, pz));
         bodyGeos[bi].push(tg);
       }
+      // window quads on front/back faces — cool glass by day, warm glow
+      // at night (per STYLE.md)
+      if (rand() < 0.65) {
+        const rows = Math.max(1, Math.floor(h / 16));
+        for (let wr = 0; wr < rows; wr++) {
+          for (const face of [1, -1]) {
+            if (rand() < 0.35) continue;
+            const wg = new THREE.PlaneGeometry(fw * 0.55, 4.2);
+            const wy = 7 + wr * (h - 10) / rows;
+            const local = new THREE.Matrix4().makeRotationY(face === 1 ? 0 : Math.PI)
+              .setPosition(0, 0, face * (fd / 2 + 0.25));
+            const world = rot().setPosition(px, wy, pz).multiply(local);
+            wg.applyMatrix4(world);
+            winGeos.push(wg);
+          }
+        }
+      }
     }
     bodyGeos.forEach((arr, i) => arr.length && this.scene.add(new THREE.Mesh(
       mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: bodyCols[i] }))));
     accGeos.forEach((arr, i) => arr.length && this.scene.add(new THREE.Mesh(
       mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: accCols[i] }))));
+    if (winGeos.length) this.scene.add(new THREE.Mesh(
+      mergeGeometries(winGeos),
+      new THREE.MeshLambertMaterial({
+        color: M.winCol,
+        emissive: M.winEmis,
+        emissiveIntensity: NIGHT ? 1 : 0,
+      })));
 
     // trees: green-zone weighted, clear of roads and lots
     const trunkGeos = [];
