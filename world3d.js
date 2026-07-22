@@ -9,7 +9,7 @@ import { makeCharacter, makeGLBCharacter } from "./character3d.js";
 
 // ?glb=1 renders the PLAYER with the generated Tripo/Meshy base model
 // (evaluation only; NPCs/remotes stay procedural)
-const GLB_MODE = new URLSearchParams(location.search).get("glb") === "1";
+const GLB_MODE = new URLSearchParams(location.search).get("glb") !== "0"; // GLB player is the default now
 
 const CHAR_H = 15;
 
