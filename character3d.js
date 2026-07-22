@@ -338,13 +338,14 @@ export function characterSheet(cfgs, cell = 200) {
   return out.toDataURL("image/jpeg", 0.78);
 }
 
-// ---- GLB path (?glb=1): the rigged Tripo/Meshy model in place of the
-// procedural body. walking.glb ships a 33-joint skeleton but no baked
-// clips, so tick() drives the bones directly (sine walk/idle cycles).
+// ---- GLB path (?glb=1): the rigged + animated Tripo model in place of
+// the procedural body. animations.glb carries 12 unnamed clips; indices
+// identified by motion fingerprinting (foot alternation / yaw / travel).
 // Tint = material color multiplied over the baked near-white texture.
+const GLB_CLIPS = { walk: 3, run: 9, idle: 8, spin: 0, hop: 1, wave: 7 };
 let glbTemplate = null;
 const depth = n => { let d = 0; while (n.parent) { d++; n = n.parent; } return d; };
-export function loadGLBTemplate(url = "models/walking.glb") {
+export function loadGLBTemplate(url = "models/animations.glb") {
   if (!glbTemplate) {
     glbTemplate = new GLTFLoader().loadAsync(url).then(g => {
       const src = g.scene;
@@ -376,20 +377,16 @@ export function loadGLBTemplate(url = "models/walking.glb") {
       src.position.z -= (box2.min.z + box2.max.z) / 2;
       const holder = new THREE.Group();
       holder.add(src);
-      return holder;
+      return { holder, clips: g.animations };
     });
   }
   return glbTemplate;
 }
 
-// NOTE: this export's skin weights are ~100% on Root (Tripo rig-only
-// download), so bone animation cannot move limbs. Until the animated
-// export (real weights + walk clip) is dropped in, tick() does a
-// whole-body waddle; swap to AnimationMixer when that file lands.
 export async function makeGLBCharacter(rawCfg) {
   const cfg = normalizeAvatar(rawCfg);
-  const template = await loadGLBTemplate();
-  const group = SkeletonUtils.clone(template);
+  const { holder, clips } = await loadGLBTemplate();
+  const group = SkeletonUtils.clone(holder);
   // normalize so the white body (#e7e7e7) maps to exactly 1.0 — any higher
   // gain clips lit surfaces to flat white and erases the hand/feet shading
   const tint = new THREE.Color(BODY_HEX[cfg.body]).multiplyScalar(255 / 231);
@@ -400,26 +397,30 @@ export async function makeGLBCharacter(rawCfg) {
       o.frustumCulled = false; // bind-pose bounds lie once bones move
     }
   });
+  const mixer = new THREE.AnimationMixer(group);
+  const idle = mixer.clipAction(clips[GLB_CLIPS.idle]);
+  const walk = mixer.clipAction(clips[GLB_CLIPS.walk]);
+  walk.timeScale = 1.25; // match in-world travel speed
+  idle.time = Math.random() * idle.getClip().duration; // desync crowds
+  idle.play();
+  let wasWalking = false;
+  let lastT = null;
   return {
     group,
     get config() { return { ...cfg }; },
     setConfig() {}, // evaluation build only
     walking: false,
-    phase: Math.random() * Math.PI * 2,
+    phase: 0,
     tick(t) {
-      const inner = group.children[0];
-      if (this.walking) {
-        const p = t * 9 + this.phase;
-        const s = Math.sin(p);
-        group.position.y = Math.abs(s) * 0.5;
-        inner.rotation.z = s * 0.09;
-        inner.rotation.x = Math.abs(Math.cos(p)) * 0.06;
-      } else {
-        const p = t * 2 + this.phase;
-        group.position.y = Math.sin(p) * 0.16;
-        inner.rotation.z = 0;
-        inner.rotation.x = 0;
+      if (this.walking !== wasWalking) {
+        const [from, to] = this.walking ? [idle, walk] : [walk, idle];
+        to.reset().fadeIn(0.22).play();
+        from.fadeOut(0.22);
+        wasWalking = this.walking;
       }
+      const dt = lastT === null ? 0.016 : Math.min(0.1, Math.max(0, t - lastT));
+      lastT = t;
+      mixer.update(dt);
     },
   };
 }
