@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rando — World 2 Assembly</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2f7ee0; }
+  #frame { position: absolute; inset: 0; }
+  #hud {
+    position: absolute; top: 10px; left: 10px; color: #fff; z-index: 5;
+    font: 12px/1.5 system-ui, sans-serif; text-shadow: 0 1px 3px rgba(0,0,0,.45);
+    user-select: none; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="frame"></div>
+<div id="hud">world2 assembly — drag to orbit, wheel to zoom</div>
+<script type="module">
+  import { world2 } from "./world2.js";
+  world2.init(document.getElementById("frame"));
+</script>
+</body>
+</html>
