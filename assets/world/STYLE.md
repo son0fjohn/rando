@@ -105,6 +105,9 @@ exact names; the engine wires them in on arrival.
 
 Rules: no readable text anywhere; keep lighting flat/neutral (the engine
 lights the scene); facades must fill the frame edge-to-edge, front-on.
+No W/M-shaped roof silhouettes or letter-like architectural shapes on the
+landmark — the WarioWare-crown motif is explicitly out (composition
+inspiration only, no derivative shapes).
 
 ## Night palette (engine mode, derived from the day table)
 
