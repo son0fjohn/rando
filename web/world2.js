@@ -102,8 +102,17 @@ export const world2 = {
     this.scene.environment = pmrem.fromScene(env, 0.04).texture;
     pmrem.dispose();
 
-    const mode = new URLSearchParams(location.search).get("sky") === "night" ? "night" : "day";
-    const loads = [this.buildGround(), this.setSky(mode), this.placeModels(), this.placeCharacters()];
+    const params = new URLSearchParams(location.search);
+    const mode = params.get("sky") === "night" ? "night" : "day";
+    // ?city=<name> loads a baked real-city ground map (OSM) instead of the
+    // radial toy layout; building placements are radial-specific, so skip
+    this.city = params.get("city");
+    if (this.city) {
+      const hud = document.getElementById("hud");
+      if (hud) hud.textContent += ` — ${this.city} · road data © OpenStreetMap contributors`;
+    }
+    const loads = [this.buildGround(), this.setSky(mode), this.placeCharacters()];
+    if (!this.city) loads.push(this.placeModels());
     this.ready = Promise.all(loads);
 
     // simple orbit for review
@@ -192,7 +201,9 @@ export const world2 = {
     for (let i = 0; i < pos.count; i++) {
       uv.setXY(i, pos.getX(i) / SPAN + 0.5, pos.getZ(i) / SPAN + 0.5);
     }
-    const map = await this.loadTex("world2/ground_radial.jpg");
+    const map = await this.loadTex(this.city
+      ? `world2/ground_${this.city}.jpg`
+      : "world2/ground_radial.jpg");
     map.wrapS = map.wrapT = THREE.ClampToEdgeWrapping; // edges are pure grass
     map.anisotropy = 8;
     this.scene.add(new THREE.Mesh(cap, new THREE.MeshLambertMaterial({ map })));

@@ -27,3 +27,4 @@ Desktop.ini
 # Editors
 .vscode/
 .idea/
+scripts/osm_cache_*.json
