@@ -7,6 +7,7 @@ import * as THREE from "https://esm.sh/three@0.160.0";
 import { mergeGeometries } from "https://esm.sh/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { makeCharacter, makeGLBCharacter, makeGLBCharacterSync, loadGLBTemplate } from "./character3d.js";
+import { THEME } from "./theme.js";
 
 // generated GLB characters are the default; ?glb=0 falls back to procedural
 const GLB_MODE = new URLSearchParams(location.search).get("glb") !== "0";
@@ -202,7 +203,7 @@ export const world3d = {
       sky.rotation.y = Math.PI / 2;
       this.scene.add(sky);
       const cap = new THREE.Mesh(new THREE.CircleGeometry(1900, 72),
-        new THREE.MeshBasicMaterial({ color: NIGHT ? 0x02092c : 0x1e6fd8, fog: false }));
+        new THREE.MeshBasicMaterial({ color: NIGHT ? 0x030b25 : 0x3072c7, fog: false }));
       cap.rotation.x = Math.PI / 2;
       cap.position.y = 1725;
       this.scene.add(cap);
@@ -220,7 +221,7 @@ export const world3d = {
       const tex = this.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
       tex.repeat.set(38, 38); // block ≈ 80u of ground per repeat
       groundMat.map = tex;
-      groundMat.color.set(NIGHT ? 0x5a6d80 : 0xffffff);
+      groundMat.color.set(NIGHT ? THEME.world.grassNight : THEME.world.grassDay);
       groundMat.needsUpdate = true;
       this.needsRender = true;
     }).catch(() => {});
@@ -228,12 +229,13 @@ export const world3d = {
       const tex = this.mirrorBlockTex(img, [0.05, 0.05, 0.27, 0.27]);
       tex.repeat.set(52, 52);
       const paved = new THREE.Mesh(new THREE.CircleGeometry(PAVED_R, 64),
-        new THREE.MeshLambertMaterial({ map: tex, color: NIGHT ? 0x77809a : 0xffffff }));
+        new THREE.MeshLambertMaterial({ map: tex,
+          color: NIGHT ? THEME.world.pavingNight : THEME.world.pavingDay }));
       paved.rotation.x = -Math.PI / 2;
       paved.position.y = 0.06;
       this.scene.add(paved);
       const curb = new THREE.Mesh(new THREE.RingGeometry(PAVED_R, PAVED_R + 4, 64),
-        new THREE.MeshLambertMaterial({ color: NIGHT ? 0x9aa2b5 : 0xd6d3d0 }));
+        new THREE.MeshLambertMaterial({ color: NIGHT ? THEME.world.curbNight : THEME.world.curbDay }));
       curb.rotation.x = -Math.PI / 2;
       curb.position.y = 0.07;
       this.scene.add(curb);
@@ -349,7 +351,7 @@ export const world3d = {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       for (const mat of [roadMat, jointMat]) {
         mat.map = tex;
-        mat.color.set(NIGHT ? 0x8a93a8 : 0xffffff);
+        mat.color.set(NIGHT ? THEME.world.roadNight : THEME.world.roadDay);
         mat.needsUpdate = true;
       }
       this.needsRender = true;

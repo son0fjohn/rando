@@ -7,12 +7,9 @@
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "https://esm.sh/three@0.160.0/examples/jsm/utils/SkeletonUtils.js";
+import { THEME } from "./theme.js";
 
-export const BODY_HEX = {
-  white:  "#e7e7e7", black: "#212120", grey:   "#848483", navy: "#21365f",
-  skyblue:"#91dcfb", green: "#b3e8b1", orange: "#fa7a12", pink: "#fdbed0",
-  purple: "#9b62d1", red:   "#fb4b49",
-};
+export const BODY_HEX = THEME.body; // muted palette lives in theme.js
 export const IRIS_HEX = {
   blue: "#4a7dd6", black: "#23272e", grey: "#9aa3ae", brown: "#7a4f2b",
   red:  "#c8452c", orange: "#e8842c", green: "#3f9e5f",
@@ -580,10 +577,17 @@ function buildGLBApi(cfg, { holder, clips, face }) {
     headBone.add(anchor);
   }
   const apply = () => {
-    // normalize so the white body (#e7e7e7) maps to exactly 1.0 — higher
-    // gain clips lit surfaces flat and erases the hand/feet shading
-    const tint = new THREE.Color(BODY_HEX[cfg.body]).multiplyScalar(255 / 231);
-    for (const m of bodyMats) m.color = tint.clone();
+    // normalize so the palette's white maps to exactly 1.0 — higher gain
+    // clips lit surfaces flat and erases the hand/feet shading
+    const gain = 255 / parseInt(THEME.body.white.slice(3, 5), 16);
+    const tint = new THREE.Color(BODY_HEX[cfg.body]).multiplyScalar(gain);
+    for (const m of bodyMats) {
+      m.color = tint.clone();
+      if (m.isMeshStandardMaterial) { // theme soft-gloss shading
+        m.roughness = THEME.character.roughness;
+        m.envMapIntensity = THEME.character.envMapIntensity;
+      }
+    }
     if (!anchor) return;
     anchor.clear();
     const irisHex = IRIS_HEX[cfg.iris];
