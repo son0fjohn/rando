@@ -344,6 +344,7 @@ export function characterSheet(cfgs, cell = 200) {
 // Tint = material color multiplied over the baked near-white texture.
 const GLB_CLIPS = { walk: 3, run: 9, idle: 8, spin: 0, hop: 1, wave: 7 };
 let glbTemplate = null;
+let glbResolved = null;   // resolved template for the sync path
 const depth = n => { let d = 0; while (n.parent) { d++; n = n.parent; } return d; };
 export function loadGLBTemplate(url = "models/animations.glb") {
   if (!glbTemplate) {
@@ -377,15 +378,24 @@ export function loadGLBTemplate(url = "models/animations.glb") {
       src.position.z -= (box2.min.z + box2.max.z) / 2;
       const holder = new THREE.Group();
       holder.add(src);
-      return { holder, clips: g.animations };
+      glbResolved = { holder, clips: g.animations };
+      return glbResolved;
     });
   }
   return glbTemplate;
 }
 
 export async function makeGLBCharacter(rawCfg) {
-  const cfg = normalizeAvatar(rawCfg);
-  const { holder, clips } = await loadGLBTemplate();
+  return buildGLBApi(normalizeAvatar(rawCfg), await loadGLBTemplate());
+}
+
+// sync clone once the template has resolved (NPCs/remotes spawn in loops);
+// returns null before then — callers fall back to the procedural character
+export function makeGLBCharacterSync(rawCfg) {
+  return glbResolved ? buildGLBApi(normalizeAvatar(rawCfg), glbResolved) : null;
+}
+
+function buildGLBApi(cfg, { holder, clips }) {
   const group = SkeletonUtils.clone(holder);
   // normalize so the white body (#e7e7e7) maps to exactly 1.0 — any higher
   // gain clips lit surfaces to flat white and erases the hand/feet shading
