@@ -208,8 +208,10 @@ export const world3d = {
       this.scene.add(cap);
     });
 
-    // ground: world2 grass extracted from the road-wrapper tile, mirror-
-    // tiled into a seam-free block and repeated across the plane
+    // ground: concrete paving within Itaewon proper (the reference's urban
+    // floor), grass outside. The paved disc sits a hair above the grass
+    // plane with a pale curb ring marking the transition.
+    const PAVED_R = 720;
     const groundMat = new THREE.MeshLambertMaterial({ color: M.grass });
     const ground = new THREE.Mesh(new THREE.CircleGeometry(1500, 48), groundMat);
     ground.rotation.x = -Math.PI / 2;
@@ -220,6 +222,21 @@ export const world3d = {
       groundMat.map = tex;
       groundMat.color.set(NIGHT ? 0x5a6d80 : 0xffffff);
       groundMat.needsUpdate = true;
+      this.needsRender = true;
+    }).catch(() => {});
+    this.loadImage("world2/road_plaza.jpg").then(img => {
+      const tex = this.mirrorBlockTex(img, [0.05, 0.05, 0.27, 0.27]);
+      tex.repeat.set(52, 52);
+      const paved = new THREE.Mesh(new THREE.CircleGeometry(PAVED_R, 64),
+        new THREE.MeshLambertMaterial({ map: tex, color: NIGHT ? 0x77809a : 0xffffff }));
+      paved.rotation.x = -Math.PI / 2;
+      paved.position.y = 0.06;
+      this.scene.add(paved);
+      const curb = new THREE.Mesh(new THREE.RingGeometry(PAVED_R, PAVED_R + 4, 64),
+        new THREE.MeshLambertMaterial({ color: NIGHT ? 0x9aa2b5 : 0xd6d3d0 }));
+      curb.rotation.x = -Math.PI / 2;
+      curb.position.y = 0.07;
+      this.scene.add(curb);
       this.needsRender = true;
     }).catch(() => {});
   },
@@ -318,31 +335,23 @@ export const world3d = {
     this.scene.add(new THREE.Mesh(mergeGeometries(roadGeos), roadMat));
     const jointMat = new THREE.MeshLambertMaterial({ color: M.road });
     this.scene.add(new THREE.Mesh(mergeGeometries(jointGeos), jointMat));
+    // plain asphalt for ribbons and junctions alike — no painted lines,
+    // one dash-free crop shared so brightness always matches (straight
+    // repeat: mirroring asphalt grain makes herringbone streaks)
     this.loadImage("world2/road_grass.jpg").then(img => {
       const c = document.createElement("canvas");
-      const sx = 0.36 * img.width, sw = 0.28 * img.width;
-      const sy = 0.72 * img.height, sh = 0.275 * img.height;
-      c.width = 256; c.height = 256;
-      c.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, 256, 256);
+      c.width = c.height = 256;
+      c.getContext("2d").drawImage(img,
+        0.545 * img.width, 0.75 * img.height, 0.027 * img.width, 0.20 * img.height,
+        0, 0, 256, 256);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-      roadMat.map = tex;
-      roadMat.color.set(NIGHT ? 0x8a93a8 : 0xffffff);
-      roadMat.needsUpdate = true;
-      // junction discs: plain-asphalt crop from the same image, so their
-      // brightness matches the ribbons exactly (no hand-picked grey)
-      const jc = document.createElement("canvas");
-      jc.width = jc.height = 128;
-      jc.getContext("2d").drawImage(img,
-        0.52 * img.width, 0.78 * img.height, 0.07 * img.width, 0.07 * img.height,
-        0, 0, 128, 128);
-      const jtex = new THREE.CanvasTexture(jc);
-      jtex.colorSpace = THREE.SRGBColorSpace;
-      jtex.wrapS = jtex.wrapT = THREE.RepeatWrapping;
-      jointMat.map = jtex;
-      jointMat.color.set(NIGHT ? 0x8a93a8 : 0xffffff);
-      jointMat.needsUpdate = true;
+      for (const mat of [roadMat, jointMat]) {
+        mat.map = tex;
+        mat.color.set(NIGHT ? 0x8a93a8 : 0xffffff);
+        mat.needsUpdate = true;
+      }
       this.needsRender = true;
     }).catch(() => {});
 
@@ -491,20 +500,7 @@ export const world3d = {
       }
     }
 
-    // paved gathering plazas: world2 concrete-tile paving
-    this.loadImage("world2/road_plaza.jpg").then(img => {
-      const tex = this.mirrorBlockTex(img, [0.05, 0.05, 0.27, 0.27]);
-      tex.repeat.set(4, 4);
-      const plazaMat = new THREE.MeshLambertMaterial({
-        map: tex, color: NIGHT ? 0x8a93a8 : 0xffffff });
-      for (const f of flavors) {
-        const disc = new THREE.Mesh(new THREE.CircleGeometry(52, 36), plazaMat);
-        disc.rotation.x = -Math.PI / 2;
-        disc.position.set(f.p.x, 0.22, f.p.z);
-        this.scene.add(disc);
-      }
-      this.needsRender = true;
-    }).catch(() => {});
+    // (zone plazas need no discs now — the whole inner area is paved)
 
     // trees: instanced world2 GLB trees, green-zone weighted as before
     if (lib) {
