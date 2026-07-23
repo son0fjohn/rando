@@ -5,7 +5,7 @@
 // points via projection each tick.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { mergeGeometries } from "https://esm.sh/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js";
-import { makeCharacter, makeGLBCharacter } from "./character3d.js";
+import { makeCharacter, makeGLBCharacter, makeGLBCharacterSync, loadGLBTemplate } from "./character3d.js";
 
 // ?glb=1 renders the PLAYER with the generated Tripo/Meshy base model
 // (evaluation only; NPCs/remotes stay procedural)
@@ -148,15 +148,22 @@ export const world3d = {
     this.scene.add(this.zoneRings);
     this.remoteGroup = new THREE.Group();
     this.scene.add(this.remoteGroup);
-    for (const n of NPC_DEFS) {
-      const pos = geoPos(n.lat, n.lng);
-      const rec = this.makeChar(n.preset, pos, this.scene);
-      const partner = NPC_DEFS.find(d => d.id === n.partner);
-      if (partner) {
-        const pp = geoPos(partner.lat, partner.lng);
-        rec.api.group.rotation.y = Math.atan2(pp.x - pos.x, pp.z - pos.z);
+    const spawnNpcs = () => {
+      for (const n of NPC_DEFS) {
+        const pos = geoPos(n.lat, n.lng);
+        const api = GLB_MODE ? makeGLBCharacterSync(n.preset) ?? undefined : undefined;
+        const rec = this.makeChar(n.preset, pos, this.scene, api);
+        const partner = NPC_DEFS.find(d => d.id === n.partner);
+        if (partner) {
+          const pp = geoPos(partner.lat, partner.lng);
+          rec.api.group.rotation.y = Math.atan2(pp.x - pos.x, pp.z - pos.z);
+        }
       }
-    }
+      this.needsRender = true;
+    };
+    // in GLB mode wait for the shared template so NPCs clone synchronously
+    if (GLB_MODE) loadGLBTemplate().then(spawnNpcs, spawnNpcs);
+    else spawnNpcs();
     this.loadWorld(); // async: real roads + zone-flavored buildings/trees
 
     this.bindControls();
@@ -580,7 +587,8 @@ export const world3d = {
       const dx = (r.slot % 2 ? -1 : 1) * Math.ceil((r.slot + 1) / 2) * 9;
       const dz = ((r.slot % 3) - 1) * 5;
       const pos = geoPos(r.lat, r.lng).add(new THREE.Vector3(dx, 0, dz));
-      const rec = this.makeChar(r.avatar, pos, this.remoteGroup);
+      const api = GLB_MODE ? makeGLBCharacterSync(r.avatar) ?? undefined : undefined;
+      const rec = this.makeChar(r.avatar, pos, this.remoteGroup, api);
       // face roughly inward toward the cluster for a hanging-out feel
       rec.api.group.rotation.y = Math.atan2(-dx, 6);
       this.remoteRecs.push(rec);
