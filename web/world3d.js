@@ -5,11 +5,11 @@
 // points via projection each tick.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { mergeGeometries } from "https://esm.sh/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js";
+import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { makeCharacter, makeGLBCharacter, makeGLBCharacterSync, loadGLBTemplate } from "./character3d.js";
 
-// ?glb=1 renders the PLAYER with the generated Tripo/Meshy base model
-// (evaluation only; NPCs/remotes stay procedural)
-const GLB_MODE = new URLSearchParams(location.search).get("glb") !== "0"; // GLB player is the default now
+// generated GLB characters are the default; ?glb=0 falls back to procedural
+const GLB_MODE = new URLSearchParams(location.search).get("glb") !== "0";
 
 const CHAR_H = 15;
 
@@ -190,73 +190,68 @@ export const world3d = {
   // slate-blue roads with light sidewalk borders, white flat-roofed
   // buildings with dark window bands, blue sky and clouds. No trees.
   buildTerrain() {
-    // sky: deep azure overhead easing to pale at the horizon (the art's
-    // gradient), rendered on an inverted dome so fog can't wash it out
-    const skyTex = this.canvasTex(16, 256, g => {
-      const grad = g.createLinearGradient(0, 0, 0, 256);
-      grad.addColorStop(0, M.skyTop);
-      grad.addColorStop(0.55, M.skyMid);
-      grad.addColorStop(1, M.skyHor);
-      g.fillStyle = grad;
-      g.fillRect(0, 0, 16, 256);
-      if (NIGHT) { // scatter of stars in the upper sky
-        g.fillStyle = "rgba(255,255,255,0.9)";
-        let s = 12345;
-        for (let i = 0; i < 40; i++) {
-          s = (s * 16807) % 2147483647;
-          const x = s % 16, y = (s >> 4) % 120;
-          g.fillRect(x, y, 1, 1);
-        }
-      }
+    // sky: the painted world2 backdrop image on a tall cylinder (day or
+    // night file per mode), mirrored wrap so the seam never shows
+    this.texIfExists(NIGHT ? "world2/sky_night.jpg" : "world2/sky_day.jpg", tex => {
+      tex.wrapS = THREE.MirroredRepeatWrapping;
+      tex.repeat.x = 2;
+      const sky = new THREE.Mesh(
+        new THREE.CylinderGeometry(1900, 1900, 2600, 72, 1, true),
+        new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false }));
+      sky.position.y = 430;
+      sky.rotation.y = Math.PI / 2;
+      this.scene.add(sky);
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(1900, 72),
+        new THREE.MeshBasicMaterial({ color: NIGHT ? 0x02092c : 0x1e6fd8, fog: false }));
+      cap.rotation.x = Math.PI / 2;
+      cap.position.y = 1725;
+      this.scene.add(cap);
     });
-    const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(1800, 24, 12),
-      new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
-    this.scene.add(sky);
 
-    // cel-style cumulus like the original art: solid white rounded tops,
-    // flat bases, cool blue shading tucked underneath — no airbrush fuzz
-    const cloudTex = this.canvasTex(256, 128, g => {
-      const puffs = [[52, 76, 28], [94, 58, 40], [144, 62, 36], [190, 76, 26], [120, 80, 42]];
-      g.fillStyle = M.cloudShade; // under-shadow pass, nudged down
-      for (const [x, y, r] of puffs) {
-        g.beginPath(); g.arc(x, y + 8, r, 0, Math.PI * 2); g.fill();
-      }
-      g.fillStyle = M.cloudBody; // solid body
-      for (const [x, y, r] of puffs) {
-        g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-      }
-      g.fillRect(34, 66, 184, 26);   // unify the base into one mass
-      g.fillStyle = M.cloudShade;    // thin shading strip along the base
-      g.fillRect(40, 86, 172, 8);
-      g.clearRect(0, 94, 256, 34);   // hard flat cut — cel look
-    });
-    const cloudRand = mulberry32(777);
-    for (let i = 0; i < 10; i++) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: cloudTex, transparent: true, opacity: M.cloudOp, color: M.cloudTint, fog: false,
-      }));
-      const a = cloudRand() * Math.PI * 2;
-      const r = 950 + cloudRand() * 450;
-      s.position.set(Math.cos(a) * r, 130 + cloudRand() * 260, Math.sin(a) * r);
-      const w = 220 + cloudRand() * 240;
-      s.scale.set(w, w * 0.42, 1);
-      this.scene.add(s);
-    }
-
-    // ground: open grass, per the globe reference — roads/buildings/trees
-    // arrive from real geometry in loadWorld()
+    // ground: world2 grass extracted from the road-wrapper tile, mirror-
+    // tiled into a seam-free block and repeated across the plane
     const groundMat = new THREE.MeshLambertMaterial({ color: M.grass });
     const ground = new THREE.Mesh(new THREE.CircleGeometry(1500, 48), groundMat);
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
-    this.texIfExists("textures/grass-tile.jpg", tex => {
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(100, 100);
+    this.loadImage("world2/road_grass.jpg").then(img => {
+      const tex = this.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
+      tex.repeat.set(38, 38); // block ≈ 80u of ground per repeat
       groundMat.map = tex;
-      groundMat.color.set(0xffffff); // texture carries the color; lights carry the mode
+      groundMat.color.set(NIGHT ? 0x5a6d80 : 0xffffff);
       groundMat.needsUpdate = true;
+      this.needsRender = true;
+    }).catch(() => {});
+  },
+
+  loadImage(url) {
+    return new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
     });
+  },
+
+  // seam-free texture from an image region: crop, then mirror into a 2x2
+  // block so RepeatWrapping never shows a hard tile edge
+  mirrorBlockTex(img, [x0, y0, x1, y1]) {
+    const w = Math.round((x1 - x0) * img.width), h = Math.round((y1 - y0) * img.height);
+    const c = document.createElement("canvas");
+    c.width = w * 2; c.height = h * 2;
+    const g = c.getContext("2d");
+    const sx = x0 * img.width, sy = y0 * img.height;
+    for (const [fx, fy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      g.save();
+      g.translate(fx ? w * 2 : 0, fy ? h * 2 : 0);
+      g.scale(fx ? -1 : 1, fy ? -1 : 1);
+      g.drawImage(img, sx, sy, w, h, 0, 0, w, h);
+      g.restore();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
   },
 
   // optional generated texture: applied when present, silent when absent
@@ -280,6 +275,7 @@ export const world3d = {
     const WID = { primary: 24, secondary: 19, tertiary: 15, residential: 11, pedestrian: 8, unclassified: 11 };
 
     const roadGeos = [];
+    const jointGeos = [];
     const occupied = new Set(); // 25u cells covered by roads/buildings
     const mark = (x, z) => occupied.add(Math.round(x / 25) + "," + Math.round(z / 25));
     const candidates = [];
@@ -309,20 +305,46 @@ export const world3d = {
           }
         }
         if (i > 0 && i < pts.length - 1) {
-          const jg = new THREE.CylinderGeometry(w / 2, w / 2, 0.5, 10);
-          jg.applyMatrix4(new THREE.Matrix4().setPosition(x, 0.25, z));
-          roadGeos.push(jg);
+          // sits a hair above the ribbons: separate material would z-fight
+          const jg = new THREE.CylinderGeometry(w / 2, w / 2, 0.56, 10);
+          jg.applyMatrix4(new THREE.Matrix4().setPosition(x, 0.27, z));
+          jointGeos.push(jg);
         }
       }
     }
+    // ribbons carry the tile's road-strip art (curbs + dashes run along v);
+    // junction discs stay flat asphalt so the strip never smears radially
     const roadMat = new THREE.MeshLambertMaterial({ color: M.road });
     this.scene.add(new THREE.Mesh(mergeGeometries(roadGeos), roadMat));
-    this.texIfExists("textures/asphalt-tile.jpg", tex => {
+    const jointMat = new THREE.MeshLambertMaterial({ color: M.road });
+    this.scene.add(new THREE.Mesh(mergeGeometries(jointGeos), jointMat));
+    this.loadImage("world2/road_grass.jpg").then(img => {
+      const c = document.createElement("canvas");
+      const sx = 0.36 * img.width, sw = 0.28 * img.width;
+      const sy = 0.72 * img.height, sh = 0.275 * img.height;
+      c.width = 256; c.height = 256;
+      c.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, 256, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       roadMat.map = tex;
-      roadMat.color.set(0xffffff);
+      roadMat.color.set(NIGHT ? 0x8a93a8 : 0xffffff);
       roadMat.needsUpdate = true;
-    });
+      // junction discs: plain-asphalt crop from the same image, so their
+      // brightness matches the ribbons exactly (no hand-picked grey)
+      const jc = document.createElement("canvas");
+      jc.width = jc.height = 128;
+      jc.getContext("2d").drawImage(img,
+        0.52 * img.width, 0.78 * img.height, 0.07 * img.width, 0.07 * img.height,
+        0, 0, 128, 128);
+      const jtex = new THREE.CanvasTexture(jc);
+      jtex.colorSpace = THREE.SRGBColorSpace;
+      jtex.wrapS = jtex.wrapT = THREE.RepeatWrapping;
+      jointMat.map = jtex;
+      jointMat.color.set(NIGHT ? 0x8a93a8 : 0xffffff);
+      jointMat.needsUpdate = true;
+      this.needsRender = true;
+    }).catch(() => {});
 
     // zone flavor fields (gaussian falloff around zone centers)
     const flavors = ZONE_FLAVOR.map(f => ({ p: geoPos(f.lat, f.lng), build: f.build, green: f.green }));
@@ -335,13 +357,57 @@ export const world3d = {
       return v;
     };
 
-    // buildings: colorful smooth boxes with accent roof slabs
-    const bodyCols = [0xf4f1ea, 0xefe8dd, 0xe9eef2, 0xf7f7f7, 0xddd8cf];
-    const accCols = [0xe2704e, 0x58b0a2, 0xf2b84b, 0x5a7fc2, 0xd95f79, 0x7fc98f, 0xc9524a];
-    const bodyGeos = bodyCols.map(() => []);
-    const accGeos = accCols.map(() => []);
-    const winGeos = [];
-    const facadeGeos = [[], [], [], []]; // one bucket per facade sheet a-d
+    // buildings + trees: the world2 GLB models, instanced per type (one
+    // draw call per model) along real road frontage. Geometry is baked to
+    // target height with feet at y=0 so instance matrices are just
+    // yaw+scale+position.
+    const loader = new GLTFLoader();
+    const loadPiece = async (url, h, glow) => {
+      const g = await loader.loadAsync(url);
+      g.scene.updateWorldMatrix(true, true);
+      let mesh = null;
+      g.scene.traverse(o => { if (o.isMesh && !mesh) mesh = o; });
+      const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+      geo.computeBoundingBox();
+      const size = geo.boundingBox.getSize(new THREE.Vector3());
+      const s = h / size.y;
+      geo.applyMatrix4(new THREE.Matrix4().makeScale(s, s, s));
+      geo.computeBoundingBox();
+      const b = geo.boundingBox;
+      geo.applyMatrix4(new THREE.Matrix4().makeTranslation(
+        -(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2));
+      const mat = mesh.material.clone();
+      if (NIGHT) { // baked day textures: dim down; buildings keep a soft
+        mat.color = new THREE.Color(glow ? 0x93a0b5 : 0x76879c); // window glow
+        if (glow) {
+          mat.emissive = new THREE.Color(0xffffff);
+          mat.emissiveMap = mat.map;
+          mat.emissiveIntensity = 0.22;
+        }
+      }
+      geo.computeBoundingBox();
+      const fp = geo.boundingBox;
+      const radius = Math.hypot(fp.max.x - fp.min.x, fp.max.z - fp.min.z) / 2;
+      return { geo, mat, radius };
+    };
+    let lib = null;
+    try {
+      const defs = {
+        store:    ["world2/bldg_store.glb", 22, true],
+        urban:    ["world2/bldg_urban.glb", 40, true],
+        brick:    ["world2/bldg_brick.glb", 48, true],
+        pastel:   ["world2/bldg_pastel.glb", 55, true],
+        tower:    ["world2/bldg_tower.glb", 75, true],
+        highrise: ["world2/bldg_highrise.glb", 110, true],
+        arcade:   ["world2/bldg_station.glb", 46, true],
+        tree:     ["world2/tree_green.glb", 22, false],
+        palm:     ["world2/tree_palm.glb", 26, false],
+      };
+      lib = Object.fromEntries(await Promise.all(Object.entries(defs).map(
+        async ([k, [u, h, gl]]) => [k, await loadPiece(u, h, gl)])));
+    } catch (e) {
+      console.warn("world2 models missing — world renders roads/ground only", e);
+    }
     // true collision: placed footprint circles, bucketed for fast lookup
     const placed = new Map(); // "bx,bz" -> [{x, z, r}]
     const BUCKET = 64;
@@ -365,144 +431,106 @@ export const world3d = {
     // gathering plazas: keep zone centers clear of structures
     const nearZoneCenter = (x, z, rad) =>
       flavors.some(f => (x - f.p.x) ** 2 + (z - f.p.z) ** 2 < rad * rad);
-    for (const c of candidates) {
+    // placement: same frontage walk, but each lot picks a model type from
+    // zone density (towers only in the urban core, low-rise near plazas).
+    // Capped so mobile GPUs stay comfortable with the 4-5k-tri models.
+    const inst = { store: [], urban: [], brick: [], pastel: [], tower: [], highrise: [] };
+    const MAX_BUILDINGS = 220;
+    let placedCount = 0;
+    if (lib) for (const c of candidates) {
+      if (placedCount >= MAX_BUILDINGS) break;
       const D = fieldAt(c.x, c.z, "build");
       if (rand() > D * 0.34) continue;
       const side = rand() < 0.5 ? -1 : 1;
-      const off = c.w / 2 + 9 + rand() * 15;
+      const off = c.w / 2 + 12 + rand() * 14;
       const px = c.x + Math.cos(c.ang) * off * side;
       const pz = c.z - Math.sin(c.ang) * off * side;
       if (nearZoneCenter(px, pz, 78)) continue;
-      const fw = 16 + rand() * 14, fd = 16 + rand() * 14;
-      // half-diagonal covers the footprint at any rotation
-      const rad = Math.hypot(fw, fd) / 2;
+      const lowOnly = nearZoneCenter(px, pz, 170);
+      const r = rand();
+      let t;
+      if (!lowOnly && D > 0.42 && r < 0.14) t = rand() < 0.5 ? "tower" : "highrise";
+      else if (r < 0.42) t = "store";
+      else if (r < 0.62) t = "urban";
+      else if (r < 0.84) t = "brick";
+      else t = "pastel";
+      if (lowOnly && t !== "store" && t !== "urban") t = rand() < 0.5 ? "store" : "urban";
+      const s = 0.9 + rand() * 0.25;
+      const rad = lib[t].radius * s;
       if (collides(px, pz, rad)) continue;
       occupy(px, pz, rad);
       mark(px, pz);
-      let h = 10 + D * (14 + rand() * 46);
-      // keep sightlines open around gathering plazas: low-rise near centers
-      if (nearZoneCenter(px, pz, 170)) h = Math.min(h, 20);
-      const bi = Math.floor(rand() * bodyCols.length);
-      // reference look: mostly quiet white/grey, occasional colour pop
-      const ai = rand() < 0.38 ? Math.floor(rand() * accCols.length) : -1;
-      const rot = () => new THREE.Matrix4().makeRotationY(c.ang);
-      const bg = new THREE.BoxGeometry(fw, h, fd);
-      bg.applyMatrix4(rot().setPosition(px, h / 2, pz));
-      bodyGeos[bi].push(bg);
-      const rg = new THREE.BoxGeometry(fw + 2, 2.2, fd + 2);
-      rg.applyMatrix4(rot().setPosition(px, h + 1.1, pz));
-      if (ai >= 0) accGeos[ai].push(rg);
-      else bodyGeos[bi].push(rg);
-      if (h > 34 && rand() < 0.5) {
-        const tg = new THREE.BoxGeometry(fw * 0.6, 10, fd * 0.6);
-        tg.applyMatrix4(rot().setPosition(px, h + 7.2, pz));
-        bodyGeos[bi].push(tg);
+      // face the road the lot fronts onto
+      const yaw = Math.atan2(-Math.cos(c.ang) * side, Math.sin(c.ang) * side);
+      const m = new THREE.Matrix4().makeRotationY(yaw)
+        .scale(new THREE.Vector3(s, s, s));
+      m.setPosition(px, 0, pz);
+      inst[t].push(m);
+      placedCount++;
+    }
+    if (lib) {
+      for (const [t, list] of Object.entries(inst)) {
+        if (!list.length) continue;
+        const im = new THREE.InstancedMesh(lib[t].geo, lib[t].mat, list.length);
+        list.forEach((mm, i) => im.setMatrixAt(i, mm));
+        this.scene.add(im);
       }
-      // generated facade sheets wrap all four faces (texture applied when
-      // the file exists); v repeats per ~24u of height, u per ~24u of width.
-      // Mostly quiet facades; the loud colorful one (d) is a rare accent
-      // on low-rise only, per the reference's balance.
-      const fr = rand();
-      let fi = fr < 0.38 ? 0 : fr < 0.7 ? 1 : fr < 0.92 ? 2 : 3;
-      if (fi === 3 && h > 28) fi = Math.floor(rand() * 3);
-      const faces = [
-        { w: fw, off: [0, 0, fd / 2 + 0.12], ry: 0 },
-        { w: fw, off: [0, 0, -fd / 2 - 0.12], ry: Math.PI },
-        { w: fd, off: [fw / 2 + 0.12, 0, 0], ry: Math.PI / 2 },
-        { w: fd, off: [-fw / 2 - 0.12, 0, 0], ry: -Math.PI / 2 },
-      ];
-      for (const f of faces) {
-        const fg = new THREE.PlaneGeometry(f.w, h);
-        const fuv = fg.attributes.uv;
-        for (let ui = 0; ui < fuv.count; ui++) {
-          fuv.setXY(ui, fuv.getX(ui) * Math.max(1, Math.round(f.w / 24)),
-                        fuv.getY(ui) * Math.max(1, Math.round(h / 24)));
-        }
-        const local = new THREE.Matrix4().makeRotationY(f.ry)
-          .setPosition(f.off[0], 0, f.off[2]);
-        fg.applyMatrix4(rot().setPosition(px, h / 2, pz).multiply(local));
-        facadeGeos[fi].push(fg);
-      }
-
-      // window quads on front/back faces — cool glass by day, warm glow
-      // at night (per STYLE.md)
-      if (rand() < 0.65) {
-        const rows = Math.max(1, Math.floor(h / 16));
-        for (let wr = 0; wr < rows; wr++) {
-          for (const face of [1, -1]) {
-            if (rand() < 0.35) continue;
-            const wg = new THREE.PlaneGeometry(fw * 0.55, 4.2);
-            const wy = 7 + wr * (h - 10) / rows;
-            const local = new THREE.Matrix4().makeRotationY(face === 1 ? 0 : Math.PI)
-              .setPosition(0, 0, face * (fd / 2 + 0.25));
-            const world = rot().setPosition(px, wy, pz).multiply(local);
-            wg.applyMatrix4(world);
-            winGeos.push(wg);
-          }
-        }
+      // the arcade landmark takes the station plaza rim, facing the center
+      const st = flavors.reduce((a, b) => (a.p.lengthSq() < b.p.lengthSq() ? a : b));
+      for (let k = 0; k < 12; k++) {
+        const ang = -Math.PI / 2 + k * 0.52;
+        const px = st.p.x + Math.cos(ang) * 86;
+        const pz = st.p.z + Math.sin(ang) * 86;
+        if (collides(px, pz, lib.arcade.radius)) continue;
+        occupy(px, pz, lib.arcade.radius);
+        const landmark = new THREE.Mesh(lib.arcade.geo, lib.arcade.mat);
+        landmark.position.set(px, 0, pz);
+        landmark.rotation.y = Math.atan2(st.p.x - px, st.p.z - pz);
+        this.scene.add(landmark);
+        break;
       }
     }
-    bodyGeos.forEach((arr, i) => arr.length && this.scene.add(new THREE.Mesh(
-      mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: bodyCols[i] }))));
-    accGeos.forEach((arr, i) => arr.length && this.scene.add(new THREE.Mesh(
-      mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: accCols[i] }))));
-    if (winGeos.length) this.scene.add(new THREE.Mesh(
-      mergeGeometries(winGeos),
-      new THREE.MeshLambertMaterial({
-        color: M.winCol,
-        emissive: M.winEmis,
-        emissiveIntensity: NIGHT ? 1 : 0,
-      })));
 
-    // facade meshes appear only once their texture loads (silent fallback
-    // to the plain colored boxes otherwise)
-    ["a", "b", "c", "d"].forEach((k, i) => {
-      if (!facadeGeos[i].length) return;
-      this.texIfExists("textures/facade-" + k + ".jpg", tex => {
-        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-        this.scene.add(new THREE.Mesh(
-          mergeGeometries(facadeGeos[i]),
-          new THREE.MeshLambertMaterial({ map: tex })));
-      });
-    });
-
-    // paved gathering plazas at fixed zone centers
-    this.texIfExists("textures/plaza-tile.jpg", tex => {
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(5, 5);
-      const plazaMat = new THREE.MeshLambertMaterial({ map: tex });
+    // paved gathering plazas: world2 concrete-tile paving
+    this.loadImage("world2/road_plaza.jpg").then(img => {
+      const tex = this.mirrorBlockTex(img, [0.05, 0.05, 0.27, 0.27]);
+      tex.repeat.set(4, 4);
+      const plazaMat = new THREE.MeshLambertMaterial({
+        map: tex, color: NIGHT ? 0x8a93a8 : 0xffffff });
       for (const f of flavors) {
         const disc = new THREE.Mesh(new THREE.CircleGeometry(52, 36), plazaMat);
         disc.rotation.x = -Math.PI / 2;
         disc.position.set(f.p.x, 0.22, f.p.z);
         this.scene.add(disc);
       }
-    });
+      this.needsRender = true;
+    }).catch(() => {});
 
-    // trees: green-zone weighted, clear of roads and lots
-    const trunkGeos = [];
-    const canopyCols = [0x5e9c46, 0x6fae4f, 0x4f8f3e];
-    const canopyGeos = canopyCols.map(() => []);
-    for (let i = 0; i < 1500; i++) {
-      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 1000;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (occupied.has(Math.round(x / 25) + "," + Math.round(z / 25))) continue;
-      if (nearZoneCenter(x, z, 40)) continue;
-      const G = fieldAt(x, z, "green") + 0.06;
-      if (rand() > G * 0.75) continue;
-      const tg = new THREE.CylinderGeometry(1.2, 1.5, 7, 7);
-      tg.applyMatrix4(new THREE.Matrix4().setPosition(x, 3.5, z));
-      trunkGeos.push(tg);
-      const ci = Math.floor(rand() * canopyCols.length);
-      const cr = 5 + rand() * 3;
-      const cg = new THREE.SphereGeometry(cr, 10, 8);
-      cg.applyMatrix4(new THREE.Matrix4().setPosition(x, 7 + cr * 0.7, z));
-      canopyGeos[ci].push(cg);
+    // trees: instanced world2 GLB trees, green-zone weighted as before
+    if (lib) {
+      const tinst = { tree: [], palm: [] };
+      const MAX_TREES = 150;
+      for (let i = 0; i < 1500 && tinst.tree.length + tinst.palm.length < MAX_TREES; i++) {
+        const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 1000;
+        const x = Math.cos(a) * r, z = Math.sin(a) * r;
+        if (occupied.has(Math.round(x / 25) + "," + Math.round(z / 25))) continue;
+        if (nearZoneCenter(x, z, 40)) continue;
+        const G = fieldAt(x, z, "green") + 0.06;
+        if (rand() > G * 0.75) continue;
+        const t = rand() < 0.07 ? "palm" : "tree";
+        const s = 0.85 + rand() * 0.45;
+        const m = new THREE.Matrix4().makeRotationY(rand() * Math.PI * 2)
+          .scale(new THREE.Vector3(s, s, s));
+        m.setPosition(x, 0, z);
+        tinst[t].push(m);
+      }
+      for (const [t, list] of Object.entries(tinst)) {
+        if (!list.length) continue;
+        const im = new THREE.InstancedMesh(lib[t].geo, lib[t].mat, list.length);
+        list.forEach((mm, i) => im.setMatrixAt(i, mm));
+        this.scene.add(im);
+      }
     }
-    if (trunkGeos.length) this.scene.add(new THREE.Mesh(
-      mergeGeometries(trunkGeos), new THREE.MeshLambertMaterial({ color: 0x8a6a48 })));
-    canopyGeos.forEach((arr, i) => arr.length && this.scene.add(new THREE.Mesh(
-      mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: canopyCols[i] }))));
 
     this.needsRender = true;
   },
