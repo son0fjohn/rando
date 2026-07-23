@@ -388,6 +388,21 @@ export const world3d = {
       geo.applyMatrix4(new THREE.Matrix4().makeTranslation(
         -(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2));
       const mat = mesh.material.clone();
+      // theme pass: desaturate + gently lift every model's baked texture so
+      // warm/saturated assets fall in line with the muted cool palette
+      // (buildings get a stronger pull than trees)
+      if (mat.map?.image) {
+        const im = mat.map.image;
+        const c = document.createElement("canvas");
+        c.width = im.width; c.height = im.height;
+        const cc = c.getContext("2d");
+        cc.filter = glow ? "saturate(0.48) brightness(1.06)" : "saturate(0.72)";
+        cc.drawImage(im, 0, 0);
+        const themed = new THREE.CanvasTexture(c);
+        themed.colorSpace = THREE.SRGBColorSpace;
+        themed.flipY = false;
+        mat.map = themed;
+      }
       if (NIGHT) { // baked day textures: dim down; buildings keep a soft
         mat.color = new THREE.Color(glow ? 0x93a0b5 : 0x76879c); // window glow
         if (glow) {
