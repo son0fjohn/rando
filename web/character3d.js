@@ -10,9 +10,9 @@ import * as SkeletonUtils from "https://esm.sh/three@0.160.0/examples/jsm/utils/
 import { THEME } from "./theme.js";
 
 export const BODY_HEX = THEME.body; // muted palette lives in theme.js
-export const IRIS_HEX = {
-  blue: "#4a7dd6", black: "#23272e", grey: "#9aa3ae", brown: "#7a4f2b",
-  red:  "#c8452c", orange: "#e8842c", green: "#3f9e5f",
+export const IRIS_HEX = { // muted family, matching the reference eyes
+  blue: "#5b7ca6", black: "#262a30", grey: "#9aa3ae", brown: "#8a6a52",
+  red:  "#b06258", orange: "#c98d5e", green: "#6f9e85",
 };
 // eye styles with a distinct iris shape to tint; linework styles are not
 export const IRIS_CAPABLE = ["default", "anime"];
@@ -100,10 +100,11 @@ function eyeTexture(style, irisHex, side) {
   const el = (x, y, rx, ry) => { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); };
 
   if (style === "default") {
+    // reference look: slim dark rim, iris fills the eye, soft small catch
     el(cx, cy, 62, 92); g.fillStyle = DARK; g.fill();
-    el(cx, cy + 4, 48, 76); g.fillStyle = irisHex; g.fill();
-    el(cx, cy + 14, 26, 42); g.fillStyle = "#15181d"; g.fill();
-    el(cx - 20, cy - 38, 14, 20); g.fillStyle = "rgba(255,255,255,0.92)"; g.fill();
+    el(cx, cy + 2, 54, 82); g.fillStyle = irisHex; g.fill();
+    el(cx, cy + 12, 30, 48); g.fillStyle = "#15181d"; g.fill();
+    el(cx - 18, cy - 34, 11, 15); g.fillStyle = "rgba(255,255,255,0.75)"; g.fill();
   } else if (style === "anime") {
     el(cx, cy, 66, 96); g.fillStyle = DARK; g.fill();
     const grad = g.createLinearGradient(0, cy - 80, 0, cy + 88);
@@ -114,18 +115,18 @@ function eyeTexture(style, irisHex, side) {
     el(cx - 22, cy - 44, 17, 24); g.fillStyle = "rgba(255,255,255,0.95)"; g.fill();
     el(cx + 22, cy + 44, 9, 12); g.fillStyle = "rgba(255,255,255,0.55)"; g.fill();
   } else if (style === "hollowoval") {
-    // light halo behind the dark stroke so linework reads on dark bodies
-    el(cx, cy, 54, 84); g.lineWidth = 32; g.strokeStyle = "rgba(255,255,255,0.85)"; g.stroke();
-    el(cx, cy, 54, 84); g.lineWidth = 20; g.strokeStyle = DARK; g.stroke();
+    // reference: one slim dark outline, faint halo only for dark bodies
+    el(cx, cy, 52, 80); g.lineWidth = 22; g.strokeStyle = "rgba(255,255,255,0.4)"; g.stroke();
+    el(cx, cy, 52, 80); g.lineWidth = 14; g.strokeStyle = DARK; g.stroke();
   } else if (style === "lineblush") {
     g.lineCap = "round";
-    g.lineWidth = 34; g.strokeStyle = "rgba(255,255,255,0.85)";
-    g.beginPath(); g.moveTo(cx - 52, cy - 10); g.lineTo(cx + 52, cy - 10); g.stroke();
-    g.lineWidth = 22; g.strokeStyle = DARK;
-    g.beginPath(); g.moveTo(cx - 52, cy - 10); g.lineTo(cx + 52, cy - 10); g.stroke();
+    g.lineWidth = 22; g.strokeStyle = "rgba(255,255,255,0.5)";
+    g.beginPath(); g.moveTo(cx - 44, cy - 8); g.lineTo(cx + 44, cy - 8); g.stroke();
+    g.lineWidth = 13; g.strokeStyle = DARK;
+    g.beginPath(); g.moveTo(cx - 44, cy - 8); g.lineTo(cx + 44, cy - 8); g.stroke();
     // blush on the outer cheek (mirrored per side)
-    el(cx + side * 46, cy + 74, 40, 22);
-    g.fillStyle = "rgba(255,138,160,0.85)"; g.fill();
+    el(cx + side * 44, cy + 84, 36, 20);
+    g.fillStyle = "rgba(240,150,165,0.8)"; g.fill();
   } else if (style === "sleepy") {
     g.lineCap = "round";
     g.lineWidth = 34; g.strokeStyle = "rgba(255,255,255,0.85)";
@@ -133,11 +134,12 @@ function eyeTexture(style, irisHex, side) {
     g.lineWidth = 22; g.strokeStyle = DARK;
     g.beginPath(); g.arc(cx, cy - 34, 58, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
   } else if (style === "spiral") {
-    el(cx, cy, 60, 88); g.fillStyle = "#f4f4f4"; g.fill();
-    g.lineWidth = 12; g.strokeStyle = DARK;
-    el(cx, cy, 60, 88); g.stroke();
-    for (const s of [0.62, 0.36, 0.13]) {
-      el(cx, cy, 60 * s, 88 * s); g.stroke();
+    // reference: bare dark spiral on the body color, no white fill
+    g.lineWidth = 9; g.strokeStyle = "rgba(255,255,255,0.35)";
+    el(cx, cy, 56, 84); g.stroke();
+    g.lineWidth = 8; g.strokeStyle = DARK;
+    for (const s of [1, 0.66, 0.38, 0.14]) {
+      el(cx, cy, 56 * s, 84 * s); g.stroke();
     }
   }
   const tex = new THREE.CanvasTexture(c);
@@ -150,36 +152,39 @@ function eyeTexture(style, irisHex, side) {
 function buildHeadParts(H, mat) {
   const g = new THREE.Group();
   if (H === "teardrop") {
-    const p = cone(1.5, 3.9, mat);
-    p.position.set(0, 5.35, -0.2);
-    p.rotation.x = -0.12;
+    // reference: soft rounded drop rising from the crown
+    const p = teardrop(mat, 1.55, 4.6);
+    p.position.set(0, 4.4, -0.2);
     g.add(p);
   } else if (H === "catears") {
+    // reference: wide rounded ears set low on the head sides
     for (const s of [-1, 1]) {
-      const e = cone(1.25, 2.6, mat);
-      e.position.set(s * 2.25, 5.2, 0);
-      e.rotation.z = -s * 0.14;
+      const e = cone(1.7, 3.3, mat, 14);
+      e.position.set(s * 2.7, 4.6, 0);
+      e.rotation.z = -s * 0.3;
       g.add(e);
     }
   } else if (H === "devilhorns") {
     for (const s of [-1, 1]) {
-      const h = cone(0.85, 2.3, mat);
-      h.position.set(s * 2.6, 4.7, 0);
-      h.rotation.z = -s * 0.5;
+      const h = cone(1.0, 2.8, mat);
+      h.position.set(s * 2.7, 4.6, 0);
+      h.rotation.z = -s * 0.55;
       g.add(h);
     }
   } else if (H === "floppyears") {
+    // reference bunny: thick long lobes draping from the top sides
     for (const s of [-1, 1]) {
-      const e = teardrop(mat, 1.35, 6.6);
-      e.position.set(s * 5.5, -4.2, 0);
-      e.rotation.z = s * 0.55;
+      const e = teardrop(mat, 1.7, 8.2);
+      e.position.set(s * 4.6, -1.6, -0.4);
+      e.rotation.z = s * 0.85;
       g.add(e);
     }
   } else if (H === "twinhorns") {
+    // reference: two solid horns angled outward from the crown
     for (const s of [-1, 1]) {
-      const h = sphere(1.0, mat, 0.8, 1.5, 0.8);
-      h.position.set(s * 1.6, 4.9, 0);
-      h.rotation.z = -s * 0.2;
+      const h = cone(1.0, 3.2, mat);
+      h.position.set(s * 2.0, 4.9, 0);
+      h.rotation.z = -s * 0.5;
       g.add(h);
     }
   } else if (H === "smallspikes") {
@@ -499,6 +504,9 @@ function analyzeFace(holder, src) {
     // per-eye radius from the FARTHEST eye vertex: the mean sits under the
     // face surface and buries the decal inside the head.
     // distances stay in raw units (bone-local space); dir is world-axis.
+    // dirs pulled toward face-front: the reference variants wear their
+    // eyes closer together than the animation base's wide-set baked ones
+    dir.add(new THREE.Vector3(0, 0.02, 0.45)).normalize();
     eyes.push({ side: dir.x < 0 ? -1 : 1, dir, r: rMax,
                 ang: Math.min(0.62, Math.max(0.3, ang * 1.12)) });
     // erase this eye from the texture: expanded box filled with the pale
@@ -546,7 +554,11 @@ export function makeGLBCharacterSync(rawCfg) {
 // eye decal as a sphere section around the measured head, aimed at the
 // baked eye's direction — curves with the face exactly like the erased art
 function glbEyePatch(face, eye, style, irisHex) {
-  const angV = eye.ang, angH = eye.ang * 0.72;
+  // 0.45 of the measured cluster angle: the decal canvas pads the ellipse
+  // AND the reference variant models wear smaller eyes than the animation
+  // base's baked ones — this lands on the reference size
+  const angV = Math.min(0.3, Math.max(0.16, eye.ang * 0.45));
+  const angH = angV * 0.72;
   const geo = new THREE.SphereGeometry(eye.r * 1.06, 18, 18,
     Math.PI / 2 - angH, angH * 2, Math.PI / 2 - angV, angV * 2);
   const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
@@ -596,7 +608,9 @@ function buildGLBApi(cfg, { holder, clips, face }) {
     }
     partMat = new THREE.MeshLambertMaterial({ color: BODY_HEX[cfg.body] });
     const parts = buildHeadParts(cfg.head, partMat);
-    parts.scale.setScalar(face.partScale);
+    // 1.25: reference variants wear larger features than a straight
+    // head-radius conversion suggests
+    parts.scale.setScalar(face.partScale * 1.25);
     anchor.add(parts);
   };
   apply();
