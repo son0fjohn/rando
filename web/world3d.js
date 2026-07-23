@@ -403,12 +403,26 @@ export const world3d = {
         themed.flipY = false;
         mat.map = themed;
       }
-      if (NIGHT) { // baked day textures: dim down; buildings keep a soft
-        mat.color = new THREE.Color(glow ? 0x93a0b5 : 0x76879c); // window glow
-        if (glow) {
-          mat.emissive = new THREE.Color(0xffffff);
-          mat.emissiveMap = mat.map;
-          mat.emissiveIntensity = 0.22;
+      if (NIGHT) {
+        // dim the body, then glow ONLY the bright texture areas (windows,
+        // glass, signage) via a contrast-crushed warm emissive map — walls
+        // fall dark, windows read lit, giving the night skyline depth
+        mat.color = new THREE.Color(glow ? 0x6f7c92 : 0x76879c);
+        if (glow && mat.map?.image) {
+          const im = mat.map.image;
+          const c = document.createElement("canvas");
+          c.width = im.width; c.height = im.height;
+          const cc = c.getContext("2d");
+          // windows/glass are the DARK pixels on these models — invert so
+          // they glow and the pale walls stay unlit
+          cc.filter = "grayscale(1) invert(1) contrast(2.6) brightness(0.62)";
+          cc.drawImage(im, 0, 0);
+          const em = new THREE.CanvasTexture(c);
+          em.colorSpace = THREE.SRGBColorSpace;
+          em.flipY = false;
+          mat.emissive = new THREE.Color(0xffd9a0);
+          mat.emissiveMap = em;
+          mat.emissiveIntensity = 0.85;
         }
       }
       geo.computeBoundingBox();
