@@ -148,6 +148,65 @@ function eyeTexture(style, irisHex, side) {
   return tex;
 }
 
+// head shapes as an attachable group in head-center space (head radius
+// 5.2): shared by the procedural character and the GLB hybrid overlay
+function buildHeadParts(H, mat) {
+  const g = new THREE.Group();
+  if (H === "teardrop") {
+    const p = cone(1.5, 3.9, mat);
+    p.position.set(0, 5.35, -0.2);
+    p.rotation.x = -0.12;
+    g.add(p);
+  } else if (H === "catears") {
+    for (const s of [-1, 1]) {
+      const e = cone(1.25, 2.6, mat);
+      e.position.set(s * 2.25, 5.2, 0);
+      e.rotation.z = -s * 0.14;
+      g.add(e);
+    }
+  } else if (H === "devilhorns") {
+    for (const s of [-1, 1]) {
+      const h = cone(0.85, 2.3, mat);
+      h.position.set(s * 2.6, 4.7, 0);
+      h.rotation.z = -s * 0.5;
+      g.add(h);
+    }
+  } else if (H === "floppyears") {
+    for (const s of [-1, 1]) {
+      const e = teardrop(mat, 1.35, 6.6);
+      e.position.set(s * 5.5, -4.2, 0);
+      e.rotation.z = s * 0.55;
+      g.add(e);
+    }
+  } else if (H === "twinhorns") {
+    for (const s of [-1, 1]) {
+      const h = sphere(1.0, mat, 0.8, 1.5, 0.8);
+      h.position.set(s * 1.6, 4.9, 0);
+      h.rotation.z = -s * 0.2;
+      g.add(h);
+    }
+  } else if (H === "smallspikes") {
+    for (const s of [-1, 1]) {
+      const sp = cone(0.7, 1.8, mat);
+      sp.position.set(s * 1.9, 5.15, 0);
+      sp.rotation.z = -s * 0.22;
+      g.add(sp);
+    }
+  } else if (H === "notailspike") {
+    const center = cone(1.15, 4.3, mat);
+    center.position.set(0, 5.9, -0.2);
+    center.rotation.x = -0.12;
+    g.add(center);
+    for (const s of [-1, 1]) {
+      const sp = cone(0.85, 2.5, mat);
+      sp.position.set(s * 2.7, 4.7, 0);
+      sp.rotation.z = -s * 0.45;
+      g.add(sp);
+    }
+  }
+  return g;
+}
+
 export function makeCharacter(rawCfg) {
   const group = new THREE.Group();
   const refs = {};
@@ -212,60 +271,7 @@ export function makeCharacter(rawCfg) {
     }
 
     // head shapes (all tinted the body color, like the reference sheets)
-    const H = cfg.head;
-    if (H === "teardrop") {
-      const p = cone(1.5, 3.9, mat);
-      p.position.set(0, 5.35, -0.2);
-      p.rotation.x = -0.12;
-      headG.add(p);
-    } else if (H === "catears") {
-      for (const s of [-1, 1]) {
-        const e = cone(1.25, 2.6, mat);
-        e.position.set(s * 2.25, 5.2, 0);
-        e.rotation.z = -s * 0.14;
-        headG.add(e);
-      }
-    } else if (H === "devilhorns") {
-      for (const s of [-1, 1]) {
-        const h = cone(0.85, 2.3, mat);
-        h.position.set(s * 2.6, 4.7, 0);
-        h.rotation.z = -s * 0.5;
-        headG.add(h);
-      }
-    } else if (H === "floppyears") {
-      for (const s of [-1, 1]) {
-        // big hanging teardrop lobes draping from high on the head
-        const e = teardrop(mat, 1.35, 6.6);
-        e.position.set(s * 5.5, -4.2, 0);
-        e.rotation.z = s * 0.55;
-        headG.add(e);
-      }
-    } else if (H === "twinhorns") {
-      for (const s of [-1, 1]) {
-        const h = sphere(1.0, mat, 0.8, 1.5, 0.8);
-        h.position.set(s * 1.6, 4.9, 0);
-        h.rotation.z = -s * 0.2;
-        headG.add(h);
-      }
-    } else if (H === "smallspikes") {
-      for (const s of [-1, 1]) {
-        const sp = cone(0.7, 1.8, mat);
-        sp.position.set(s * 1.9, 5.15, 0);
-        sp.rotation.z = -s * 0.22;
-        headG.add(sp);
-      }
-    } else if (H === "notailspike") {
-      const center = cone(1.15, 4.3, mat);
-      center.position.set(0, 5.9, -0.2);
-      center.rotation.x = -0.12;
-      headG.add(center);
-      for (const s of [-1, 1]) {
-        const sp = cone(0.85, 2.5, mat);
-        sp.position.set(s * 2.7, 4.7, 0);
-        sp.rotation.z = -s * 0.45;
-        headG.add(sp);
-      }
-    }
+    headG.add(buildHeadParts(cfg.head, mat));
     group.add(headG);
   }
 
@@ -342,7 +348,11 @@ export function characterSheet(cfgs, cell = 200) {
 // the procedural body. animations.glb carries 12 unnamed clips; indices
 // identified by motion fingerprinting (foot alternation / yaw / travel).
 // Tint = material color multiplied over the baked near-white texture.
-const GLB_CLIPS = { walk: 3, run: 9, idle: 8, spin: 0, hop: 1, wave: 7 };
+// idle #11: measured steadiest of the idle-like clips (yaw wobble 4-6°,
+// head height constant). #8 turns while looking around, #2 crouches into
+// a ball mid-clip — both fought app-controlled facing / read as "looking
+// at the ground".
+const GLB_CLIPS = { walk: 3, run: 9, idle: 11, spin: 0, hop: 1, wave: 7 };
 let glbTemplate = null;
 let glbResolved = null;   // resolved template for the sync path
 const depth = n => { let d = 0; while (n.parent) { d++; n = n.parent; } return d; };
@@ -368,21 +378,162 @@ export function loadGLBTemplate(url = "models/animations.glb") {
           b.updateMatrixWorld(true);
         }
       });
-      const box = new THREE.Box3().setFromObject(src);
+      // facing belongs to the app, not the clips: several clips yaw the
+      // Root bone while "looking around", which spun characters to random
+      // headings (each clone starts at a random clip time). Strip Root's
+      // rotation track; limbs/spine/head animation is untouched.
+      for (const clip of g.animations) {
+        clip.tracks = clip.tracks.filter(t => !/(^|[./])Root\.quaternion$/.test(t.name));
+      }
+      // normalization lives on an unnamed wrapper the clips can't target
+      const fit = new THREE.Group();
+      fit.add(src);
+      fit.updateWorldMatrix(true, true);
+      const box = new THREE.Box3().setFromObject(fit);
       const size = new THREE.Vector3();
       box.getSize(size);
-      src.scale.setScalar(15 / size.y); // normalize to CHAR_H
-      const box2 = new THREE.Box3().setFromObject(src);
-      src.position.y -= box2.min.y;     // feet on the ground
-      src.position.x -= (box2.min.x + box2.max.x) / 2;
-      src.position.z -= (box2.min.z + box2.max.z) / 2;
+      fit.scale.setScalar(15 / size.y); // normalize to CHAR_H
+      fit.updateWorldMatrix(true, true);
+      const box2 = new THREE.Box3().setFromObject(fit);
+      fit.position.y -= box2.min.y;     // feet on the ground
+      fit.position.x -= (box2.min.x + box2.max.x) / 2;
+      fit.position.z -= (box2.min.z + box2.max.z) / 2;
       const holder = new THREE.Group();
-      holder.add(src);
-      glbResolved = { holder, clips: g.animations };
+      holder.add(fit);
+      const face = analyzeFace(holder, src);
+      glbResolved = { holder, clips: g.animations, face };
       return glbResolved;
     });
   }
   return glbTemplate;
+}
+
+// Hybrid customization prep: find the baked eyes (mesh vertices whose UVs
+// sample dark texture pixels on the face front), erase them from the
+// texture, and measure the head so decal eyes + head parts can attach to
+// the Head bone in its local space.
+function analyzeFace(holder, src) {
+  let sm = null;
+  src.traverse(o => { if (o.isSkinnedMesh && !sm) sm = o; });
+  const head = src.getObjectByName("Head");
+  if (!sm || !head || !sm.material.map?.image) return null;
+  const img = sm.material.map.image;
+  const cv = document.createElement("canvas");
+  cv.width = img.width; cv.height = img.height;
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, cv.width, cv.height).data;
+  const pos = sm.geometry.attributes.position;
+  const uv = sm.geometry.attributes.uv;
+  // glTF textures use flipY=false: v maps straight to pixel rows
+  const lumAt = (u, v) => {
+    const x = Math.min(cv.width - 1, Math.max(0, Math.round(u * cv.width)));
+    const y = Math.min(cv.height - 1, Math.max(0, Math.round(v * cv.height)));
+    const i = (y * cv.width + x) * 4;
+    return (px[i] + px[i + 1] + px[i + 2]) / 3;
+  };
+  const geoBox = new THREE.Box3().setFromBufferAttribute(pos);
+  const height = geoBox.max.y - geoBox.min.y;
+  const sides = { [-1]: [], 1: [] };
+  for (let i = 0; i < pos.count; i++) {
+    if (pos.getZ(i) < 0) continue;              // face front only
+    if (pos.getY(i) < geoBox.min.y + height * 0.45) continue;
+    if (lumAt(uv.getX(i), uv.getY(i)) > 95) continue;
+    sides[pos.getX(i) < 0 ? -1 : 1].push(i);
+  }
+  if (!sides[-1].length || !sides[1].length) return null;
+  // head sphere via least-squares fit on the crown only (top 28% — below
+  // that the chibi shoulders/arms pollute the fit and shrink the radius)
+  const v = new THREE.Vector3();
+  const A = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+  const B = [0, 0, 0, 0];
+  const yCap = geoBox.min.y + height * 0.72;
+  for (let i = 0; i < pos.count; i++) {
+    if (pos.getY(i) < yCap) continue;
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const row = [2 * x, 2 * y, 2 * z, 1];
+    const rhs = x * x + y * y + z * z;
+    for (let r = 0; r < 4; r++) {
+      for (let cc = 0; cc < 4; cc++) A[r][cc] += row[r] * row[cc];
+      B[r] += row[r] * rhs;
+    }
+  }
+  // solve the 4x4 normal equations (Gaussian elimination, no pivning needed
+  // for this well-conditioned fit)
+  for (let col = 0; col < 4; col++) {
+    let piv = col;
+    for (let r = col + 1; r < 4; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    [A[col], A[piv]] = [A[piv], A[col]];
+    [B[col], B[piv]] = [B[piv], B[col]];
+    for (let r = 0; r < 4; r++) {
+      if (r === col) continue;
+      const f = A[r][col] / A[col][col];
+      for (let cc = col; cc < 4; cc++) A[r][cc] -= f * A[col][cc];
+      B[r] -= f * B[col];
+    }
+  }
+  const sol = B.map((b, i) => b / A[i][i]);
+  const C = new THREE.Vector3(sol[0], sol[1], sol[2]);
+  const R = Math.sqrt(Math.max(1e-8, sol[3] + C.lengthSq()));
+  // per-eye: center, direction from head center, angular radius, UV box.
+  // directions live in WORLD axes (the anchor is world-axis aligned), so
+  // the 180° rig flip is accounted for automatically.
+  holder.updateWorldMatrix(true, true);
+  const toWorld = p => sm.localToWorld(p.clone());
+  const eyes = [];
+  for (const s of [-1, 1]) {
+    const list = sides[s];
+    const ec = new THREE.Vector3();
+    const ub = { u0: 1, v0: 1, u1: 0, v1: 0 };
+    for (const i of list) {
+      ec.add(v.fromBufferAttribute(pos, i));
+      ub.u0 = Math.min(ub.u0, uv.getX(i)); ub.u1 = Math.max(ub.u1, uv.getX(i));
+      ub.v0 = Math.min(ub.v0, uv.getY(i)); ub.v1 = Math.max(ub.v1, uv.getY(i));
+    }
+    ec.divideScalar(list.length);
+    const dirRaw = ec.clone().sub(C).normalize();
+    const dir = toWorld(ec).sub(toWorld(C)).normalize();
+    let ang = 0, rMax = 0;
+    for (const i of list) {
+      const d = v.fromBufferAttribute(pos, i).sub(C);
+      ang = Math.max(ang, d.clone().normalize().angleTo(dirRaw));
+      rMax = Math.max(rMax, d.length()); // outermost point of the eye bump
+    }
+    // per-eye radius from the FARTHEST eye vertex: the mean sits under the
+    // face surface and buries the decal inside the head.
+    // distances stay in raw units (bone-local space); dir is world-axis.
+    eyes.push({ side: dir.x < 0 ? -1 : 1, dir, r: rMax,
+                ang: Math.min(0.62, Math.max(0.3, ang * 1.12)) });
+    // erase this eye from the texture: expanded box filled with the pale
+    // body color sampled beside it
+    const pad = 0.012;
+    const bx = Math.floor((ub.u0 - pad) * cv.width), by = Math.floor((ub.v0 - pad) * cv.height);
+    const bw = Math.ceil((ub.u1 - ub.u0 + 2 * pad) * cv.width), bh = Math.ceil((ub.v1 - ub.v0 + 2 * pad) * cv.height);
+    let fill = [230, 230, 230], best = 0;
+    for (const [sx, sy] of [[bx - 8, by + bh / 2], [bx + bw + 8, by + bh / 2], [bx + bw / 2, by - 8], [bx + bw / 2, by + bh + 8]]) {
+      const i = ((Math.max(0, Math.min(cv.height - 1, Math.round(sy)))) * cv.width +
+                 (Math.max(0, Math.min(cv.width - 1, Math.round(sx))))) * 4;
+      const l = (px[i] + px[i + 1] + px[i + 2]) / 3;
+      if (l > best) { best = l; fill = [px[i], px[i + 1], px[i + 2]]; }
+    }
+    ctx.fillStyle = `rgb(${fill[0]},${fill[1]},${fill[2]})`;
+    ctx.fillRect(bx, by, bw, bh);
+  }
+  const eyeless = new THREE.CanvasTexture(cv);
+  eyeless.colorSpace = THREE.SRGBColorSpace;
+  eyeless.flipY = false;
+  sm.material.map = eyeless;
+  sm.material.needsUpdate = true;
+  // anchor: head-center position in Head-bone local space, axes kept
+  // aligned to the WORLD (so parts built "y-up" sit upright and decal
+  // directions can be world-axis vectors)
+  const anchorWorld = new THREE.Matrix4().setPosition(toWorld(C));
+  const anchorLocal = head.matrixWorld.clone().invert().multiply(anchorWorld);
+  const anchorPos = new THREE.Vector3();
+  const anchorQuat = new THREE.Quaternion();
+  anchorLocal.decompose(anchorPos, anchorQuat, new THREE.Vector3());
+  // sizes measured in anchor space (raw model units)
+  return { anchorPos, anchorQuat, R, eyes, partScale: R / 5.2 };
 }
 
 export async function makeGLBCharacter(rawCfg) {
@@ -395,30 +546,78 @@ export function makeGLBCharacterSync(rawCfg) {
   return glbResolved ? buildGLBApi(normalizeAvatar(rawCfg), glbResolved) : null;
 }
 
-function buildGLBApi(cfg, { holder, clips }) {
+// eye decal as a sphere section around the measured head, aimed at the
+// baked eye's direction — curves with the face exactly like the erased art
+function glbEyePatch(face, eye, style, irisHex) {
+  const angV = eye.ang, angH = eye.ang * 0.72;
+  const geo = new THREE.SphereGeometry(eye.r * 1.06, 18, 18,
+    Math.PI / 2 - angH, angH * 2, Math.PI / 2 - angV, angV * 2);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    map: eyeTexture(style, irisHex, eye.side),
+    transparent: true, alphaTest: 0.02, side: THREE.FrontSide,
+  }));
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), eye.dir);
+  return mesh;
+}
+
+function buildGLBApi(cfg, { holder, clips, face }) {
   const group = SkeletonUtils.clone(holder);
-  // normalize so the white body (#e7e7e7) maps to exactly 1.0 — any higher
-  // gain clips lit surfaces to flat white and erases the hand/feet shading
-  const tint = new THREE.Color(BODY_HEX[cfg.body]).multiplyScalar(255 / 231);
+  const bodyMats = [];
   group.traverse(o => {
     if (o.isMesh || o.isSkinnedMesh) {
       o.material = o.material.clone();
-      o.material.color = tint.clone();
       o.frustumCulled = false; // bind-pose bounds lie once bones move
+      bodyMats.push(o.material);
     }
   });
+  const headBone = group.getObjectByName("Head");
+  let anchor = null;
+  let partMat = null;
+  if (face && headBone) {
+    anchor = new THREE.Group();
+    anchor.position.copy(face.anchorPos);
+    anchor.quaternion.copy(face.anchorQuat);
+    headBone.add(anchor);
+  }
+  const apply = () => {
+    // normalize so the white body (#e7e7e7) maps to exactly 1.0 — higher
+    // gain clips lit surfaces flat and erases the hand/feet shading
+    const tint = new THREE.Color(BODY_HEX[cfg.body]).multiplyScalar(255 / 231);
+    for (const m of bodyMats) m.color = tint.clone();
+    if (!anchor) return;
+    anchor.clear();
+    const irisHex = IRIS_HEX[cfg.iris];
+    for (const eye of face.eyes) {
+      anchor.add(glbEyePatch(face, eye, cfg.eyes, irisHex));
+    }
+    partMat = new THREE.MeshLambertMaterial({ color: BODY_HEX[cfg.body] });
+    const parts = buildHeadParts(cfg.head, partMat);
+    parts.scale.setScalar(face.partScale);
+    anchor.add(parts);
+  };
+  apply();
   const mixer = new THREE.AnimationMixer(group);
   const idle = mixer.clipAction(clips[GLB_CLIPS.idle]);
   const walk = mixer.clipAction(clips[GLB_CLIPS.walk]);
   walk.timeScale = 1.25; // match in-world travel speed
   idle.time = Math.random() * idle.getClip().duration; // desync crowds
   idle.play();
+  // the source idle stares at the ground — lift the gaze after each mixer
+  // step (rotate about the head-local axis that matches model X)
+  let qLift = null;
+  if (headBone && face) {
+    const axis = new THREE.Vector3(1, 0, 0).applyQuaternion(face.anchorQuat).normalize();
+    qLift = new THREE.Quaternion().setFromAxisAngle(axis, -0.26);
+  }
   let wasWalking = false;
   let lastT = null;
   return {
     group,
     get config() { return { ...cfg }; },
-    setConfig() {}, // evaluation build only
+    setConfig(next) {
+      cfg = normalizeAvatar({ ...cfg, ...next });
+      apply();
+    },
     walking: false,
     phase: 0,
     tick(t) {
@@ -431,6 +630,7 @@ function buildGLBApi(cfg, { holder, clips }) {
       const dt = lastT === null ? 0.016 : Math.min(0.1, Math.max(0, t - lastT));
       lastT = t;
       mixer.update(dt);
+      if (qLift) headBone.quaternion.multiply(qLift);
     },
   };
 }
