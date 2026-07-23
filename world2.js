@@ -191,8 +191,10 @@ export const world2 = {
   },
 
   async buildGround() {
-    // dome cap with planar UVs over the single baked radial map (composited
-    // from the two road-wrapper tiles: 6 arms, hex ring, paved plaza)
+    // dome cap with planar UVs over the single baked ground map. The mesh
+    // is added IMMEDIATELY with a plain grass color — if the texture 404s
+    // or stalls (mid-deploy, slow network), the world must never render
+    // as a black void; the map applies whenever it arrives.
     const cap = new THREE.SphereGeometry(R, 160, 80, 0, Math.PI * 2, 0, 0.72);
     cap.translate(0, -R, 0);
     const pos = cap.attributes.position;
@@ -201,12 +203,20 @@ export const world2 = {
     for (let i = 0; i < pos.count; i++) {
       uv.setXY(i, pos.getX(i) / SPAN + 0.5, pos.getZ(i) / SPAN + 0.5);
     }
-    const map = await this.loadTex(this.city
-      ? `world2/ground_${this.city}.jpg`
-      : "world2/ground_radial.jpg");
-    map.wrapS = map.wrapT = THREE.ClampToEdgeWrapping; // edges are pure grass
-    map.anisotropy = 8;
-    this.scene.add(new THREE.Mesh(cap, new THREE.MeshLambertMaterial({ map })));
+    const mat = new THREE.MeshLambertMaterial({ color: 0x7d9370 });
+    this.scene.add(new THREE.Mesh(cap, mat));
+    try {
+      const map = await this.loadTex(this.city
+        ? `world2/ground_${this.city}.jpg`
+        : "world2/ground_radial.jpg");
+      map.wrapS = map.wrapT = THREE.ClampToEdgeWrapping; // edges are pure grass
+      map.anisotropy = 8;
+      mat.map = map;
+      mat.color.set(0xffffff);
+      mat.needsUpdate = true;
+    } catch {
+      console.warn(`world2: ground map missing for ${this.city ?? "radial"} — flat color fallback`);
+    }
   },
 
   async setSky(mode) {
