@@ -28,3 +28,4 @@ Desktop.ini
 .vscode/
 .idea/
 scripts/osm_cache_*.json
+web/models/ref/
