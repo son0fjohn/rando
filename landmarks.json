@@ -42,11 +42,11 @@
     {
       "id": "jacks-bar",
       "lat": 37.53505,
-      "lng": 126.99244,
+      "lng": 126.992444,
       "yaw": 0,
-      "h": 18,
-      "clear": 22,
-      "glb": null,
+      "h": 14,
+      "clear": 18,
+      "glb": "world2/landmarks/jacks-bar.glb",
       "glow": "#ff5d8a"
     },
     {
@@ -68,6 +68,36 @@
       "clear": 16,
       "glb": "world2/landmarks/danco.glb",
       "glow": "#ff5d3d"
+    },
+    {
+      "id": "waikiki",
+      "yaw": 0,
+      "h": 14,
+      "clear": 14,
+      "glb": "world2/landmarks/waikiki.glb",
+      "glow": "#4de8c8",
+      "lat": 37.534733,
+      "lng": 126.994461
+    },
+    {
+      "id": "agave",
+      "yaw": 0,
+      "h": 15,
+      "clear": 14,
+      "glb": "world2/landmarks/agave.glb",
+      "glow": "#7dff5e",
+      "lat": 37.534953,
+      "lng": 126.994194
+    },
+    {
+      "id": "waikiki-beach-pub",
+      "lat": 37.534972,
+      "lng": 126.993394,
+      "yaw": 0,
+      "h": 14,
+      "clear": 14,
+      "glb": "world2/landmarks/waikiki-beach-pub.glb",
+      "glow": "#4db8ff"
     }
   ],
   "pending": [
@@ -81,30 +111,12 @@
       "needs": "pin"
     },
     {
-      "id": "waikiki",
-      "yaw": 0,
-      "h": 14,
-      "clear": 18,
-      "glb": "world2/landmarks/waikiki.glb",
-      "glow": "#4de8c8",
-      "needs": "pin"
-    },
-    {
       "id": "grainhaus",
       "yaw": 0,
       "h": 12,
       "clear": 16,
       "glb": "world2/landmarks/grainhaus.glb",
       "glow": "#c8f04a",
-      "needs": "pin"
-    },
-    {
-      "id": "agave",
-      "yaw": 0,
-      "h": 15,
-      "clear": 16,
-      "glb": "world2/landmarks/agave.glb",
-      "glow": "#7dff5e",
       "needs": "pin"
     }
   ]
