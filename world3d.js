@@ -369,7 +369,7 @@ export const world3d = {
     // target height with feet at y=0 so instance matrices are just
     // yaw+scale+position.
     const loader = new GLTFLoader();
-    const loadPiece = async (url, h, glow) => {
+    const loadPiece = async (url, h, glow, theme = true) => {
       const g = await loader.loadAsync(url);
       g.scene.updateWorldMatrix(true, true);
       let mesh = null;
@@ -387,7 +387,7 @@ export const world3d = {
       // theme pass: desaturate + gently lift every model's baked texture so
       // warm/saturated assets fall in line with the muted cool palette
       // (buildings get a stronger pull than trees)
-      if (mat.map?.image) {
+      if (theme && mat.map?.image) {
         // 1024 cap: full-res processed copies of every model texture
         // exhaust mobile browser memory (crash-on-phone class of bug)
         const im = mat.map.image;
@@ -540,13 +540,42 @@ export const world3d = {
       console.warn("buildings.json unavailable — generic placement fallback", e);
     }
 
+    // landmark texture treatment: reconstructed Street View textures are
+    // photographic (real signage, photo grain). Posterize to flat color
+    // blocks + soften fine detail so signs become illegible abstract
+    // patches in the locked cel style. No generation step, no credits.
+    const celTexture = (tex) => {
+      if (!tex?.image) return tex;
+      const c = document.createElement("canvas");
+      c.width = c.height = 512;
+      const cc = c.getContext("2d");
+      // stylize-then-reconstruct landmarks already carry the locked
+      // palette — soften + posterize only, no further desaturation
+      cc.filter = "blur(1.2px)";
+      cc.drawImage(tex.image, 0, 0, c.width, c.height);
+      cc.filter = "none";
+      const id = cc.getImageData(0, 0, c.width, c.height);
+      const d = id.data;
+      for (let i = 0; i < d.length; i += 4) {   // 6-level posterize
+        d[i] = Math.round(d[i] / 42.5) * 42.5;
+        d[i + 1] = Math.round(d[i + 1] / 42.5) * 42.5;
+        d[i + 2] = Math.round(d[i + 2] / 42.5) * 42.5;
+      }
+      cc.putImageData(id, 0, 0);
+      const out = new THREE.CanvasTexture(c);
+      out.colorSpace = THREE.SRGBColorSpace;
+      out.flipY = tex.flipY;
+      return out;
+    };
+
     // place hero landmark models at their real coordinates. The low-poly
     // style is a MATERIAL pass on the reconstructed geometry: flatten
-    // normals (faceted shading) + palette-quantized flat color + outline.
+    // normals (faceted shading) + cel-posterized texture + outline.
     for (const l of landmarks) {
       if (!l.glb || !lib) continue;
       try {
-        const piece = await loadPiece(l.glb, l.h, true);
+        const piece = await loadPiece(l.glb, l.h, true, false);
+        piece.mat.map = celTexture(piece.mat.map);
         const geo = piece.geo.clone();
         // faceted shading: drop smooth normals, let flatShading rebuild
         geo.deleteAttribute("normal");

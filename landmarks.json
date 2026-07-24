@@ -4,11 +4,11 @@
     {
       "id": "hamilton-hotel",
       "lat": 37.53486,
-      "lng": 126.99400,
+      "lng": 126.994,
       "yaw": 180,
       "h": 42,
       "clear": 42,
-      "glb": null
+      "glb": "world2/landmarks/hamilton-hotel.glb"
     },
     {
       "id": "itaewon-crossing-east",
@@ -17,6 +17,15 @@
       "yaw": 270,
       "h": 26,
       "clear": 30,
+      "glb": null
+    },
+    {
+      "id": "itaewon-station",
+      "lat": 37.53462,
+      "lng": 126.99455,
+      "yaw": 0,
+      "h": 30,
+      "clear": 34,
       "glb": null
     }
   ]
