@@ -8,7 +8,8 @@
       "yaw": 180,
       "h": 42,
       "clear": 42,
-      "glb": "world2/landmarks/hamilton-hotel.glb"
+      "glb": "world2/landmarks/hamilton-hotel.glb",
+      "name": "Hamilton Hotel"
     },
     {
       "id": "itaewon-crossing-east",
@@ -17,7 +18,8 @@
       "yaw": 270,
       "h": 26,
       "clear": 30,
-      "glb": null
+      "glb": null,
+      "name": "Itaewon Crossing"
     },
     {
       "id": "itaewon-station",
@@ -27,7 +29,8 @@
       "h": 26,
       "clear": 34,
       "glb": "world2/landmarks/itaewon-station.glb",
-      "glow": "#ffc84d"
+      "glow": "#ffc84d",
+      "name": "Itaewon Station"
     },
     {
       "id": "grand-ole-opry",
@@ -37,7 +40,8 @@
       "h": 18,
       "clear": 22,
       "glb": "world2/landmarks/grand-ole-opry.glb",
-      "glow": "#ff5d4d"
+      "glow": "#ff5d4d",
+      "name": "Grand Ole Opry"
     },
     {
       "id": "jacks-bar",
@@ -47,7 +51,8 @@
       "h": 14,
       "clear": 18,
       "glb": "world2/landmarks/jacks-bar.glb",
-      "glow": "#ff5d8a"
+      "glow": "#ff5d8a",
+      "name": "Jack's Bar"
     },
     {
       "id": "soap",
@@ -57,7 +62,8 @@
       "h": 13,
       "clear": 16,
       "glb": "world2/landmarks/soap.glb",
-      "glow": "#4da6ff"
+      "glow": "#4da6ff",
+      "name": "Soap"
     },
     {
       "id": "danco",
@@ -67,7 +73,8 @@
       "h": 15,
       "clear": 16,
       "glb": "world2/landmarks/danco.glb",
-      "glow": "#ff5d3d"
+      "glow": "#ff5d3d",
+      "name": "Danco"
     },
     {
       "id": "waikiki",
@@ -77,7 +84,8 @@
       "glb": "world2/landmarks/waikiki.glb",
       "glow": "#4de8c8",
       "lat": 37.534733,
-      "lng": 126.994461
+      "lng": 126.994461,
+      "name": "Waikiki"
     },
     {
       "id": "agave",
@@ -87,7 +95,8 @@
       "glb": "world2/landmarks/agave.glb",
       "glow": "#7dff5e",
       "lat": 37.534953,
-      "lng": 126.994194
+      "lng": 126.994194,
+      "name": "Agave"
     },
     {
       "id": "waikiki-beach-pub",
@@ -97,7 +106,8 @@
       "h": 14,
       "clear": 14,
       "glb": "world2/landmarks/waikiki-beach-pub.glb",
-      "glow": "#4db8ff"
+      "glow": "#4db8ff",
+      "name": "Waikiki Beach Pub"
     }
   ],
   "pending": [
@@ -108,7 +118,8 @@
       "clear": 16,
       "glb": "world2/landmarks/bolero.glb",
       "glow": "#ff6a55",
-      "needs": "pin"
+      "needs": "pin",
+      "name": "Bolero"
     },
     {
       "id": "grainhaus",
@@ -117,7 +128,8 @@
       "clear": 16,
       "glb": "world2/landmarks/grainhaus.glb",
       "glow": "#c8f04a",
-      "needs": "pin"
+      "needs": "pin",
+      "name": "Grainhaus"
     }
   ]
 }
