@@ -29,7 +29,36 @@ function geoPos(lat, lng) {
     x *= WORLD_EDGE / d; // edge in their true real-world direction
     z *= WORLD_EDGE / d;
   }
-  return new THREE.Vector3(x, 0, z);
+  return new THREE.Vector3(x, terrainY(x, z), z);
+}
+
+// ---- hillside terrain (grocery-street reference): Namsan rises to the
+// north-west, ground falls gently south toward the river, light rolling
+// noise elsewhere. Gameplay plazas blend flat so gathering areas stay level.
+const sstep = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+function rawTerrain(x, z) {
+  const nw = (-z) * 0.8 + (-x) * 0.5;
+  let h = 34 * sstep((nw - 260) / 480);
+  h -= 14 * sstep((z - 320) / 420);
+  h += 5 * Math.sin(x * 0.0055 + 1.7) * Math.sin(z * 0.0047 - 0.4);
+  return h;
+}
+let TERRAIN_ANCHORS = null; // lazy: ZONE_FLAVOR is declared further down
+export function terrainY(x, z) {
+  TERRAIN_ANCHORS ??= ZONE_FLAVOR.map(f => {
+    const mLat = 110540.0, mLng = 111320.0 * Math.cos(GEO_CENTER[0] * Math.PI / 180);
+    return { x: (f.lng - GEO_CENTER[1]) * mLng * GEO_SCALE,
+             z: -(f.lat - GEO_CENTER[0]) * mLat * GEO_SCALE };
+  });
+  let h = rawTerrain(x, z);
+  for (const a of TERRAIN_ANCHORS) {
+    const d = Math.hypot(x - a.x, z - a.z);
+    if (d < 110) {
+      const t = sstep(d / 110);
+      h = rawTerrain(a.x, a.z) * (1 - t) + h * t;
+    }
+  }
+  return h;
 }
 
 // NPCs at real spots: one pair in Gyeongnidan, one by Itaewon station.
@@ -117,9 +146,13 @@ export const world3d = {
   init(frameEl) {
     this.frame = frameEl;
     const w = frameEl.clientWidth, h = frameEl.clientHeight;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+    // console-render pixel look (grocery-street reference): render at a
+    // fraction of native res and upscale with hard pixels. ?pix=0 disables.
+    const PIX = new URLSearchParams(location.search).get("pix") !== "0";
+    this.renderer = new THREE.WebGLRenderer({ antialias: !PIX });
+    this.renderer.setPixelRatio(PIX ? 0.5 : Math.min(2, devicePixelRatio));
     this.renderer.setSize(w, h);
+    if (PIX) this.renderer.domElement.style.imageRendering = "pixelated";
     // NOTE: real shadow mapping is disabled — it renders in isolated
     // scenes but never from a cold boot of the full app scene (unresolved
     // three.js state issue). Crisp BAKED shadows below match the cel
@@ -216,9 +249,12 @@ export const world3d = {
     // plane with a pale curb ring marking the transition.
     const PAVED_R = 720;
     const groundMat = new THREE.MeshLambertMaterial({ color: M.grass });
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(1500, 48), groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
+    const gg = new THREE.PlaneGeometry(3000, 3000, 100, 100);
+    gg.rotateX(-Math.PI / 2);
+    const gp = gg.attributes.position;
+    for (let i = 0; i < gp.count; i++) gp.setY(i, terrainY(gp.getX(i), gp.getZ(i)));
+    gg.computeVertexNormals();
+    const ground = new THREE.Mesh(gg, groundMat);
     this.scene.add(ground);
     this.loadImage("world2/road_grass.jpg").then(img => {
       const tex = this.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
@@ -230,19 +266,32 @@ export const world3d = {
     }).catch(() => {});
     this.loadImage("world2/road_plaza.jpg").then(img => {
       const tex = this.mirrorBlockTex(img, [0.05, 0.05, 0.27, 0.27]);
-      tex.repeat.set(52, 52);
-      const paved = new THREE.Mesh(new THREE.CircleGeometry(PAVED_R, 64),
-        new THREE.MeshLambertMaterial({ map: tex,
-          color: NIGHT ? THEME.world.pavingNight : THEME.world.pavingDay }));
-      paved.rotation.x = -Math.PI / 2;
-      paved.position.y = 0.06;
-      paved.receiveShadow = true;
+      // polar-grid disc with per-vertex terrain height (a CircleGeometry
+      // fan can't follow slopes)
+      const rings = 30, segs = 80;
+      const pos = [], uvs = [], idx = [];
+      for (let r = 0; r <= rings; r++) {
+        for (let sgi = 0; sgi <= segs; sgi++) {
+          const a = (sgi / segs) * Math.PI * 2, rr = (r / rings) * PAVED_R;
+          const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
+          pos.push(x, terrainY(x, z) + 0.14, z);
+          uvs.push(x / PAVED_R * 26 + 0.5, z / PAVED_R * 26 + 0.5);
+        }
+      }
+      for (let r = 0; r < rings; r++) {
+        for (let sgi = 0; sgi < segs; sgi++) {
+          const a = r * (segs + 1) + sgi, b = a + segs + 1;
+          idx.push(a, b, a + 1, b, b + 1, a + 1);
+        }
+      }
+      const pgeo = new THREE.BufferGeometry();
+      pgeo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      pgeo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+      pgeo.setIndex(idx);
+      pgeo.computeVertexNormals();
+      const paved = new THREE.Mesh(pgeo, new THREE.MeshLambertMaterial({ map: tex,
+        color: NIGHT ? THEME.world.pavingNight : THEME.world.pavingDay }));
       this.scene.add(paved);
-      const curb = new THREE.Mesh(new THREE.RingGeometry(PAVED_R, PAVED_R + 4, 64),
-        new THREE.MeshLambertMaterial({ color: NIGHT ? THEME.world.curbNight : THEME.world.curbDay }));
-      curb.rotation.x = -Math.PI / 2;
-      curb.position.y = 0.07;
-      this.scene.add(curb);
       this.needsRender = true;
     }).catch(() => {});
   },
@@ -313,12 +362,16 @@ export const world3d = {
           const len = Math.hypot(dx, dz);
           if (len < 0.5) continue;
           const ang = Math.atan2(dx, dz);
-          const g = new THREE.BoxGeometry(w, 0.5, len);
+          const y1 = terrainY(x, z), y2 = terrainY(x2, z2);
+          const slopeLen = Math.hypot(len, y2 - y1);
+          const g = new THREE.BoxGeometry(w, 0.5, slopeLen);
           // scale v so the asphalt texture repeats every ~26u along the road
           const uv = g.attributes.uv;
           for (let ui = 0; ui < uv.count; ui++) uv.setY(ui, uv.getY(ui) * (len / 26));
+          const pitch = Math.asin((y2 - y1) / slopeLen);
           g.applyMatrix4(new THREE.Matrix4().makeRotationY(ang)
-            .setPosition((x + x2) / 2, 0.25, (z + z2) / 2));
+            .multiply(new THREE.Matrix4().makeRotationX(-pitch))
+            .setPosition((x + x2) / 2, (y1 + y2) / 2 + 0.25, (z + z2) / 2));
           roadGeos.push(g);
           const steps = Math.max(1, Math.floor(len / 22));
           for (let s = 0; s <= steps; s++) {
@@ -328,9 +381,9 @@ export const world3d = {
           }
         }
         if (i > 0 && i < pts.length - 1) {
-          // sits a hair above the ribbons: separate material would z-fight
-          const jg = new THREE.CylinderGeometry(w / 2, w / 2, 0.56, 10);
-          jg.applyMatrix4(new THREE.Matrix4().setPosition(x, 0.27, z));
+          // taller joint bridges slope seams between tilted segments
+          const jg = new THREE.CylinderGeometry(w / 2, w / 2, 2.4, 10);
+          jg.applyMatrix4(new THREE.Matrix4().setPosition(x, terrainY(x, z) - 0.6, z));
           jointGeos.push(jg);
         }
       }
@@ -520,6 +573,7 @@ export const world3d = {
         const geo = new THREE.ExtrudeGeometry(new THREE.Shape(v2s),
           { depth: b.h, bevelEnabled: false });
         geo.rotateX(-Math.PI / 2);
+        geo.translate(0, terrainY(cx, cz) - 1.2, 0); // sit into the slope
         const bi = Math.abs(Math.round(cx * 7 + cz * 13)) % wallCols.length;
         bodyGeos[bi].push(geo);
         decorLots.push({ poly, cx, cz, h: b.h });
@@ -531,18 +585,16 @@ export const world3d = {
           const base = poly.map(([x, z]) => new THREE.Vector2(x, -z));
           if (THREE.ShapeUtils.area(base) < 0) base.reverse();
           const quads = [];
+          const shv = (X, Z) => { quads.push(X, terrainY(X, Z) + 0.5, Z); };
           for (let e = 0; e < base.length; e++) {
             const a = base[e], b2 = base[(e + 1) % base.length];
-            quads.push(
-              a.x, 0, -a.y,  b2.x, 0, -b2.y,  b2.x + off[0], 0, -b2.y - off[1],
-              a.x, 0, -a.y,  b2.x + off[0], 0, -b2.y - off[1],  a.x + off[0], 0, -a.y - off[1]);
+            shv(a.x, -a.y); shv(b2.x, -b2.y); shv(b2.x + off[0], -b2.y - off[1]);
+            shv(a.x, -a.y); shv(b2.x + off[0], -b2.y - off[1]); shv(a.x + off[0], -a.y - off[1]);
           }
           const capTris = THREE.ShapeUtils.triangulateShape(
             base.map(v => new THREE.Vector2(v.x + off[0], v.y + off[1])), []);
           for (const t of capTris) {
-            for (const vi of t) {
-              quads.push(base[vi].x + off[0], 0, -base[vi].y - off[1]);
-            }
+            for (const vi of t) shv(base[vi].x + off[0], -base[vi].y - off[1]);
           }
           const sg = new THREE.BufferGeometry();
           sg.setAttribute("position", new THREE.Float32BufferAttribute(quads, 3));
@@ -554,8 +606,7 @@ export const world3d = {
         const sm = new THREE.Mesh(mergeGeometries(shadowGeos),
           new THREE.MeshBasicMaterial({ color: 0x241c12, transparent: true,
             opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
-        sm.position.y = 0.55; // above roads/paving, below characters
-        this.scene.add(sm);
+        this.scene.add(sm); // heights baked per-vertex against the terrain
       }
       const lineMat = new THREE.LineBasicMaterial({
         color: NIGHT ? 0x2b3441 : 0x6b675e, transparent: true, opacity: 0.5 });
@@ -626,7 +677,7 @@ export const world3d = {
           const jx = ((seed % 7) - 3) * 0.6, jz = ((seed % 5) - 2) * 0.6;
           const ac = new THREE.BoxGeometry(2.0, 1.3, 1.6);
           ac.applyMatrix4(new THREE.Matrix4().makeRotationY(seed % 2 ? 0.4 : -0.2)
-            .setPosition(lot.cx + jx, lot.h + 0.65, lot.cz + jz));
+            .setPosition(lot.cx + jx, terrainY(lot.cx, lot.cz) - 1.2 + lot.h + 0.65, lot.cz + jz));
           acGeos.push(ac);
         }
         if (!road || awnings > 520) continue;
@@ -652,7 +703,7 @@ export const world3d = {
           const aw = new THREE.BoxGeometry(Math.min(elen * 0.86, 24), 0.45, 3.1);
           const m = new THREE.Matrix4().makeRotationY(eang)
             .multiply(new THREE.Matrix4().makeRotationX(0.24));
-          m.setPosition(mx + ox * 1.5, 6.8, mz + oz * 1.5);
+          m.setPosition(mx + ox * 1.5, terrainY(mx, mz) + 6.8, mz + oz * 1.5);
           aw.applyMatrix4(m);
           awnGeos[seed % AWN_COLS.length].push(aw);
         }
@@ -663,7 +714,7 @@ export const world3d = {
           const sx = mx + Math.sin(eang) * t + ox * 0.4;
           const sz = mz + Math.cos(eang) * t + oz * 0.4;
           const m = new THREE.Matrix4().makeRotationY(eang);
-          m.setPosition(sx, 9.5 + drand() * (lot.h - 11), sz);
+          m.setPosition(sx, terrainY(sx, sz) + 9.5 + drand() * (lot.h - 11), sz);
           sg.applyMatrix4(m);
           signGeos[seed % SIGN_COLS.length].push(sg);
         }
@@ -672,11 +723,11 @@ export const world3d = {
           const cx2 = road.x + ox * (road.w / 2 + 1.5), cz2 = road.z + oz * (road.w / 2 + 1.5);
           if (drand() < 0.6) {
             const bin = new THREE.CylinderGeometry(1.0, 0.9, 2.4, 8);
-            bin.applyMatrix4(new THREE.Matrix4().setPosition(cx2, 1.2, cz2));
+            bin.applyMatrix4(new THREE.Matrix4().setPosition(cx2, terrainY(cx2, cz2) + 1.2, cz2));
             clutterGeos.bin.push(bin);
           } else {
             const cone = new THREE.ConeGeometry(0.7, 1.7, 8);
-            cone.applyMatrix4(new THREE.Matrix4().setPosition(cx2, 0.85, cz2));
+            cone.applyMatrix4(new THREE.Matrix4().setPosition(cx2, terrainY(cx2, cz2) + 0.85, cz2));
             clutterGeos.cone.push(cone);
           }
         }
@@ -688,8 +739,9 @@ export const world3d = {
         if (c.w < 11 || !farFromPoles(c.x, c.z) || polesPlaced.length > 220) continue;
         const px = c.x + Math.cos(c.ang) * (c.w / 2 + 2.2);
         const pz = c.z - Math.sin(c.ang) * (c.w / 2 + 2.2);
+        const py = terrainY(px, pz);
         const pole = new THREE.CylinderGeometry(0.32, 0.4, 23, 6);
-        pole.applyMatrix4(new THREE.Matrix4().setPosition(px, 11.5, pz));
+        pole.applyMatrix4(new THREE.Matrix4().setPosition(px, py + 11.5, pz));
         poleGeos.push(pole);
         // wire to the nearest earlier pole within reach, with sag
         let near = null, nd = 1e9;
@@ -698,11 +750,12 @@ export const world3d = {
           if (d < nd) { nd = d; near = p; }
         }
         if (near && nd < 130 * 130) {
+          const nearY = terrainY(near.x, near.z);
           for (const wy of [22.2, 20.6]) {
             const SEG = 7;
             for (let s = 0; s < SEG; s++) {
               const t0 = s / SEG, t1 = (s + 1) / SEG;
-              const sag = t => wy - Math.sin(t * Math.PI) * 2.6;
+              const sag = t => wy + py + (nearY - py) * t - Math.sin(t * Math.PI) * 2.6;
               wirePts.push(
                 px + (near.x - px) * t0, sag(t0), pz + (near.z - pz) * t0,
                 px + (near.x - px) * t1, sag(t1), pz + (near.z - pz) * t1);
@@ -871,7 +924,7 @@ export const world3d = {
         const s = 0.85 + rand() * 0.45;
         const m = new THREE.Matrix4().makeRotationY(rand() * Math.PI * 2)
           .scale(new THREE.Vector3(s, s, s));
-        m.setPosition(x, 0, z);
+        m.setPosition(x, terrainY(x, z) - 0.3, z);
         tinst[t].push(m);
       }
       for (const [t, list] of Object.entries(tinst)) {
@@ -893,7 +946,7 @@ export const world3d = {
         new THREE.MeshBasicMaterial({ color: 0x8fc2ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
       const p = geoPos(z.lat, z.lng);
-      ring.position.set(p.x, 0.35, p.z);
+      ring.position.set(p.x, p.y + 0.35, p.z);
       this.zoneRings.add(ring);
     }
     this.needsRender = true;
@@ -911,7 +964,7 @@ export const world3d = {
       new THREE.MeshBasicMaterial({ color: 0x0a0e14, transparent: true, opacity: 0.25 }));
     shadow.rotation.x = -Math.PI / 2;
     shadow.scale.set(5.4, 2.6, 1);
-    shadow.position.set(pos.x, 0.42, pos.z);
+    shadow.position.set(pos.x, pos.y + 0.42, pos.z);
     parent.add(api.group);
     parent.add(shadow);
     const rec = { api, shadow, walkTarget: null };
@@ -1163,10 +1216,13 @@ export const world3d = {
           rec.api.group.rotation.y = Math.atan2(d.x, d.z);
           d.normalize().multiplyScalar(Math.min(dist, dt * 16));
           gp.add(d);
+          gp.y = terrainY(gp.x, gp.z); // hug the hillside mid-walk
         }
       }
       rec.api.tick(t);
-      rec.shadow.position.set(rec.api.group.position.x, 0.42, rec.api.group.position.z);
+      rec.shadow.position.set(rec.api.group.position.x,
+        terrainY(rec.api.group.position.x, rec.api.group.position.z) + 0.42,
+        rec.api.group.position.z);
     }
 
 
