@@ -151,6 +151,8 @@ export const world3d = {
   remoteGroup: null,
   zoneRings: new THREE.Group(),
   anchors: [],                 // { el, getPos } DOM overlays following 3D points
+  labels: [],                  // crisp DOM labels (see addLabel) — text must
+  labelLayer: null,            // live OUTSIDE the pixelated WebGL canvas
   needsRender: true,
 
   init(frameEl) {
@@ -172,6 +174,11 @@ export const world3d = {
       position: "absolute", inset: "0", touchAction: "none", cursor: "grab",
     });
     frameEl.prepend(this.renderer.domElement);
+    // crisp text layer: the 0.5x console render pixelates anything drawn
+    // inside the canvas, so ALL floating text renders as DOM on top
+    this.labelLayer = document.createElement("div");
+    this.labelLayer.id = "label-layer";
+    frameEl.appendChild(this.labelLayer);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(M.skyTop);
@@ -1074,15 +1081,8 @@ export const world3d = {
         // floating venue label above the hero model (real names are fine
         // here — code-rendered UI text, not baked into generated art)
         if (l.name) {
-          let fg = "#fff2dd";
-          if (l.glow) { // venue glow tint, lightened so it stays readable
-            const c = new THREE.Color(l.glow).lerp(new THREE.Color("#ffffff"), 0.45);
-            fg = `#${c.getHexString()}`;
-          }
-          const tag = this.textSprite(l.name, {
-            fg, bg: "rgba(24,20,26,0.72)", scale: 1.15 });
-          tag.position.set(l.pos.x, l.pos.y + placedH + 7, l.pos.z);
-          this.scene.add(tag);
+          const hp = new THREE.Vector3(l.pos.x, l.pos.y + placedH + 5, l.pos.z);
+          this.addLabel(l.name, "hero", 3, () => hp, l.glow ?? null);
         }
         // nightlife venues ground their light: warm additive pool tinting
         // the street around the hero at night (color from landmarks.json)
@@ -1151,11 +1151,9 @@ export const world3d = {
           panel.translate(p.x, p.y + 0.85, p.z - 1.55);
           exitPanel.push(panel);
         }
-        const tag = this.textSprite(
-          `Exit ${ex.ref ?? "?"}${ex.label ? " · " + ex.label : ""}`,
-          { fg: "#ffe9c4", bg: "rgba(24,20,26,0.72)", scale: 0.8 });
-        tag.position.set(p.x, p.y + 5.6, p.z);
-        this.scene.add(tag);
+        const xp = new THREE.Vector3(p.x, p.y + 4.6, p.z);
+        this.addLabel(`Exit ${ex.ref ?? "?"}${ex.label ? " · " + ex.label : ""}`,
+          "exit", 1.2, () => xp);
       }
       const addM = (geos, mat) => {
         if (!geos.length) return;
@@ -1428,8 +1426,76 @@ export const world3d = {
     return sp;
   },
 
+  // ---- crisp DOM labels ----
+  // Canvas-texture sprites inherit the world's 0.5x pixelation (that IS the
+  // locked look for the WORLD — but pixelated text reads as a bug). Labels
+  // are DOM nodes projected to screen per frame: vector-crisp glyphs at any
+  // zoom, distance scale/fade, and priority-based decluttering in px space.
+  addLabel(text, kind, pri, getPos, accent) {
+    const el = document.createElement("div");
+    el.className = `wlabel wl-${kind}`;
+    if (accent) {
+      const dot = document.createElement("i");
+      dot.style.background = accent;
+      el.appendChild(dot);
+      if (kind === "hero") {
+        const c = new THREE.Color(accent).lerp(new THREE.Color("#ffffff"), 0.55);
+        el.style.color = `#${c.getHexString()}`;
+      }
+    }
+    el.appendChild(document.createTextNode(text));
+    this.labelLayer.appendChild(el);
+    const rec = { el, getPos, pri, kind, len: text.length };
+    this.labels.push(rec);
+    return rec;
+  },
+  removeLabel(rec) {
+    rec.el.remove();
+    this.labels = this.labels.filter(l => l !== rec);
+  },
+  placeLabels() {
+    if (!this.labelLayer || !this.labels.length) return;
+    const W = this.frame.clientWidth, H = this.frame.clientHeight;
+    const placed = [];
+    for (const L of this.labels) {
+      const pos = L.getPos();
+      if (!pos) { L.el.style.display = "none"; continue; }
+      const v = pos.clone().project(this.camera);
+      if (v.z > 1 || Math.abs(v.x) > 1.15 || Math.abs(v.y) > 1.15) {
+        L.el.style.display = "none"; continue;
+      }
+      const dist = this.camera.position.distanceTo(pos);
+      const far = L.kind === "district" ? 980 : L.kind === "zone" ? 640 : 460;
+      if (dist > far) { L.el.style.display = "none"; continue; }
+      const s = Math.max(0.6, Math.min(1.22, 170 / dist));
+      const op = Math.max(0, Math.min(1, (far - dist) / (far * 0.22)));
+      placed.push({ L, x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H,
+                    s, op, dist });
+    }
+    // declutter: high priority first, then nearest; losers hide entirely
+    placed.sort((a, b) => (b.L.pri - a.L.pri) || (a.dist - b.dist));
+    const kept = [];
+    for (const c of placed) {
+      const w = (c.L.len * 7.2 + 24) * c.s, h = 26 * c.s;
+      const clash = kept.some(k => {
+        const kw = (k.L.len * 7.2 + 24) * k.s, kh = 26 * k.s;
+        return Math.abs(c.x - k.x) < (w + kw) / 2 &&
+               Math.abs(c.y - k.y) < (h + kh) / 2;
+      });
+      if (clash) { c.L.el.style.display = "none"; continue; }
+      kept.push(c);
+      const el = c.L.el;
+      el.style.display = "";
+      el.style.opacity = c.op.toFixed(2);
+      el.style.left = c.x + "px";
+      el.style.top = c.y + "px";
+      el.style.transform = `translate(-50%,-100%) scale(${c.s.toFixed(3)})`;
+    }
+  },
+
   registerZones(zones) {
     this.zoneRings.clear();
+    for (const rec of this.labels.filter(l => l.kind === "zone")) this.removeLabel(rec);
     for (const z of zones.filter(z => z.kind !== "auto")) {
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(11, 13.5, 40),
@@ -1438,11 +1504,9 @@ export const world3d = {
       const p = geoPos(z.lat, z.lng);
       ring.position.set(p.x, p.y + 0.35, p.z);
       this.zoneRings.add(ring);
-      // floating location label (code text, always faces the camera)
-      const label = this.textSprite(z.name ?? z.id, {
-        fg: "#ffe9c4", bg: "rgba(30,26,20,0.7)", scale: 1.9 });
-      label.position.set(p.x, p.y + 34, p.z);
-      this.zoneRings.add(label);
+      // crisp DOM zone label (never baked into the pixelated canvas)
+      const zp = new THREE.Vector3(p.x, p.y + 26, p.z);
+      this.addLabel(z.name ?? z.id, "zone", 3.5, () => zp);
     }
     this.needsRender = true;
   },
@@ -1453,11 +1517,6 @@ export const world3d = {
   makeChar(avatarCfg, pos, parent, apiOverride, handle) {
     const api = apiOverride ?? makeCharacter(avatarCfg);
     api.group.traverse(o => { if (o.isMesh || o.isSkinnedMesh) o.castShadow = true; });
-    if (handle) { // floating username tag above the head
-      const tag = this.textSprite(handle, { scale: 0.85 });
-      tag.position.set(0, 20.5, 0);
-      api.group.add(tag);
-    }
     api.group.position.copy(pos);
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(1, 24),
@@ -1468,6 +1527,10 @@ export const world3d = {
     parent.add(api.group);
     parent.add(shadow);
     const rec = { api, shadow, walkTarget: null };
+    if (handle) { // crisp DOM name pill following the head (a PERSON cue)
+      rec.label = this.addLabel(handle, "player", 2,
+        () => api.group.position.clone().setY(api.group.position.y + 21.5));
+    }
     this.chars.add(rec);
     return rec;
   },
@@ -1475,6 +1538,7 @@ export const world3d = {
   removeChar(rec, parent) {
     parent.remove(rec.api.group);
     parent.remove(rec.shadow);
+    if (rec.label) this.removeLabel(rec.label);
     this.chars.delete(rec);
   },
 
@@ -1760,6 +1824,7 @@ export const world3d = {
       this.applyCamera();
     }
     this.anchors = this.anchors.filter(a => this.placeAnchor(a));
+    this.placeLabels();
     if (this.needsRender) {
       this.renderer.render(this.scene, this.camera);
       this.needsRender = false;
