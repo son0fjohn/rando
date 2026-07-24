@@ -44,14 +44,26 @@ def env(name):
     return None
 
 def http(url, data=None, headers=None, method=None, timeout=120):
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    h = {"User-Agent": "rando-landmark-pipeline/1.0", **(headers or {})}
+    req = urllib.request.Request(url, data=data, headers=h, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")[:600]
+        raise SystemExit(f"HTTP {e.code} from {url}\n{body}")
 
 def fetch_views(spot, gkey):
     """Ring-probe panoramas around the target; return up to max_views files."""
     sdir = os.path.join(OUTDIR, spot["id"])
     os.makedirs(sdir, exist_ok=True)
+    # refs already fetched this session (e.g. a retry after a billing
+    # hiccup): reuse rather than re-billing — they're purged on success
+    existing = sorted(
+        os.path.join(sdir, f) for f in os.listdir(sdir) if f.endswith(".jpg"))
+    if len(existing) >= 2:
+        print(f"  reusing {len(existing)} refs already fetched this session")
+        return existing
     panos = {}
     for ang in range(0, 360, 30):
         rad = math.radians(ang)
