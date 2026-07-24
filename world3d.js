@@ -63,13 +63,13 @@ export function terrainY(x, z) {
 
 // NPCs at real spots: one pair in Gyeongnidan, one by Itaewon station.
 const NPC_DEFS = [
-  { id: "npc-silver",  lat: 37.5390, lng: 126.9884, partner: "npc-dreads",
+  { id: "npc-silver",  name: "Rae",  lat: 37.5390, lng: 126.9884, partner: "npc-dreads",
     preset: { body: "grey",   eyes: "sleepy",  head: "floppyears" } },
-  { id: "npc-dreads",  lat: 37.5389, lng: 126.9892, partner: "npc-silver",
+  { id: "npc-dreads",  name: "Miro", lat: 37.5389, lng: 126.9892, partner: "npc-silver",
     preset: { body: "navy",   eyes: "default", iris: "brown", head: "teardrop" } },
-  { id: "npc-buzzcut", lat: 37.5349, lng: 126.9951, partner: "npc-cans",
+  { id: "npc-buzzcut", name: "Jun",  lat: 37.5349, lng: 126.9951, partner: "npc-cans",
     preset: { body: "red",    eyes: "anime",   iris: "orange", head: "smallspikes" } },
-  { id: "npc-cans",    lat: 37.5347, lng: 126.9958, partner: "npc-buzzcut",
+  { id: "npc-cans",    name: "Koa",  lat: 37.5347, lng: 126.9958, partner: "npc-buzzcut",
     preset: { body: "orange", eyes: "spiral",  head: "notailspike" } },
 ];
 
@@ -188,7 +188,7 @@ export const world3d = {
       for (const n of NPC_DEFS) {
         const pos = geoPos(n.lat, n.lng);
         const api = GLB_MODE ? makeGLBCharacterSync(n.preset) ?? undefined : undefined;
-        const rec = this.makeChar(n.preset, pos, this.scene, api);
+        const rec = this.makeChar(n.preset, pos, this.scene, api, n.name);
         const partner = NPC_DEFS.find(d => d.id === n.partner);
         if (partner) {
           const pp = geoPos(partner.lat, partner.lng);
@@ -411,6 +411,10 @@ export const world3d = {
       for (const mat of [roadMat, jointMat]) {
         mat.map = tex;
         mat.color.set(NIGHT ? THEME.world.roadNight : THEME.world.roadDay);
+        if (NIGHT) { // walkable path must read instantly against dark blocks
+          mat.emissive = new THREE.Color(0x272e48);
+          mat.emissiveIntensity = 1;
+        }
         mat.needsUpdate = true;
       }
       this.needsRender = true;
@@ -660,15 +664,28 @@ export const world3d = {
             gd.fillRect(wx, wy, 42, 34);
             gd.fillStyle = "rgba(255,255,255,0.3)";
             gd.fillRect(wx, wy + 13, 42, 4);
-            if (wrand() < 0.55) {
-              gn.fillStyle = ["#ffd98f", "#ffc76a", "#ffe7b0", "#ffce7d"][Math.floor(wrand() * 4)];
-              gn.fillRect(wx - 1, wy - 1, 44, 36);
-            } else {
-              gn.fillStyle = "#151b28";
-              gn.fillRect(wx, wy, 42, 34);
-            }
+            gn.fillStyle = "#10141f";
+            gn.fillRect(wx, wy, 42, 34);
           }
         }
+        // sparse lit-window variants: lighting should be purposeful, not a
+        // uniform glow — most windows stay dark, a few glow per building
+        const mkNight = prob => {
+          const c = document.createElement("canvas");
+          c.width = c.height = 256;
+          const g3 = c.getContext("2d");
+          g3.drawImage(night, 0, 0);
+          for (let r = 0; r < 4; r++) {
+            for (let cc = 0; cc < 4; cc++) {
+              if (wrand() < prob) {
+                g3.fillStyle = ["#ffd98f", "#ffc76a", "#ffe7b0"][Math.floor(wrand() * 3)];
+                g3.fillRect(10 + cc * 62 - 1, 8 + r * 62 - 1, 44, 36);
+              }
+            }
+          }
+          return c;
+        };
+        const nightA = mkNight(0.17), nightB = mkNight(0.06);
         const mk = c => {
           const t = new THREE.CanvasTexture(c);
           t.colorSpace = THREE.SRGBColorSpace;
@@ -676,7 +693,7 @@ export const world3d = {
           t.magFilter = THREE.NearestFilter;
           return t;
         };
-        return { day: mk(day), night: mk(night) };
+        return { day: mk(day), nightA: mk(nightA), nightB: mk(nightB) };
       })();
       const NIGHT_WALL = new THREE.Color(0.36, 0.42, 0.60); // blue moonlight
       const risers = [];
@@ -689,8 +706,8 @@ export const world3d = {
         const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({
           color: col, map: facade.day, side: THREE.DoubleSide,
           emissive: NIGHT ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
-          emissiveMap: facade.night,
-          emissiveIntensity: NIGHT ? 1.0 : 0,
+          emissiveMap: i % 2 ? facade.nightB : facade.nightA,
+          emissiveIntensity: NIGHT ? 0.85 : 0,
         }));
         this.scene.add(mesh);
         const rmerged = mergeGeometries(roofGeos[i]);
@@ -823,7 +840,7 @@ export const world3d = {
         pole.applyMatrix4(new THREE.Matrix4().setPosition(px, py + 11.5, pz));
         poleGeos.push(pole);
         // street lamp head on alternating poles + warm light pool at night
-        if (polesPlaced.length % 2 === 0) {
+        if (polesPlaced.length % 3 === 0) {
           const head = new THREE.SphereGeometry(1.15, 8, 6);
           head.applyMatrix4(new THREE.Matrix4().setPosition(px, py + 21.8, pz));
           lampGeos.push(head);
@@ -840,8 +857,8 @@ export const world3d = {
         }
         if (near && nd < 130 * 130) {
           const nearY = terrainY(near.x, near.z);
-          // paper lanterns hung from the span (reference: lantern strings)
-          for (const lt of [0.42, 0.72]) {
+          // paper lanterns: only some spans, one per span — sparse on purpose
+          for (const lt of (polesPlaced.length % 3 === 1 ? [0.5] : [])) {
             const lx = px + (near.x - px) * lt, lz = pz + (near.z - pz) * lt;
             const ly = 22.2 + py + (nearY - py) * lt - Math.sin(lt * Math.PI) * 2.6 - 1.4;
             const lg = new THREE.SphereGeometry(0.95, 8, 6);
@@ -870,7 +887,7 @@ export const world3d = {
         color: NIGHT ? new THREE.Color(AWN_COLS[i]).multiplyScalar(0.5) : AWN_COLS[i], flatShading: true })));
       signGeos.forEach((arr, i) => addMerged(arr, new THREE.MeshLambertMaterial({
         color: NIGHT ? new THREE.Color(SIGN_COLS[i]).multiplyScalar(0.65) : SIGN_COLS[i],
-        emissive: NIGHT ? SIGN_COLS[i] : 0x000000, emissiveIntensity: NIGHT ? 0.5 : 0 })));
+        emissive: NIGHT ? SIGN_COLS[i] : 0x000000, emissiveIntensity: NIGHT ? 0.28 : 0 })));
       addMerged(acGeos, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x5a5f6a : 0xb9bcc0, flatShading: true }));
       addMerged(poleGeos, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x2c2a26 : 0x5d564c }));
       addMerged(lampGeos, new THREE.MeshLambertMaterial({
@@ -1048,6 +1065,36 @@ export const world3d = {
     this.needsRender = true;
   },
 
+  // crisp camera-facing text sprite (labels, name tags) — code-rendered,
+  // no assets; scaled in world units, drawn above depth so always legible
+  textSprite(text, { size = 15, pad = 10, fg = "#fff", bg = "rgba(24,22,28,0.62)", scale = 1 } = {}) {
+    const c = document.createElement("canvas");
+    const g2 = c.getContext("2d");
+    const font = `600 ${size * 4}px -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif`;
+    g2.font = font;
+    const tw = Math.ceil(g2.measureText(text).width);
+    c.width = tw + pad * 8;
+    c.height = size * 4 + pad * 5;
+    const g3 = c.getContext("2d");
+    g3.font = font;
+    const r = c.height / 2;
+    g3.fillStyle = bg;
+    g3.beginPath();
+    g3.roundRect(0, 0, c.width, c.height, r);
+    g3.fill();
+    g3.fillStyle = fg;
+    g3.textAlign = "center";
+    g3.textBaseline = "middle";
+    g3.fillText(text, c.width / 2, c.height / 2 + size * 0.28);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthTest: false, fog: false }));
+    sp.renderOrder = 90;
+    sp.scale.set((c.width / c.height) * 4.6 * scale, 4.6 * scale, 1);
+    return sp;
+  },
+
   registerZones(zones) {
     this.zoneRings.clear();
     for (const z of zones.filter(z => z.kind !== "auto")) {
@@ -1058,6 +1105,11 @@ export const world3d = {
       const p = geoPos(z.lat, z.lng);
       ring.position.set(p.x, p.y + 0.35, p.z);
       this.zoneRings.add(ring);
+      // floating location label (code text, always faces the camera)
+      const label = this.textSprite(z.name ?? z.id, {
+        fg: "#ffe9c4", bg: "rgba(30,26,20,0.7)", scale: 1.9 });
+      label.position.set(p.x, p.y + 34, p.z);
+      this.zoneRings.add(label);
     }
     this.needsRender = true;
   },
@@ -1065,9 +1117,14 @@ export const world3d = {
   chars: new Set(),      // every live modular character (for animation)
   remoteRecs: [],
 
-  makeChar(avatarCfg, pos, parent, apiOverride) {
+  makeChar(avatarCfg, pos, parent, apiOverride, handle) {
     const api = apiOverride ?? makeCharacter(avatarCfg);
     api.group.traverse(o => { if (o.isMesh || o.isSkinnedMesh) o.castShadow = true; });
+    if (handle) { // floating username tag above the head
+      const tag = this.textSprite(handle, { scale: 0.85 });
+      tag.position.set(0, 20.5, 0);
+      api.group.add(tag);
+    }
     api.group.position.copy(pos);
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(1, 24),
@@ -1130,7 +1187,7 @@ export const world3d = {
       const dz = ((r.slot % 3) - 1) * 5;
       const pos = geoPos(r.lat, r.lng).add(new THREE.Vector3(dx, 0, dz));
       const api = GLB_MODE ? makeGLBCharacterSync(r.avatar) ?? undefined : undefined;
-      const rec = this.makeChar(r.avatar, pos, this.remoteGroup, api);
+      const rec = this.makeChar(r.avatar, pos, this.remoteGroup, api, r.handle);
       // face roughly inward toward the cluster for a hanging-out feel
       rec.api.group.rotation.y = Math.atan2(-dx, 6);
       rec.meta = { userId: r.userId, handle: r.handle, avatar: r.avatar };
