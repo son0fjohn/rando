@@ -23,11 +23,11 @@
     },
     {
       "id": "itaewon-station",
-      "lat": 37.53462,
-      "lng": 126.99455,
+      "lat": 37.53439,
+      "lng": 126.993696,
       "yaw": 0,
-      "h": 26,
-      "clear": 34,
+      "h": 4,
+      "clear": 10,
       "glb": "world2/landmarks/itaewon-station.glb",
       "glow": "#ffc84d",
       "name": "Itaewon Station"
