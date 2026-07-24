@@ -744,6 +744,7 @@ export const world3d = {
       const rec = this.makeChar(r.avatar, pos, this.remoteGroup, api);
       // face roughly inward toward the cluster for a hanging-out feel
       rec.api.group.rotation.y = Math.atan2(-dx, 6);
+      rec.meta = { userId: r.userId, handle: r.handle, avatar: r.avatar };
       this.remoteRecs.push(rec);
     }
     this.needsRender = true;
@@ -799,12 +800,44 @@ export const world3d = {
   // One-finger drag PANS (free observer); two fingers pinch-zoom, twist to
   // rotate, move vertically together to tilt. Desktop: drag pans, wheel
   // zooms, right-click or Ctrl+drag orbits. Recenter returns to follow.
+  // tap-to-chat: short, drag-free press on a remote character fires
+  // onCharTap(meta). Set by backend.js; meta = { userId, handle, avatar }.
+  onCharTap: null,
+  tryCharTap(clientX, clientY) {
+    if (!this.onCharTap || !this.remoteRecs.length) return;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - r.left) / r.width) * 2 - 1,
+      -((clientY - r.top) / r.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const hits = ray.intersectObjects(this.remoteRecs.map(x => x.api.group), true);
+    if (!hits.length) return;
+    let node = hits[0].object;
+    while (node) {
+      const rec = this.remoteRecs.find(x => x.api.group === node);
+      if (rec?.meta?.userId) { this.onCharTap(rec.meta); return; }
+      node = node.parent;
+    }
+  },
+
   bindControls() {
     const el = this.renderer.domElement;
     const pointers = new Map();
     let gesture = null;
+    let press = null;
     el.addEventListener("contextmenu", e => e.preventDefault());
+    el.addEventListener("pointerup", e => {
+      if (press && pointers.size <= 1 &&
+          performance.now() - press.t < 380 &&
+          Math.hypot(e.clientX - press.x, e.clientY - press.y) < 9) {
+        this.tryCharTap(e.clientX, e.clientY);
+      }
+      press = null;
+    });
     el.addEventListener("pointerdown", e => {
+      if (pointers.size === 0) press = { x: e.clientX, y: e.clientY, t: performance.now() };
+      else press = null;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { el.setPointerCapture(e.pointerId); } catch {}
       this.camGoal = null;
