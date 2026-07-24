@@ -27,6 +27,69 @@
       "max_views": 6,
       "fov": 78,
       "pitch": 8
+    },
+    {
+      "id": "grand-ole-opry",
+      "lat": 37.5341,
+      "lng": 126.99659,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
+    },
+    {
+      "id": "soap",
+      "lat": 37.533591,
+      "lng": 126.994917,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
+    },
+    {
+      "id": "danco",
+      "lat": 37.534945,
+      "lng": 126.994546,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
+    },
+    {
+      "id": "bolero",
+      "lat": 0,
+      "lng": 0,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
+    },
+    {
+      "id": "waikiki",
+      "lat": 0,
+      "lng": 0,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
+    },
+    {
+      "id": "grainhaus",
+      "lat": 0,
+      "lng": 0,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
+    },
+    {
+      "id": "agave",
+      "lat": 0,
+      "lng": 0,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
     }
   ]
 }

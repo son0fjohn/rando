@@ -546,6 +546,7 @@ export const world3d = {
     let landmarks = [];
     try {
       landmarks = (await (await fetch("landmarks.json")).json()).landmarks
+        .filter(l => l.lat != null && l.lng != null) // pending-pin entries stay parked
         .map(l => ({ ...l, pos: geoPos(l.lat, l.lng) }));
     } catch { /* optional */ }
     const nearLandmark = (x, z) => landmarks.some(l =>
