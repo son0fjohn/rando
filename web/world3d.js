@@ -478,6 +478,16 @@ export const world3d = {
     // low-poly prisms with bold outlines. ~25 tris per building merged
     // into one mesh per color bucket, so 2000 real buildings cost less
     // than ten of the smooth GLB models did. GLB heroes stay as landmarks.
+    // hero landmarks (Street View -> Tripo reconstructions). Loaded first
+    // so their clear-radius suppresses the generic prisms beneath them.
+    let landmarks = [];
+    try {
+      landmarks = (await (await fetch("landmarks.json")).json()).landmarks
+        .map(l => ({ ...l, pos: geoPos(l.lat, l.lng) }));
+    } catch { /* optional */ }
+    const nearLandmark = (x, z) => landmarks.some(l =>
+      l.glb && (x - l.pos.x) ** 2 + (z - l.pos.z) ** 2 < l.clear * l.clear);
+
     let footprints = 0;
     try {
       const bdata = await (await fetch("buildings.json")).json();
@@ -489,6 +499,7 @@ export const world3d = {
         for (const [x, z] of poly) { cx += x; cz += z; }
         cx /= poly.length; cz /= poly.length;
         if (nearZoneCenter(cx, cz, 58)) continue; // keep gathering plazas open
+        if (nearLandmark(cx, cz)) continue;       // hero model owns this plot
         let rad = 0;
         for (const [x, z] of poly) rad = Math.max(rad, Math.hypot(x - cx, z - cz));
         occupy(cx, cz, Math.min(rad, 40));
@@ -523,6 +534,35 @@ export const world3d = {
       console.log(`[rando] OSM footprints: ${footprints} buildings`);
     } catch (e) {
       console.warn("buildings.json unavailable — generic placement fallback", e);
+    }
+
+    // place hero landmark models at their real coordinates. The low-poly
+    // style is a MATERIAL pass on the reconstructed geometry: flatten
+    // normals (faceted shading) + palette-quantized flat color + outline.
+    for (const l of landmarks) {
+      if (!l.glb || !lib) continue;
+      try {
+        const piece = await loadPiece(l.glb, l.h, true);
+        const geo = piece.geo.clone();
+        // faceted shading: drop smooth normals, let flatShading rebuild
+        geo.deleteAttribute("normal");
+        const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+          map: piece.mat.map, flatShading: true,
+          color: piece.mat.color ?? 0xffffff,
+        }));
+        mesh.position.copy(l.pos);
+        mesh.rotation.y = (l.yaw ?? 0) * Math.PI / 180;
+        this.scene.add(mesh);
+        const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 34),
+          new THREE.LineBasicMaterial({ color: NIGHT ? 0x2b3441 : 0x5d6b76, transparent: true, opacity: 0.5 }));
+        outline.position.copy(mesh.position);
+        outline.rotation.copy(mesh.rotation);
+        this.scene.add(outline);
+        occupy(l.pos.x, l.pos.z, l.clear);
+        console.log(`[rando] landmark placed: ${l.id}`);
+      } catch (e) {
+        console.warn(`landmark ${l.id} failed to load`, e);
+      }
     }
 
     // placement: same frontage walk, but each lot picks a model type from

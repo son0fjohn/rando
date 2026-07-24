@@ -1,0 +1,23 @@
+{
+  "comment": "Hero buildings reconstructed from multi-view Street View refs (Tripo) with the low-poly material pass applied in-engine. glb=null means pending: the generic footprint prism stays until the model lands in web/world2/landmarks/. clear = radius (world units) of footprints to suppress once the model is placed.",
+  "landmarks": [
+    {
+      "id": "hamilton-hotel",
+      "lat": 37.53486,
+      "lng": 126.99400,
+      "yaw": 180,
+      "h": 42,
+      "clear": 42,
+      "glb": null
+    },
+    {
+      "id": "itaewon-crossing-east",
+      "lat": 37.53455,
+      "lng": 126.99465,
+      "yaw": 270,
+      "h": 26,
+      "clear": 30,
+      "glb": null
+    }
+  ]
+}

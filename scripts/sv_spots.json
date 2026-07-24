@@ -1,0 +1,23 @@
+{
+  "comment": "Hero-building targets for the Street View reference pipeline. Each target gets a ring of camera probe points; the fetch script snaps them to real panoramas (free metadata call), dedupes, and aims every shot at the target. Start with these 2; scale to 5-8 after the end-to-end test.",
+  "spots": [
+    {
+      "id": "hamilton-hotel",
+      "lat": 37.53486,
+      "lng": 126.99400,
+      "ring_m": 40,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 10
+    },
+    {
+      "id": "itaewon-crossing-east",
+      "lat": 37.53455,
+      "lng": 126.99465,
+      "ring_m": 35,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
+    }
+  ]
+}
