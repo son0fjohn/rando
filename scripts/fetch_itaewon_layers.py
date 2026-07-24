@@ -28,6 +28,7 @@ QUERY = f"""[out:json][timeout:60];
   way["highway"="footway"]["footway"="crossing"]({BBOX});
   node["highway"="crossing"]({BBOX});
   node["highway"="street_lamp"]({BBOX});
+  way["building"]({BBOX});
 );
 out geom;"""
 
@@ -61,9 +62,17 @@ def overpass():
             last = e
     raise SystemExit(f"all Overpass mirrors failed: {last}")
 
+def parse_float(v):
+    if v is None:
+        return None
+    try:  # OSM height tags can be "12", "12 m", "12.5m"
+        return float(str(v).lower().replace("m", "").strip())
+    except ValueError:
+        return None
+
 def main():
     data = overpass()
-    exits, crossings, lamps = [], [], []
+    exits, crossings, lamps, buildings = [], [], [], []
     for el in data.get("elements", []):
         tags = el.get("tags", {})
         if el["type"] == "node":
@@ -83,6 +92,18 @@ def main():
                 lamps.append({"id": el["id"], "lat": lat, "lng": lng,
                               "x": round(x, 2), "z": round(z, 2),
                               "source": "osm"})
+        elif el["type"] == "way" and "building" in tags:
+            geom = el.get("geometry") or []
+            if len(geom) < 3:
+                continue
+            fp = [[round(v, 2) for v in local(g["lat"], g["lon"])] for g in geom]
+            clat = sum(g["lat"] for g in geom) / len(geom)
+            clng = sum(g["lon"] for g in geom) / len(geom)
+            buildings.append({
+                "id": el["id"], "footprint": fp,
+                "centroid": {"lat": round(clat, 7), "lng": round(clng, 7)},
+                "heightM": parse_float(tags.get("height")),
+                "levels": parse_float(tags.get("building:levels"))})
         elif el["type"] == "way" and tags.get("footway") == "crossing":
             geom = el.get("geometry") or []
             if len(geom) < 2:
@@ -99,11 +120,16 @@ def main():
                 "length": round(math.hypot(x1 - x0, z1 - z0), 2)})
 
     out = {"origin": {"lat": SOUTH, "lng": WEST},
-           "exits": exits, "crossings": crossings, "lamps": lamps}
+           "exits": exits, "crossings": crossings, "lamps": lamps,
+           "buildings": buildings}
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     json.dump(out, open(OUT, "w"), indent=1)
+    n_h = sum(1 for b in buildings if b["heightM"] is not None)
+    n_l = sum(1 for b in buildings if b["levels"] is not None)
     print(f"-> {OUT}")
-    print(f"exits: {len(exits)}, crossings: {len(crossings)}, lamps: {len(lamps)}")
+    print(f"exits: {len(exits)}, crossings: {len(crossings)}, "
+          f"lamps: {len(lamps)}, buildings: {len(buildings)} "
+          f"(heightM: {n_h}, levels: {n_l})")
     for e in exits:
         print(f"  exit ref={e['ref']} label={e['label']} @ {e['lat']:.6f},{e['lng']:.6f}")
 

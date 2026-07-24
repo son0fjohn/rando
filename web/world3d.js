@@ -684,7 +684,12 @@ export const world3d = {
         }
         // sparse lit-window variants: lighting should be purposeful, not a
         // uniform glow — most windows stay dark, a few glow per building
-        const mkNight = prob => {
+        // per-bucket lit-window variants (Task 3): vary WHICH windows are
+        // lit, warm (~2700K) vs cool white, most staying pure-dark — the
+        // identical-yellow uniformity is what read as "generated"
+        const WARM = ["#ffd98f", "#ffc76a", "#ffe7b0"];
+        const COOL = ["#c8ddff", "#aecbf2", "#dfe9ff"];
+        const mkNight = (prob, warmFrac) => {
           const c = document.createElement("canvas");
           c.width = c.height = 256;
           const g3 = c.getContext("2d");
@@ -692,14 +697,20 @@ export const world3d = {
           for (let r = 0; r < 4; r++) {
             for (let cc = 0; cc < 4; cc++) {
               if (wrand() < prob) {
-                g3.fillStyle = ["#ffd98f", "#ffc76a", "#ffe7b0"][Math.floor(wrand() * 3)];
+                const pal = wrand() < warmFrac ? WARM : COOL;
+                g3.fillStyle = pal[Math.floor(wrand() * 3)];
                 g3.fillRect(10 + cc * 62 - 1, 8 + r * 62 - 1, 44, 36);
               }
             }
           }
           return c;
         };
-        const nightA = mkNight(0.17), nightB = mkNight(0.06);
+        // {lit fraction, warm fraction, emissive intensity} per wall bucket
+        const NIGHT_VARIANTS = [
+          { p: 0.20, w: 0.85, e: 0.92 }, { p: 0.10, w: 0.55, e: 0.78 },
+          { p: 0.05, w: 0.75, e: 0.72 }, { p: 0.15, w: 0.95, e: 0.95 },
+          { p: 0.08, w: 0.35, e: 0.80 }, { p: 0.13, w: 0.70, e: 0.86 },
+        ];
         const mk = c => {
           const t = new THREE.CanvasTexture(c);
           t.colorSpace = THREE.SRGBColorSpace;
@@ -707,7 +718,8 @@ export const world3d = {
           t.magFilter = THREE.NearestFilter;
           return t;
         };
-        return { day: mk(day), nightA: mk(nightA), nightB: mk(nightB) };
+        return { day: mk(day), variants: NIGHT_VARIANTS.map(v =>
+          ({ tex: mk(mkNight(v.p, v.w)), e: v.e })) };
       })();
       const NIGHT_WALL = new THREE.Color(0.36, 0.42, 0.60); // blue moonlight
       const risers = [];
@@ -720,8 +732,8 @@ export const world3d = {
         const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({
           color: col, map: facade.day, side: THREE.DoubleSide,
           emissive: NIGHT ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
-          emissiveMap: i % 2 ? facade.nightB : facade.nightA,
-          emissiveIntensity: NIGHT ? 0.85 : 0,
+          emissiveMap: facade.variants[i % facade.variants.length].tex,
+          emissiveIntensity: NIGHT ? facade.variants[i % facade.variants.length].e : 0,
         }));
         this.scene.add(mesh);
         const rmerged = mergeGeometries(roofGeos[i]);
