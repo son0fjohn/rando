@@ -32,6 +32,18 @@
     background: #000;
     box-shadow: 0 0 60px rgba(0,0,0,0.6);
   }
+  /* grainy console-render texture (style lock): static SVG noise overlay,
+     zero GPU/JS cost, sits above the world but below nothing interactive */
+  .frame::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 400;
+    pointer-events: none;
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
 
   /* The pannable world: a zoomed layer larger than the frame, dragged
      around PoGo-style. All sprites/markers live inside it in world %. */

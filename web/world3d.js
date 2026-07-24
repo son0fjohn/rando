@@ -50,18 +50,14 @@ const modeParam = new URLSearchParams(location.search).get("mode");
 const hourNow = new Date().getHours();
 export const NIGHT = modeParam === "night" ||
   (modeParam !== "day" && (hourNow >= 19 || hourNow < 6.5));
-const M = NIGHT ? {
-  skyTop: "#0b1a38", skyMid: "#23406e", skyHor: "#547499",
-  fog: 0x1c2c49, hemiSky: 0x4a5f8a, hemiGround: 0x1c2438, hemiInt: 0.72,
-  sunCol: 0xa8c2e8, sunInt: 0.5, cloudBody: "#d8e2f2", cloudShade: "#8fa0bd",
-  cloudTint: 0xc2cfe2, cloudOp: 0.8, grass: 0x3d5c40, road: 0x474c59,
-  winCol: 0x2e2a22, winEmis: 0xffc86e,
-} : {
-  skyTop: "#2f83d2", skyMid: "#6cb2e6", skyHor: "#e2f1fa",
-  fog: 0xdcebf6, hemiSky: 0xeaf6ff, hemiGround: 0x8fa3b8, hemiInt: 1.15,
-  sunCol: 0xfff2d9, sunInt: 1.15, cloudBody: "#ffffff", cloudShade: "#c9dff0",
-  cloudTint: 0xffffff, cloudOp: 0.95, grass: 0x79b356, road: 0x9599a2,
-  winCol: 0x9db4c8, winEmis: 0x000000,
+// ONE lighting rig for every scene, from theme.js — plus per-mode extras
+const L = NIGHT ? THEME.lighting.night : THEME.lighting.day;
+const M = {
+  ...L,
+  grass: NIGHT ? 0x3f4a42 : 0x8a9a6a,
+  road: NIGHT ? 0x474c59 : 0x9d998e,
+  winCol: NIGHT ? 0x2e2a22 : 0x9db4c8,
+  winEmis: NIGHT ? 0xffc86e : 0x000000,
 };
 
 // zone character: density weight for buildings (urban) vs greenery
@@ -491,7 +487,7 @@ export const world3d = {
     let footprints = 0;
     try {
       const bdata = await (await fetch("buildings.json")).json();
-      const wallCols = [0xf1f3f2, 0xdde3e4, 0xccd7db, 0xd7e2da, 0xe4dadd, 0xcad3e1];
+      const wallCols = THEME.walls; // warm desaturated family (style lock)
       const bodyGeos = wallCols.map(() => []);
       for (const b of bdata.buildings) {
         const poly = b.p;
@@ -517,7 +513,8 @@ export const world3d = {
         footprints++;
       }
       const lineMat = new THREE.LineBasicMaterial({
-        color: NIGHT ? 0x2b3441 : 0x5d6b76, transparent: true, opacity: 0.5 });
+        color: NIGHT ? 0x2b3441 : 0x6b675e, transparent: true, opacity: 0.5 });
+      const risers = [];
       bodyGeos.forEach((arr, i) => {
         if (!arr.length) return;
         const merged = mergeGeometries(arr);
@@ -529,8 +526,15 @@ export const world3d = {
         }));
         this.scene.add(mesh);
         // bold cel outlines: hard edges only, one line batch per bucket
-        this.scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(merged, 32), lineMat));
+        const outline = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 32), lineMat);
+        this.scene.add(outline);
+        risers.push([mesh, outline]);
       });
+      // loading flourish: each bucket rises from the ground, staggered.
+      // Driven from tick() (interval-backed) so it also completes in
+      // throttled tabs; costs ~1.5s of scale updates, nothing afterwards.
+      risers.forEach(([m, o]) => { m.scale.y = 0.001; o.scale.y = 0.001; });
+      this.risers = { t0: performance.now(), items: risers };
       console.log(`[rando] OSM footprints: ${footprints} buildings`);
     } catch (e) {
       console.warn("buildings.json unavailable — generic placement fallback", e);
@@ -904,6 +908,23 @@ export const world3d = {
       }
       rec.api.tick(t);
       rec.shadow.position.set(rec.api.group.position.x, 0.42, rec.api.group.position.z);
+    }
+
+    // buildings-rise loading animation (see loadWorld); self-removes when done
+    if (this.risers) {
+      const RISE = 620, STAG = 110;
+      const ease = k => 1 - Math.pow(1 - k, 3);
+      const now = performance.now();
+      let done = true;
+      this.risers.items.forEach(([m, o], i) => {
+        const k = Math.min(1, Math.max(0, (now - this.risers.t0 - i * STAG) / RISE));
+        const s = Math.max(0.001, ease(k));
+        m.scale.y = s;
+        o.scale.y = s;
+        if (k < 1) done = false;
+      });
+      this.needsRender = true;
+      if (done) this.risers = null;
     }
 
     // glide the camera target home — unless the user is roaming free

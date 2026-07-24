@@ -26,11 +26,29 @@ export const THEME = {
     envMapIntensity: 1.15,
   },
 
-  // world material tints (multiplied over the baked textures)
+  // world material tints (multiplied over the baked textures). Style lock:
+  // warm, slightly desaturated (grocery-street reference) — greys lean
+  // cream/tan rather than blue.
   world: {
-    grassDay:   0xdfe8e2, grassNight:  0x55687c,
-    pavingDay:  0xe8edf0, pavingNight: 0x747f99,
-    roadDay:    0xcdd5dd, roadNight:   0x848da3,
-    curbDay:    0xe0e4e7, curbNight:   0x99a1b4,
+    grassDay:   0xe6e6d4, grassNight:  0x5c6472,
+    pavingDay:  0xefeae0, pavingNight: 0x7b7d90,
+    roadDay:    0xd8d3c8, roadNight:   0x8b8c9d,
+    curbDay:    0xe7e2d8, curbNight:   0x9c9daf,
   },
+
+  // ONE lighting rig for every scene (world, world2, previews): warm key
+  // sun + warm-sky/-earth hemisphere by day, cool moonlight by night
+  lighting: {
+    day: {
+      hemiSky: 0xfff3dd, hemiGround: 0xb0a690, hemiInt: 1.08,
+      sunCol: 0xffe9c2, sunInt: 1.2, fog: 0xe9e4d6,
+    },
+    night: {
+      hemiSky: 0x4a5f8a, hemiGround: 0x272536, hemiInt: 0.72,
+      sunCol: 0xa8c2e8, sunInt: 0.5, fog: 0x232c45,
+    },
+  },
+
+  // auto-generated building walls: warm desaturated family
+  walls: [0xf2efe7, 0xe8e2d4, 0xdcd5c5, 0xe6dccb, 0xebdfd6, 0xd6cfc3],
 };

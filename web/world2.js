@@ -6,6 +6,7 @@
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { makeGLBCharacter } from "./character3d.js";
+import { THEME } from "./theme.js";
 
 const R = 800;          // ground dome radius
 const CELL = 150;       // road grid spacing (one tile = one cell)
@@ -220,13 +221,18 @@ export const world2 = {
   },
 
   async setSky(mode) {
+    // shared lighting rig from theme.js; only sky-cap/backdrop colors are
+    // scene-specific here
+    const rig = THEME.lighting[mode] ?? THEME.lighting.day;
     const LOOKS = {
-      day:   { cap: 0x1e6fd8, bg: 0xbcd9ee, hemi: 1.1,  sun: 1.2,
-               hemiSky: 0xeaf6ff, hemiGnd: 0x8fa3b8, sunCol: 0xfff2d9 },
-      night: { cap: 0x02092c, bg: 0x0a1230, hemi: 0.5,  sun: 0.4,
-               hemiSky: 0x4a5f8a, hemiGnd: 0x1c2438, sunCol: 0xa8c2e8 },
+      day:   { cap: 0x3072c7, bg: 0xbcd9ee },
+      night: { cap: 0x02092c, bg: 0x0a1230 },
     };
-    const look = LOOKS[mode] ?? LOOKS.day;
+    const look = {
+      ...(LOOKS[mode] ?? LOOKS.day),
+      hemi: rig.hemiInt, sun: rig.sunInt,
+      hemiSky: rig.hemiSky, hemiGnd: rig.hemiGround, sunCol: rig.sunCol,
+    };
     try {
       const tex = await this.loadTex(`world2/sky_${mode}.jpg`);
       tex.wrapS = THREE.MirroredRepeatWrapping; // seam-free wrap of the backdrop
