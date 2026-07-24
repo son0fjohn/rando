@@ -36,8 +36,10 @@ LEVEL_M = 3.2
 DEFAULT_M = 11.0
 S, W, N, E = 37.5320, 126.9910, 37.5365, 126.9975
 TILE_HOST = "https://tile.googleapis.com"
-MAX_TILES = 500          # hard budget on fetched glbs
-STOP_GEOM_ERR = 6.0      # descend while geometricError is above this
+MAX_TILES = 1400         # hard budget on fetched glbs
+STOP_GEOM_ERR = 2.0      # descend while geometricError is above this —
+                         # probed: the zone tree bottoms out at 1277 tiles
+                         # here (0.8 finds no more); 6.0 stops too coarse
 
 # ---------------- geodesy ----------------
 WGS_A, WGS_F = 6378137.0, 1 / 298.257223563

@@ -50,7 +50,7 @@ def main():
         cz = sum(p[1] for p in b["p"]) / len(b["p"])
         field.append((cx, cz, b))
 
-    patched = {"osm-height": 0, "osm-levels": 0, "default": 0}
+    patched = {"tiles": 0, "osm-height": 0, "osm-levels": 0, "default": 0}
     missed = 0
     for zb in layers["buildings"]:
         bid = str(zb["id"])
