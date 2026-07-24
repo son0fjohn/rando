@@ -969,6 +969,19 @@ export const world3d = {
         outline.rotation.copy(mesh.rotation);
         this.scene.add(outline);
         occupy(l.pos.x, l.pos.z, l.clear);
+        // floating venue label above the hero model (real names are fine
+        // here — code-rendered UI text, not baked into generated art)
+        if (l.name) {
+          let fg = "#fff2dd";
+          if (l.glow) { // venue glow tint, lightened so it stays readable
+            const c = new THREE.Color(l.glow).lerp(new THREE.Color("#ffffff"), 0.45);
+            fg = `#${c.getHexString()}`;
+          }
+          const tag = this.textSprite(l.name, {
+            fg, bg: "rgba(24,20,26,0.72)", scale: 1.15 });
+          tag.position.set(l.pos.x, l.pos.y + l.h + 7, l.pos.z);
+          this.scene.add(tag);
+        }
         // nightlife venues ground their light: warm additive pool tinting
         // the street around the hero at night (color from landmarks.json)
         if (NIGHT && l.glow) {
