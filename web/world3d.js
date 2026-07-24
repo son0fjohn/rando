@@ -500,6 +500,7 @@ export const world3d = {
       const wallCols = THEME.walls; // warm desaturated family (style lock)
       const bodyGeos = wallCols.map(() => []);
       const shadowGeos = [];
+      const decorLots = []; // road-facing lots for the decoration pass
       for (const b of bdata.buildings) {
         const poly = b.p;
         let cx = 0, cz = 0;
@@ -521,6 +522,7 @@ export const world3d = {
         geo.rotateX(-Math.PI / 2);
         const bi = Math.abs(Math.round(cx * 7 + cz * 13)) % wallCols.length;
         bodyGeos[bi].push(geo);
+        decorLots.push({ poly, cx, cz, h: b.h });
         // baked cast shadow: footprint swept along the sun direction by a
         // height-scaled offset (crisp cel-style shadow, zero runtime cost)
         {
@@ -581,6 +583,153 @@ export const world3d = {
       risers.forEach(([m, o]) => { m.scale.y = 0.001; o.scale.y = 0.001; });
       this.risers = { t0: performance.now(), items: risers };
       console.log(`[rando] OSM footprints: ${footprints} buildings`);
+
+      // ---- street density pass (grocery-street reference): awnings,
+      // abstract sign panels (no text), rooftop ACs, power poles with
+      // sagging wires, bins/cones. Everything deterministic + merged.
+      const drand = mulberry32(9107);
+      // coarse index of road points for nearest-road lookups
+      const roadIdx = new Map();
+      const RCELL = 40;
+      for (const c of candidates) {
+        const k = Math.floor(c.x / RCELL) + "," + Math.floor(c.z / RCELL);
+        if (!roadIdx.has(k)) roadIdx.set(k, []);
+        roadIdx.get(k).push(c);
+      }
+      const nearestRoad = (x, z) => {
+        let best = null, bd = 1e9;
+        const bx = Math.floor(x / RCELL), bz = Math.floor(z / RCELL);
+        for (let i = bx - 1; i <= bx + 1; i++) {
+          for (let j = bz - 1; j <= bz + 1; j++) {
+            for (const c of roadIdx.get(i + "," + j) ?? []) {
+              const d = (c.x - x) ** 2 + (c.z - z) ** 2;
+              if (d < bd) { bd = d; best = c; }
+            }
+          }
+        }
+        return bd < 45 * 45 ? best : null;
+      };
+      const AWN_COLS = [0x4f9d8f, 0xc95f4e, 0xd9a83c, 0xe8e2d4];
+      const SIGN_COLS = [0x3f8f82, 0xd97b3c, 0xe0c33a, 0xba4a44, 0x5a7fa8];
+      const awnGeos = AWN_COLS.map(() => []);
+      const signGeos = SIGN_COLS.map(() => []);
+      const acGeos = [];
+      const poleGeos = [];
+      const wirePts = [];
+      const clutterGeos = { bin: [], cone: [] };
+      let awnings = 0;
+      for (const lot of decorLots) {
+        const road = nearestRoad(lot.cx, lot.cz);
+        const seed = Math.abs(Math.round(lot.cx * 3 + lot.cz * 11));
+        // rooftop AC boxes on most buildings
+        if (seed % 3 !== 0) {
+          const jx = ((seed % 7) - 3) * 0.6, jz = ((seed % 5) - 2) * 0.6;
+          const ac = new THREE.BoxGeometry(2.0, 1.3, 1.6);
+          ac.applyMatrix4(new THREE.Matrix4().makeRotationY(seed % 2 ? 0.4 : -0.2)
+            .setPosition(lot.cx + jx, lot.h + 0.65, lot.cz + jz));
+          acGeos.push(ac);
+        }
+        if (!road || awnings > 520) continue;
+        // road-facing edge: polygon edge whose midpoint is closest to road
+        let edge = null, ed = 1e9;
+        for (let i = 0; i < lot.poly.length; i++) {
+          const [x1, z1] = lot.poly[i], [x2, z2] = lot.poly[(i + 1) % lot.poly.length];
+          const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+          const d = (mx - road.x) ** 2 + (mz - road.z) ** 2;
+          if (d < ed) { ed = d; edge = [x1, z1, x2, z2, mx, mz]; }
+        }
+        const [x1, z1, x2, z2, mx, mz] = edge;
+        const elen = Math.hypot(x2 - x1, z2 - z1);
+        if (elen < 5) continue;
+        const eang = Math.atan2(x2 - x1, z2 - z1);
+        // outward = from centroid toward edge midpoint
+        let ox = mx - lot.cx, oz = mz - lot.cz;
+        const on = Math.hypot(ox, oz) || 1;
+        ox /= on; oz /= on;
+        // awning: sloped strip over the storefront
+        if (drand() < 0.6) {
+          awnings++;
+          const aw = new THREE.BoxGeometry(Math.min(elen * 0.86, 24), 0.45, 3.1);
+          const m = new THREE.Matrix4().makeRotationY(eang)
+            .multiply(new THREE.Matrix4().makeRotationX(0.24));
+          m.setPosition(mx + ox * 1.5, 6.8, mz + oz * 1.5);
+          aw.applyMatrix4(m);
+          awnGeos[seed % AWN_COLS.length].push(aw);
+        }
+        // abstract sign panel on the upper face (no text, accent color)
+        if (lot.h > 12 && drand() < 0.55) {
+          const sg = new THREE.BoxGeometry(0.35, 3.6, 2.1);
+          const t = (drand() - 0.5) * elen * 0.5;
+          const sx = mx + Math.sin(eang) * t + ox * 0.4;
+          const sz = mz + Math.cos(eang) * t + oz * 0.4;
+          const m = new THREE.Matrix4().makeRotationY(eang);
+          m.setPosition(sx, 9.5 + drand() * (lot.h - 11), sz);
+          sg.applyMatrix4(m);
+          signGeos[seed % SIGN_COLS.length].push(sg);
+        }
+        // street clutter near the road edge
+        if (drand() < 0.1) {
+          const cx2 = road.x + ox * (road.w / 2 + 1.5), cz2 = road.z + oz * (road.w / 2 + 1.5);
+          if (drand() < 0.6) {
+            const bin = new THREE.CylinderGeometry(1.0, 0.9, 2.4, 8);
+            bin.applyMatrix4(new THREE.Matrix4().setPosition(cx2, 1.2, cz2));
+            clutterGeos.bin.push(bin);
+          } else {
+            const cone = new THREE.ConeGeometry(0.7, 1.7, 8);
+            cone.applyMatrix4(new THREE.Matrix4().setPosition(cx2, 0.85, cz2));
+            clutterGeos.cone.push(cone);
+          }
+        }
+      }
+      // power poles + sagging wires along roads
+      const polesPlaced = [];
+      const farFromPoles = (x, z) => polesPlaced.every(p => (p.x - x) ** 2 + (p.z - z) ** 2 > 80 * 80);
+      for (const c of candidates) {
+        if (c.w < 11 || !farFromPoles(c.x, c.z) || polesPlaced.length > 220) continue;
+        const px = c.x + Math.cos(c.ang) * (c.w / 2 + 2.2);
+        const pz = c.z - Math.sin(c.ang) * (c.w / 2 + 2.2);
+        const pole = new THREE.CylinderGeometry(0.32, 0.4, 23, 6);
+        pole.applyMatrix4(new THREE.Matrix4().setPosition(px, 11.5, pz));
+        poleGeos.push(pole);
+        // wire to the nearest earlier pole within reach, with sag
+        let near = null, nd = 1e9;
+        for (const p of polesPlaced) {
+          const d = (p.x - px) ** 2 + (p.z - pz) ** 2;
+          if (d < nd) { nd = d; near = p; }
+        }
+        if (near && nd < 130 * 130) {
+          for (const wy of [22.2, 20.6]) {
+            const SEG = 7;
+            for (let s = 0; s < SEG; s++) {
+              const t0 = s / SEG, t1 = (s + 1) / SEG;
+              const sag = t => wy - Math.sin(t * Math.PI) * 2.6;
+              wirePts.push(
+                px + (near.x - px) * t0, sag(t0), pz + (near.z - pz) * t0,
+                px + (near.x - px) * t1, sag(t1), pz + (near.z - pz) * t1);
+            }
+          }
+        }
+        polesPlaced.push({ x: px, z: pz });
+      }
+      const addMerged = (arr, mat) => {
+        if (arr.length) this.scene.add(new THREE.Mesh(mergeGeometries(arr), mat));
+      };
+      awnGeos.forEach((arr, i) => addMerged(arr, new THREE.MeshLambertMaterial({
+        color: NIGHT ? new THREE.Color(AWN_COLS[i]).multiplyScalar(0.5) : AWN_COLS[i], flatShading: true })));
+      signGeos.forEach((arr, i) => addMerged(arr, new THREE.MeshLambertMaterial({
+        color: NIGHT ? new THREE.Color(SIGN_COLS[i]).multiplyScalar(0.65) : SIGN_COLS[i],
+        emissive: NIGHT ? SIGN_COLS[i] : 0x000000, emissiveIntensity: NIGHT ? 0.5 : 0 })));
+      addMerged(acGeos, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x5a5f6a : 0xb9bcc0, flatShading: true }));
+      addMerged(poleGeos, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x2c2a26 : 0x5d564c }));
+      addMerged(clutterGeos.bin, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x2e3d4a : 0x4c6a80 }));
+      addMerged(clutterGeos.cone, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x8a4a20 : 0xe07b35 }));
+      if (wirePts.length) {
+        const wg = new THREE.BufferGeometry();
+        wg.setAttribute("position", new THREE.Float32BufferAttribute(wirePts, 3));
+        this.scene.add(new THREE.LineSegments(wg,
+          new THREE.LineBasicMaterial({ color: 0x2f2b26, transparent: true, opacity: 0.75 })));
+      }
+      console.log(`[rando] decor: ${awnings} awnings, ${acGeos.length} ACs, ${polesPlaced.length} poles`);
     } catch (e) {
       console.warn("buildings.json unavailable — generic placement fallback", e);
     }
