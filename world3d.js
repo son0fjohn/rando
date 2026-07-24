@@ -551,7 +551,8 @@ export const world3d = {
     try {
       const bdata = await (await fetch("buildings.json")).json();
       const wallCols = THEME.walls; // warm desaturated family (style lock)
-      const bodyGeos = wallCols.map(() => []);
+      const wallGeos = wallCols.map(() => []);
+      const roofGeos = wallCols.map(() => []);
       const shadowGeos = [];
       const decorLots = []; // road-facing lots for the decoration pass
       for (const b of bdata.buildings) {
@@ -570,12 +571,39 @@ export const world3d = {
         }
         const v2s = poly.map(([x, z]) => new THREE.Vector2(x, -z));
         if (THREE.ShapeUtils.area(v2s) < 0) v2s.reverse(); // CCW: walls face out
-        const geo = new THREE.ExtrudeGeometry(new THREE.Shape(v2s),
-          { depth: b.h, bevelEnabled: false });
-        geo.rotateX(-Math.PI / 2);
-        geo.translate(0, terrainY(cx, cz) - 1.2, 0); // sit into the slope
+        const baseY = terrainY(cx, cz) - 1.2;
         const bi = Math.abs(Math.round(cx * 7 + cz * 13)) % wallCols.length;
-        bodyGeos[bi].push(geo);
+        // walls as explicit quads: u follows the contour (one texture tile
+        // per ~13u = 4 windows), v climbs floors — so the window grid tiles
+        // at true scale and doubles as the night lit-window emissive map
+        {
+          const wpos = [], wuv = [];
+          let u0 = (cx + cz) * 0.07; // desync the grid between buildings
+          for (let e = 0; e < v2s.length; e++) {
+            const a = v2s[e], c2 = v2s[(e + 1) % v2s.length];
+            const ax = a.x, az = -a.y, bx2 = c2.x, bz2 = -c2.y;
+            const u1 = u0 + Math.hypot(bx2 - ax, bz2 - az) / 13;
+            const vTop = b.h / 10.4;
+            wpos.push(ax, baseY, az, bx2, baseY, bz2, bx2, baseY + b.h, bz2,
+                      ax, baseY, az, bx2, baseY + b.h, bz2, ax, baseY + b.h, az);
+            wuv.push(u0, 0, u1, 0, u1, vTop, u0, 0, u1, vTop, u0, vTop);
+            u0 = u1;
+          }
+          const wg = new THREE.BufferGeometry();
+          wg.setAttribute("position", new THREE.Float32BufferAttribute(wpos, 3));
+          wg.setAttribute("uv", new THREE.Float32BufferAttribute(wuv, 2));
+          wallGeos[bi].push(wg);
+        }
+        {
+          const tris = THREE.ShapeUtils.triangulateShape(v2s, []);
+          const rpos = [];
+          for (const t of tris) {
+            for (const vi of t) rpos.push(v2s[vi].x, baseY + b.h, -v2s[vi].y);
+          }
+          const rg = new THREE.BufferGeometry();
+          rg.setAttribute("position", new THREE.Float32BufferAttribute(rpos, 3));
+          roofGeos[bi].push(rg);
+        }
         decorLots.push({ poly, cx, cz, h: b.h });
         // baked cast shadow: footprint swept along the sun direction by a
         // height-scaled offset (crisp cel-style shadow, zero runtime cost)
@@ -609,24 +637,72 @@ export const world3d = {
         this.scene.add(sm); // heights baked per-vertex against the terrain
       }
       const lineMat = new THREE.LineBasicMaterial({
-        color: NIGHT ? 0x2b3441 : 0x6b675e, transparent: true, opacity: 0.5 });
+        color: NIGHT ? 0x39435c : 0x6b675e, transparent: true, opacity: 0.5 });
+      // window-grid facade: near-white walls (bucket color multiplies) with
+      // dark glass by day; at night the same grid becomes the emissive map
+      // with a random warm subset of windows lit (Splatoon-square mood)
+      const facade = (() => {
+        const day = document.createElement("canvas");
+        day.width = day.height = 256;
+        const gd = day.getContext("2d");
+        gd.fillStyle = "#f2efe8";
+        gd.fillRect(0, 0, 256, 256);
+        const night = document.createElement("canvas");
+        night.width = night.height = 256;
+        const gn = night.getContext("2d");
+        gn.fillStyle = "#05070d";
+        gn.fillRect(0, 0, 256, 256);
+        const wrand = mulberry32(515);
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 4; c++) {
+            const wx = 10 + c * 62, wy = 8 + r * 62;
+            gd.fillStyle = "#59606c";
+            gd.fillRect(wx, wy, 42, 34);
+            gd.fillStyle = "rgba(255,255,255,0.3)";
+            gd.fillRect(wx, wy + 13, 42, 4);
+            if (wrand() < 0.55) {
+              gn.fillStyle = ["#ffd98f", "#ffc76a", "#ffe7b0", "#ffce7d"][Math.floor(wrand() * 4)];
+              gn.fillRect(wx - 1, wy - 1, 44, 36);
+            } else {
+              gn.fillStyle = "#151b28";
+              gn.fillRect(wx, wy, 42, 34);
+            }
+          }
+        }
+        const mk = c => {
+          const t = new THREE.CanvasTexture(c);
+          t.colorSpace = THREE.SRGBColorSpace;
+          t.wrapS = t.wrapT = THREE.RepeatWrapping;
+          t.magFilter = THREE.NearestFilter;
+          return t;
+        };
+        return { day: mk(day), night: mk(night) };
+      })();
+      const NIGHT_WALL = new THREE.Color(0.36, 0.42, 0.60); // blue moonlight
       const risers = [];
-      bodyGeos.forEach((arr, i) => {
+      wallGeos.forEach((arr, i) => {
         if (!arr.length) return;
         const merged = mergeGeometries(arr);
+        merged.computeVertexNormals();
         const col = new THREE.Color(wallCols[i]);
-        if (NIGHT) col.multiplyScalar(0.5);
+        if (NIGHT) col.multiply(NIGHT_WALL);
         const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({
-          color: col, flatShading: true,
-          emissive: NIGHT ? new THREE.Color(0x2a3448) : new THREE.Color(0x000000),
+          color: col, map: facade.day, side: THREE.DoubleSide,
+          emissive: NIGHT ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
+          emissiveMap: facade.night,
+          emissiveIntensity: NIGHT ? 1.0 : 0,
         }));
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
         this.scene.add(mesh);
-        // bold cel outlines: hard edges only, one line batch per bucket
-        const outline = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 32), lineMat);
+        const rmerged = mergeGeometries(roofGeos[i]);
+        rmerged.computeVertexNormals();
+        const rcol = new THREE.Color(wallCols[i]).multiplyScalar(0.8);
+        if (NIGHT) rcol.multiply(NIGHT_WALL);
+        const roof = new THREE.Mesh(rmerged, new THREE.MeshLambertMaterial({
+          color: rcol, side: THREE.DoubleSide }));
+        this.scene.add(roof);
+        const outline = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 40), lineMat);
         this.scene.add(outline);
-        risers.push([mesh, outline]);
+        risers.push([mesh, outline], [roof, roof]);
       });
       // loading flourish: each bucket rises from the ground, staggered.
       // Driven from tick() (interval-backed) so it also completes in
@@ -666,6 +742,9 @@ export const world3d = {
       const signGeos = SIGN_COLS.map(() => []);
       const acGeos = [];
       const poleGeos = [];
+      const lampGeos = [];
+      const lanternGeos = [];
+      const poolGeos = [];
       const wirePts = [];
       const clutterGeos = { bin: [], cone: [] };
       let awnings = 0;
@@ -743,6 +822,16 @@ export const world3d = {
         const pole = new THREE.CylinderGeometry(0.32, 0.4, 23, 6);
         pole.applyMatrix4(new THREE.Matrix4().setPosition(px, py + 11.5, pz));
         poleGeos.push(pole);
+        // street lamp head on alternating poles + warm light pool at night
+        if (polesPlaced.length % 2 === 0) {
+          const head = new THREE.SphereGeometry(1.15, 8, 6);
+          head.applyMatrix4(new THREE.Matrix4().setPosition(px, py + 21.8, pz));
+          lampGeos.push(head);
+          const pool = new THREE.CircleGeometry(9, 20);
+          pool.rotateX(-Math.PI / 2);
+          pool.translate(px, py + 0.62, pz);
+          poolGeos.push(pool);
+        }
         // wire to the nearest earlier pole within reach, with sag
         let near = null, nd = 1e9;
         for (const p of polesPlaced) {
@@ -751,6 +840,16 @@ export const world3d = {
         }
         if (near && nd < 130 * 130) {
           const nearY = terrainY(near.x, near.z);
+          // paper lanterns hung from the span (reference: lantern strings)
+          for (const lt of [0.42, 0.72]) {
+            const lx = px + (near.x - px) * lt, lz = pz + (near.z - pz) * lt;
+            const ly = 22.2 + py + (nearY - py) * lt - Math.sin(lt * Math.PI) * 2.6 - 1.4;
+            const lg = new THREE.SphereGeometry(0.95, 8, 6);
+            lg.scale(1, 1.25, 1);
+            lg.translate(lx, ly, lz);
+            lanternGeos.push(lg);
+            wirePts.push(lx, ly + 1.1, lz, lx, ly + 2.4, lz); // string
+          }
           for (const wy of [22.2, 20.6]) {
             const SEG = 7;
             for (let s = 0; s < SEG; s++) {
@@ -774,7 +873,18 @@ export const world3d = {
         emissive: NIGHT ? SIGN_COLS[i] : 0x000000, emissiveIntensity: NIGHT ? 0.5 : 0 })));
       addMerged(acGeos, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x5a5f6a : 0xb9bcc0, flatShading: true }));
       addMerged(poleGeos, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x2c2a26 : 0x5d564c }));
-      addMerged(clutterGeos.bin, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x2e3d4a : 0x4c6a80 }));
+      addMerged(lampGeos, new THREE.MeshLambertMaterial({
+        color: NIGHT ? 0xfff0c0 : 0xf2ead8,
+        emissive: NIGHT ? 0xffd685 : 0x000000, emissiveIntensity: NIGHT ? 1.3 : 0 }));
+      addMerged(lanternGeos, new THREE.MeshLambertMaterial({
+        color: NIGHT ? 0xffe2a0 : 0xf4e4c8,
+        emissive: NIGHT ? 0xffc96e : 0x000000, emissiveIntensity: NIGHT ? 1.5 : 0 }));
+      if (NIGHT && poolGeos.length) {
+        this.scene.add(new THREE.Mesh(mergeGeometries(poolGeos),
+          new THREE.MeshBasicMaterial({ color: 0xffb95e, transparent: true,
+            opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false })));
+      }
+      addMerged(clutterGeos.bin, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x3a4a62 : 0x4c6a80 }));
       addMerged(clutterGeos.cone, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x8a4a20 : 0xe07b35 }));
       if (wirePts.length) {
         const wg = new THREE.BufferGeometry();
