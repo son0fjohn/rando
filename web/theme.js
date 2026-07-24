@@ -30,10 +30,10 @@ export const THEME = {
   // warm, slightly desaturated (grocery-street reference) — greys lean
   // cream/tan rather than blue.
   world: {
-    grassDay:   0xe6e6d4, grassNight:  0x5c6472,
-    pavingDay:  0xefeae0, pavingNight: 0x7b7d90,
-    roadDay:    0xd8d3c8, roadNight:   0x8b8c9d,
-    curbDay:    0xe7e2d8, curbNight:   0x9c9daf,
+    grassDay:   0xe6e6d4, grassNight:  0x68748c,
+    pavingDay:  0xefeae0, pavingNight: 0x8f97b4,
+    roadDay:    0xd8d3c8, roadNight:   0x9aa2bc,
+    curbDay:    0xe7e2d8, curbNight:   0xaab0c6,
   },
 
   // ONE lighting rig for every scene (world, world2, previews), anchored
@@ -45,8 +45,9 @@ export const THEME = {
       sunCol: 0xffdfae, sunInt: 1.45, fog: 0xe9dcc3,
     },
     night: {
-      hemiSky: 0x4a5f8a, hemiGround: 0x272536, hemiInt: 0.72,
-      sunCol: 0xa8c2e8, sunInt: 0.5, fog: 0x232c45,
+      // blue moonlight bright enough that textures stay readable
+      hemiSky: 0x5b6fa0, hemiGround: 0x2e3048, hemiInt: 0.9,
+      sunCol: 0xaec6ee, sunInt: 0.65, fog: 0x2a3452,
     },
   },
 
