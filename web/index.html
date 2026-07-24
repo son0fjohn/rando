@@ -418,7 +418,7 @@
     backdrop-filter: blur(4px);
   }
   #outfit-btn[hidden] { display: none; }
-  #outfit-sheet {
+  #outfit-sheet, #friends-panel {
     position: absolute;
     left: 50%;
     bottom: 0;
@@ -430,7 +430,33 @@
     padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
     backdrop-filter: blur(6px);
   }
-  #outfit-sheet[hidden] { display: none; }
+  #outfit-sheet[hidden], #friends-panel[hidden] { display: none; }
+
+  /* --- Friends list --- */
+  #friends-panel { max-height: 60%; overflow-y: auto; }
+  .friend-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 6px;
+    border: none;
+    border-radius: 10px;
+    background: none;
+    color: #eaf2ff;
+    font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    text-align: left;
+    cursor: pointer;
+  }
+  .friend-row:hover { background: rgba(255, 255, 255, 0.06); }
+  .friend-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: 50% 6%;
+    background: #223047;
+  }
   #outfit-sheet .os-title {
     font-size: 12px;
     font-weight: 700;
@@ -706,17 +732,18 @@
   }
   #auth-status a { color: #7fc0ff; }
 
-  /* --- Private chat thread view (tap an NPC) --- */
-  #chat-panel[hidden], #chat-scrim[hidden] { display: none; }
+  /* --- Private chat thread view (tap an NPC / tap a friend) --- */
+  #chat-panel[hidden], #chat-scrim[hidden],
+  #friend-chat-panel[hidden], #friend-chat-scrim[hidden] { display: none; }
   #auth-sheet[hidden], #auth-scrim[hidden], #auth-sheet .step[hidden] { display: none; }
-  #chat-scrim {
+  #chat-scrim, #friend-chat-scrim {
     position: absolute;
     inset: 0;
     z-index: 190;
     background: rgba(8, 11, 16, 0.35);
     animation: fade-in 0.2s;
   }
-  #chat-panel {
+  #chat-panel, #friend-chat-panel {
     position: absolute;
     left: 0;
     right: 0;
@@ -733,14 +760,14 @@
   @keyframes slide-up { from { transform: translateY(100%); } }
   @keyframes fade-in { from { opacity: 0; } }
 
-  #chat-header {
+  #chat-header, #friend-chat-header {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 10px 14px;
     border-bottom: 1px solid #e3e3e6;
   }
-  #chat-close {
+  #chat-close, #friend-chat-close {
     border: none;
     background: none;
     font-size: 22px;
@@ -749,7 +776,7 @@
     cursor: pointer;
     padding: 2px 6px;
   }
-  #chat-avatar {
+  #chat-avatar, #friend-chat-avatar {
     width: 36px;
     height: 36px;
     border-radius: 50%;
@@ -757,18 +784,18 @@
     object-position: 50% 6%;
     background: #dde5ee;
   }
-  #chat-name {
+  #chat-name, #friend-chat-name {
     font-size: 14px;
     font-weight: 700;
     color: #1c1c1e;
   }
-  #chat-npc-badge {
+  #chat-npc-badge, #friend-chat-badge {
     font-size: 10px;
     font-weight: 600;
     color: #5b6b80;
     letter-spacing: 0.04em;
   }
-  #chat-private {
+  #chat-private, #friend-chat-private {
     margin-left: auto;
     font-size: 9.5px;
     font-weight: 700;
@@ -805,7 +832,7 @@
   #enc-state.complete { color: #1f9d4d; }
   #enc-state[hidden] { display: none; }
 
-  #chat-thread {
+  #chat-thread, #friend-chat-thread {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -835,13 +862,13 @@
     border-bottom-left-radius: 5px;
   }
 
-  #chat-form {
+  #chat-form, #friend-chat-form {
     display: flex;
     gap: 8px;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
     border-top: 1px solid #e3e3e6;
   }
-  #chat-input {
+  #chat-input, #friend-chat-input {
     flex: 1;
     border: 1px solid #d5d5da;
     border-radius: 999px;
@@ -851,8 +878,8 @@
     color: #1c1c1e;
     outline: none;
   }
-  #chat-input:focus { border-color: var(--apple-blue); }
-  #chat-send {
+  #chat-input:focus, #friend-chat-input:focus { border-color: var(--apple-blue); }
+  #chat-send, #friend-chat-send {
     width: 34px;
     height: 34px;
     border: none;
@@ -864,7 +891,7 @@
     cursor: pointer;
     align-self: center;
   }
-  #chat-send:disabled { background: #b9c3d0; cursor: default; }
+  #chat-send:disabled, #friend-chat-send:disabled { background: #b9c3d0; cursor: default; }
 </style>
 </head>
 <body>
@@ -873,6 +900,7 @@
 
     <div id="side-actions">
       <button id="open-toggle" class="icon-btn" type="button" hidden title="Go open">&#128065;</button>
+      <button id="friends-btn" class="icon-btn" type="button" hidden title="Friends">&#128101;</button>
       <button id="match-btn" class="icon-btn" type="button" hidden title="Match me">&#127922;</button>
       <button id="chat-pill" class="icon-btn" type="button" hidden title="Chat">&#128172;</button>
       <button id="recenter" class="icon-btn" type="button" hidden aria-label="Recenter on your character" title="Recenter">&#9678;</button>
@@ -890,6 +918,11 @@
       <p class="os-title">CUSTOMIZE YOUR RANDO <span class="os-note">mix anything &middot; colors, parts, extras</span></p>
       <div id="outfit-tabs"></div>
       <div id="outfit-grid"></div>
+    </div>
+
+    <div id="friends-panel" hidden>
+      <p class="os-title">FRIENDS</p>
+      <div id="friends-list"></div>
     </div>
 
     <div id="pubchat" hidden>
@@ -963,6 +996,24 @@
       <form id="chat-form">
         <input id="chat-input" type="text" placeholder="Message" autocomplete="off">
         <button id="chat-send" type="submit" aria-label="Send">&#8593;</button>
+      </form>
+    </div>
+
+    <div id="friend-chat-scrim" hidden></div>
+    <div id="friend-chat-panel" hidden>
+      <div id="friend-chat-header">
+        <button id="friend-chat-close" type="button" aria-label="Close chat">&#8249;</button>
+        <img id="friend-chat-avatar" src="" alt="">
+        <div>
+          <div id="friend-chat-name"></div>
+          <div id="friend-chat-badge">FRIEND</div>
+        </div>
+        <div id="friend-chat-private">&#128274; PRIVATE</div>
+      </div>
+      <div id="friend-chat-thread"></div>
+      <form id="friend-chat-form">
+        <input id="friend-chat-input" type="text" placeholder="Message" autocomplete="off">
+        <button id="friend-chat-send" type="submit" aria-label="Send">&#8593;</button>
       </form>
     </div>
   </div>
