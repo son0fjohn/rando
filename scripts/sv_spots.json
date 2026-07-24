@@ -90,6 +90,24 @@
       "max_views": 6,
       "fov": 78,
       "pitch": 8
+    },
+    {
+      "id": "jacks-bar",
+      "lat": 37.53505,
+      "lng": 126.992444,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
+    },
+    {
+      "id": "waikiki-beach-pub",
+      "lat": 37.534972,
+      "lng": 126.993394,
+      "ring_m": 26,
+      "max_views": 6,
+      "fov": 78,
+      "pitch": 8
     }
   ]
 }
