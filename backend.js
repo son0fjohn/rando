@@ -46,9 +46,18 @@ function showAuth(show) {
   scrim.hidden = !show;
 }
 
+let autoGuestTried = false;
 async function refreshStatus() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) {
+    // expired/invalidated guest sessions are routine (phone slept, token
+    // rotated) — recover silently instead of stranding the player
+    if (!autoGuestTried) {
+      autoGuestTried = true;
+      const { error } = await sb.auth.signInAnonymously();
+      if (!error) return; // auth event re-enters refreshStatus signed in
+      console.warn("[rando] auto guest sign-in failed:", error.message);
+    }
     statusEl.hidden = true;
     showAuth(true);
     presence.onSignedOut();
@@ -230,19 +239,38 @@ export const presence = {
   heartbeatTimer: null,
   lastFetch: null,
 
-  async onSignedIn() {
-    if (!this.zones.length) {
-      const { data } = await sb.from("zones").select("*");
+  async loadZones() {
+    // errors were silently swallowed before, leaving a permanent empty
+    // zones list that broke everything downstream — surface and retry once
+    for (let attempt = 0; attempt < 2 && !this.zones.length; attempt++) {
+      const { data, error } = await sb.from("zones").select("*");
+      if (error) {
+        console.warn("[rando] zones fetch failed:", error.message);
+        await new Promise(r => setTimeout(r, 800));
+        continue;
+      }
       this.zones = data ?? [];
       world3d.registerZones(this.zones);
     }
-    // restore an existing open session (e.g. page reload while open)
-    const { data: { session } } = await sb.auth.getSession();
-    const { data: mine } = await sb
-      .from("presence").select("zone_id").eq("user_id", session.user.id).maybeSingle();
-    this.myZone = mine ? this.zones.find(z => z.id === mine.zone_id) ?? null : null;
-    this.renderToggle();
-    this.startPolling();
+  },
+
+  async onSignedIn() {
+    try {
+      await this.loadZones();
+      // restore an existing open session (e.g. page reload while open).
+      // session may be null again by now (expired guest token on resume):
+      // bail to the signed-out state instead of throwing mid-boot.
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { this.onSignedOut(); return; }
+      const { data: mine } = await sb
+        .from("presence").select("zone_id").eq("user_id", session.user.id).maybeSingle();
+      this.myZone = mine ? this.zones.find(z => z.id === mine.zone_id) ?? null : null;
+      this.renderToggle();
+      this.startPolling();
+    } catch (e) {
+      console.warn("[rando] sign-in restore failed (world stays browsable):", e);
+      this.renderToggle();
+    }
   },
 
   onSignedOut() {
@@ -269,9 +297,9 @@ export const presence = {
   // rounded to a ~2.2km grid CELL on-device and only that coarse cell is
   // sent (ensure_auto_zone rejects anything finer than the grid).
   async resolveZone() {
+    await this.loadZones();
     if (!this.zones.length) {
-      const { data } = await sb.from("zones").select("*");
-      this.zones = data ?? [];
+      throw new Error("zones unavailable — check connection and retry");
     }
     const dev = params.get("devzone");
     if (dev) {
@@ -1047,5 +1075,11 @@ function runAmbience() {
 runAmbience();
 setInterval(runAmbience, 19800);
 
-sb.auth.onAuthStateChange(() => { refreshStatus(); });
-refreshStatus();
+// a failed status refresh (network flake, expired guest session, auth
+// rate limit) must never kill the app — fall back to the sign-in sheet
+const safeRefresh = () => refreshStatus().catch(e => {
+  console.warn("[rando] status refresh failed:", e);
+  showAuth(true);
+});
+sb.auth.onAuthStateChange(() => { safeRefresh(); });
+safeRefresh();

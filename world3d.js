@@ -392,16 +392,19 @@ export const world3d = {
       // warm/saturated assets fall in line with the muted cool palette
       // (buildings get a stronger pull than trees)
       if (mat.map?.image) {
+        // 1024 cap: full-res processed copies of every model texture
+        // exhaust mobile browser memory (crash-on-phone class of bug)
         const im = mat.map.image;
         const c = document.createElement("canvas");
-        c.width = im.width; c.height = im.height;
+        c.width = c.height = Math.min(1024, im.width);
         const cc = c.getContext("2d");
         cc.filter = glow ? "saturate(0.48) brightness(1.06)" : "saturate(0.72)";
-        cc.drawImage(im, 0, 0);
+        cc.drawImage(im, 0, 0, c.width, c.height);
         const themed = new THREE.CanvasTexture(c);
         themed.colorSpace = THREE.SRGBColorSpace;
         themed.flipY = false;
         mat.map = themed;
+        im.close?.(); // free the decoded original (tens of MB per model)
       }
       if (NIGHT) {
         // dim the body, then glow ONLY the bright texture areas (windows,
@@ -411,12 +414,12 @@ export const world3d = {
         if (glow && mat.map?.image) {
           const im = mat.map.image;
           const c = document.createElement("canvas");
-          c.width = im.width; c.height = im.height;
+          c.width = c.height = 512; // soft glow needs no detail; keep RAM low
           const cc = c.getContext("2d");
           // windows/glass are the DARK pixels on these models — invert so
           // they glow and the pale walls stay unlit
           cc.filter = "grayscale(1) invert(1) contrast(2.6) brightness(0.62)";
-          cc.drawImage(im, 0, 0);
+          cc.drawImage(im, 0, 0, c.width, c.height);
           const em = new THREE.CanvasTexture(c);
           em.colorSpace = THREE.SRGBColorSpace;
           em.flipY = false;
