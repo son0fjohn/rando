@@ -474,13 +474,64 @@ export const world3d = {
     // gathering plazas: keep zone centers clear of structures
     const nearZoneCenter = (x, z, rad) =>
       flavors.some(f => (x - f.p.x) ** 2 + (z - f.p.z) ** 2 < rad * rad);
+    // ---- real Itaewon: OSM building footprints extruded as flat-shaded
+    // low-poly prisms with bold outlines. ~25 tris per building merged
+    // into one mesh per color bucket, so 2000 real buildings cost less
+    // than ten of the smooth GLB models did. GLB heroes stay as landmarks.
+    let footprints = 0;
+    try {
+      const bdata = await (await fetch("buildings.json")).json();
+      const wallCols = [0xf1f3f2, 0xdde3e4, 0xccd7db, 0xd7e2da, 0xe4dadd, 0xcad3e1];
+      const bodyGeos = wallCols.map(() => []);
+      for (const b of bdata.buildings) {
+        const poly = b.p;
+        let cx = 0, cz = 0;
+        for (const [x, z] of poly) { cx += x; cz += z; }
+        cx /= poly.length; cz /= poly.length;
+        if (nearZoneCenter(cx, cz, 58)) continue; // keep gathering plazas open
+        let rad = 0;
+        for (const [x, z] of poly) rad = Math.max(rad, Math.hypot(x - cx, z - cz));
+        occupy(cx, cz, Math.min(rad, 40));
+        // stamp all covered cells so trees never sprout through roofs
+        for (let mx = cx - rad; mx <= cx + rad; mx += 25) {
+          for (let mz = cz - rad; mz <= cz + rad; mz += 25) mark(mx, mz);
+        }
+        const v2s = poly.map(([x, z]) => new THREE.Vector2(x, -z));
+        if (THREE.ShapeUtils.area(v2s) < 0) v2s.reverse(); // CCW: walls face out
+        const geo = new THREE.ExtrudeGeometry(new THREE.Shape(v2s),
+          { depth: b.h, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2);
+        const bi = Math.abs(Math.round(cx * 7 + cz * 13)) % wallCols.length;
+        bodyGeos[bi].push(geo);
+        footprints++;
+      }
+      const lineMat = new THREE.LineBasicMaterial({
+        color: NIGHT ? 0x2b3441 : 0x5d6b76, transparent: true, opacity: 0.5 });
+      bodyGeos.forEach((arr, i) => {
+        if (!arr.length) return;
+        const merged = mergeGeometries(arr);
+        const col = new THREE.Color(wallCols[i]);
+        if (NIGHT) col.multiplyScalar(0.5);
+        const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({
+          color: col, flatShading: true,
+          emissive: NIGHT ? new THREE.Color(0x2a3448) : new THREE.Color(0x000000),
+        }));
+        this.scene.add(mesh);
+        // bold cel outlines: hard edges only, one line batch per bucket
+        this.scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(merged, 32), lineMat));
+      });
+      console.log(`[rando] OSM footprints: ${footprints} buildings`);
+    } catch (e) {
+      console.warn("buildings.json unavailable — generic placement fallback", e);
+    }
+
     // placement: same frontage walk, but each lot picks a model type from
     // zone density (towers only in the urban core, low-rise near plazas).
-    // Capped so mobile GPUs stay comfortable with the 4-5k-tri models.
+    // Runs only as a FALLBACK when real footprints are unavailable.
     const inst = { store: [], urban: [], brick: [], pastel: [], tower: [], highrise: [] };
     const MAX_BUILDINGS = 220;
     let placedCount = 0;
-    if (lib) for (const c of candidates) {
+    if (lib && !footprints) for (const c of candidates) {
       if (placedCount >= MAX_BUILDINGS) break;
       const D = fieldAt(c.x, c.z, "build");
       if (rand() > D * 0.34) continue;
