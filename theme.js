@@ -36,12 +36,13 @@ export const THEME = {
     curbDay:    0xe7e2d8, curbNight:   0x9c9daf,
   },
 
-  // ONE lighting rig for every scene (world, world2, previews): warm key
-  // sun + warm-sky/-earth hemisphere by day, cool moonlight by night
+  // ONE lighting rig for every scene (world, world2, previews), anchored
+  // to the grocery-street reference (rando avatar v2/world reference):
+  // strong warm sun with real cast shadows, warm bounce, cream haze
   lighting: {
     day: {
-      hemiSky: 0xfff3dd, hemiGround: 0xb0a690, hemiInt: 1.08,
-      sunCol: 0xffe9c2, sunInt: 1.2, fog: 0xe9e4d6,
+      hemiSky: 0xfff0d6, hemiGround: 0x9b8f7a, hemiInt: 0.95,
+      sunCol: 0xffdfae, sunInt: 1.45, fog: 0xe9dcc3,
     },
     night: {
       hemiSky: 0x4a5f8a, hemiGround: 0x272536, hemiInt: 0.72,

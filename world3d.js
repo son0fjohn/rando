@@ -120,6 +120,11 @@ export const world3d = {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(2, devicePixelRatio));
     this.renderer.setSize(w, h);
+    // NOTE: real shadow mapping is disabled — it renders in isolated
+    // scenes but never from a cold boot of the full app scene (unresolved
+    // three.js state issue). Crisp BAKED shadows below match the cel
+    // reference deterministically on every device instead.
+    this.renderer.shadowMap.enabled = false;
     Object.assign(this.renderer.domElement.style, {
       position: "absolute", inset: "0", touchAction: "none", cursor: "grab",
     });
@@ -140,6 +145,7 @@ export const world3d = {
     const sun = new THREE.DirectionalLight(M.sunCol, M.sunInt);
     sun.position.set(120, 200, 80);
     this.scene.add(sun);
+    this.sun = sun;
 
     this.buildTerrain();
     this.scene.add(this.zoneRings);
@@ -212,6 +218,7 @@ export const world3d = {
     const groundMat = new THREE.MeshLambertMaterial({ color: M.grass });
     const ground = new THREE.Mesh(new THREE.CircleGeometry(1500, 48), groundMat);
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     this.scene.add(ground);
     this.loadImage("world2/road_grass.jpg").then(img => {
       const tex = this.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
@@ -229,6 +236,7 @@ export const world3d = {
           color: NIGHT ? THEME.world.pavingNight : THEME.world.pavingDay }));
       paved.rotation.x = -Math.PI / 2;
       paved.position.y = 0.06;
+      paved.receiveShadow = true;
       this.scene.add(paved);
       const curb = new THREE.Mesh(new THREE.RingGeometry(PAVED_R, PAVED_R + 4, 64),
         new THREE.MeshLambertMaterial({ color: NIGHT ? THEME.world.curbNight : THEME.world.curbDay }));
@@ -330,7 +338,9 @@ export const world3d = {
     // ribbons carry the tile's road-strip art (curbs + dashes run along v);
     // junction discs stay flat asphalt so the strip never smears radially
     const roadMat = new THREE.MeshLambertMaterial({ color: M.road });
-    this.scene.add(new THREE.Mesh(mergeGeometries(roadGeos), roadMat));
+    const roadMesh = new THREE.Mesh(mergeGeometries(roadGeos), roadMat);
+    roadMesh.receiveShadow = true;
+    this.scene.add(roadMesh);
     const jointMat = new THREE.MeshLambertMaterial({ color: M.road });
     this.scene.add(new THREE.Mesh(mergeGeometries(jointGeos), jointMat));
     // plain asphalt for ribbons and junctions alike — no painted lines,
@@ -394,7 +404,7 @@ export const world3d = {
         const c = document.createElement("canvas");
         c.width = c.height = Math.min(1024, im.width);
         const cc = c.getContext("2d");
-        cc.filter = glow ? "saturate(0.48) brightness(1.06)" : "saturate(0.72)";
+        cc.filter = glow ? "saturate(0.74) brightness(1.05)" : "saturate(0.8)";
         cc.drawImage(im, 0, 0, c.width, c.height);
         const themed = new THREE.CanvasTexture(c);
         themed.colorSpace = THREE.SRGBColorSpace;
@@ -489,6 +499,7 @@ export const world3d = {
       const bdata = await (await fetch("buildings.json")).json();
       const wallCols = THEME.walls; // warm desaturated family (style lock)
       const bodyGeos = wallCols.map(() => []);
+      const shadowGeos = [];
       for (const b of bdata.buildings) {
         const poly = b.p;
         let cx = 0, cz = 0;
@@ -510,7 +521,39 @@ export const world3d = {
         geo.rotateX(-Math.PI / 2);
         const bi = Math.abs(Math.round(cx * 7 + cz * 13)) % wallCols.length;
         bodyGeos[bi].push(geo);
+        // baked cast shadow: footprint swept along the sun direction by a
+        // height-scaled offset (crisp cel-style shadow, zero runtime cost)
+        {
+          const k = Math.min(52, 6 + b.h * 0.95);
+          const off = [-0.52 * k, -0.34 * k]; // sun from (+x,+z) high east
+          const base = poly.map(([x, z]) => new THREE.Vector2(x, -z));
+          if (THREE.ShapeUtils.area(base) < 0) base.reverse();
+          const quads = [];
+          for (let e = 0; e < base.length; e++) {
+            const a = base[e], b2 = base[(e + 1) % base.length];
+            quads.push(
+              a.x, 0, -a.y,  b2.x, 0, -b2.y,  b2.x + off[0], 0, -b2.y - off[1],
+              a.x, 0, -a.y,  b2.x + off[0], 0, -b2.y - off[1],  a.x + off[0], 0, -a.y - off[1]);
+          }
+          const capTris = THREE.ShapeUtils.triangulateShape(
+            base.map(v => new THREE.Vector2(v.x + off[0], v.y + off[1])), []);
+          for (const t of capTris) {
+            for (const vi of t) {
+              quads.push(base[vi].x + off[0], 0, -base[vi].y - off[1]);
+            }
+          }
+          const sg = new THREE.BufferGeometry();
+          sg.setAttribute("position", new THREE.Float32BufferAttribute(quads, 3));
+          shadowGeos.push(sg);
+        }
         footprints++;
+      }
+      if (shadowGeos.length) {
+        const sm = new THREE.Mesh(mergeGeometries(shadowGeos),
+          new THREE.MeshBasicMaterial({ color: 0x241c12, transparent: true,
+            opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
+        sm.position.y = 0.55; // above roads/paving, below characters
+        this.scene.add(sm);
       }
       const lineMat = new THREE.LineBasicMaterial({
         color: NIGHT ? 0x2b3441 : 0x6b675e, transparent: true, opacity: 0.5 });
@@ -524,6 +567,8 @@ export const world3d = {
           color: col, flatShading: true,
           emissive: NIGHT ? new THREE.Color(0x2a3448) : new THREE.Color(0x000000),
         }));
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         this.scene.add(mesh);
         // bold cel outlines: hard edges only, one line batch per bucket
         const outline = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 32), lineMat);
@@ -585,6 +630,8 @@ export const world3d = {
         }));
         mesh.position.copy(l.pos);
         mesh.rotation.y = (l.yaw ?? 0) * Math.PI / 180;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         this.scene.add(mesh);
         const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 34),
           new THREE.LineBasicMaterial({ color: NIGHT ? 0x2b3441 : 0x5d6b76, transparent: true, opacity: 0.5 }));
@@ -708,6 +755,7 @@ export const world3d = {
 
   makeChar(avatarCfg, pos, parent, apiOverride) {
     const api = apiOverride ?? makeCharacter(avatarCfg);
+    api.group.traverse(o => { if (o.isMesh || o.isSkinnedMesh) o.castShadow = true; });
     api.group.position.copy(pos);
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(1, 24),
@@ -971,6 +1019,7 @@ export const world3d = {
       rec.api.tick(t);
       rec.shadow.position.set(rec.api.group.position.x, 0.42, rec.api.group.position.z);
     }
+
 
     // buildings-rise loading animation (see loadWorld); self-removes when done
     if (this.risers) {
