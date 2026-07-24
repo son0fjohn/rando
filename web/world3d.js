@@ -44,6 +44,16 @@ function rawTerrain(x, z) {
   return h;
 }
 let TERRAIN_ANCHORS = null; // lazy: ZONE_FLAVOR is declared further down
+// Named districts — how Itaewon is actually navigated ("meet me on World
+// Food Street"). Anchors are best-knowledge centers of the real streets;
+// nudge coords here if any feel off against the real map.
+const DISTRICTS = [
+  { name: "World Food Street",    lat: 37.53535, lng: 126.99345, tint: 0xff9a5e },
+  { name: "Hooker Hill",          lat: 37.53390, lng: 126.99530, tint: 0xff5d8a },
+  { name: "Antique Furniture St", lat: 37.53300, lng: 126.99250, tint: 0xc8a05e },
+  { name: "Itaewon-ro",           lat: 37.53460, lng: 126.99420, tint: 0x8ab4ff },
+];
+
 export function pointInPoly(x, z, poly) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -1303,6 +1313,85 @@ export const world3d = {
         `(${layers.lamps.length} osm)`);
     } catch (e) {
       console.warn("[rando] itaewon layers skipped", e);
+    }
+
+    // ---- districts: nameable neighborhoods (recognizability layer) ----
+    // A big tracked-out label + a faint terrain-hugging color wash per
+    // district, so each street reads as a distinct "place" at a glance.
+    const mkWash = (cx, cz, R, tint, op) => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 128;
+      const g2 = cv.getContext("2d");
+      const col = new THREE.Color(tint);
+      const grad = g2.createRadialGradient(64, 64, 8, 64, 64, 64);
+      grad.addColorStop(0, `rgba(${col.r * 255 | 0},${col.g * 255 | 0},${col.b * 255 | 0},${op})`);
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      g2.fillStyle = grad;
+      g2.fillRect(0, 0, 128, 128);
+      const rings = 8, segs = 30, posA = [], uvA = [], idxA = [];
+      for (let r = 0; r <= rings; r++) {
+        for (let sg = 0; sg <= segs; sg++) {
+          const a = (sg / segs) * Math.PI * 2, rr = (r / rings) * R;
+          const x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
+          posA.push(x, terrainY(x, z) + 0.5, z);
+          uvA.push(0.5 + Math.cos(a) * (r / rings) * 0.5,
+                   0.5 + Math.sin(a) * (r / rings) * 0.5);
+        }
+      }
+      for (let r = 0; r < rings; r++) {
+        for (let sg = 0; sg < segs; sg++) {
+          const a = r * (segs + 1) + sg, b2 = a + segs + 1;
+          idxA.push(a, b2, a + 1, b2, b2 + 1, a + 1);
+        }
+      }
+      const gg = new THREE.BufferGeometry();
+      gg.setAttribute("position", new THREE.Float32BufferAttribute(posA, 3));
+      gg.setAttribute("uv", new THREE.Float32BufferAttribute(uvA, 2));
+      gg.setIndex(idxA);
+      const tex = new THREE.CanvasTexture(cv);
+      const m2 = new THREE.Mesh(gg, new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, blending: THREE.AdditiveBlending,
+        depthWrite: false }));
+      m2.renderOrder = 1;
+      this.scene.add(m2);
+    };
+    for (const d of DISTRICTS) {
+      const dp = geoPos(d.lat, d.lng);
+      mkWash(dp.x, dp.z, 88, d.tint, NIGHT ? 0.085 : 0.05);
+      const lp = new THREE.Vector3(dp.x, dp.y + 40, dp.z);
+      this.addLabel(d.name, "district", 5, () => lp);
+    }
+
+    // ---- hero venue beacons: soft vertical light column at night so
+    // waypoint venues read from across the map ("meet me by Jack's") ----
+    if (NIGHT) {
+      const beamCv = document.createElement("canvas");
+      beamCv.width = 32; beamCv.height = 128;
+      const bg2 = beamCv.getContext("2d");
+      const bgrad = bg2.createLinearGradient(0, 128, 0, 0);
+      bgrad.addColorStop(0, "rgba(255,255,255,0.55)");
+      bgrad.addColorStop(1, "rgba(255,255,255,0)");
+      bg2.fillStyle = bgrad;
+      bg2.fillRect(0, 0, 32, 128);
+      const beamTex = new THREE.CanvasTexture(beamCv);
+      for (const l of landmarks) {
+        if (!l.glb || !l.glow) continue;
+        const hgt = 46;
+        const bgeo = new THREE.PlaneGeometry(2.0, hgt);
+        const bmat = new THREE.MeshBasicMaterial({
+          map: beamTex, color: l.glow, transparent: true, opacity: 0.34,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+          side: THREE.DoubleSide });
+        const beam = new THREE.Group();
+        for (const ry of [0, Math.PI / 2]) {
+          const pl = new THREE.Mesh(bgeo, bmat);
+          pl.rotation.y = ry;
+          beam.add(pl);
+        }
+        beam.position.set(l.pos.x, l.pos.y + hgt / 2 + 2, l.pos.z);
+        beam.renderOrder = 4;
+        this.scene.add(beam);
+      }
     }
 
     // placement: same frontage walk, but each lot picks a model type from
