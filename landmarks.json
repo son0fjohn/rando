@@ -24,9 +24,10 @@
       "lat": 37.53462,
       "lng": 126.99455,
       "yaw": 0,
-      "h": 30,
+      "h": 26,
       "clear": 34,
-      "glb": null
+      "glb": "world2/landmarks/itaewon-station.glb",
+      "glow": "#ffc84d"
     },
     {
       "id": "grand-ole-opry",
@@ -35,8 +36,8 @@
       "yaw": 0,
       "h": 18,
       "clear": 22,
-      "glb": null,
-      "glow": "#ff9a4d"
+      "glb": "world2/landmarks/grand-ole-opry.glb",
+      "glow": "#ff5d4d"
     },
     {
       "id": "jacks-bar",
@@ -47,6 +48,64 @@
       "clear": 22,
       "glb": null,
       "glow": "#ff5d8a"
+    },
+    {
+      "id": "soap",
+      "lat": 37.533591,
+      "lng": 126.994917,
+      "yaw": 0,
+      "h": 13,
+      "clear": 16,
+      "glb": "world2/landmarks/soap.glb",
+      "glow": "#4da6ff"
+    },
+    {
+      "id": "danco",
+      "lat": 37.534945,
+      "lng": 126.994546,
+      "yaw": 0,
+      "h": 15,
+      "clear": 16,
+      "glb": "world2/landmarks/danco.glb",
+      "glow": "#ff5d3d"
+    }
+  ],
+  "pending": [
+    {
+      "id": "bolero",
+      "yaw": 0,
+      "h": 12,
+      "clear": 16,
+      "glb": "world2/landmarks/bolero.glb",
+      "glow": "#ff6a55",
+      "needs": "pin"
+    },
+    {
+      "id": "waikiki",
+      "yaw": 0,
+      "h": 14,
+      "clear": 18,
+      "glb": "world2/landmarks/waikiki.glb",
+      "glow": "#4de8c8",
+      "needs": "pin"
+    },
+    {
+      "id": "grainhaus",
+      "yaw": 0,
+      "h": 12,
+      "clear": 16,
+      "glb": "world2/landmarks/grainhaus.glb",
+      "glow": "#c8f04a",
+      "needs": "pin"
+    },
+    {
+      "id": "agave",
+      "yaw": 0,
+      "h": 15,
+      "clear": 16,
+      "glb": "world2/landmarks/agave.glb",
+      "glow": "#7dff5e",
+      "needs": "pin"
     }
   ]
 }
