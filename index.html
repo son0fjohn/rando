@@ -583,15 +583,15 @@
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    gap: 2px;
-    max-height: 128px;
+    gap: 3px;
+    max-height: 158px;
     overflow: hidden;
   }
   .pub-line {
-    font-size: 11px;
-    line-height: 1.35;
+    font-size: 12.5px;
+    line-height: 1.4;
     color: #fff;
-    background: rgba(26, 23, 19, 0.55);
+    background: rgba(26, 23, 19, 0.64);
     border-radius: 6px;
     padding: 3px 8px;
     width: fit-content;
@@ -602,8 +602,8 @@
   .pub-line.sys { color: #ffd60a; font-style: italic; }
   #pubchat-row { display: flex; gap: 6px; pointer-events: auto; }
   #pubchat-open {
-    width: 34px;
-    height: 34px;
+    width: 42px;
+    height: 42px;
     border: none;
     border-radius: 50%;
     background: rgba(31, 28, 23, 0.72);
@@ -617,16 +617,16 @@
     flex: 1;
     border: none;
     border-radius: 999px;
-    padding: 8px 14px;
-    font-size: 13px;
+    padding: 10px 16px;
+    font-size: 14px;
     background: rgba(26, 23, 19, 0.72);
     color: #fff;
     outline: none;
   }
   #pubchat-input::placeholder { color: #93a3b8; }
   #pubchat-send {
-    width: 34px;
-    height: 34px;
+    width: 42px;
+    height: 42px;
     border: none;
     border-radius: 50%;
     background: var(--apple-blue);
@@ -640,6 +640,48 @@
     position: absolute;
     transform: translate(-50%, -100%);
     pointer-events: none;
+  }
+
+  /* --- First-run hint card: the "what do I do" beat --- */
+  #hint-card {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 260;
+    width: min(76%, 290px);
+    background: rgba(24, 20, 26, 0.94);
+    border-radius: 18px;
+    padding: 20px 18px 16px;
+    box-shadow: 0 12px 40px rgba(8, 11, 16, 0.55);
+    backdrop-filter: blur(6px);
+    text-align: left;
+  }
+  #hint-card[hidden] { display: none; }
+  #hint-card .hc-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: #ffe9c4;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  #hint-card .hc-line {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #e6e0d4;
+    margin: 7px 0;
+  }
+  #hint-card #hint-got {
+    display: block;
+    margin: 14px auto 0;
+    border: none;
+    border-radius: 12px;
+    padding: 11px 34px;
+    font-size: 14px;
+    font-weight: 700;
+    background: var(--apple-blue);
+    color: #fff;
+    cursor: pointer;
   }
 
   /* --- Nickname sheet (mirrors the auth sheet look) --- */
@@ -939,6 +981,7 @@
     <div id="zone-chip">
       <div>&#128205; <span id="zone-name">&hellip;</span></div>
       <div class="zone-sub">positions updated <span id="zmin">&ndash;</span> min ago</div>
+      <div class="zone-sub" id="who-near">&hellip;</div>
       <div class="zone-sub" id="auth-status" hidden></div>
       <div class="zone-sub" style="opacity:.65">roads &copy; OpenStreetMap contributors</div>
     </div>
@@ -968,6 +1011,14 @@
       <div class="mc-sub">they're in your zone &middot; say hi</div>
       <button id="mc-chat" type="button">Chat</button>
       <button id="mc-dismiss" type="button">Later</button>
+    </div>
+
+    <div id="hint-card" hidden>
+      <div class="hc-title">Welcome to Itaewon</div>
+      <div class="hc-line">&#127747; Venues with light beams are the meet-up spots</div>
+      <div class="hc-line">&#128172; Tap someone with a blue name to say hi</div>
+      <div class="hc-line">&#128065; Go open (the eye) so people can find you</div>
+      <button id="hint-got" type="button">Got it</button>
     </div>
 
     <div id="nick-scrim" hidden></div>
@@ -1026,5 +1077,16 @@
   </div>
 
   <script type="module" src="backend.js"></script>
+<script type="module">
+  // first-run hint (localStorage-gated); UI-only, no backend coupling
+  const hintCard = document.getElementById("hint-card");
+  if (hintCard && !localStorage.getItem("rando-hint-v1")) {
+    setTimeout(() => { hintCard.hidden = false; }, 1800);
+    document.getElementById("hint-got").addEventListener("click", () => {
+      localStorage.setItem("rando-hint-v1", "1");
+      hintCard.hidden = true;
+    });
+  }
+</script>
 </body>
 </html>

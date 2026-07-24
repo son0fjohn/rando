@@ -433,6 +433,15 @@ export const presence = {
                      userId: r.user_id, handle: r.handle });
     }
     world3d.setRemotes(remotes);
+    // presence framing — zone-coarse count only (safety model: no precise
+    // distance, no tracking; just "someone's around, go say hi")
+    const whoEl = document.getElementById("who-near");
+    if (whoEl) {
+      const n = remotes.length;
+      whoEl.textContent = n === 0 ? "quiet right now" :
+        n === 1 ? "1 person around — say hi" : `${n} people around — say hi`;
+      whoEl.style.color = n ? "#7db8ff" : "";
+    }
     // own character: at my zone's real position while open, absent while
     // closed; the 3D camera follows it (avatar keeps its screen spot)
     if (this.myZone) {
