@@ -968,6 +968,43 @@ export const world3d = {
         outline.rotation.copy(mesh.rotation);
         this.scene.add(outline);
         occupy(l.pos.x, l.pos.z, l.clear);
+        // nightlife venues ground their light: warm additive pool tinting
+        // the street around the hero at night (color from landmarks.json)
+        if (NIGHT && l.glow) {
+          const R2 = l.clear * 1.7;
+          const gcv = document.createElement("canvas");
+          gcv.width = gcv.height = 128;
+          const gctx = gcv.getContext("2d");
+          const grad = gctx.createRadialGradient(64, 64, 6, 64, 64, 64);
+          grad.addColorStop(0, l.glow);
+          grad.addColorStop(1, "rgba(0,0,0,0)");
+          gctx.fillStyle = grad;
+          gctx.fillRect(0, 0, 128, 128);
+          const gtex = new THREE.CanvasTexture(gcv);
+          const rings2 = 10, segs2 = 40, gpos = [], guv = [], gidx = [];
+          for (let r = 0; r <= rings2; r++) {
+            for (let sg2 = 0; sg2 <= segs2; sg2++) {
+              const a = (sg2 / segs2) * Math.PI * 2, rr = (r / rings2) * R2;
+              const x = l.pos.x + Math.cos(a) * rr, z = l.pos.z + Math.sin(a) * rr;
+              gpos.push(x, terrainY(x, z) + 0.7, z);
+              guv.push(0.5 + Math.cos(a) * (r / rings2) * 0.5,
+                       0.5 + Math.sin(a) * (r / rings2) * 0.5);
+            }
+          }
+          for (let r = 0; r < rings2; r++) {
+            for (let sg2 = 0; sg2 < segs2; sg2++) {
+              const a = r * (segs2 + 1) + sg2, b2 = a + segs2 + 1;
+              gidx.push(a, b2, a + 1, b2, b2 + 1, a + 1);
+            }
+          }
+          const gg2 = new THREE.BufferGeometry();
+          gg2.setAttribute("position", new THREE.Float32BufferAttribute(gpos, 3));
+          gg2.setAttribute("uv", new THREE.Float32BufferAttribute(guv, 2));
+          gg2.setIndex(gidx);
+          this.scene.add(new THREE.Mesh(gg2, new THREE.MeshBasicMaterial({
+            map: gtex, transparent: true, opacity: 0.5,
+            blending: THREE.AdditiveBlending, depthWrite: false })));
+        }
         console.log(`[rando] landmark placed: ${l.id}`);
       } catch (e) {
         console.warn(`landmark ${l.id} failed to load`, e);

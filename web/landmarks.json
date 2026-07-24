@@ -27,6 +27,26 @@
       "h": 30,
       "clear": 34,
       "glb": null
+    },
+    {
+      "id": "grand-ole-opry",
+      "lat": 37.5341,
+      "lng": 126.99659,
+      "yaw": 0,
+      "h": 18,
+      "clear": 22,
+      "glb": null,
+      "glow": "#ff9a4d"
+    },
+    {
+      "id": "jacks-bar",
+      "lat": 37.53505,
+      "lng": 126.99244,
+      "yaw": 0,
+      "h": 18,
+      "clear": 22,
+      "glb": null,
+      "glow": "#ff5d8a"
     }
   ]
 }
