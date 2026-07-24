@@ -110,13 +110,15 @@ console error-free, all 9 heroes placed, layers intact.
   switch to measured `getBoundingClientRect` widths.
 - **Hint copy**: three lines are my draft — tighten to taste in
   `index.html` (#hint-card).
-- **3D-Tiles capture thread** (interleaved, non-UX): session propagation
-  fixed; full zone traversal works; heights landed for only 19 buildings
-  because the tileset bottoms out at a coarse LOD through my traversal.
-  A depth probe (STOP 6 → 2 → 0.8) is still running in the background;
-  if it finds street LOD, the recapture + rebake is two commands
-  (`capture_heights_reference.py --tiles`, `bake_heights.py`). Data
-  files on this branch only — nothing pushed.
+- **3D-Tiles capture thread — RESOLVED overnight** (`2483aca`): the
+  depth probe found street LOD at geometricError ≤ 2 (1277 tiles; the
+  first run stopped at 372 coarse ones). Full capture ran clean:
+  142k-point cloud, sane frame, and **163 zone buildings now have real
+  measured heights** (155 baked into the field after centroid matching);
+  226 remain flagged "default" — narrow-alley buildings the cloud
+  couldn't answer, listed in `web/data/itaewon_heights_sources.json` if
+  you want to hand-correct any that matter on camera. The zone skyline
+  on this branch is now measured massing, not guesses. Branch-only.
 - **Not pushed anywhere**: this entire branch. `main`/Vercel untouched
   for the shoot. Merge is your call: `git merge overnight-ux` when
   you've reviewed.
