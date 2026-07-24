@@ -954,9 +954,38 @@ export const world3d = {
         const geo = piece.geo.clone();
         // faceted shading: drop smooth normals, let flatShading rebuild
         geo.deleteAttribute("normal");
+        // night: the neon/signs live in the ALBEDO (baked from the night
+        // refs) so under dim blue moonlight the whole model goes black.
+        // Self-light it: bright/saturated pixels (neon, lit windows) glow
+        // full-strength, the rest keeps a faint floor for silhouette.
+        let emis = null;
+        if (NIGHT && piece.mat.map?.image) {
+          const src = piece.mat.map.image;
+          const ec = document.createElement("canvas");
+          ec.width = src.width; ec.height = src.height;
+          const eg = ec.getContext("2d");
+          eg.drawImage(src, 0, 0);
+          const d = eg.getImageData(0, 0, ec.width, ec.height);
+          const px = d.data;
+          for (let i = 0; i < px.length; i += 4) {
+            const lum = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
+            const sat = Math.max(px[i], px[i + 1], px[i + 2]) -
+                        Math.min(px[i], px[i + 1], px[i + 2]);
+            if (!(lum > 150 || (sat > 70 && lum > 90))) {
+              px[i] *= 0.22; px[i + 1] *= 0.22; px[i + 2] *= 0.22;
+            }
+          }
+          eg.putImageData(d, 0, 0);
+          emis = new THREE.CanvasTexture(ec);
+          emis.colorSpace = THREE.SRGBColorSpace;
+          emis.flipY = piece.mat.map.flipY; // glTF uses flipY=false — must match
+        }
         const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
           map: piece.mat.map, flatShading: true,
           color: piece.mat.color ?? 0xffffff,
+          emissive: NIGHT ? 0xffffff : 0x000000,
+          emissiveMap: emis ?? undefined,
+          emissiveIntensity: NIGHT ? 0.9 : 0,
         }));
         mesh.position.copy(l.pos);
         mesh.rotation.y = (l.yaw ?? 0) * Math.PI / 180;
