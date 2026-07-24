@@ -429,7 +429,8 @@ export const presence = {
       if (!zone) continue;
       const slot = byZone.get(r.zone_id) ?? 0;
       byZone.set(r.zone_id, slot + 1);
-      remotes.push({ avatar: normalizeAvatar(r.avatar), lat: zone.lat, lng: zone.lng, slot });
+      remotes.push({ avatar: normalizeAvatar(r.avatar), lat: zone.lat, lng: zone.lng, slot,
+                     userId: r.user_id, handle: r.handle });
     }
     world3d.setRemotes(remotes);
     // own character: at my zone's real position while open, absent while
@@ -631,20 +632,41 @@ export const chat = {
   channel: null,
   seen: new Set(),
   myId: null,
+  current: null, // { id, partner, badge } — the open thread (match or DM)
 
-  async openPanel() {
-    if (!matching.activeMatch || !matching.partner) return;
+  // tap-to-chat: any visible character opens a private thread, ungated
+  // (product decision 2026-07-24). ensure_dm reuses an existing thread.
+  async openDm(meta) {
+    const { data: mid, error } = await sb.rpc("ensure_dm", { p_other: meta.userId });
+    if (error) { console.warn("[rando] dm open failed:", error.message); return; }
+    await this.openPanel({
+      id: mid,
+      partner: { id: meta.userId, handle: meta.handle, avatar: meta.avatar },
+      badge: "TAPPED IN THE WORLD · PRIVATE",
+    });
+  },
+
+  async openPanel(target) {
+    if (!target) {
+      if (!matching.activeMatch || !matching.partner) return;
+      target = {
+        id: matching.activeMatch.id,
+        partner: matching.partner,
+        badge: "MATCHED · SAME ZONE",
+      };
+    }
+    this.current = target;
     const { data: { session } } = await sb.auth.getSession();
     this.myId = session.user.id;
-    cName.textContent = matching.partner.handle;
-    cAvatar.src = avatarThumb(matching.partner.avatar);
-    cBadge.textContent = "MATCHED · SAME ZONE";
+    cName.textContent = target.partner.handle;
+    cAvatar.src = avatarThumb(target.partner.avatar);
+    cBadge.textContent = target.badge;
     cThread.innerHTML = "";
     this.seen.clear();
     const { data: history } = await sb
       .from("messages")
       .select("*")
-      .eq("match_id", matching.activeMatch.id)
+      .eq("match_id", target.id)
       .order("created_at");
     (history ?? []).forEach(m => this.append(m));
     this.subscribe();
@@ -658,13 +680,14 @@ export const chat = {
   closePanel() {
     cScrim.hidden = true;
     cPanel.hidden = true;
+    this.current = null;
     this.unsubscribe();
     matching.renderButton();
   },
 
   subscribe() {
     this.unsubscribe();
-    const matchId = matching.activeMatch.id;
+    const matchId = this.current.id;
     this.channel = sb
       .channel("match-" + matchId)
       .on("postgres_changes",
@@ -693,7 +716,7 @@ export const chat = {
   async send(text) {
     const { data, error } = await sb
       .from("messages")
-      .insert({ match_id: matching.activeMatch.id, sender: this.myId, body: text })
+      .insert({ match_id: this.current.id, sender: this.myId, body: text })
       .select()
       .maybeSingle();
     if (error) throw error;
@@ -704,7 +727,7 @@ export const chat = {
 cForm.addEventListener("submit", async e => {
   e.preventDefault();
   const text = cInput.value.trim();
-  if (!text || !matching.activeMatch) return;
+  if (!text || !chat.current) return;
   cInput.value = "";
   try {
     await chat.send(text);
@@ -726,8 +749,8 @@ export const encounter = {
   timer: null,
 
   async refresh() {
-    if (!matching.activeMatch) return;
-    const { data, error } = await sb.rpc("encounter_status", { p_match: matching.activeMatch.id });
+    if (!chat.current) return;
+    const { data, error } = await sb.rpc("encounter_status", { p_match: chat.current.id });
     if (error || !data || !data.length) return;
     this.render(data[0]);
   },
@@ -753,7 +776,7 @@ export const encounter = {
   async confirm() {
     const { data: { session } } = await sb.auth.getSession();
     const { error } = await sb.from("encounter_confirms")
-      .insert({ match_id: matching.activeMatch.id, user_id: session.user.id });
+      .insert({ match_id: chat.current.id, user_id: session.user.id });
     // duplicate confirm (PK conflict) is fine — state is already ours
     if (error && !/duplicate|23505/.test(error.message + (error.code ?? ""))) throw error;
     await this.refresh();
@@ -786,11 +809,15 @@ encBtn.addEventListener("click", async () => {
 
 // tie encounter state to the chat panel lifecycle
 const _openPanel = chat.openPanel.bind(chat);
-chat.openPanel = async function () {
-  await _openPanel();
+chat.openPanel = async function (target) {
+  await _openPanel(target);
+  if (!this.current) return; // nothing opened (no match, bad target)
   await encounter.refresh();
   encounter.startPolling();
 };
+
+// world tap → private chat (any visible character, ungated)
+world3d.onCharTap = meta => { chat.openDm(meta); };
 const _closePanel = chat.closePanel.bind(chat);
 chat.closePanel = function () {
   _closePanel();
@@ -933,16 +960,27 @@ export const pubchat = {
   channel: null,
   myId: null,
 
+  // the public feed is the ITAEWON square, not a global firehose: only
+  // messages stamped with one of the fixed launch zones appear
+  itaewonZones() {
+    return presence.zones.filter(z => z.kind !== "auto").map(z => z.id);
+  },
+  inScope(m) {
+    const ids = this.itaewonZones();
+    return !ids.length || ids.includes(m.zone_id);
+  },
+
   async onSignedIn() {
     const { data: { session } } = await sb.auth.getSession();
     this.myId = session.user.id;
     pubEl.hidden = false;
     pubFeed.innerHTML = "";
-    const { data } = await sb
-      .from("public_messages")
-      .select("*")
+    let q = sb.from("public_messages").select("*")
       .order("created_at", { ascending: false })
       .limit(25);
+    const ids = this.itaewonZones();
+    if (ids.length) q = q.in("zone_id", ids);
+    const { data } = await q;
     (data ?? []).reverse().forEach(m => this.addLine(m));
     this.subscribe();
   },
@@ -960,7 +998,11 @@ export const pubchat = {
       .channel("pubchat")
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "public_messages" },
-        p => { this.addLine(p.new); this.bubble(p.new); })
+        p => {
+          if (!this.inScope(p.new)) return; // Itaewon-only feed
+          this.addLine(p.new);
+          this.bubble(p.new);
+        })
       .subscribe();
   },
 
