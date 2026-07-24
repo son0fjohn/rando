@@ -118,6 +118,29 @@ def tripo_upload(key, path):
         "Content-Type": f"multipart/form-data; boundary={boundary}"}))
     return r["data"]["image_token"]
 
+def tripo_generate_single(key, path):
+    # single-image mode: street photos defeat multiview (scene shots, not
+    # turntable captures) — one facade image with invented far sides gives
+    # a coherent building instead of an extruded slab
+    token = tripo_upload(key, path)
+    task = {"type": "image_to_model", "file": {"type": "jpg", "file_token": token}}
+    r = json.loads(http(f"{TRIPO}/task", data=json.dumps(task).encode(),
+                        headers={"Authorization": f"Bearer {key}",
+                                 "Content-Type": "application/json"}))
+    tid = r["data"]["task_id"]
+    print(f"  tripo single-image task {tid}")
+    while True:
+        time.sleep(8)
+        s = json.loads(http(f"{TRIPO}/task/{tid}",
+                            headers={"Authorization": f"Bearer {key}"}))
+        st = s["data"]["status"]
+        print(f"  … {st} ({s['data'].get('progress', '?')}%)")
+        if st == "success":
+            out = s["data"]["output"]
+            return out.get("pbr_model") or out.get("model")
+        if st in ("failed", "cancelled", "banned"):
+            raise SystemExit(f"tripo task {st}: {s['data']}")
+
 def tripo_generate(key, files):
     # order: front, left, back, right (missing views padded with front)
     tokens = [tripo_upload(key, f) for f in files]
@@ -181,13 +204,27 @@ def main():
     if not (tkey or mkey):
         raise SystemExit("need TRIPO_API_KEY or MESHY_API_KEY in .env")
 
-    print(f"[1/4] street view refs for {spot['id']}")
-    files = fetch_views(spot, gkey)
-    if len(files) < 2:
-        raise SystemExit("fewer than 2 usable panoramas — pick another spot")
+    # --image <path>: skip Street View and reconstruct from a provided
+    # (e.g. stylized) image — implies --single
+    img_override = None
+    if "--image" in sys.argv:
+        img_override = sys.argv[sys.argv.index("--image") + 1]
+        files = [img_override]
+        print(f"[1/4] using provided image {img_override}")
+    else:
+        print(f"[1/4] street view refs for {spot['id']}")
+        files = fetch_views(spot, gkey)
+        if len(files) < 2:
+            raise SystemExit("fewer than 2 usable panoramas — pick another spot")
 
-    print(f"[2/4] reconstruction via {'tripo' if tkey else 'meshy'}")
-    glb_url = tripo_generate(tkey, files) if tkey else meshy_generate(mkey, files)
+    single = "--single" in sys.argv
+    print(f"[2/4] reconstruction via {'tripo' if tkey else 'meshy'}"
+          + (" (single-image)" if single else " (multiview)"))
+    if tkey:
+        glb_url = tripo_generate_single(tkey, files[0]) if single \
+            else tripo_generate(tkey, files)
+    else:
+        glb_url = meshy_generate(mkey, files)
 
     print("[3/4] download + place")
     os.makedirs(OUT_GLB_DIR, exist_ok=True)
