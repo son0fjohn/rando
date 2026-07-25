@@ -1277,18 +1277,24 @@ export const world3d = {
         }
       }
       if (bars.length) {
+        // z-fight fix (station report): the big intersection stacks junction
+        // pads + several sloped road boxes; bars at +0.56 sat inside flicker
+        // range of their tops. Ride clearly above (+0.74) with polygonOffset
+        // so the depth test never lands coplanar with asphalt.
         const barGeo = new THREE.BoxGeometry(4.2, 0.06, 0.55);
         const barMesh = new THREE.InstancedMesh(barGeo,
           new THREE.MeshBasicMaterial({ color: 0xf0f2ee, transparent: true,
-            opacity: NIGHT ? 0.42 : 0.68, depthWrite: false }), bars.length);
+            opacity: NIGHT ? 0.42 : 0.68, depthWrite: false,
+            polygonOffset: true, polygonOffsetFactor: -4,
+            polygonOffsetUnits: -4 }), bars.length);
         const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(),
               UP = new THREE.Vector3(0, 1, 0), SC = new THREE.Vector3(1, 1, 1);
         bars.forEach((bar, i) => {
           Q.setFromAxisAngle(UP, bar.ang);
-          M4.compose(new THREE.Vector3(bar.x, terrainY(bar.x, bar.z) + 0.56, bar.z), Q, SC);
+          M4.compose(new THREE.Vector3(bar.x, terrainY(bar.x, bar.z) + 0.74, bar.z), Q, SC);
           barMesh.setMatrixAt(i, M4);
         });
-        barMesh.renderOrder = 2;
+        barMesh.renderOrder = 3;
         this.scene.add(barMesh);
       }
 
