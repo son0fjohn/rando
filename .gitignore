@@ -1,9 +1,10 @@
 # Dependencies
 node_modules/
 
-# Environment / secrets
+# Environment / secrets (.env.example is the committed template)
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 
@@ -30,3 +31,4 @@ Desktop.ini
 scripts/osm_cache_*.json
 web/models/ref/
 scripts/venue_geocode_cache.json
+scripts/naver_usage.json
