@@ -108,9 +108,7 @@
       "glb": "world2/landmarks/waikiki-beach-pub.glb",
       "glow": "#4db8ff",
       "name": "Waikiki Beach Pub"
-    }
-  ],
-  "pending": [
+    },
     {
       "id": "bolero",
       "yaw": 0,
@@ -118,8 +116,10 @@
       "clear": 16,
       "glb": "world2/landmarks/bolero.glb",
       "glow": "#ff6a55",
-      "needs": "pin",
-      "name": "Bolero"
+      "name": "Bolero",
+      "addr": "\uc11c\uc6b8\ud2b9\ubcc4\uc2dc \uc6a9\uc0b0\uad6c \uc774\ud0dc\uc6d0\ub85c 220",
+      "lat": 37.534815340475674,
+      "lng": 126.99848096385784
     },
     {
       "id": "grainhaus",
@@ -128,8 +128,11 @@
       "clear": 16,
       "glb": "world2/landmarks/grainhaus.glb",
       "glow": "#c8f04a",
-      "needs": "pin",
-      "name": "Grainhaus"
+      "name": "Grainhaus",
+      "addr": "\uc11c\uc6b8\ud2b9\ubcc4\uc2dc \uc6a9\uc0b0\uad6c \uc6b0\uc0ac\ub2e8\ub85c 40",
+      "lat": 37.53367944273459,
+      "lng": 126.99578270852578
     }
-  ]
+  ],
+  "pending": []
 }
