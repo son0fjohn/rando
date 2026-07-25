@@ -111,12 +111,15 @@ const M = {
 
 // zone character: density weight for buildings (urban) vs greenery
 const ZONE_FLAVOR = [
-  { lat: 37.5346, lng: 126.9946, build: 1.0,  green: 0.05 }, // Itaewon station
-  { lat: 37.5349, lng: 126.9941, build: 0.95, green: 0.05 }, // Hamilton Alley
-  { lat: 37.5392, lng: 126.9887, build: 0.7,  green: 0.3 },  // Gyeongnidan
-  { lat: 37.5340, lng: 126.9868, build: 0.55, green: 0.35 }, // Noksapyeong
-  { lat: 37.5418, lng: 126.9882, build: 0.3,  green: 0.9 },  // Haebangchon
-  { lat: 37.5289, lng: 126.9944, build: 0.25, green: 0.85 }, // Bogwang
+  // plaza: building-clear radius. The station/alley crossroads are the
+  // DENSEST real blocks in Itaewon — a 58u void there read as a bald spot
+  // (user report, confirmed against the registry). Green zones keep it.
+  { lat: 37.5346, lng: 126.9946, build: 1.0,  green: 0.05, plaza: 10 }, // Itaewon station
+  { lat: 37.5349, lng: 126.9941, build: 0.95, green: 0.05, plaza: 12 }, // Hamilton Alley
+  { lat: 37.5392, lng: 126.9887, build: 0.7,  green: 0.3,  plaza: 34 }, // Gyeongnidan
+  { lat: 37.5340, lng: 126.9868, build: 0.55, green: 0.35, plaza: 34 }, // Noksapyeong
+  { lat: 37.5418, lng: 126.9882, build: 0.3,  green: 0.9,  plaza: 58 }, // Haebangchon
+  { lat: 37.5289, lng: 126.9944, build: 0.25, green: 0.85, plaza: 58 }, // Bogwang
 ];
 
 // minimal studio env for PMREM: warm key overhead, cool sky fill, ground
@@ -564,6 +567,11 @@ export const world3d = {
     // gathering plazas: keep zone centers clear of structures
     const nearZoneCenter = (x, z, rad) =>
       flavors.some(f => (x - f.p.x) ** 2 + (z - f.p.z) ** 2 < rad * rad);
+    // per-zone clearing (buildings only): each zone's own plaza radius
+    const inPlaza = (x, z) => flavors.some(f => {
+      const r = f.plaza ?? 40;
+      return (x - f.p.x) ** 2 + (z - f.p.z) ** 2 < r * r;
+    });
     // ---- real Itaewon: OSM building footprints extruded as flat-shaded
     // low-poly prisms with bold outlines. ~25 tris per building merged
     // into one mesh per color bucket, so 2000 real buildings cost less
@@ -599,7 +607,7 @@ export const world3d = {
         let cx = 0, cz = 0;
         for (const [x, z] of poly) { cx += x; cz += z; }
         cx /= poly.length; cz /= poly.length;
-        if (nearZoneCenter(cx, cz, 58)) continue; // keep gathering plazas open
+        if (inPlaza(cx, cz)) continue; // per-zone plaza radius
         if (nearLandmark(cx, cz)) continue;       // hero model owns this plot
         let rad = 0;
         for (const [x, z] of poly) rad = Math.max(rad, Math.hypot(x - cx, z - cz));
@@ -1226,8 +1234,9 @@ export const world3d = {
       addM(exitPost, new THREE.MeshLambertMaterial({
         color: NIGHT ? 0x4c5468 : 0x767d88, flatShading: true }));
       addM(exitPanel, new THREE.MeshLambertMaterial({
-        color: NIGHT ? 0x3d4966 : 0x5d7a8c, flatShading: true,
-        emissive: NIGHT ? 0x2c3a5c : 0x000000, emissiveIntensity: 0.8 }));
+        // Seoul Line-6 ochre — instant "subway exit" recognition
+        color: NIGHT ? 0x8a5c24 : 0xb07c3a, flatShading: true,
+        emissive: NIGHT ? 0x7a4d16 : 0x000000, emissiveIntensity: 0.9 }));
 
       // CROSSWALKS — instanced white zebra bars flat on the road surface.
       // bearingDeg was computed in the fetch's east/north meter frame, so
@@ -1358,6 +1367,17 @@ export const world3d = {
           }
         }
       }
+      // street-name labels: real road names anchored at the mean of each
+      // road's registry buildings (crosscheck_heroes.py emits the data)
+      try {
+        const streets = await (await fetch("data/street_labels.json")).json();
+        for (const st of streets) {
+          const sp = geoPos(st.lat, st.lng);
+          const slp = new THREE.Vector3(sp.x, sp.y + 30, sp.z);
+          this.addLabel(st.name, "street", 4, () => slp);
+        }
+        console.log(`[rando] street labels: ${streets.length}`);
+      } catch { /* optional layer */ }
       console.log(`[rando] layers: ${layers.exits.length} exits, ` +
         `${layers.crossings.length} crossings, ${lampPts.length} lamps ` +
         `(${layers.lamps.length} osm)`);
