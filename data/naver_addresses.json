@@ -1,0 +1,56 @@
+{
+ "hamilton-hotel": {
+  "name": "Hamilton Hotel",
+  "lat": 37.53486,
+  "lng": 126.994,
+  "address": "서울특별시 용산구 이태원로 179 (이태원동,해밀톤관광호텔)"
+ },
+ "itaewon-station": {
+  "name": "Itaewon Station",
+  "lat": 37.53439,
+  "lng": 126.993696,
+  "address": "서울특별시 용산구 이태원동 119-23"
+ },
+ "grand-ole-opry": {
+  "name": "Grand Ole Opry",
+  "lat": 37.5341,
+  "lng": 126.99659,
+  "address": "서울특별시 용산구 우사단로14길 16 (이태원동)"
+ },
+ "jacks-bar": {
+  "name": "Jack's Bar",
+  "lat": 37.53505,
+  "lng": 126.992444,
+  "address": "서울특별시 용산구 이태원로27가길 52 (이태원동)"
+ },
+ "soap": {
+  "name": "Soap",
+  "lat": 37.533591,
+  "lng": 126.994917,
+  "address": "서울특별시 용산구 이태원동 131-35"
+ },
+ "danco": {
+  "name": "Danco",
+  "lat": 37.534945,
+  "lng": 126.994546,
+  "address": "서울특별시 용산구 이태원로27가길 13 (이태원동)"
+ },
+ "waikiki": {
+  "name": "Waikiki",
+  "lat": 37.534733,
+  "lng": 126.994461,
+  "address": "서울특별시 용산구 이태원동 123-17"
+ },
+ "agave": {
+  "name": "Agave",
+  "lat": 37.534953,
+  "lng": 126.994194,
+  "address": "서울특별시 용산구 이태원로 179 (이태원동,해밀톤관광호텔)"
+ },
+ "waikiki-beach-pub": {
+  "name": "Waikiki Beach Pub",
+  "lat": 37.534972,
+  "lng": 126.993394,
+  "address": "서울특별시 용산구 이태원동 108-3"
+ }
+}
