@@ -31,7 +31,7 @@ def main():
     if naver_maps._keys() is None and naver_maps._vworld_key() is None:
         print("no geocoder keys (Naver or VWorld) — verification skipped")
         return 0
-    lm = json.load(open(LANDMARKS))
+    lm = json.load(open(LANDMARKS, encoding="utf-8"))
     apply_pins = "--apply" in sys.argv
 
     addresses = {}
