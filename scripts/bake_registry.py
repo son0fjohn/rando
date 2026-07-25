@@ -72,11 +72,22 @@ def main():
         field.append([cx, cz, b])
 
     replaced = appended = height_only = skipped = 0
+    def simplify_ring(ring, eps):
+        # closed rings need a split before RDP: with first==last the
+        # baseline is degenerate and the whole ring collapses (same fix
+        # as fetch_buildings.py's closed-ring split)
+        if len(ring) < 5:
+            return ring
+        k = len(ring) // 2
+        a = rdp(ring[:k + 1], eps)
+        b = rdp(ring[k:] + [ring[0]], eps)
+        return a[:-1] + b[:-1]
+
     for rb in reg:
         ring = [project(lat, lng) for lng, lat in rb["footprint"]]
         if ring[0] == ring[-1]:
             ring = ring[:-1]
-        simp = rdp(ring + [ring[0]], SIMPLIFY)[:-1]
+        simp = simplify_ring(ring, SIMPLIFY)
         if len(simp) < 3:
             skipped += 1
             continue
@@ -105,6 +116,14 @@ def main():
             replaced += 1
             best[0], best[1] = cx, cz
         else:
+            # appended = coverage OSM never had; gate out sheds/annexes so
+            # the field gains real buildings, not clutter (~26 m² floor)
+            area = abs(sum(simp[i][0] * simp[(i + 1) % len(simp)][1] -
+                           simp[(i + 1) % len(simp)][0] * simp[i][1]
+                           for i in range(len(simp)))) / 2
+            if area < 8:
+                skipped += 1
+                continue
             nb = {"p": poly, "h": round((hM or 11.0) * SCALE * VEXAG, 1),
                   "hsrc": "registry" if hM else "registry-default"}
             bdata["buildings"].append(nb)
