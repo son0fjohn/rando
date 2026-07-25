@@ -29,18 +29,57 @@ function geoPos(lat, lng) {
     x *= WORLD_EDGE / d; // edge in their true real-world direction
     z *= WORLD_EDGE / d;
   }
-  return new THREE.Vector3(x, 0, z);
+  return new THREE.Vector3(x, terrainY(x, z), z);
+}
+
+// ---- hillside terrain (grocery-street reference): Namsan rises to the
+// north-west, ground falls gently south toward the river, light rolling
+// noise elsewhere. Gameplay plazas blend flat so gathering areas stay level.
+const sstep = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+function rawTerrain(x, z) {
+  const nw = (-z) * 0.8 + (-x) * 0.5;
+  let h = 34 * sstep((nw - 260) / 480);
+  h -= 14 * sstep((z - 320) / 420);
+  h += 5 * Math.sin(x * 0.0055 + 1.7) * Math.sin(z * 0.0047 - 0.4);
+  return h;
+}
+let TERRAIN_ANCHORS = null; // lazy: ZONE_FLAVOR is declared further down
+export function pointInPoly(x, z, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > z) !== (zj > z) &&
+        x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+export function terrainY(x, z) {
+  TERRAIN_ANCHORS ??= ZONE_FLAVOR.map(f => {
+    const mLat = 110540.0, mLng = 111320.0 * Math.cos(GEO_CENTER[0] * Math.PI / 180);
+    return { x: (f.lng - GEO_CENTER[1]) * mLng * GEO_SCALE,
+             z: -(f.lat - GEO_CENTER[0]) * mLat * GEO_SCALE };
+  });
+  let h = rawTerrain(x, z);
+  for (const a of TERRAIN_ANCHORS) {
+    const d = Math.hypot(x - a.x, z - a.z);
+    if (d < 110) {
+      const t = sstep(d / 110);
+      h = rawTerrain(a.x, a.z) * (1 - t) + h * t;
+    }
+  }
+  return h;
 }
 
 // NPCs at real spots: one pair in Gyeongnidan, one by Itaewon station.
 const NPC_DEFS = [
-  { id: "npc-silver",  lat: 37.5390, lng: 126.9884, partner: "npc-dreads",
+  { id: "npc-silver",  name: "Rae",  lat: 37.5390, lng: 126.9884, partner: "npc-dreads",
     preset: { body: "grey",   eyes: "sleepy",  head: "floppyears" } },
-  { id: "npc-dreads",  lat: 37.5389, lng: 126.9892, partner: "npc-silver",
+  { id: "npc-dreads",  name: "Miro", lat: 37.5389, lng: 126.9892, partner: "npc-silver",
     preset: { body: "navy",   eyes: "default", iris: "brown", head: "teardrop" } },
-  { id: "npc-buzzcut", lat: 37.5349, lng: 126.9951, partner: "npc-cans",
+  { id: "npc-buzzcut", name: "Jun",  lat: 37.5349, lng: 126.9951, partner: "npc-cans",
     preset: { body: "red",    eyes: "anime",   iris: "orange", head: "smallspikes" } },
-  { id: "npc-cans",    lat: 37.5347, lng: 126.9958, partner: "npc-buzzcut",
+  { id: "npc-cans",    name: "Koa",  lat: 37.5347, lng: 126.9958, partner: "npc-buzzcut",
     preset: { body: "orange", eyes: "spiral",  head: "notailspike" } },
 ];
 
@@ -50,18 +89,14 @@ const modeParam = new URLSearchParams(location.search).get("mode");
 const hourNow = new Date().getHours();
 export const NIGHT = modeParam === "night" ||
   (modeParam !== "day" && (hourNow >= 19 || hourNow < 6.5));
-const M = NIGHT ? {
-  skyTop: "#0b1a38", skyMid: "#23406e", skyHor: "#547499",
-  fog: 0x1c2c49, hemiSky: 0x4a5f8a, hemiGround: 0x1c2438, hemiInt: 0.72,
-  sunCol: 0xa8c2e8, sunInt: 0.5, cloudBody: "#d8e2f2", cloudShade: "#8fa0bd",
-  cloudTint: 0xc2cfe2, cloudOp: 0.8, grass: 0x3d5c40, road: 0x474c59,
-  winCol: 0x2e2a22, winEmis: 0xffc86e,
-} : {
-  skyTop: "#2f83d2", skyMid: "#6cb2e6", skyHor: "#e2f1fa",
-  fog: 0xdcebf6, hemiSky: 0xeaf6ff, hemiGround: 0x8fa3b8, hemiInt: 1.15,
-  sunCol: 0xfff2d9, sunInt: 1.15, cloudBody: "#ffffff", cloudShade: "#c9dff0",
-  cloudTint: 0xffffff, cloudOp: 0.95, grass: 0x79b356, road: 0x9599a2,
-  winCol: 0x9db4c8, winEmis: 0x000000,
+// ONE lighting rig for every scene, from theme.js — plus per-mode extras
+const L = NIGHT ? THEME.lighting.night : THEME.lighting.day;
+const M = {
+  ...L,
+  grass: NIGHT ? 0x3f4a42 : 0x8a9a6a,
+  road: NIGHT ? 0x474c59 : 0x9d998e,
+  winCol: NIGHT ? 0x2e2a22 : 0x9db4c8,
+  winEmis: NIGHT ? 0xffc86e : 0x000000,
 };
 
 // zone character: density weight for buildings (urban) vs greenery
@@ -121,9 +156,18 @@ export const world3d = {
   init(frameEl) {
     this.frame = frameEl;
     const w = frameEl.clientWidth, h = frameEl.clientHeight;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+    // console-render pixel look (grocery-street reference): render at a
+    // fraction of native res and upscale with hard pixels. ?pix=0 disables.
+    const PIX = new URLSearchParams(location.search).get("pix") !== "0";
+    this.renderer = new THREE.WebGLRenderer({ antialias: !PIX });
+    this.renderer.setPixelRatio(PIX ? 0.5 : Math.min(2, devicePixelRatio));
     this.renderer.setSize(w, h);
+    if (PIX) this.renderer.domElement.style.imageRendering = "pixelated";
+    // NOTE: real shadow mapping is disabled — it renders in isolated
+    // scenes but never from a cold boot of the full app scene (unresolved
+    // three.js state issue). Crisp BAKED shadows below match the cel
+    // reference deterministically on every device instead.
+    this.renderer.shadowMap.enabled = false;
     Object.assign(this.renderer.domElement.style, {
       position: "absolute", inset: "0", touchAction: "none", cursor: "grab",
     });
@@ -144,6 +188,7 @@ export const world3d = {
     const sun = new THREE.DirectionalLight(M.sunCol, M.sunInt);
     sun.position.set(120, 200, 80);
     this.scene.add(sun);
+    this.sun = sun;
 
     this.buildTerrain();
     this.scene.add(this.zoneRings);
@@ -153,7 +198,7 @@ export const world3d = {
       for (const n of NPC_DEFS) {
         const pos = geoPos(n.lat, n.lng);
         const api = GLB_MODE ? makeGLBCharacterSync(n.preset) ?? undefined : undefined;
-        const rec = this.makeChar(n.preset, pos, this.scene, api);
+        const rec = this.makeChar(n.preset, pos, this.scene, api, n.name);
         const partner = NPC_DEFS.find(d => d.id === n.partner);
         if (partner) {
           const pp = geoPos(partner.lat, partner.lng);
@@ -214,8 +259,12 @@ export const world3d = {
     // plane with a pale curb ring marking the transition.
     const PAVED_R = 720;
     const groundMat = new THREE.MeshLambertMaterial({ color: M.grass });
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(1500, 48), groundMat);
-    ground.rotation.x = -Math.PI / 2;
+    const gg = new THREE.PlaneGeometry(3000, 3000, 100, 100);
+    gg.rotateX(-Math.PI / 2);
+    const gp = gg.attributes.position;
+    for (let i = 0; i < gp.count; i++) gp.setY(i, terrainY(gp.getX(i), gp.getZ(i)));
+    gg.computeVertexNormals();
+    const ground = new THREE.Mesh(gg, groundMat);
     this.scene.add(ground);
     this.loadImage("world2/road_grass.jpg").then(img => {
       const tex = this.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
@@ -227,18 +276,32 @@ export const world3d = {
     }).catch(() => {});
     this.loadImage("world2/road_plaza.jpg").then(img => {
       const tex = this.mirrorBlockTex(img, [0.05, 0.05, 0.27, 0.27]);
-      tex.repeat.set(52, 52);
-      const paved = new THREE.Mesh(new THREE.CircleGeometry(PAVED_R, 64),
-        new THREE.MeshLambertMaterial({ map: tex,
-          color: NIGHT ? THEME.world.pavingNight : THEME.world.pavingDay }));
-      paved.rotation.x = -Math.PI / 2;
-      paved.position.y = 0.06;
+      // polar-grid disc with per-vertex terrain height (a CircleGeometry
+      // fan can't follow slopes)
+      const rings = 30, segs = 80;
+      const pos = [], uvs = [], idx = [];
+      for (let r = 0; r <= rings; r++) {
+        for (let sgi = 0; sgi <= segs; sgi++) {
+          const a = (sgi / segs) * Math.PI * 2, rr = (r / rings) * PAVED_R;
+          const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
+          pos.push(x, terrainY(x, z) + 0.14, z);
+          uvs.push(x / PAVED_R * 26 + 0.5, z / PAVED_R * 26 + 0.5);
+        }
+      }
+      for (let r = 0; r < rings; r++) {
+        for (let sgi = 0; sgi < segs; sgi++) {
+          const a = r * (segs + 1) + sgi, b = a + segs + 1;
+          idx.push(a, b, a + 1, b, b + 1, a + 1);
+        }
+      }
+      const pgeo = new THREE.BufferGeometry();
+      pgeo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      pgeo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+      pgeo.setIndex(idx);
+      pgeo.computeVertexNormals();
+      const paved = new THREE.Mesh(pgeo, new THREE.MeshLambertMaterial({ map: tex,
+        color: NIGHT ? THEME.world.pavingNight : THEME.world.pavingDay }));
       this.scene.add(paved);
-      const curb = new THREE.Mesh(new THREE.RingGeometry(PAVED_R, PAVED_R + 4, 64),
-        new THREE.MeshLambertMaterial({ color: NIGHT ? THEME.world.curbNight : THEME.world.curbDay }));
-      curb.rotation.x = -Math.PI / 2;
-      curb.position.y = 0.07;
-      this.scene.add(curb);
       this.needsRender = true;
     }).catch(() => {});
   },
@@ -309,12 +372,16 @@ export const world3d = {
           const len = Math.hypot(dx, dz);
           if (len < 0.5) continue;
           const ang = Math.atan2(dx, dz);
-          const g = new THREE.BoxGeometry(w, 0.5, len);
+          const y1 = terrainY(x, z), y2 = terrainY(x2, z2);
+          const slopeLen = Math.hypot(len, y2 - y1);
+          const g = new THREE.BoxGeometry(w, 0.5, slopeLen);
           // scale v so the asphalt texture repeats every ~26u along the road
           const uv = g.attributes.uv;
           for (let ui = 0; ui < uv.count; ui++) uv.setY(ui, uv.getY(ui) * (len / 26));
+          const pitch = Math.asin((y2 - y1) / slopeLen);
           g.applyMatrix4(new THREE.Matrix4().makeRotationY(ang)
-            .setPosition((x + x2) / 2, 0.25, (z + z2) / 2));
+            .multiply(new THREE.Matrix4().makeRotationX(-pitch))
+            .setPosition((x + x2) / 2, (y1 + y2) / 2 + 0.25, (z + z2) / 2));
           roadGeos.push(g);
           const steps = Math.max(1, Math.floor(len / 22));
           for (let s = 0; s <= steps; s++) {
@@ -324,9 +391,9 @@ export const world3d = {
           }
         }
         if (i > 0 && i < pts.length - 1) {
-          // sits a hair above the ribbons: separate material would z-fight
-          const jg = new THREE.CylinderGeometry(w / 2, w / 2, 0.56, 10);
-          jg.applyMatrix4(new THREE.Matrix4().setPosition(x, 0.27, z));
+          // taller joint bridges slope seams between tilted segments
+          const jg = new THREE.CylinderGeometry(w / 2, w / 2, 2.4, 10);
+          jg.applyMatrix4(new THREE.Matrix4().setPosition(x, terrainY(x, z) - 0.6, z));
           jointGeos.push(jg);
         }
       }
@@ -334,7 +401,9 @@ export const world3d = {
     // ribbons carry the tile's road-strip art (curbs + dashes run along v);
     // junction discs stay flat asphalt so the strip never smears radially
     const roadMat = new THREE.MeshLambertMaterial({ color: M.road });
-    this.scene.add(new THREE.Mesh(mergeGeometries(roadGeos), roadMat));
+    const roadMesh = new THREE.Mesh(mergeGeometries(roadGeos), roadMat);
+    roadMesh.receiveShadow = true;
+    this.scene.add(roadMesh);
     const jointMat = new THREE.MeshLambertMaterial({ color: M.road });
     this.scene.add(new THREE.Mesh(mergeGeometries(jointGeos), jointMat));
     // plain asphalt for ribbons and junctions alike — no painted lines,
@@ -352,6 +421,10 @@ export const world3d = {
       for (const mat of [roadMat, jointMat]) {
         mat.map = tex;
         mat.color.set(NIGHT ? THEME.world.roadNight : THEME.world.roadDay);
+        if (NIGHT) { // walkable path must read instantly against dark blocks
+          mat.emissive = new THREE.Color(0x272e48);
+          mat.emissiveIntensity = 1;
+        }
         mat.needsUpdate = true;
       }
       this.needsRender = true;
@@ -373,7 +446,7 @@ export const world3d = {
     // target height with feet at y=0 so instance matrices are just
     // yaw+scale+position.
     const loader = new GLTFLoader();
-    const loadPiece = async (url, h, glow) => {
+    const loadPiece = async (url, h, glow, theme = true) => {
       const g = await loader.loadAsync(url);
       g.scene.updateWorldMatrix(true, true);
       let mesh = null;
@@ -391,17 +464,20 @@ export const world3d = {
       // theme pass: desaturate + gently lift every model's baked texture so
       // warm/saturated assets fall in line with the muted cool palette
       // (buildings get a stronger pull than trees)
-      if (mat.map?.image) {
+      if (theme && mat.map?.image) {
+        // 1024 cap: full-res processed copies of every model texture
+        // exhaust mobile browser memory (crash-on-phone class of bug)
         const im = mat.map.image;
         const c = document.createElement("canvas");
-        c.width = im.width; c.height = im.height;
+        c.width = c.height = Math.min(1024, im.width);
         const cc = c.getContext("2d");
-        cc.filter = glow ? "saturate(0.48) brightness(1.06)" : "saturate(0.72)";
-        cc.drawImage(im, 0, 0);
+        cc.filter = glow ? "saturate(0.74) brightness(1.05)" : "saturate(0.8)";
+        cc.drawImage(im, 0, 0, c.width, c.height);
         const themed = new THREE.CanvasTexture(c);
         themed.colorSpace = THREE.SRGBColorSpace;
         themed.flipY = false;
         mat.map = themed;
+        im.close?.(); // free the decoded original (tens of MB per model)
       }
       if (NIGHT) {
         // dim the body, then glow ONLY the bright texture areas (windows,
@@ -411,12 +487,12 @@ export const world3d = {
         if (glow && mat.map?.image) {
           const im = mat.map.image;
           const c = document.createElement("canvas");
-          c.width = im.width; c.height = im.height;
+          c.width = c.height = 512; // soft glow needs no detail; keep RAM low
           const cc = c.getContext("2d");
           // windows/glass are the DARK pixels on these models — invert so
           // they glow and the pale walls stay unlit
           cc.filter = "grayscale(1) invert(1) contrast(2.6) brightness(0.62)";
-          cc.drawImage(im, 0, 0);
+          cc.drawImage(im, 0, 0, c.width, c.height);
           const em = new THREE.CanvasTexture(c);
           em.colorSpace = THREE.SRGBColorSpace;
           em.flipY = false;
@@ -471,13 +547,773 @@ export const world3d = {
     // gathering plazas: keep zone centers clear of structures
     const nearZoneCenter = (x, z, rad) =>
       flavors.some(f => (x - f.p.x) ** 2 + (z - f.p.z) ** 2 < rad * rad);
+    // ---- real Itaewon: OSM building footprints extruded as flat-shaded
+    // low-poly prisms with bold outlines. ~25 tris per building merged
+    // into one mesh per color bucket, so 2000 real buildings cost less
+    // than ten of the smooth GLB models did. GLB heroes stay as landmarks.
+    // hero landmarks (Street View -> Tripo reconstructions). Loaded first
+    // so their clear-radius suppresses the generic prisms beneath them.
+    let landmarks = [];
+    try {
+      landmarks = (await (await fetch("landmarks.json")).json()).landmarks
+        .filter(l => l.lat != null && l.lng != null) // pending-pin entries stay parked
+        .map(l => ({ ...l, pos: geoPos(l.lat, l.lng) }));
+    } catch { /* optional */ }
+    const nearLandmark = (x, z) => landmarks.some(l =>
+      l.glb && (x - l.pos.x) ** 2 + (z - l.pos.z) ** 2 < l.clear * l.clear);
+
+    let footprints = 0;
+    let fpList = [];         // raw OSM footprints — hero scale normalizer
+    const decorLampPts = []; // decor lamp heads — street-light dedupe
+    try {
+      const bdata = await (await fetch("buildings.json")).json();
+      fpList = bdata.buildings;
+      const wallCols = THEME.walls; // warm desaturated family (style lock)
+      const wallGeos = wallCols.map(() => []);
+      const roofGeos = wallCols.map(() => []);
+      const shadowGeos = [];
+      const decorLots = []; // road-facing lots for the decoration pass
+      for (const b of bdata.buildings) {
+        const poly = b.p;
+        let cx = 0, cz = 0;
+        for (const [x, z] of poly) { cx += x; cz += z; }
+        cx /= poly.length; cz /= poly.length;
+        if (nearZoneCenter(cx, cz, 58)) continue; // keep gathering plazas open
+        if (nearLandmark(cx, cz)) continue;       // hero model owns this plot
+        let rad = 0;
+        for (const [x, z] of poly) rad = Math.max(rad, Math.hypot(x - cx, z - cz));
+        occupy(cx, cz, Math.min(rad, 40));
+        // stamp all covered cells so trees never sprout through roofs
+        for (let mx = cx - rad; mx <= cx + rad; mx += 25) {
+          for (let mz = cz - rad; mz <= cz + rad; mz += 25) mark(mx, mz);
+        }
+        const v2s = poly.map(([x, z]) => new THREE.Vector2(x, -z));
+        if (THREE.ShapeUtils.area(v2s) < 0) v2s.reverse(); // CCW: walls face out
+        const baseY = terrainY(cx, cz) - 1.2;
+        const bi = Math.abs(Math.round(cx * 7 + cz * 13)) % wallCols.length;
+        // walls as explicit quads: u follows the contour (one texture tile
+        // per ~13u = 4 windows), v climbs floors — so the window grid tiles
+        // at true scale and doubles as the night lit-window emissive map
+        {
+          const wpos = [], wuv = [];
+          let u0 = (cx + cz) * 0.07; // desync the grid between buildings
+          for (let e = 0; e < v2s.length; e++) {
+            const a = v2s[e], c2 = v2s[(e + 1) % v2s.length];
+            const ax = a.x, az = -a.y, bx2 = c2.x, bz2 = -c2.y;
+            const u1 = u0 + Math.hypot(bx2 - ax, bz2 - az) / 13;
+            const vTop = b.h / 10.4;
+            wpos.push(ax, baseY, az, bx2, baseY, bz2, bx2, baseY + b.h, bz2,
+                      ax, baseY, az, bx2, baseY + b.h, bz2, ax, baseY + b.h, az);
+            wuv.push(u0, 0, u1, 0, u1, vTop, u0, 0, u1, vTop, u0, vTop);
+            u0 = u1;
+          }
+          const wg = new THREE.BufferGeometry();
+          wg.setAttribute("position", new THREE.Float32BufferAttribute(wpos, 3));
+          wg.setAttribute("uv", new THREE.Float32BufferAttribute(wuv, 2));
+          wallGeos[bi].push(wg);
+        }
+        {
+          const tris = THREE.ShapeUtils.triangulateShape(v2s, []);
+          const rpos = [];
+          for (const t of tris) {
+            for (const vi of t) rpos.push(v2s[vi].x, baseY + b.h, -v2s[vi].y);
+          }
+          const rg = new THREE.BufferGeometry();
+          rg.setAttribute("position", new THREE.Float32BufferAttribute(rpos, 3));
+          roofGeos[bi].push(rg);
+        }
+        decorLots.push({ poly, cx, cz, h: b.h });
+        // baked cast shadow: footprint swept along the sun direction by a
+        // height-scaled offset (crisp cel-style shadow, zero runtime cost)
+        {
+          const k = Math.min(52, 6 + b.h * 0.95);
+          const off = [-0.52 * k, -0.34 * k]; // sun from (+x,+z) high east
+          const base = poly.map(([x, z]) => new THREE.Vector2(x, -z));
+          if (THREE.ShapeUtils.area(base) < 0) base.reverse();
+          const quads = [];
+          const shv = (X, Z) => { quads.push(X, terrainY(X, Z) + 0.5, Z); };
+          for (let e = 0; e < base.length; e++) {
+            const a = base[e], b2 = base[(e + 1) % base.length];
+            shv(a.x, -a.y); shv(b2.x, -b2.y); shv(b2.x + off[0], -b2.y - off[1]);
+            shv(a.x, -a.y); shv(b2.x + off[0], -b2.y - off[1]); shv(a.x + off[0], -a.y - off[1]);
+          }
+          const capTris = THREE.ShapeUtils.triangulateShape(
+            base.map(v => new THREE.Vector2(v.x + off[0], v.y + off[1])), []);
+          for (const t of capTris) {
+            for (const vi of t) shv(base[vi].x + off[0], -base[vi].y - off[1]);
+          }
+          const sg = new THREE.BufferGeometry();
+          sg.setAttribute("position", new THREE.Float32BufferAttribute(quads, 3));
+          shadowGeos.push(sg);
+        }
+        footprints++;
+      }
+      if (shadowGeos.length) {
+        const sm = new THREE.Mesh(mergeGeometries(shadowGeos),
+          new THREE.MeshBasicMaterial({ color: 0x241c12, transparent: true,
+            opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
+        this.scene.add(sm); // heights baked per-vertex against the terrain
+      }
+      const lineMat = new THREE.LineBasicMaterial({
+        color: NIGHT ? 0x39435c : 0x6b675e, transparent: true, opacity: 0.5 });
+      // window-grid facade: near-white walls (bucket color multiplies) with
+      // dark glass by day; at night the same grid becomes the emissive map
+      // with a random warm subset of windows lit (Splatoon-square mood)
+      const facade = (() => {
+        const day = document.createElement("canvas");
+        day.width = day.height = 256;
+        const gd = day.getContext("2d");
+        gd.fillStyle = "#f2efe8";
+        gd.fillRect(0, 0, 256, 256);
+        const night = document.createElement("canvas");
+        night.width = night.height = 256;
+        const gn = night.getContext("2d");
+        gn.fillStyle = "#05070d";
+        gn.fillRect(0, 0, 256, 256);
+        const wrand = mulberry32(515);
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 4; c++) {
+            const wx = 10 + c * 62, wy = 8 + r * 62;
+            gd.fillStyle = "#59606c";
+            gd.fillRect(wx, wy, 42, 34);
+            gd.fillStyle = "rgba(255,255,255,0.3)";
+            gd.fillRect(wx, wy + 13, 42, 4);
+            gn.fillStyle = "#10141f";
+            gn.fillRect(wx, wy, 42, 34);
+          }
+        }
+        // sparse lit-window variants: lighting should be purposeful, not a
+        // uniform glow — most windows stay dark, a few glow per building
+        // per-bucket lit-window variants (Task 3): vary WHICH windows are
+        // lit, warm (~2700K) vs cool white, most staying pure-dark — the
+        // identical-yellow uniformity is what read as "generated"
+        const WARM = ["#ffd98f", "#ffc76a", "#ffe7b0"];
+        const COOL = ["#c8ddff", "#aecbf2", "#dfe9ff"];
+        const mkNight = (prob, warmFrac) => {
+          const c = document.createElement("canvas");
+          c.width = c.height = 256;
+          const g3 = c.getContext("2d");
+          g3.drawImage(night, 0, 0);
+          for (let r = 0; r < 4; r++) {
+            for (let cc = 0; cc < 4; cc++) {
+              if (wrand() < prob) {
+                const pal = wrand() < warmFrac ? WARM : COOL;
+                g3.fillStyle = pal[Math.floor(wrand() * 3)];
+                g3.fillRect(10 + cc * 62 - 1, 8 + r * 62 - 1, 44, 36);
+              }
+            }
+          }
+          return c;
+        };
+        // {lit fraction, warm fraction, emissive intensity} per wall bucket
+        const NIGHT_VARIANTS = [
+          { p: 0.20, w: 0.85, e: 0.92 }, { p: 0.10, w: 0.55, e: 0.78 },
+          { p: 0.05, w: 0.75, e: 0.72 }, { p: 0.15, w: 0.95, e: 0.95 },
+          { p: 0.08, w: 0.35, e: 0.80 }, { p: 0.13, w: 0.70, e: 0.86 },
+        ];
+        const mk = c => {
+          const t = new THREE.CanvasTexture(c);
+          t.colorSpace = THREE.SRGBColorSpace;
+          t.wrapS = t.wrapT = THREE.RepeatWrapping;
+          t.magFilter = THREE.NearestFilter;
+          return t;
+        };
+        return { day: mk(day), variants: NIGHT_VARIANTS.map(v =>
+          ({ tex: mk(mkNight(v.p, v.w)), e: v.e })) };
+      })();
+      const NIGHT_WALL = new THREE.Color(0.36, 0.42, 0.60); // blue moonlight
+      const risers = [];
+      wallGeos.forEach((arr, i) => {
+        if (!arr.length) return;
+        const merged = mergeGeometries(arr);
+        merged.computeVertexNormals();
+        const col = new THREE.Color(wallCols[i]);
+        if (NIGHT) col.multiply(NIGHT_WALL);
+        const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({
+          color: col, map: facade.day, side: THREE.DoubleSide,
+          emissive: NIGHT ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
+          emissiveMap: facade.variants[i % facade.variants.length].tex,
+          emissiveIntensity: NIGHT ? facade.variants[i % facade.variants.length].e : 0,
+        }));
+        this.scene.add(mesh);
+        const rmerged = mergeGeometries(roofGeos[i]);
+        rmerged.computeVertexNormals();
+        const rcol = new THREE.Color(wallCols[i]).multiplyScalar(0.8);
+        if (NIGHT) rcol.multiply(NIGHT_WALL);
+        const roof = new THREE.Mesh(rmerged, new THREE.MeshLambertMaterial({
+          color: rcol, side: THREE.DoubleSide }));
+        this.scene.add(roof);
+        const outline = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 40), lineMat);
+        this.scene.add(outline);
+        risers.push([mesh, outline], [roof, roof]);
+      });
+      // loading flourish: each bucket rises from the ground, staggered.
+      // Driven from tick() (interval-backed) so it also completes in
+      // throttled tabs; costs ~1.5s of scale updates, nothing afterwards.
+      risers.forEach(([m, o]) => { m.scale.y = 0.001; o.scale.y = 0.001; });
+      this.risers = { t0: performance.now(), items: risers };
+      console.log(`[rando] OSM footprints: ${footprints} buildings`);
+
+      // ---- street density pass (grocery-street reference): awnings,
+      // abstract sign panels (no text), rooftop ACs, power poles with
+      // sagging wires, bins/cones. Everything deterministic + merged.
+      const drand = mulberry32(9107);
+      // coarse index of road points for nearest-road lookups
+      const roadIdx = new Map();
+      const RCELL = 40;
+      for (const c of candidates) {
+        const k = Math.floor(c.x / RCELL) + "," + Math.floor(c.z / RCELL);
+        if (!roadIdx.has(k)) roadIdx.set(k, []);
+        roadIdx.get(k).push(c);
+      }
+      const nearestRoad = (x, z) => {
+        let best = null, bd = 1e9;
+        const bx = Math.floor(x / RCELL), bz = Math.floor(z / RCELL);
+        for (let i = bx - 1; i <= bx + 1; i++) {
+          for (let j = bz - 1; j <= bz + 1; j++) {
+            for (const c of roadIdx.get(i + "," + j) ?? []) {
+              const d = (c.x - x) ** 2 + (c.z - z) ** 2;
+              if (d < bd) { bd = d; best = c; }
+            }
+          }
+        }
+        return bd < 45 * 45 ? best : null;
+      };
+      const AWN_COLS = [0x4f9d8f, 0xc95f4e, 0xd9a83c, 0xe8e2d4];
+      const SIGN_COLS = [0x3f8f82, 0xd97b3c, 0xe0c33a, 0xba4a44, 0x5a7fa8];
+      const awnGeos = AWN_COLS.map(() => []);
+      const signGeos = SIGN_COLS.map(() => []);
+      const acGeos = [];
+      const poleGeos = [];
+      const lampGeos = [];
+      const lanternGeos = [];
+      const poolGeos = [];
+      const wirePts = [];
+      const clutterGeos = { bin: [], cone: [] };
+      let awnings = 0;
+      for (const lot of decorLots) {
+        const road = nearestRoad(lot.cx, lot.cz);
+        const seed = Math.abs(Math.round(lot.cx * 3 + lot.cz * 11));
+        // rooftop AC boxes on most buildings
+        if (seed % 3 !== 0) {
+          const jx = ((seed % 7) - 3) * 0.6, jz = ((seed % 5) - 2) * 0.6;
+          const ac = new THREE.BoxGeometry(2.0, 1.3, 1.6);
+          ac.applyMatrix4(new THREE.Matrix4().makeRotationY(seed % 2 ? 0.4 : -0.2)
+            .setPosition(lot.cx + jx, terrainY(lot.cx, lot.cz) - 1.2 + lot.h + 0.65, lot.cz + jz));
+          acGeos.push(ac);
+        }
+        if (!road || awnings > 520) continue;
+        // road-facing edge: polygon edge whose midpoint is closest to road
+        let edge = null, ed = 1e9;
+        for (let i = 0; i < lot.poly.length; i++) {
+          const [x1, z1] = lot.poly[i], [x2, z2] = lot.poly[(i + 1) % lot.poly.length];
+          const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+          const d = (mx - road.x) ** 2 + (mz - road.z) ** 2;
+          if (d < ed) { ed = d; edge = [x1, z1, x2, z2, mx, mz]; }
+        }
+        const [x1, z1, x2, z2, mx, mz] = edge;
+        const elen = Math.hypot(x2 - x1, z2 - z1);
+        if (elen < 5) continue;
+        const eang = Math.atan2(x2 - x1, z2 - z1);
+        // outward = from centroid toward edge midpoint
+        let ox = mx - lot.cx, oz = mz - lot.cz;
+        const on = Math.hypot(ox, oz) || 1;
+        ox /= on; oz /= on;
+        // awning: sloped strip over the storefront
+        if (drand() < 0.6) {
+          awnings++;
+          const aw = new THREE.BoxGeometry(Math.min(elen * 0.86, 24), 0.45, 3.1);
+          const m = new THREE.Matrix4().makeRotationY(eang)
+            .multiply(new THREE.Matrix4().makeRotationX(0.24));
+          m.setPosition(mx + ox * 1.5, terrainY(mx, mz) + 6.8, mz + oz * 1.5);
+          aw.applyMatrix4(m);
+          awnGeos[seed % AWN_COLS.length].push(aw);
+        }
+        // abstract sign panel on the upper face (no text, accent color)
+        if (lot.h > 12 && drand() < 0.55) {
+          const sg = new THREE.BoxGeometry(0.35, 3.6, 2.1);
+          const t = (drand() - 0.5) * elen * 0.5;
+          const sx = mx + Math.sin(eang) * t + ox * 0.4;
+          const sz = mz + Math.cos(eang) * t + oz * 0.4;
+          const m = new THREE.Matrix4().makeRotationY(eang);
+          m.setPosition(sx, terrainY(sx, sz) + 9.5 + drand() * (lot.h - 11), sz);
+          sg.applyMatrix4(m);
+          signGeos[seed % SIGN_COLS.length].push(sg);
+        }
+        // street clutter near the road edge
+        if (drand() < 0.1) {
+          const cx2 = road.x + ox * (road.w / 2 + 1.5), cz2 = road.z + oz * (road.w / 2 + 1.5);
+          if (drand() < 0.6) {
+            const bin = new THREE.CylinderGeometry(1.0, 0.9, 2.4, 8);
+            bin.applyMatrix4(new THREE.Matrix4().setPosition(cx2, terrainY(cx2, cz2) + 1.2, cz2));
+            clutterGeos.bin.push(bin);
+          } else {
+            const cone = new THREE.ConeGeometry(0.7, 1.7, 8);
+            cone.applyMatrix4(new THREE.Matrix4().setPosition(cx2, terrainY(cx2, cz2) + 0.85, cz2));
+            clutterGeos.cone.push(cone);
+          }
+        }
+      }
+      // power poles + sagging wires along roads
+      const polesPlaced = [];
+      const farFromPoles = (x, z) => polesPlaced.every(p => (p.x - x) ** 2 + (p.z - z) ** 2 > 80 * 80);
+      for (const c of candidates) {
+        if (c.w < 11 || !farFromPoles(c.x, c.z) || polesPlaced.length > 220) continue;
+        const px = c.x + Math.cos(c.ang) * (c.w / 2 + 2.2);
+        const pz = c.z - Math.sin(c.ang) * (c.w / 2 + 2.2);
+        const py = terrainY(px, pz);
+        const pole = new THREE.CylinderGeometry(0.32, 0.4, 23, 6);
+        pole.applyMatrix4(new THREE.Matrix4().setPosition(px, py + 11.5, pz));
+        poleGeos.push(pole);
+        // street lamp head on alternating poles + warm light pool at night
+        if (polesPlaced.length % 3 === 0) {
+          decorLampPts.push({ x: px, z: pz });
+          const head = new THREE.SphereGeometry(1.15, 8, 6);
+          head.applyMatrix4(new THREE.Matrix4().setPosition(px, py + 21.8, pz));
+          lampGeos.push(head);
+          const pool = new THREE.CircleGeometry(9, 20);
+          pool.rotateX(-Math.PI / 2);
+          pool.translate(px, py + 0.62, pz);
+          poolGeos.push(pool);
+        }
+        // wire to the nearest earlier pole within reach, with sag
+        let near = null, nd = 1e9;
+        for (const p of polesPlaced) {
+          const d = (p.x - px) ** 2 + (p.z - pz) ** 2;
+          if (d < nd) { nd = d; near = p; }
+        }
+        if (near && nd < 130 * 130) {
+          const nearY = terrainY(near.x, near.z);
+          // paper lanterns: only some spans, one per span — sparse on purpose
+          for (const lt of (polesPlaced.length % 3 === 1 ? [0.5] : [])) {
+            const lx = px + (near.x - px) * lt, lz = pz + (near.z - pz) * lt;
+            const ly = 22.2 + py + (nearY - py) * lt - Math.sin(lt * Math.PI) * 2.6 - 1.4;
+            const lg = new THREE.SphereGeometry(0.95, 8, 6);
+            lg.scale(1, 1.25, 1);
+            lg.translate(lx, ly, lz);
+            lanternGeos.push(lg);
+            wirePts.push(lx, ly + 1.1, lz, lx, ly + 2.4, lz); // string
+          }
+          for (const wy of [22.2, 20.6]) {
+            const SEG = 7;
+            for (let s = 0; s < SEG; s++) {
+              const t0 = s / SEG, t1 = (s + 1) / SEG;
+              const sag = t => wy + py + (nearY - py) * t - Math.sin(t * Math.PI) * 2.6;
+              wirePts.push(
+                px + (near.x - px) * t0, sag(t0), pz + (near.z - pz) * t0,
+                px + (near.x - px) * t1, sag(t1), pz + (near.z - pz) * t1);
+            }
+          }
+        }
+        polesPlaced.push({ x: px, z: pz });
+      }
+      const addMerged = (arr, mat) => {
+        if (arr.length) this.scene.add(new THREE.Mesh(mergeGeometries(arr), mat));
+      };
+      awnGeos.forEach((arr, i) => addMerged(arr, new THREE.MeshLambertMaterial({
+        color: NIGHT ? new THREE.Color(AWN_COLS[i]).multiplyScalar(0.5) : AWN_COLS[i], flatShading: true })));
+      signGeos.forEach((arr, i) => addMerged(arr, new THREE.MeshLambertMaterial({
+        color: NIGHT ? new THREE.Color(SIGN_COLS[i]).multiplyScalar(0.65) : SIGN_COLS[i],
+        emissive: NIGHT ? SIGN_COLS[i] : 0x000000, emissiveIntensity: NIGHT ? 0.28 : 0 })));
+      addMerged(acGeos, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x5a5f6a : 0xb9bcc0, flatShading: true }));
+      addMerged(poleGeos, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x2c2a26 : 0x5d564c }));
+      addMerged(lampGeos, new THREE.MeshLambertMaterial({
+        color: NIGHT ? 0xfff0c0 : 0xf2ead8,
+        emissive: NIGHT ? 0xffd685 : 0x000000, emissiveIntensity: NIGHT ? 1.3 : 0 }));
+      addMerged(lanternGeos, new THREE.MeshLambertMaterial({
+        color: NIGHT ? 0xffe2a0 : 0xf4e4c8,
+        emissive: NIGHT ? 0xffc96e : 0x000000, emissiveIntensity: NIGHT ? 1.5 : 0 }));
+      if (NIGHT && poolGeos.length) {
+        this.scene.add(new THREE.Mesh(mergeGeometries(poolGeos),
+          new THREE.MeshBasicMaterial({ color: 0xffb95e, transparent: true,
+            opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false })));
+      }
+      addMerged(clutterGeos.bin, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x3a4a62 : 0x4c6a80 }));
+      addMerged(clutterGeos.cone, new THREE.MeshLambertMaterial({ color: NIGHT ? 0x8a4a20 : 0xe07b35 }));
+      if (wirePts.length) {
+        const wg = new THREE.BufferGeometry();
+        wg.setAttribute("position", new THREE.Float32BufferAttribute(wirePts, 3));
+        this.scene.add(new THREE.LineSegments(wg,
+          new THREE.LineBasicMaterial({ color: 0x2f2b26, transparent: true, opacity: 0.75 })));
+      }
+      console.log(`[rando] decor: ${awnings} awnings, ${acGeos.length} ACs, ${polesPlaced.length} poles`);
+    } catch (e) {
+      console.warn("buildings.json unavailable — generic placement fallback", e);
+    }
+
+    // landmark texture treatment: reconstructed Street View textures are
+    // photographic (real signage, photo grain). Posterize to flat color
+    // blocks + soften fine detail so signs become illegible abstract
+    // patches in the locked cel style. No generation step, no credits.
+    const celTexture = (tex) => {
+      if (!tex?.image) return tex;
+      const c = document.createElement("canvas");
+      c.width = c.height = 512;
+      const cc = c.getContext("2d");
+      // stylize-then-reconstruct landmarks already carry the locked
+      // palette — soften + posterize only, no further desaturation
+      cc.filter = "blur(1.2px)";
+      cc.drawImage(tex.image, 0, 0, c.width, c.height);
+      cc.filter = "none";
+      const id = cc.getImageData(0, 0, c.width, c.height);
+      const d = id.data;
+      for (let i = 0; i < d.length; i += 4) {   // 6-level posterize
+        d[i] = Math.round(d[i] / 42.5) * 42.5;
+        d[i + 1] = Math.round(d[i + 1] / 42.5) * 42.5;
+        d[i + 2] = Math.round(d[i + 2] / 42.5) * 42.5;
+      }
+      cc.putImageData(id, 0, 0);
+      const out = new THREE.CanvasTexture(c);
+      out.colorSpace = THREE.SRGBColorSpace;
+      out.flipY = tex.flipY;
+      return out;
+    };
+
+    // place hero landmark models at their real coordinates. The low-poly
+    // style is a MATERIAL pass on the reconstructed geometry: flatten
+    // normals (faceted shading) + cel-posterized texture + outline.
+    for (const l of landmarks) {
+      if (!l.glb || !lib) continue;
+      try {
+        const piece = await loadPiece(l.glb, l.h, true, false);
+        piece.mat.map = celTexture(piece.mat.map);
+        const geo = piece.geo.clone();
+        // Task 2 — scale normalizer: Tripo exports land at arbitrary scale,
+        // so fit each hero to its real OSM footprint bbox (uniform factor =
+        // avg of the X/Z ratios), then take final height from the footprint
+        // (already OSM height/levels-derived). Subway entrances clamp to 4u
+        // so they never extrude to building height.
+        geo.computeBoundingBox();
+        const msz = geo.boundingBox.getSize(new THREE.Vector3());
+        let fp = fpList.find(b => pointInPoly(l.pos.x, l.pos.z, b.p));
+        if (!fp) {
+          // EXIF-pinned heroes anchor where the CAMERA stood (street side),
+          // not inside the building — fall back to the nearest footprint
+          // and recenter the hero onto its plot
+          let best = null, bd = 22 * 22;
+          for (const b of fpList) {
+            let cx = 0, cz = 0;
+            for (const [fx, fz] of b.p) { cx += fx; cz += fz; }
+            cx /= b.p.length; cz /= b.p.length;
+            const d2 = (cx - l.pos.x) ** 2 + (cz - l.pos.z) ** 2;
+            if (d2 < bd) { bd = d2; best = { b, cx, cz }; }
+          }
+          if (best) {
+            fp = best.b;
+            l.pos.set(best.cx, terrainY(best.cx, best.cz), best.cz);
+          }
+        }
+        if (fp) {
+          let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+          for (const [fx, fz] of fp.p) {
+            x0 = Math.min(x0, fx); x1 = Math.max(x1, fx);
+            z0 = Math.min(z0, fz); z1 = Math.max(z1, fz);
+          }
+          const s2 = ((x1 - x0) / msz.x + (z1 - z0) / msz.z) / 2;
+          geo.applyMatrix4(new THREE.Matrix4().makeScale(s2, s2, s2));
+          geo.computeBoundingBox();
+          const cur = geo.boundingBox.getSize(new THREE.Vector3());
+          let targetH = fp.h || cur.y;
+          if (l.id === "itaewon-station") targetH = Math.min(targetH, 4);
+          geo.applyMatrix4(new THREE.Matrix4().makeScale(1, targetH / cur.y, 1));
+        } else if (l.id === "itaewon-station") {
+          const s3 = 4 / msz.y; // no footprint mapped — clamp uniformly
+          geo.applyMatrix4(new THREE.Matrix4().makeScale(s3, s3, s3));
+        }
+        geo.computeBoundingBox();
+        const bbN = geo.boundingBox;
+        geo.applyMatrix4(new THREE.Matrix4().makeTranslation(
+          -(bbN.min.x + bbN.max.x) / 2, -bbN.min.y, -(bbN.min.z + bbN.max.z) / 2));
+        const placedH = geo.boundingBox.max.y - geo.boundingBox.min.y;
+        // faceted shading: drop smooth normals, let flatShading rebuild
+        geo.deleteAttribute("normal");
+        // night: the neon/signs live in the ALBEDO (baked from the night
+        // refs) so under dim blue moonlight the whole model goes black.
+        // Self-light it: bright/saturated pixels (neon, lit windows) glow
+        // full-strength, the rest keeps a faint floor for silhouette.
+        let emis = null;
+        if (NIGHT && piece.mat.map?.image) {
+          const src = piece.mat.map.image;
+          const ec = document.createElement("canvas");
+          ec.width = src.width; ec.height = src.height;
+          const eg = ec.getContext("2d");
+          eg.drawImage(src, 0, 0);
+          const d = eg.getImageData(0, 0, ec.width, ec.height);
+          const px = d.data;
+          for (let i = 0; i < px.length; i += 4) {
+            const lum = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
+            const sat = Math.max(px[i], px[i + 1], px[i + 2]) -
+                        Math.min(px[i], px[i + 1], px[i + 2]);
+            if (!(lum > 150 || (sat > 70 && lum > 90))) {
+              px[i] *= 0.22; px[i + 1] *= 0.22; px[i + 2] *= 0.22;
+            }
+          }
+          eg.putImageData(d, 0, 0);
+          emis = new THREE.CanvasTexture(ec);
+          emis.colorSpace = THREE.SRGBColorSpace;
+          emis.flipY = piece.mat.map.flipY; // glTF uses flipY=false — must match
+        }
+        const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+          map: piece.mat.map, flatShading: true,
+          color: piece.mat.color ?? 0xffffff,
+          emissive: NIGHT ? 0xffffff : 0x000000,
+          emissiveMap: emis ?? undefined,
+          emissiveIntensity: NIGHT ? 0.9 : 0,
+        }));
+        mesh.position.copy(l.pos);
+        mesh.rotation.y = (l.yaw ?? 0) * Math.PI / 180;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.scene.add(mesh);
+        const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 34),
+          new THREE.LineBasicMaterial({ color: NIGHT ? 0x2b3441 : 0x5d6b76, transparent: true, opacity: 0.5 }));
+        outline.position.copy(mesh.position);
+        outline.rotation.copy(mesh.rotation);
+        this.scene.add(outline);
+        occupy(l.pos.x, l.pos.z, l.clear);
+        // floating venue label above the hero model (real names are fine
+        // here — code-rendered UI text, not baked into generated art)
+        if (l.name) {
+          let fg = "#fff2dd";
+          if (l.glow) { // venue glow tint, lightened so it stays readable
+            const c = new THREE.Color(l.glow).lerp(new THREE.Color("#ffffff"), 0.45);
+            fg = `#${c.getHexString()}`;
+          }
+          const tag = this.textSprite(l.name, {
+            fg, bg: "rgba(24,20,26,0.72)", scale: 1.15 });
+          tag.position.set(l.pos.x, l.pos.y + placedH + 7, l.pos.z);
+          this.scene.add(tag);
+        }
+        // nightlife venues ground their light: warm additive pool tinting
+        // the street around the hero at night (color from landmarks.json)
+        if (NIGHT && l.glow) {
+          const R2 = l.clear * 1.7;
+          const gcv = document.createElement("canvas");
+          gcv.width = gcv.height = 128;
+          const gctx = gcv.getContext("2d");
+          const grad = gctx.createRadialGradient(64, 64, 6, 64, 64, 64);
+          grad.addColorStop(0, l.glow);
+          grad.addColorStop(1, "rgba(0,0,0,0)");
+          gctx.fillStyle = grad;
+          gctx.fillRect(0, 0, 128, 128);
+          const gtex = new THREE.CanvasTexture(gcv);
+          const rings2 = 10, segs2 = 40, gpos = [], guv = [], gidx = [];
+          for (let r = 0; r <= rings2; r++) {
+            for (let sg2 = 0; sg2 <= segs2; sg2++) {
+              const a = (sg2 / segs2) * Math.PI * 2, rr = (r / rings2) * R2;
+              const x = l.pos.x + Math.cos(a) * rr, z = l.pos.z + Math.sin(a) * rr;
+              gpos.push(x, terrainY(x, z) + 0.7, z);
+              guv.push(0.5 + Math.cos(a) * (r / rings2) * 0.5,
+                       0.5 + Math.sin(a) * (r / rings2) * 0.5);
+            }
+          }
+          for (let r = 0; r < rings2; r++) {
+            for (let sg2 = 0; sg2 < segs2; sg2++) {
+              const a = r * (segs2 + 1) + sg2, b2 = a + segs2 + 1;
+              gidx.push(a, b2, a + 1, b2, b2 + 1, a + 1);
+            }
+          }
+          const gg2 = new THREE.BufferGeometry();
+          gg2.setAttribute("position", new THREE.Float32BufferAttribute(gpos, 3));
+          gg2.setAttribute("uv", new THREE.Float32BufferAttribute(guv, 2));
+          gg2.setIndex(gidx);
+          this.scene.add(new THREE.Mesh(gg2, new THREE.MeshBasicMaterial({
+            map: gtex, transparent: true, opacity: 0.5,
+            blending: THREE.AdditiveBlending, depthWrite: false })));
+        }
+        console.log(`[rando] landmark placed: ${l.id}`);
+      } catch (e) {
+        console.warn(`landmark ${l.id} failed to load`, e);
+      }
+    }
+
+    // ---- OSM layers (Task 3): subway exits, crosswalks, street lights ----
+    try {
+      const layers = await (await fetch("data/itaewon_layers.json")).json();
+      // EXITS — low stair-head canopies (clamped 3-4u) + code-text labels.
+      // Where a hero model already stands on the exit (station), keep just
+      // the label so the structures don't double up.
+      const exitRoof = [], exitPost = [], exitPanel = [];
+      for (const ex of layers.exits) {
+        const p = geoPos(ex.lat, ex.lng);
+        const heroClose = landmarks.some(l => l.glb &&
+          (p.x - l.pos.x) ** 2 + (p.z - l.pos.z) ** 2 < 100);
+        if (!heroClose) {
+          const roof = new THREE.BoxGeometry(5.4, 0.4, 3.6);
+          roof.translate(p.x, p.y + 3.2, p.z);
+          exitRoof.push(roof);
+          for (const [ox, oz] of [[-2.4, -1.5], [2.4, -1.5], [-2.4, 1.5], [2.4, 1.5]]) {
+            const post = new THREE.BoxGeometry(0.3, 3.2, 0.3);
+            post.translate(p.x + ox, p.y + 1.6, p.z + oz);
+            exitPost.push(post);
+          }
+          const panel = new THREE.BoxGeometry(5.0, 1.15, 0.22);
+          panel.translate(p.x, p.y + 0.85, p.z - 1.55);
+          exitPanel.push(panel);
+        }
+        const tag = this.textSprite(
+          `Exit ${ex.ref ?? "?"}${ex.label ? " · " + ex.label : ""}`,
+          { fg: "#ffe9c4", bg: "rgba(24,20,26,0.72)", scale: 0.8 });
+        tag.position.set(p.x, p.y + 5.6, p.z);
+        this.scene.add(tag);
+      }
+      const addM = (geos, mat) => {
+        if (!geos.length) return;
+        const m = new THREE.Mesh(mergeGeometries(geos), mat);
+        m.castShadow = false; m.receiveShadow = true;
+        this.scene.add(m);
+      };
+      addM(exitRoof, new THREE.MeshLambertMaterial({
+        color: NIGHT ? 0x6d7890 : 0x9aa1ab, flatShading: true }));
+      addM(exitPost, new THREE.MeshLambertMaterial({
+        color: NIGHT ? 0x4c5468 : 0x767d88, flatShading: true }));
+      addM(exitPanel, new THREE.MeshLambertMaterial({
+        color: NIGHT ? 0x3d4966 : 0x5d7a8c, flatShading: true,
+        emissive: NIGHT ? 0x2c3a5c : 0x000000, emissiveIntensity: 0.8 }));
+
+      // CROSSWALKS — instanced white zebra bars flat on the road surface.
+      // bearingDeg was computed in the fetch's east/north meter frame, so
+      // re-derive the axis in WORLD space via two projected points.
+      const bars = [];
+      for (const cr of layers.crossings) {
+        const b = ((cr.bearingDeg ?? 0) * Math.PI) / 180;
+        const p0 = geoPos(cr.lat, cr.lng);
+        const p1 = geoPos(
+          cr.lat + Math.sin(b) / 110540,
+          cr.lng + Math.cos(b) / (111320 * Math.cos((cr.lat * Math.PI) / 180)));
+        const ang = Math.atan2(p1.x - p0.x, p1.z - p0.z);
+        const dirX = Math.sin(ang), dirZ = Math.cos(ang);
+        const n = Math.max(4, Math.min(14, Math.round((cr.length || 6) / 1.1)));
+        for (let i = 0; i < n; i++) {
+          const t = (i - (n - 1) / 2) * 1.1;
+          bars.push({ x: p0.x + dirX * t, z: p0.z + dirZ * t, ang });
+        }
+      }
+      if (bars.length) {
+        const barGeo = new THREE.BoxGeometry(4.2, 0.06, 0.55);
+        const barMesh = new THREE.InstancedMesh(barGeo,
+          new THREE.MeshBasicMaterial({ color: 0xf0f2ee, transparent: true,
+            opacity: NIGHT ? 0.42 : 0.68, depthWrite: false }), bars.length);
+        const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(),
+              UP = new THREE.Vector3(0, 1, 0), SC = new THREE.Vector3(1, 1, 1);
+        bars.forEach((bar, i) => {
+          Q.setFromAxisAngle(UP, bar.ang);
+          M4.compose(new THREE.Vector3(bar.x, terrainY(bar.x, bar.z) + 0.56, bar.z), Q, SC);
+          barMesh.setMatrixAt(i, M4);
+        });
+        barMesh.renderOrder = 2;
+        this.scene.add(barMesh);
+      }
+
+      // STREET LIGHTS — OSM lamps first (zone returned none; array kept for
+      // when coverage improves), then procedural fill: walk every road
+      // centerline at ~25u, offset to the sidewalk side, skipping spots the
+      // decor pass already lit. Real point lights go to the N closest to the
+      // nightlife core — mobile fragment-uniform budgets make unbounded
+      // PointLight counts a real phone-crash risk — the rest glow via the
+      // additive ground pools that already define the look.
+      const lampPts = layers.lamps.map(lm => {
+        const lp = geoPos(lm.lat, lm.lng);
+        return { x: lp.x, z: lp.z };
+      });
+      const nearPts = (arr, x, z, r) =>
+        arr.some(q => (q.x - x) ** 2 + (q.z - z) ** 2 < r * r);
+      for (const road of data.roads) {
+        const w = WID[road.t] ?? 11;
+        if (w < 8) continue;
+        let carry = 12, side = 1;
+        for (let i = 0; i < road.p.length - 1; i++) {
+          const [ax, az] = road.p[i], [bx2, bz2] = road.p[i + 1];
+          const dx = bx2 - ax, dz = bz2 - az;
+          const len = Math.hypot(dx, dz);
+          if (len < 0.5) continue;
+          const ang = Math.atan2(dx, dz);
+          let d = carry;
+          while (d < len) {
+            const px = ax + (dx / len) * d, pz = az + (dz / len) * d;
+            const off = w / 2 + 2.2;
+            const lx = px + Math.cos(ang) * off * side;
+            const lz = pz - Math.sin(ang) * off * side;
+            side = -side;
+            if (Math.hypot(lx, lz) < 1000 &&
+                !nearPts(lampPts, lx, lz, 18) &&
+                !nearPts(decorLampPts, lx, lz, 14) &&
+                lampPts.length < 260) {
+              lampPts.push({ x: lx, z: lz, source: "procedural" });
+            }
+            d += 25;
+          }
+          carry = d - len;
+        }
+      }
+      if (lampPts.length) {
+        const postGeo = new THREE.BoxGeometry(0.34, 6.8, 0.34);
+        const headGeo = new THREE.BoxGeometry(0.95, 0.5, 0.95);
+        const postM = new THREE.InstancedMesh(postGeo,
+          new THREE.MeshLambertMaterial({ color: NIGHT ? 0x3c4356 : 0x6d7076,
+            flatShading: true }), lampPts.length);
+        const headM = new THREE.InstancedMesh(headGeo,
+          new THREE.MeshLambertMaterial({ color: 0xd8cba8, flatShading: true,
+            emissive: NIGHT ? 0xffc87d : 0x000000,
+            emissiveIntensity: NIGHT ? 1.0 : 0 }), lampPts.length);
+        const M4 = new THREE.Matrix4();
+        lampPts.forEach((q, i) => {
+          const y = terrainY(q.x, q.z);
+          M4.identity().setPosition(q.x, y + 3.4, q.z);
+          postM.setMatrixAt(i, M4);
+          M4.identity().setPosition(q.x, y + 6.9, q.z);
+          headM.setMatrixAt(i, M4);
+        });
+        this.scene.add(postM, headM);
+        if (NIGHT) {
+          // warm pools under every lamp (additive, cheap)
+          const pcv = document.createElement("canvas");
+          pcv.width = pcv.height = 128;
+          const pg = pcv.getContext("2d");
+          const grad = pg.createRadialGradient(64, 64, 4, 64, 64, 64);
+          grad.addColorStop(0, "rgba(255,200,125,0.55)");
+          grad.addColorStop(1, "rgba(255,200,125,0)");
+          pg.fillStyle = grad;
+          pg.fillRect(0, 0, 128, 128);
+          const ptex = new THREE.CanvasTexture(pcv);
+          const poolGeo = new THREE.PlaneGeometry(14, 14);
+          poolGeo.rotateX(-Math.PI / 2);
+          const poolM = new THREE.InstancedMesh(poolGeo,
+            new THREE.MeshBasicMaterial({ map: ptex, transparent: true,
+              blending: THREE.AdditiveBlending, depthWrite: false }),
+            lampPts.length);
+          lampPts.forEach((q, i) => {
+            M4.identity().setPosition(q.x, terrainY(q.x, q.z) + 0.6, q.z);
+            poolM.setMatrixAt(i, M4);
+          });
+          poolM.renderOrder = 3;
+          this.scene.add(poolM);
+          // real point lights: budgeted to the nightlife core
+          const core = geoPos(37.5346, 126.9937);
+          const ranked = [...lampPts].sort((a, b2) =>
+            ((a.x - core.x) ** 2 + (a.z - core.z) ** 2) -
+            ((b2.x - core.x) ** 2 + (b2.z - core.z) ** 2));
+          for (const q of ranked.slice(0, 14)) {
+            const pl = new THREE.PointLight(0xffd2a0, 1.15, 25, 1.8);
+            pl.position.set(q.x, terrainY(q.x, q.z) + 6.6, q.z);
+            this.scene.add(pl);
+          }
+        }
+      }
+      console.log(`[rando] layers: ${layers.exits.length} exits, ` +
+        `${layers.crossings.length} crossings, ${lampPts.length} lamps ` +
+        `(${layers.lamps.length} osm)`);
+    } catch (e) {
+      console.warn("[rando] itaewon layers skipped", e);
+    }
+
     // placement: same frontage walk, but each lot picks a model type from
     // zone density (towers only in the urban core, low-rise near plazas).
-    // Capped so mobile GPUs stay comfortable with the 4-5k-tri models.
+    // Runs only as a FALLBACK when real footprints are unavailable.
     const inst = { store: [], urban: [], brick: [], pastel: [], tower: [], highrise: [] };
     const MAX_BUILDINGS = 220;
     let placedCount = 0;
-    if (lib) for (const c of candidates) {
+    if (lib && !footprints) for (const c of candidates) {
       if (placedCount >= MAX_BUILDINGS) break;
       const D = fieldAt(c.x, c.z, "build");
       if (rand() > D * 0.34) continue;
@@ -548,7 +1384,7 @@ export const world3d = {
         const s = 0.85 + rand() * 0.45;
         const m = new THREE.Matrix4().makeRotationY(rand() * Math.PI * 2)
           .scale(new THREE.Vector3(s, s, s));
-        m.setPosition(x, 0, z);
+        m.setPosition(x, terrainY(x, z) - 0.3, z);
         tinst[t].push(m);
       }
       for (const [t, list] of Object.entries(tinst)) {
@@ -562,6 +1398,36 @@ export const world3d = {
     this.needsRender = true;
   },
 
+  // crisp camera-facing text sprite (labels, name tags) — code-rendered,
+  // no assets; scaled in world units, drawn above depth so always legible
+  textSprite(text, { size = 15, pad = 10, fg = "#fff", bg = "rgba(24,22,28,0.62)", scale = 1 } = {}) {
+    const c = document.createElement("canvas");
+    const g2 = c.getContext("2d");
+    const font = `600 ${size * 4}px -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif`;
+    g2.font = font;
+    const tw = Math.ceil(g2.measureText(text).width);
+    c.width = tw + pad * 8;
+    c.height = size * 4 + pad * 5;
+    const g3 = c.getContext("2d");
+    g3.font = font;
+    const r = c.height / 2;
+    g3.fillStyle = bg;
+    g3.beginPath();
+    g3.roundRect(0, 0, c.width, c.height, r);
+    g3.fill();
+    g3.fillStyle = fg;
+    g3.textAlign = "center";
+    g3.textBaseline = "middle";
+    g3.fillText(text, c.width / 2, c.height / 2 + size * 0.28);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthTest: false, fog: false }));
+    sp.renderOrder = 90;
+    sp.scale.set((c.width / c.height) * 4.6 * scale, 4.6 * scale, 1);
+    return sp;
+  },
+
   registerZones(zones) {
     this.zoneRings.clear();
     for (const z of zones.filter(z => z.kind !== "auto")) {
@@ -570,8 +1436,13 @@ export const world3d = {
         new THREE.MeshBasicMaterial({ color: 0x8fc2ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
       const p = geoPos(z.lat, z.lng);
-      ring.position.set(p.x, 0.35, p.z);
+      ring.position.set(p.x, p.y + 0.35, p.z);
       this.zoneRings.add(ring);
+      // floating location label (code text, always faces the camera)
+      const label = this.textSprite(z.name ?? z.id, {
+        fg: "#ffe9c4", bg: "rgba(30,26,20,0.7)", scale: 1.9 });
+      label.position.set(p.x, p.y + 34, p.z);
+      this.zoneRings.add(label);
     }
     this.needsRender = true;
   },
@@ -579,15 +1450,21 @@ export const world3d = {
   chars: new Set(),      // every live modular character (for animation)
   remoteRecs: [],
 
-  makeChar(avatarCfg, pos, parent, apiOverride) {
+  makeChar(avatarCfg, pos, parent, apiOverride, handle) {
     const api = apiOverride ?? makeCharacter(avatarCfg);
+    api.group.traverse(o => { if (o.isMesh || o.isSkinnedMesh) o.castShadow = true; });
+    if (handle) { // floating username tag above the head
+      const tag = this.textSprite(handle, { scale: 0.85 });
+      tag.position.set(0, 20.5, 0);
+      api.group.add(tag);
+    }
     api.group.position.copy(pos);
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(1, 24),
       new THREE.MeshBasicMaterial({ color: 0x0a0e14, transparent: true, opacity: 0.25 }));
     shadow.rotation.x = -Math.PI / 2;
     shadow.scale.set(5.4, 2.6, 1);
-    shadow.position.set(pos.x, 0.42, pos.z);
+    shadow.position.set(pos.x, pos.y + 0.42, pos.z);
     parent.add(api.group);
     parent.add(shadow);
     const rec = { api, shadow, walkTarget: null };
@@ -643,9 +1520,10 @@ export const world3d = {
       const dz = ((r.slot % 3) - 1) * 5;
       const pos = geoPos(r.lat, r.lng).add(new THREE.Vector3(dx, 0, dz));
       const api = GLB_MODE ? makeGLBCharacterSync(r.avatar) ?? undefined : undefined;
-      const rec = this.makeChar(r.avatar, pos, this.remoteGroup, api);
+      const rec = this.makeChar(r.avatar, pos, this.remoteGroup, api, r.handle);
       // face roughly inward toward the cluster for a hanging-out feel
       rec.api.group.rotation.y = Math.atan2(-dx, 6);
+      rec.meta = { userId: r.userId, handle: r.handle, avatar: r.avatar };
       this.remoteRecs.push(rec);
     }
     this.needsRender = true;
@@ -701,12 +1579,44 @@ export const world3d = {
   // One-finger drag PANS (free observer); two fingers pinch-zoom, twist to
   // rotate, move vertically together to tilt. Desktop: drag pans, wheel
   // zooms, right-click or Ctrl+drag orbits. Recenter returns to follow.
+  // tap-to-chat: short, drag-free press on a remote character fires
+  // onCharTap(meta). Set by backend.js; meta = { userId, handle, avatar }.
+  onCharTap: null,
+  tryCharTap(clientX, clientY) {
+    if (!this.onCharTap || !this.remoteRecs.length) return;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - r.left) / r.width) * 2 - 1,
+      -((clientY - r.top) / r.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const hits = ray.intersectObjects(this.remoteRecs.map(x => x.api.group), true);
+    if (!hits.length) return;
+    let node = hits[0].object;
+    while (node) {
+      const rec = this.remoteRecs.find(x => x.api.group === node);
+      if (rec?.meta?.userId) { this.onCharTap(rec.meta); return; }
+      node = node.parent;
+    }
+  },
+
   bindControls() {
     const el = this.renderer.domElement;
     const pointers = new Map();
     let gesture = null;
+    let press = null;
     el.addEventListener("contextmenu", e => e.preventDefault());
+    el.addEventListener("pointerup", e => {
+      if (press && pointers.size <= 1 &&
+          performance.now() - press.t < 380 &&
+          Math.hypot(e.clientX - press.x, e.clientY - press.y) < 9) {
+        this.tryCharTap(e.clientX, e.clientY);
+      }
+      press = null;
+    });
     el.addEventListener("pointerdown", e => {
+      if (pointers.size === 0) press = { x: e.clientX, y: e.clientY, t: performance.now() };
+      else press = null;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { el.setPointerCapture(e.pointerId); } catch {}
       this.camGoal = null;
@@ -806,10 +1716,31 @@ export const world3d = {
           rec.api.group.rotation.y = Math.atan2(d.x, d.z);
           d.normalize().multiplyScalar(Math.min(dist, dt * 16));
           gp.add(d);
+          gp.y = terrainY(gp.x, gp.z); // hug the hillside mid-walk
         }
       }
       rec.api.tick(t);
-      rec.shadow.position.set(rec.api.group.position.x, 0.42, rec.api.group.position.z);
+      rec.shadow.position.set(rec.api.group.position.x,
+        terrainY(rec.api.group.position.x, rec.api.group.position.z) + 0.42,
+        rec.api.group.position.z);
+    }
+
+
+    // buildings-rise loading animation (see loadWorld); self-removes when done
+    if (this.risers) {
+      const RISE = 620, STAG = 110;
+      const ease = k => 1 - Math.pow(1 - k, 3);
+      const now = performance.now();
+      let done = true;
+      this.risers.items.forEach(([m, o], i) => {
+        const k = Math.min(1, Math.max(0, (now - this.risers.t0 - i * STAG) / RISE));
+        const s = Math.max(0.001, ease(k));
+        m.scale.y = s;
+        o.scale.y = s;
+        if (k < 1) done = false;
+      });
+      this.needsRender = true;
+      if (done) this.risers = null;
     }
 
     // glide the camera target home — unless the user is roaming free

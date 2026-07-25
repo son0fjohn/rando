@@ -29,3 +29,4 @@ Desktop.ini
 .idea/
 scripts/osm_cache_*.json
 web/models/ref/
+scripts/venue_geocode_cache.json

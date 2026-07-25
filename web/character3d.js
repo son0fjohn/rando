@@ -420,10 +420,14 @@ function analyzeFace(holder, src) {
   const head = src.getObjectByName("Head");
   if (!sm || !head || !sm.material.map?.image) return null;
   const img = sm.material.map.image;
+  // work at 2048 max: full 4096 canvases + pixel reads blow phone-browser
+  // memory limits (the "app crashes on mobile" class of failure)
   const cv = document.createElement("canvas");
-  cv.width = img.width; cv.height = img.height;
+  const scale = Math.min(1, 2048 / img.width);
+  cv.width = Math.round(img.width * scale);
+  cv.height = Math.round(img.height * scale);
   const ctx = cv.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0);
+  ctx.drawImage(img, 0, 0, cv.width, cv.height);
   const px = ctx.getImageData(0, 0, cv.width, cv.height).data;
   const pos = sm.geometry.attributes.position;
   const uv = sm.geometry.attributes.uv;
@@ -529,6 +533,7 @@ function analyzeFace(holder, src) {
   eyeless.flipY = false;
   sm.material.map = eyeless;
   sm.material.needsUpdate = true;
+  img.close?.(); // free the decoded 4096 original (67MB on phones)
   // anchor: head-center position in Head-bone local space, axes kept
   // aligned to the WORLD (so parts built "y-up" sit upright and decal
   // directions can be world-axis vectors)
