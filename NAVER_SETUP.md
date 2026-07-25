@@ -55,6 +55,32 @@ Expected: `credentials OK — geocode("서울 용산구 이태원로 179") → l
 plus a usage-counter line. If you see 401/403: the app registration is
 missing an API tick (step 3.3) or the keys were copied from a different app.
 
+## VWorld key (digital-twin geometry — 5 minutes, separate from Naver)
+
+The twin's building geometry comes from the official Korean building
+registry (건물통합정보) served by the VWorld open Data API:
+
+1. <https://www.vworld.kr> → 회원가입 (sign up) → log in.
+2. 오픈API → 인증키 발급 (API key issuance) → request a key
+   (service: 데이터 API; URL: `http://localhost:8743` is fine).
+3. Keys are issued instantly; copy it into `.env`:
+
+```
+VWORLD_API_KEY=your_vworld_key_here
+```
+
+4. Then run, in order:
+
+```
+py -3 scripts/fetch_bldg_registry.py
+py -3 scripts/bake_registry.py --dry-run   # review the reconcile stats
+py -3 scripts/bake_registry.py             # write buildings.json
+```
+
+Keyless calls return `INVALID_KEY / 등록되지 않은 인증키입니다` — if you
+see that after pasting a key, the key hasn't finished registering (rare,
+wait a minute) or the 데이터 API service wasn't ticked.
+
 ## Free-tier ceilings (why usage logging exists)
 
 - Static Map: 3,000,000 calls/month free

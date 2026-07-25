@@ -37,6 +37,23 @@ developers.naver.com with separate keys. So:
 `scripts/naver_usage.json` (gitignored), soft-warn at 100k calls/month —
 far under the 3M/6M ceilings; our bakes use a handful of calls.
 
+**4 · Digital twin direction (your call, made explicitly).**
+"3D digital twin using Naver" — reality: **Naver exposes no 3D-buildings
+API** (the 3D view in their app isn't served as data). You chose the
+recommended stack: geometry from the **official Korean building registry**
+(건물통합정보 via the VWorld open Data API — open data, not scraping;
+this consciously reopens the earlier "no VWorld" constraint), heights
+cross-checked by our measured Google-Tiles capture (photogrammetry wins
+where present), Naver as the naming/address/POI layer. Pipeline:
+`fetch_bldg_registry.py` (exact footprints + floors + registered
+heights for the whole city bbox) → `bake_registry.py` (reconciles into
+the rendered field: footprint replaced with registry truth, height
+source order tiles > registry > floors×3.2, unmatched registry
+buildings appended — real coverage OSM never had). Needs a free VWorld
+key (~5 min, NAVER_SETUP.md § VWorld). Endpoint + error mode verified
+live keyless; scripts compile; dry-run mode for reviewing the reconcile
+before writing.
+
 ## State
 
 - `NAVER_SETUP.md` — exact console walkthrough (account → Maps subscribe
