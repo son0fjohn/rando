@@ -86,15 +86,16 @@ def main():
                 else coords[0]
             if len(ring) < 4:
                 continue
+            # LT_C_SPBD real schema: gro_flo_co (ground floors), rd_nm
+            # (road name), buld_no, buld_nm / bul_eng_nm (often empty).
+            # No use/purpose or height fields exist in this layer.
             buildings.append({
-                "id": props.get("bd_mgt_sn") or props.get("gis_idntfc_no")
-                      or f.get("id"),
+                "id": props.get("bd_mgt_sn") or f.get("id"),
                 "footprint": [[round(x, 7), round(y, 7)] for x, y in ring],
-                "floors": parse_float(props.get("grnd_flr") or props.get("gro_flo_co")),
-                "ug_floors": parse_float(props.get("ugrnd_flr") or props.get("und_flo_co")),
-                "heightM": parse_float(props.get("buld_hg") or props.get("height")),
-                "use": props.get("buld_prpos_nm") or props.get("main_prpos_nm"),
-                "road_addr": props.get("rn_adres") or props.get("road_addr"),
+                "floors": parse_float(props.get("gro_flo_co")),
+                "name": props.get("buld_nm") or props.get("bul_eng_nm") or None,
+                "road": props.get("rd_nm") or None,
+                "road_no": props.get("buld_no") or None,
             })
         total = resp.get("record", {}).get("total")
         got = len(feats)
@@ -106,12 +107,12 @@ def main():
         time.sleep(0.3)  # be polite to the public API
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    json.dump(buildings, open(OUT, "w"), ensure_ascii=False)
+    json.dump(buildings, open(OUT, "w"))  # ascii-escaped: cp1252-safe for every reader
     n_fl = sum(1 for b in buildings if b["floors"])
-    n_h = sum(1 for b in buildings if b["heightM"])
+    n_nm = sum(1 for b in buildings if b["name"])
     print(f"-> {OUT}")
     print(f"registry buildings: {len(buildings)} "
-          f"(floors: {n_fl}, heightM: {n_h})")
+          f"(floors: {n_fl}, named: {n_nm})")
     return 0
 
 if __name__ == "__main__":

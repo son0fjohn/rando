@@ -586,8 +586,12 @@ export const world3d = {
       const bdata = await (await fetch("buildings.json")).json();
       fpList = bdata.buildings;
       const wallCols = THEME.walls; // warm desaturated family (style lock)
-      const wallGeos = wallCols.map(() => []);
-      const roofGeos = wallCols.map(() => []);
+      // facade family: class comes from the registry bake (b.cls —
+      // shop/office/res/mixed from real floors+area+road); buckets are
+      // class x color so merged draw calls stay tiny (24 + 24 + outlines)
+      const FCLASSES = ["mixed", "shop", "office", "res"];
+      const wallGeos = Array.from({ length: FCLASSES.length * wallCols.length }, () => []);
+      const roofGeos = Array.from({ length: FCLASSES.length * wallCols.length }, () => []);
       const shadowGeos = [];
       const decorLots = []; // road-facing lots for the decoration pass
       for (const b of bdata.buildings) {
@@ -608,6 +612,11 @@ export const world3d = {
         if (THREE.ShapeUtils.area(v2s) < 0) v2s.reverse(); // CCW: walls face out
         const baseY = terrainY(cx, cz) - 1.2;
         const bi = Math.abs(Math.round(cx * 7 + cz * 13)) % wallCols.length;
+        let ci = FCLASSES.indexOf(b.cls);
+        if (ci < 0) { // OSM-only buildings (no registry match): quiet mix
+          ci = Math.abs(Math.round(cx * 3 + cz * 11)) % 3 === 0 ? 3 : 0;
+        }
+        const wi = ci * wallCols.length + bi;
         // walls as explicit quads: u follows the contour (one texture tile
         // per ~13u = 4 windows), v climbs floors — so the window grid tiles
         // at true scale and doubles as the night lit-window emissive map
@@ -627,7 +636,7 @@ export const world3d = {
           const wg = new THREE.BufferGeometry();
           wg.setAttribute("position", new THREE.Float32BufferAttribute(wpos, 3));
           wg.setAttribute("uv", new THREE.Float32BufferAttribute(wuv, 2));
-          wallGeos[bi].push(wg);
+          wallGeos[wi].push(wg);
         }
         {
           const tris = THREE.ShapeUtils.triangulateShape(v2s, []);
@@ -637,7 +646,7 @@ export const world3d = {
           }
           const rg = new THREE.BufferGeometry();
           rg.setAttribute("position", new THREE.Float32BufferAttribute(rpos, 3));
-          roofGeos[bi].push(rg);
+          roofGeos[wi].push(rg);
         }
         decorLots.push({ poly, cx, cz, h: b.h });
         // baked cast shadow: footprint swept along the sun direction by a
@@ -676,53 +685,15 @@ export const world3d = {
       // window-grid facade: near-white walls (bucket color multiplies) with
       // dark glass by day; at night the same grid becomes the emissive map
       // with a random warm subset of windows lit (Splatoon-square mood)
-      const facade = (() => {
-        const day = document.createElement("canvas");
-        day.width = day.height = 256;
-        const gd = day.getContext("2d");
-        gd.fillStyle = "#f2efe8";
-        gd.fillRect(0, 0, 256, 256);
-        const night = document.createElement("canvas");
-        night.width = night.height = 256;
-        const gn = night.getContext("2d");
-        gn.fillStyle = "#05070d";
-        gn.fillRect(0, 0, 256, 256);
+      // facade FAMILY: one texture per class, windows recorded as cells so
+      // the night pass lights the REAL openings of each layout. Near-white
+      // walls take the bucket tint; features stay neutral. All texture is
+      // procedural — the registry has no appearance data; class comes from
+      // its real floors/area/road, so variety follows the actual city.
+      const facades = (() => {
         const wrand = mulberry32(515);
-        for (let r = 0; r < 4; r++) {
-          for (let c = 0; c < 4; c++) {
-            const wx = 10 + c * 62, wy = 8 + r * 62;
-            gd.fillStyle = "#59606c";
-            gd.fillRect(wx, wy, 42, 34);
-            gd.fillStyle = "rgba(255,255,255,0.3)";
-            gd.fillRect(wx, wy + 13, 42, 4);
-            gn.fillStyle = "#10141f";
-            gn.fillRect(wx, wy, 42, 34);
-          }
-        }
-        // sparse lit-window variants: lighting should be purposeful, not a
-        // uniform glow — most windows stay dark, a few glow per building
-        // per-bucket lit-window variants (Task 3): vary WHICH windows are
-        // lit, warm (~2700K) vs cool white, most staying pure-dark — the
-        // identical-yellow uniformity is what read as "generated"
         const WARM = ["#ffd98f", "#ffc76a", "#ffe7b0"];
         const COOL = ["#c8ddff", "#aecbf2", "#dfe9ff"];
-        const mkNight = (prob, warmFrac) => {
-          const c = document.createElement("canvas");
-          c.width = c.height = 256;
-          const g3 = c.getContext("2d");
-          g3.drawImage(night, 0, 0);
-          for (let r = 0; r < 4; r++) {
-            for (let cc = 0; cc < 4; cc++) {
-              if (wrand() < prob) {
-                const pal = wrand() < warmFrac ? WARM : COOL;
-                g3.fillStyle = pal[Math.floor(wrand() * 3)];
-                g3.fillRect(10 + cc * 62 - 1, 8 + r * 62 - 1, 44, 36);
-              }
-            }
-          }
-          return c;
-        };
-        // {lit fraction, warm fraction, emissive intensity} per wall bucket
         const NIGHT_VARIANTS = [
           { p: 0.20, w: 0.85, e: 0.92 }, { p: 0.10, w: 0.55, e: 0.78 },
           { p: 0.05, w: 0.75, e: 0.72 }, { p: 0.15, w: 0.95, e: 0.95 },
@@ -735,27 +706,104 @@ export const world3d = {
           t.magFilter = THREE.NearestFilter;
           return t;
         };
-        return { day: mk(day), variants: NIGHT_VARIANTS.map(v =>
-          ({ tex: mk(mkNight(v.p, v.w)), e: v.e })) };
+        const mkDay = cls => {
+          const c = document.createElement("canvas");
+          c.width = c.height = 256;
+          const g = c.getContext("2d");
+          g.fillStyle = "#f2efe8";
+          g.fillRect(0, 0, 256, 256);
+          const cells = [];
+          const win = (x, y, w, h) => {
+            g.fillStyle = "#59606c";
+            g.fillRect(x, y, w, h);
+            g.fillStyle = "rgba(255,255,255,0.3)";
+            g.fillRect(x, y + h * 0.38, w, 4);
+            cells.push([x, y, w, h]);
+          };
+          if (cls === "shop") {
+            // glass storefront + sign band, two window rows above
+            g.fillStyle = "#4a5666";
+            g.fillRect(8, 190, 240, 58);
+            cells.push([8, 190, 240, 58]);
+            g.fillStyle = "#9aa0a8";
+            g.fillRect(8, 164, 240, 18);
+            for (let r = 0; r < 2; r++)
+              for (let cc = 0; cc < 4; cc++)
+                win(14 + cc * 62, 22 + r * 66, 42, 40);
+          } else if (cls === "office") {
+            for (let r = 0; r < 5; r++)
+              for (let cc = 0; cc < 5; cc++)
+                win(10 + cc * 49, 12 + r * 49, 36, 30);
+          } else if (cls === "res") {
+            for (let r = 0; r < 3; r++)
+              for (let cc = 0; cc < 3; cc++) {
+                win(20 + cc * 78, 20 + r * 78, 46, 42);
+                g.fillStyle = "#7d8288"; // balcony rail line
+                g.fillRect(12 + cc * 78, 68 + r * 78, 60, 4);
+              }
+          } else {
+            for (let r = 0; r < 4; r++)
+              for (let cc = 0; cc < 4; cc++)
+                win(10 + cc * 62, 8 + r * 62, 42, 34);
+          }
+          return { c, cells };
+        };
+        const mkNight = (dayCanvas, cells, prob, warmFrac) => {
+          const c = document.createElement("canvas");
+          c.width = c.height = 256;
+          const g = c.getContext("2d");
+          g.drawImage(dayCanvas, 0, 0);
+          g.fillStyle = "rgba(9,12,20,0.86)"; // near-black field: only lit
+          g.fillRect(0, 0, 256, 256);         // cells contribute emissive
+          for (const [x, y, w, h] of cells) {
+            if (wrand() < prob) {
+              const pal = wrand() < warmFrac ? WARM : COOL;
+              g.fillStyle = pal[Math.floor(wrand() * 3)];
+              g.fillRect(x - 1, y - 1, w + 2, h + 2);
+            }
+          }
+          return c;
+        };
+        const out = {};
+        for (const cls of FCLASSES) {
+          const { c, cells } = mkDay(cls);
+          out[cls] = {
+            day: mk(c),
+            // night canvases only when night runs — day mode keeps RAM flat
+            variants: NIGHT ? NIGHT_VARIANTS.map(v => ({
+              tex: mk(mkNight(c, cells, v.p, v.w)), e: v.e })) : null,
+          };
+        }
+        return out;
       })();
       const NIGHT_WALL = new THREE.Color(0.36, 0.42, 0.60); // blue moonlight
       const risers = [];
       wallGeos.forEach((arr, i) => {
         if (!arr.length) return;
+        const clsIdx = Math.floor(i / wallCols.length);
+        const colIdx = i % wallCols.length;
+        const fac = facades[FCLASSES[clsIdx]];
         const merged = mergeGeometries(arr);
         merged.computeVertexNormals();
-        const col = new THREE.Color(wallCols[i]);
+        const col = new THREE.Color(wallCols[colIdx]);
         if (NIGHT) col.multiply(NIGHT_WALL);
+        const variant = fac.variants ? fac.variants[colIdx] : null;
         const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({
-          color: col, map: facade.day, side: THREE.DoubleSide,
-          emissive: NIGHT ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
-          emissiveMap: facade.variants[i % facade.variants.length].tex,
-          emissiveIntensity: NIGHT ? facade.variants[i % facade.variants.length].e : 0,
+          color: col, map: fac.day, side: THREE.DoubleSide,
+          emissive: variant ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
+          emissiveIntensity: variant ? variant.e : 0,
+          ...(variant ? { emissiveMap: variant.tex } : {}),
         }));
         this.scene.add(mesh);
+        if (!roofGeos[i].length) { // class bucket may hold walls only
+          const outline0 = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 40), lineMat);
+          this.scene.add(outline0);
+          risers.push([mesh, outline0]);
+          return;
+        }
         const rmerged = mergeGeometries(roofGeos[i]);
         rmerged.computeVertexNormals();
-        const rcol = new THREE.Color(wallCols[i]).multiplyScalar(0.8);
+        const rcol = new THREE.Color(wallCols[colIdx]).multiplyScalar(0.8);
         if (NIGHT) rcol.multiply(NIGHT_WALL);
         const roof = new THREE.Mesh(rmerged, new THREE.MeshLambertMaterial({
           color: rcol, side: THREE.DoubleSide }));

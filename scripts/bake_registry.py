@@ -64,6 +64,15 @@ def main():
     reg = json.load(open(REG))
     bdata = json.load(open(BUILDINGS))
     dry = "--dry-run" in sys.argv
+    # double-bake guard: reconciling registry onto an already-reconciled
+    # field drifts counts (matched centroids move). Restore the
+    # pre-registry buildings.json first, or pass --force knowingly.
+    if any((b.get("hsrc") or "").startswith("registry")
+           for b in bdata["buildings"]) and "--force" not in sys.argv:
+        print("buildings.json already carries a registry bake — restore "
+              "the pre-registry file first (git show main:web/buildings.json)"
+              " or pass --force")
+        return 1
 
     field = []
     for b in bdata["buildings"]:
@@ -97,7 +106,23 @@ def main():
             skipped += 1
             continue
 
-        hM = rb.get("heightM") or (rb["floors"] * LEVEL_M if rb.get("floors") else None)
+        hM = rb["floors"] * LEVEL_M if rb.get("floors") else None
+        # rough facade class from what the layer actually has: floors,
+        # footprint area, main-road adjacency (no use/purpose field exists)
+        area0 = abs(sum(simp[i][0] * simp[(i + 1) % len(simp)][1] -
+                        simp[(i + 1) % len(simp)][0] * simp[i][1]
+                        for i in range(len(simp)))) / 2
+        fl = rb.get("floors") or 2
+        road = rb.get("road") or ""
+        MAIN = ("이태원로", "녹사평대로", "우사단로", "보광로")
+        if fl >= 6:
+            cls = "office"
+        elif any(road.startswith(m) for m in MAIN) and fl <= 4:
+            cls = "shop"
+        elif fl <= 2 and area0 < 55:
+            cls = "res"
+        else:
+            cls = "mixed"
         best, bd = None, MATCH_R * MATCH_R
         for rec in field:
             d2 = (rec[0] - cx) ** 2 + (rec[1] - cz) ** 2
@@ -112,7 +137,9 @@ def main():
             elif hM:
                 b["h"] = round(hM * SCALE * VEXAG, 1)
                 b["hsrc"] = "registry"
-            b["use"] = rb.get("use")
+            b["cls"] = cls
+            if rb.get("name"):
+                b["nm"] = rb["name"]
             replaced += 1
             best[0], best[1] = cx, cz
         else:
@@ -125,7 +152,10 @@ def main():
                 skipped += 1
                 continue
             nb = {"p": poly, "h": round((hM or 11.0) * SCALE * VEXAG, 1),
-                  "hsrc": "registry" if hM else "registry-default"}
+                  "hsrc": "registry" if hM else "registry-default",
+                  "cls": cls}
+            if rb.get("name"):
+                nb["nm"] = rb["name"]
             bdata["buildings"].append(nb)
             field.append([cx, cz, nb])
             appended += 1
