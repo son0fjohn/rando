@@ -132,6 +132,81 @@ def static_map(lat, lng, out_path, level=16, w=1024, h=1024, maptype="basic"):
         f.write(data)
     return out_path
 
+# ---------------- VWorld fallback (same key as the registry fetch) ----
+# NCP keys are OPTIONAL: with VWORLD_API_KEY present, geocode/reverse run
+# against the government address DB instead. Naver remains a drop-in
+# upgrade if its keys ever land — call signatures are identical.
+
+def _vworld_key():
+    k = _env("VWORLD_API_KEY")
+    return k if k and "your_vworld" not in k else None
+
+def vworld_geocode(address):
+    key = _vworld_key()
+    if not key:
+        return None
+    q = urllib.parse.urlencode({
+        "service": "address", "request": "getcoord", "version": "2.0",
+        "crs": "epsg:4326", "address": address, "refine": "true",
+        "simple": "false", "format": "json", "type": "road", "key": key})
+    try:
+        with urllib.request.urlopen(
+                f"https://api.vworld.kr/req/address?{q}", timeout=30) as r:
+            d = json.loads(r.read())
+    except Exception as e:
+        print(f"vworld geocode failed :: {e}")
+        return None
+    res = d.get("response", {})
+    if res.get("status") != "OK":
+        # road-address miss: retry as jibun (parcel) address
+        q2 = q.replace("type=road", "type=parcel")
+        try:
+            with urllib.request.urlopen(
+                    f"https://api.vworld.kr/req/address?{q2}", timeout=30) as r:
+                d = json.loads(r.read())
+            res = d.get("response", {})
+        except Exception:
+            return None
+        if res.get("status") != "OK":
+            return None
+    pt = res.get("result", {}).get("point", {})
+    return [{"lat": float(pt["y"]), "lng": float(pt["x"]),
+             "road_address": res.get("refined", {}).get("text"),
+             "jibun_address": None}]
+
+def vworld_reverse(lat, lng):
+    key = _vworld_key()
+    if not key:
+        return None
+    q = urllib.parse.urlencode({
+        "service": "address", "request": "getAddress", "version": "2.0",
+        "crs": "epsg:4326", "point": f"{lng},{lat}", "type": "both",
+        "format": "json", "key": key})
+    try:
+        with urllib.request.urlopen(
+                f"https://api.vworld.kr/req/address?{q}", timeout=30) as r:
+            d = json.loads(r.read())
+    except Exception as e:
+        print(f"vworld reverse failed :: {e}")
+        return None
+    res = d.get("response", {})
+    if res.get("status") != "OK":
+        return None
+    road = legal = None
+    for item in res.get("result", []):
+        if item.get("type") == "road":
+            road = item.get("text")
+        elif item.get("type") == "parcel":
+            legal = item.get("text")
+    return {"road": road, "legal": legal}
+
+def best_geocode(address, **kw):
+    """NCP if configured, else VWorld — one call site for venue scripts."""
+    return geocode(address, **kw) if _keys() else vworld_geocode(address)
+
+def best_reverse(lat, lng):
+    return reverse_geocode(lat, lng) if _keys() else vworld_reverse(lat, lng)
+
 def _probe():
     if _keys() is None:
         print("naver: keys missing — fill NAVER_MAPS_CLIENT_ID / "

@@ -28,9 +28,8 @@ LANDMARKS = os.path.join(ROOT, "web", "landmarks.json")
 OUT = os.path.join(ROOT, "web", "data", "naver_addresses.json")
 
 def main():
-    if naver_maps._keys() is None:
-        print("naver: keys missing — venue verification skipped "
-              "(see NAVER_SETUP.md)")
+    if naver_maps._keys() is None and naver_maps._vworld_key() is None:
+        print("no geocoder keys (Naver or VWorld) — verification skipped")
         return 0
     lm = json.load(open(LANDMARKS))
     apply_pins = "--apply" in sys.argv
@@ -40,7 +39,7 @@ def main():
     for l in lm["landmarks"]:
         if l.get("lat") is None or not l.get("glb"):
             continue
-        rv = naver_maps.reverse_geocode(l["lat"], l["lng"])
+        rv = naver_maps.best_reverse(l["lat"], l["lng"])
         addr = (rv or {}).get("road") or (rv or {}).get("legal")
         addresses[l["id"]] = {"name": l.get("name"), "lat": l["lat"],
                               "lng": l["lng"], "address": addr}
@@ -54,7 +53,7 @@ def main():
             print(f"  {p['id']:22s} no 'addr' field — paste one into "
                   "landmarks.json pending entry to geocode it")
             continue
-        g = naver_maps.geocode(addr, bias_lat=37.5346, bias_lng=126.9936)
+        g = naver_maps.best_geocode(addr)
         if not g:
             print(f"  {p['id']:22s} geocode MISS for {addr!r}")
             continue
@@ -67,7 +66,7 @@ def main():
             changed = True
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    json.dump(addresses, open(OUT, "w"), ensure_ascii=False, indent=1)
+    json.dump(addresses, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"-> {OUT} ({len(addresses)} addresses)")
     if changed:
         json.dump(lm, open(LANDMARKS, "w"), indent=2)
