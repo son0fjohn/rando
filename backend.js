@@ -232,6 +232,18 @@ const zoneNameEl = document.getElementById("zone-name");
 const zminEl = document.getElementById("zmin");
 const recenterBtn = document.getElementById("recenter");
 
+// on-device coordinate read, shared by zone resolution and encounter
+// proximity confirm; ?devlat=&devlng= lets either be tested without GPS
+async function readDeviceCoords() {
+  if (params.get("devlat") && params.get("devlng")) {
+    console.warn("[rando] DEV coordinates override active");
+    return { lat: Number(params.get("devlat")), lng: Number(params.get("devlng")) };
+  }
+  const pos = await new Promise((res, rej) =>
+    navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+  return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+}
+
 export const presence = {
   zones: [],
   myZone: null,       // zone row while open, else null
@@ -308,17 +320,7 @@ export const presence = {
       console.warn("[rando] DEV zone override active:", z.name);
       return z;
     }
-    let lat, lng;
-    if (params.get("devlat") && params.get("devlng")) {
-      lat = Number(params.get("devlat"));
-      lng = Number(params.get("devlng"));
-      console.warn("[rando] DEV coordinates override active");
-    } else {
-      const pos = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
-      lat = pos.coords.latitude;
-      lng = pos.coords.longitude;
-    }
+    const { lat, lng } = await readDeviceCoords();
     let best = null, bestD = Infinity;
     for (const z of this.zones.filter(z => z.kind !== "auto")) {
       const d = this.haversine(lat, lng, z.lat, z.lng);
@@ -756,6 +758,7 @@ const encState = document.getElementById("enc-state");
 
 export const encounter = {
   timer: null,
+  syncedMatch: null, // last matchId already synced to friends.load()
 
   async refresh() {
     if (!chat.current) return;
@@ -764,12 +767,23 @@ export const encounter = {
     this.render(data[0]);
   },
 
-  render({ i_confirmed, encounter_complete }) {
+  render({ i_confirmed, encounter_complete, encounter_verified }) {
     if (encounter_complete) {
       encBtn.hidden = true;
       encState.hidden = false;
-      encState.className = "complete";
-      encState.textContent = "\u{1F389} Encounter confirmed by both of you";
+      if (encounter_verified) {
+        encState.className = "complete";
+        encState.textContent = "\u{1F389} Encounter confirmed — you're now friends!";
+        // proximity-verified encounters auto-friend server-side; pick up
+        // the new friend without waiting for the next sign-in
+        if (this.syncedMatch !== matching.activeMatch.id) {
+          this.syncedMatch = matching.activeMatch.id;
+          friends.load();
+        }
+      } else {
+        encState.className = "";
+        encState.textContent = "Confirmed by both of you, but you didn't seem to be close enough together.";
+      }
       this.stopPolling();
     } else if (i_confirmed) {
       encBtn.hidden = true;
@@ -784,8 +798,11 @@ export const encounter = {
 
   async confirm() {
     const { data: { session } } = await sb.auth.getSession();
+    // proximity is checked server-side once both sides have confirmed;
+    // this reading is used for that one comparison and then scrubbed
+    const { lat, lng } = await readDeviceCoords();
     const { error } = await sb.from("encounter_confirms")
-      .insert({ match_id: chat.current.id, user_id: session.user.id });
+      .insert({ match_id: matching.activeMatch.id, user_id: session.user.id, lat, lng });
     // duplicate confirm (PK conflict) is fine — state is already ours
     if (error && !/duplicate|23505/.test(error.message + (error.code ?? ""))) throw error;
     await this.refresh();
@@ -839,6 +856,169 @@ cScrim.addEventListener("click", () => chat.closePanel());
 document.getElementById("chat-close").addEventListener("click", () => chat.closePanel());
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !cPanel.hidden) chat.closePanel();
+});
+
+// ===================== friends =====================
+// Permanent, from a verified encounter (see the friends migration): no
+// client-facing "add friend" action exists — friendship is a pure
+// server-side side effect of a proximity-confirmed encounter. This module
+// only lists and displays what the server has already decided.
+
+const friendsBtn = document.getElementById("friends-btn");
+const friendsPanel = document.getElementById("friends-panel");
+const friendsList = document.getElementById("friends-list");
+
+export const friends = {
+  list: [],
+
+  async onSignedIn() { await this.load(); },
+
+  onSignedOut() {
+    this.list = [];
+    friendsBtn.hidden = true;
+    friendsPanel.hidden = true;
+    friendChat.closePanel();
+  },
+
+  async load() {
+    const { data, error } = await sb.rpc("list_friends");
+    if (error) return;
+    this.list = data ?? [];
+    friendsBtn.hidden = false;
+    this.renderList();
+  },
+
+  renderList() {
+    friendsList.innerHTML = "";
+    if (!this.list.length) {
+      const empty = document.createElement("p");
+      empty.className = "os-note";
+      empty.textContent = "No friends yet — meet up and confirm an encounter to connect.";
+      friendsList.appendChild(empty);
+      return;
+    }
+    for (const f of this.list) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "friend-row";
+      const img = document.createElement("img");
+      img.className = "friend-avatar";
+      img.src = avatarThumb(f.avatar);
+      const name = document.createElement("span");
+      name.textContent = f.handle;
+      row.append(img, name);
+      row.addEventListener("click", () => friendChat.openPanel(f));
+      friendsList.appendChild(row);
+    }
+  },
+};
+
+friendsBtn.addEventListener("click", () => {
+  friendsPanel.hidden = !friendsPanel.hidden;
+});
+
+// ===================== friend chat (persistent DM) =====================
+// Structurally parallel to `chat` above (same open/close/subscribe/append/
+// send shape) but reads/writes friend_messages keyed by friendship_id
+// instead of messages keyed by match_id, and has no "active" gate or
+// encounter-bar — a friendship, once formed, doesn't expire.
+
+const fcScrim = document.getElementById("friend-chat-scrim");
+const fcPanel = document.getElementById("friend-chat-panel");
+const fcThread = document.getElementById("friend-chat-thread");
+const fcName = document.getElementById("friend-chat-name");
+const fcAvatar = document.getElementById("friend-chat-avatar");
+const fcForm = document.getElementById("friend-chat-form");
+const fcInput = document.getElementById("friend-chat-input");
+
+export const friendChat = {
+  channel: null,
+  seen: new Set(),
+  myId: null,
+  friendshipId: null,
+
+  async openPanel(friend) {
+    const { data: { session } } = await sb.auth.getSession();
+    this.myId = session.user.id;
+    this.friendshipId = friend.friendship_id;
+    fcName.textContent = friend.handle;
+    fcAvatar.src = avatarThumb(friend.avatar);
+    fcThread.innerHTML = "";
+    this.seen.clear();
+    const { data: history } = await sb
+      .from("friend_messages")
+      .select("*")
+      .eq("friendship_id", this.friendshipId)
+      .order("created_at");
+    (history ?? []).forEach(m => this.append(m));
+    this.subscribe();
+    fcScrim.hidden = false;
+    fcPanel.hidden = false;
+    friendsPanel.hidden = true;
+    fcInput.focus();
+  },
+
+  closePanel() {
+    fcScrim.hidden = true;
+    fcPanel.hidden = true;
+    this.unsubscribe();
+  },
+
+  subscribe() {
+    this.unsubscribe();
+    const friendshipId = this.friendshipId;
+    this.channel = sb
+      .channel("friend-" + friendshipId)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "friend_messages", filter: "friendship_id=eq." + friendshipId },
+        payload => this.append(payload.new))
+      .subscribe();
+  },
+
+  unsubscribe() {
+    if (this.channel) {
+      sb.removeChannel(this.channel);
+      this.channel = null;
+    }
+  },
+
+  append(m) {
+    if (this.seen.has(m.id)) return;
+    this.seen.add(m.id);
+    const el = document.createElement("div");
+    el.className = "msg " + (m.sender === this.myId ? "me" : "them");
+    el.textContent = m.body;
+    fcThread.appendChild(el);
+    fcThread.scrollTop = fcThread.scrollHeight;
+  },
+
+  async send(text) {
+    const { data, error } = await sb
+      .from("friend_messages")
+      .insert({ friendship_id: this.friendshipId, sender: this.myId, body: text })
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    if (data) this.append(data); // optimistic; realtime echo deduped by id
+  },
+};
+
+fcForm.addEventListener("submit", async e => {
+  e.preventDefault();
+  const text = fcInput.value.trim();
+  if (!text || !friendChat.friendshipId) return;
+  fcInput.value = "";
+  try {
+    await friendChat.send(text);
+  } catch (err) {
+    alert(err.message || String(err));
+  }
+});
+
+document.getElementById("friend-chat-close").addEventListener("click", () => friendChat.closePanel());
+fcScrim.addEventListener("click", () => friendChat.closePanel());
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !fcPanel.hidden) friendChat.closePanel();
 });
 
 // keep the match button in sync with presence/auth state
@@ -1086,6 +1266,7 @@ presence.onSignedIn = async function () {
   await _pOnSignedIn();
   await pubchat.onSignedIn();
   await avatar.load();
+  await friends.onSignedIn();
 };
 const _pOnSignedOut = presence.onSignedOut.bind(presence);
 presence.onSignedOut = function () {
@@ -1093,6 +1274,7 @@ presence.onSignedOut = function () {
   pubchat.onSignedOut();
   outfitBtn.hidden = true;
   outfitSheet.hidden = true;
+  friends.onSignedOut();
 };
 
 // ===================== ambience & camera chrome =====================
