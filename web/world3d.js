@@ -1058,11 +1058,13 @@ export const world3d = {
         // so they never extrude to building height.
         geo.computeBoundingBox();
         const msz = geo.boundingBox.getSize(new THREE.Vector3());
-        let fp = fpList.find(b => pointInPoly(l.pos.x, l.pos.z, b.p));
+        // bound heroes (bind_heroes.py): the registry building is
+        // AUTHORITATIVE — its exact footprint + floor height, no searching
+        let fp = l.fp ? { p: l.fp, h: l.h } : null;
+        if (!fp) fp = fpList.find(b => pointInPoly(l.pos.x, l.pos.z, b.p));
         if (!fp) {
-          // EXIF-pinned heroes anchor where the CAMERA stood (street side),
-          // not inside the building — fall back to the nearest footprint
-          // and recenter the hero onto its plot
+          // unbound photo pins anchor where the CAMERA stood (street side)
+          // — fall back to the nearest footprint and recenter onto it
           let best = null, bd = 22 * 22;
           for (const b of fpList) {
             let cx = 0, cz = 0;
@@ -1075,6 +1077,18 @@ export const world3d = {
             fp = best.b;
             l.pos.set(best.cx, terrainY(best.cx, best.cz), best.cz);
           }
+        }
+        if (fp && l.fp && !l.yaw) {
+          // face the model along the footprint's longest edge (bbox fit
+          // has no rotation; a diagonal-street building read as twisted).
+          // Explicit l.yaw in landmarks.json overrides per venue.
+          let bl = 0, bang = 0;
+          for (let e2 = 0; e2 < fp.p.length; e2++) {
+            const [ax, az] = fp.p[e2], [bx3, bz3] = fp.p[(e2 + 1) % fp.p.length];
+            const el = (bx3 - ax) ** 2 + (bz3 - az) ** 2;
+            if (el > bl) { bl = el; bang = Math.atan2(bz3 - az, bx3 - ax); }
+          }
+          l._autoYaw = -bang; // three Y-rotation: +CCW viewed from above
         }
         if (fp) {
           let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
@@ -1136,7 +1150,9 @@ export const world3d = {
           ...(emis ? { emissiveMap: emis } : {}),
         }));
         mesh.position.copy(l.pos);
-        mesh.rotation.y = (l.yaw ?? 0) * Math.PI / 180;
+        mesh.rotation.y = l.yaw != null
+          ? l.yaw * Math.PI / 180
+          : (l._autoYaw ?? 0);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         this.scene.add(mesh);
