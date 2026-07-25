@@ -103,7 +103,11 @@ create trigger encounter_confirms_complete
 
 -- ---------- encounter_status(): expose "verified" (=friended) separately
 -- from merely "both tapped confirm" ----------
-create or replace function public.encounter_status(p_match uuid)
+-- return type changes (2 cols -> 3), and Postgres cannot change a return
+-- type via CREATE OR REPLACE: drop first, then re-grant below (drop loses
+-- the 006 grants; REPLACE would have kept them, DROP+CREATE does not)
+drop function if exists public.encounter_status(uuid);
+create function public.encounter_status(p_match uuid)
 returns table (i_confirmed boolean, encounter_complete boolean, encounter_verified boolean)
 language plpgsql
 security definer
@@ -124,6 +128,9 @@ begin
     exists (select 1 from friendships f where f.match_id = p_match);
 end;
 $$;
+
+revoke all on function public.encounter_status(uuid) from public, anon;
+grant execute on function public.encounter_status(uuid) to authenticated;
 
 -- ---------- friend_messages (mirrors 005_messages.sql, no "active" gate) ----------
 create table public.friend_messages (
