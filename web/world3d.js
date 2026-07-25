@@ -1162,12 +1162,6 @@ export const world3d = {
         outline.rotation.copy(mesh.rotation);
         this.scene.add(outline);
         occupy(l.pos.x, l.pos.z, l.clear);
-        // floating venue label above the hero model (real names are fine
-        // here — code-rendered UI text, not baked into generated art)
-        if (l.name) {
-          const hp = new THREE.Vector3(l.pos.x, l.pos.y + placedH + 5, l.pos.z);
-          this.addLabel(l.name, "hero", 3, () => hp, l.glow ?? null);
-        }
         // nightlife venues ground their light: warm additive pool tinting
         // the street around the hero at night (color from landmarks.json)
         if (NIGHT && l.glow) {
@@ -1209,6 +1203,16 @@ export const world3d = {
       } catch (e) {
         console.warn(`landmark ${l.id} failed to load`, e);
       }
+    }
+
+    // ---- venue labels: independent of any 3D hero model. Venues render
+    // as regular registry buildings (consistent field); the LABEL is the
+    // venue layer — anchored at the building's registry height, tinted by
+    // the venue's glow color.
+    for (const l of landmarks) {
+      if (!l.name || l.lat == null) continue;
+      const vp = new THREE.Vector3(l.pos.x, l.pos.y + (l.h ?? 12) + 6, l.pos.z);
+      this.addLabel(l.name, "hero", 3, () => vp, l.glow ?? null);
     }
 
     // ---- OSM layers (Task 3): subway exits, crosswalks, street lights ----

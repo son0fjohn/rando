@@ -8,7 +8,7 @@
       "yaw": 180,
       "h": 38.0,
       "clear": 42,
-      "glb": "world2/landmarks/hamilton-hotel.glb",
+      "glb": null,
       "name": "Hamilton Hotel",
       "fp": [
         [
@@ -50,7 +50,7 @@
       "lng": 126.993752,
       "h": 4,
       "clear": 10,
-      "glb": "world2/landmarks/itaewon-station.glb",
+      "glb": null,
       "glow": "#ffc84d",
       "name": "Itaewon Station",
       "fp": [
@@ -83,7 +83,7 @@
       "lng": 126.996588,
       "h": 12.7,
       "clear": 22,
-      "glb": "world2/landmarks/grand-ole-opry.glb",
+      "glb": null,
       "glow": "#ff5d4d",
       "name": "Grand Ole Opry",
       "fp": [
@@ -124,7 +124,7 @@
       "lng": 126.992379,
       "h": 14,
       "clear": 18,
-      "glb": "world2/landmarks/jacks-bar.glb",
+      "glb": null,
       "glow": "#ff5d8a",
       "name": "Jack's Bar",
       "fp": [
@@ -189,7 +189,7 @@
       "lng": 126.99492,
       "h": 8.4,
       "clear": 16,
-      "glb": "world2/landmarks/soap.glb",
+      "glb": null,
       "glow": "#4da6ff",
       "name": "Soap",
       "fp": [
@@ -226,7 +226,7 @@
       "lng": 126.994581,
       "h": 12.7,
       "clear": 16,
-      "glb": "world2/landmarks/danco.glb",
+      "glb": null,
       "glow": "#ff5d3d",
       "name": "Danco",
       "fp": [
@@ -269,7 +269,7 @@
       "id": "waikiki",
       "h": 16.9,
       "clear": 14,
-      "glb": "world2/landmarks/waikiki.glb",
+      "glb": null,
       "glow": "#4de8c8",
       "lat": 37.534966,
       "lng": 126.994781,
@@ -306,7 +306,7 @@
       "id": "agave",
       "h": 8.4,
       "clear": 14,
-      "glb": "world2/landmarks/agave.glb",
+      "glb": null,
       "glow": "#7dff5e",
       "lat": 37.53506,
       "lng": 126.994291,
@@ -353,7 +353,7 @@
       "lng": 126.993249,
       "h": 21.1,
       "clear": 14,
-      "glb": "world2/landmarks/waikiki-beach-pub.glb",
+      "glb": null,
       "glow": "#4db8ff",
       "name": "Waikiki Beach Pub",
       "fp": [
@@ -400,7 +400,7 @@
       "id": "bolero",
       "h": 21.1,
       "clear": 16,
-      "glb": "world2/landmarks/bolero.glb",
+      "glb": null,
       "glow": "#ff6a55",
       "name": "Bolero",
       "addr": "\uc11c\uc6b8\ud2b9\ubcc4\uc2dc \uc6a9\uc0b0\uad6c \uc774\ud0dc\uc6d0\ub85c 220",
@@ -434,7 +434,7 @@
       "id": "grainhaus",
       "h": 21.1,
       "clear": 16,
-      "glb": "world2/landmarks/grainhaus.glb",
+      "glb": null,
       "glow": "#c8f04a",
       "name": "Grainhaus",
       "addr": "\uc11c\uc6b8\ud2b9\ubcc4\uc2dc \uc6a9\uc0b0\uad6c \uc6b0\uc0ac\ub2e8\ub85c 40",
