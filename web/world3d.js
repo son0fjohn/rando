@@ -114,8 +114,8 @@ const ZONE_FLAVOR = [
   // plaza: building-clear radius. The station/alley crossroads are the
   // DENSEST real blocks in Itaewon — a 58u void there read as a bald spot
   // (user report, confirmed against the registry). Green zones keep it.
-  { lat: 37.5346, lng: 126.9946, build: 1.0,  green: 0.05, plaza: 10 }, // Itaewon station
-  { lat: 37.5349, lng: 126.9941, build: 0.95, green: 0.05, plaza: 12 }, // Hamilton Alley
+  { lat: 37.5346, lng: 126.9946, build: 1.0,  green: 0.05, plaza: 6 },  // Itaewon station
+  { lat: 37.5349, lng: 126.9941, build: 0.95, green: 0.05, plaza: 6 },  // Hamilton Alley
   { lat: 37.5392, lng: 126.9887, build: 0.7,  green: 0.3,  plaza: 34 }, // Gyeongnidan
   { lat: 37.5340, lng: 126.9868, build: 0.55, green: 0.35, plaza: 34 }, // Noksapyeong
   { lat: 37.5418, lng: 126.9882, build: 0.3,  green: 0.9,  plaza: 58 }, // Haebangchon
@@ -1676,14 +1676,9 @@ export const world3d = {
     this.zoneRings.clear();
     for (const rec of this.labels.filter(l => l.kind === "zone")) this.removeLabel(rec);
     for (const z of zones.filter(z => z.kind !== "auto")) {
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(11, 13.5, 40),
-        new THREE.MeshBasicMaterial({ color: 0x8fc2ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
-      ring.rotation.x = -Math.PI / 2;
+      // rings removed (user call): two glowing circles at the core anchors
+      // read as designated empty plazas — zone identity is the LABEL now
       const p = geoPos(z.lat, z.lng);
-      ring.position.set(p.x, p.y + 0.35, p.z);
-      this.zoneRings.add(ring);
-      // crisp DOM zone label (never baked into the pixelated canvas)
       const zp = new THREE.Vector3(p.x, p.y + 26, p.z);
       this.addLabel(z.name ?? z.id, "zone", 3.5, () => zp);
     }
