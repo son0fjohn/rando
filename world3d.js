@@ -1070,12 +1070,14 @@ export const world3d = {
           emis.colorSpace = THREE.SRGBColorSpace;
           emis.flipY = piece.mat.map.flipY; // glTF uses flipY=false — must match
         }
+        // no mask => emissive must stay BLACK, or the whole model glows
+        // solid white (also silences THREE's undefined-emissiveMap warn)
         const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
           map: piece.mat.map, flatShading: true,
           color: piece.mat.color ?? 0xffffff,
-          emissive: NIGHT ? 0xffffff : 0x000000,
-          emissiveMap: emis ?? undefined,
-          emissiveIntensity: NIGHT ? 0.9 : 0,
+          emissive: NIGHT && emis ? 0xffffff : 0x000000,
+          emissiveIntensity: NIGHT && emis ? 0.9 : 0,
+          ...(emis ? { emissiveMap: emis } : {}),
         }));
         mesh.position.copy(l.pos);
         mesh.rotation.y = (l.yaw ?? 0) * Math.PI / 180;
