@@ -38,7 +38,10 @@ export const PART_OPTIONS3 = {
   hairColor: Object.keys(HAIR_RGB),
   face: ["f1", "f2", "f3", "f4", "f5", "f6"],
   iris: Object.keys(IRIS3_HEX),
-  top: ["none", "tee-baggy-black"],
+  // crop-pink / ringer-white / shirt-open-white exist as assets but their
+  // FRONT panels fused into the body mesh in this segmentation roll —
+  // listed again once a cleaner gen lands (see rando-wardrobe-pipeline)
+  top: ["none", "tee-baggy-black", "tee-white-graphic", "hoodie-maroon"],
   bottom: ["none", "cargo-black", "jeans-baggy-blue", "cargo-khaki",
            "track-navy", "camo", "loose-brown", "skirt-denim-grey",
            "skirt-pleated-black", "shorts-green", "shorts-blue"],
@@ -749,15 +752,14 @@ function buildAnimApi(cfg) {
   rig.traverse(o => { if (o.isSkinnedMesh && !bodySkinned) bodySkinned = o; });
 
   // Tripo rigs carry wild mesh-node transforms: a static Box3 measure is
-  // off by orders of magnitude vs what the skinning pipeline renders. Pose
-  // the clip's first frame and measure TRUE skinned world bounds.
-  mixer.update(0);
-  fit.updateWorldMatrix(true, true);
-  // boneMatrices are renderer-updated; before the first render they're
-  // stale and the measure comes out orders of magnitude off — sync now
-  bodySkinned.skeleton.update();
-  const bb = new THREE.Box3();
-  {
+  // off by orders of magnitude vs what the skinning pipeline renders.
+  // Measure TRUE skinned world bounds — and note boneMatrices are
+  // renderer-updated, so skeleton.update() must be forced per sample.
+  const measure = (clipTime) => {
+    mixer.setTime(clipTime);
+    fit.updateWorldMatrix(true, true);
+    bodySkinned.skeleton.update();
+    const box = new THREE.Box3();
     const pos = bodySkinned.geometry.attributes.position;
     const v = new THREE.Vector3();
     // r160 names it boneTransform; later releases applyBoneTransforms
@@ -767,14 +769,25 @@ function buildAnimApi(cfg) {
       v.fromBufferAttribute(pos, i);
       skinV(i, v);
       v.applyMatrix4(bodySkinned.matrixWorld);
-      bb.expandByPoint(v);
+      box.expandByPoint(v);
     }
+    return box;
+  };
+  const bb = measure(0); // frame 0: scale + centering
+  // ground on the LOWEST foot contact across the idle cycle — presets can
+  // hover above their frame-0 pose for most of the loop, which read as
+  // "floating above the map"
+  let minY = bb.min.y;
+  const idleDur = AT.clips.idle?.duration ?? 0;
+  for (const f of [0.2, 0.45, 0.7, 0.95]) {
+    minY = Math.min(minY, measure(f * idleDur).min.y);
   }
+  mixer.setTime(0);
   const size = new THREE.Vector3();
   bb.getSize(size);
   const s = CHAR_H / size.y;
   fit.scale.setScalar(s);
-  fit.position.set(-s * (bb.min.x + bb.max.x) / 2, -s * bb.min.y,
+  fit.position.set(-s * (bb.min.x + bb.max.x) / 2, -s * minY,
                    -s * (bb.min.z + bb.max.z) / 2);
   group.add(fit);
   // the rigged body's proportions shift slightly vs the static template —

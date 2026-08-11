@@ -22,9 +22,10 @@ const LEGACY_CHAR = (() => {
   return null;
 })();
 const GLB_MODE = LEGACY_CHAR === "glb";
-// ?anim=1: player uses the Tripo-retargeted skinned clips (idle/walk) with
-// runtime weight-transfer garments — opt-in until visually signed off
-const ANIM_CHAR = new URLSearchParams(location.search).get("anim") === "1";
+// Animated player is the DEFAULT: Tripo-retargeted idle/walk clips with
+// runtime weight-transfer garments, wired to movement (walking flag drives
+// the crossfade). ?anim=0 falls back to the static bob.
+const ANIM_CHAR = new URLSearchParams(location.search).get("anim") !== "0";
 
 const CHAR_H = 15;
 
@@ -113,17 +114,8 @@ export const ARCH_NPC_DEFS = [
     idle: "jog",    yaw: 0 },
 ];
 
-// NPCs at real spots: one pair in Gyeongnidan, one by Itaewon station.
-const NPC_DEFS = [
-  { id: "npc-silver",  name: "Rae",  lat: 37.5390, lng: 126.9884, partner: "npc-dreads",
-    preset: { body: "grey",   eyes: "sleepy",  head: "floppyears" } },
-  { id: "npc-dreads",  name: "Miro", lat: 37.5389, lng: 126.9892, partner: "npc-silver",
-    preset: { body: "navy",   eyes: "default", iris: "brown", head: "teardrop" } },
-  { id: "npc-buzzcut", name: "Jun",  lat: 37.5349, lng: 126.9951, partner: "npc-cans",
-    preset: { body: "red",    eyes: "anime",   iris: "orange", head: "smallspikes" } },
-  { id: "npc-cans",    name: "Koa",  lat: 37.5347, lng: 126.9958, partner: "npc-buzzcut",
-    preset: { body: "orange", eyes: "spiral",  head: "notailspike" } },
-];
+// The ambient blob NPC pairs are retired (user call 2026-08-11): the three
+// archetype mascots above are the only NPCs in the world now.
 
 // day/night mode: auto from local time, ?mode=night|day overrides.
 // Palettes are the law from assets/world/STYLE.md.
@@ -246,25 +238,6 @@ export const world3d = {
     this.scene.add(this.zoneRings);
     this.remoteGroup = new THREE.Group();
     this.scene.add(this.remoteGroup);
-    const spawnNpcs = () => {
-      for (const n of NPC_DEFS) {
-        const pos = geoPos(n.lat, n.lng);
-        // NPCs stay on the colorful procedural blobs (variety); only the
-        // legacy GLB mode swaps them for the animated template
-        const api = GLB_MODE ? makeGLBCharacterSync(n.preset) ?? undefined
-          : makeCharacter(n.preset);
-        const rec = this.makeChar(n.preset, pos, this.scene, api, n.name);
-        const partner = NPC_DEFS.find(d => d.id === n.partner);
-        if (partner) {
-          const pp = geoPos(partner.lat, partner.lng);
-          rec.api.group.rotation.y = Math.atan2(pp.x - pos.x, pp.z - pos.z);
-        }
-      }
-      this.needsRender = true;
-    };
-    // in GLB mode wait for the shared template so NPCs clone synchronously
-    if (GLB_MODE) loadGLBTemplate().then(spawnNpcs, spawnNpcs);
-    else spawnNpcs();
     this.spawnArchNpcs();
     // humanoid template loads in the background; once ready, rebuild any
     // characters that spawned as blob fallbacks in the meantime
@@ -1691,10 +1664,13 @@ export const world3d = {
         L.el.style.display = "none"; continue;
       }
       const dist = this.camera.position.distanceTo(pos);
-      const far = L.kind === "district" ? 980 : L.kind === "zone" ? 640 : 460;
+      // npc tags never fade, shrink, or distance-cull — always readable
+      const far = L.kind === "npc" ? Infinity
+        : L.kind === "district" ? 980 : L.kind === "zone" ? 640 : 460;
       if (dist > far) { L.el.style.display = "none"; continue; }
-      const s = Math.max(0.6, Math.min(1.22, 170 / dist));
-      const op = Math.max(0, Math.min(1, (far - dist) / (far * 0.22)));
+      const s = L.kind === "npc" ? 1 : Math.max(0.6, Math.min(1.22, 170 / dist));
+      const op = L.kind === "npc" ? 1
+        : Math.max(0, Math.min(1, (far - dist) / (far * 0.22)));
       placed.push({ L, x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H,
                     s, op, dist });
     }
@@ -1775,8 +1751,8 @@ export const world3d = {
         const box = new THREE.Box3().setFromObject(holder);
         const size = new THREE.Vector3();
         box.getSize(size);
-        const s = 11.5 / size.y;
-        holder.scale.setScalar(s);
+        const s = CHAR_H / size.y; // same stature as players/old blobs —
+        holder.scale.setScalar(s); // chibi-short mascots vanished at map zoom
         holder.updateWorldMatrix(true, true);
         const b2 = new THREE.Box3().setFromObject(holder);
         holder.position.set(-(b2.min.x + b2.max.x) / 2, -b2.min.y, -(b2.min.z + b2.max.z) / 2);
@@ -1801,18 +1777,52 @@ export const world3d = {
           },
         };
         const pos = geoPos(def.lat, def.lng);
-        const rec = this.makeChar(def, pos, this.scene, api, def.name);
+        const rec = this.makeChar(def, pos, this.scene, api, null);
         rec.meta = { archId: def.id, arch: def.arch, name: def.name };
-        // mascots are chibi — drop the name pill to just above the head
-        if (rec.label) {
-          this.removeLabel(rec.label);
-          rec.label = this.addLabel(def.name, "player", 2,
-            () => rec.api.group.position.clone().setY(rec.api.group.position.y + 16.5));
-        }
+        // dedicated always-readable tag (name · archetype) with a reserved
+        // slot above for a future lobby countdown — see setNpcTimer
+        rec.label = this.addNpcTag(def,
+          () => rec.api.group.position.clone().setY(rec.api.group.position.y + CHAR_H + 3));
         this.archRecs[def.id] = rec;
         this.needsRender = true;
       }).catch(e => console.warn("[rando] arch npc load failed:", def.id, e));
     }
+  },
+
+  // NPC nametag: a stacked DOM label — hidden countdown slot on top (the
+  // future "lobby active nearby" timer mounts there without relayout),
+  // name · archetype pill below. Kind "npc" opts out of distance
+  // fade/scale/decluttering in placeLabels: always visible, always
+  // readable.
+  addNpcTag(def, getPos) {
+    const el = document.createElement("div");
+    el.className = "wlabel wl-npc";
+    const timer = document.createElement("div");
+    timer.className = "npc-timer";
+    timer.hidden = true;
+    const name = document.createElement("div");
+    name.className = "npc-name";
+    name.textContent = def.name;
+    const arch = document.createElement("span");
+    arch.className = "npc-arch";
+    arch.textContent = " · " + def.arch.toUpperCase();
+    name.appendChild(arch);
+    el.appendChild(timer);
+    el.appendChild(name);
+    this.labelLayer.appendChild(el);
+    const rec = { el, getPos, pri: 6, kind: "npc", len: def.name.length + def.arch.length + 3, timer };
+    this.labels.push(rec);
+    return rec;
+  },
+
+  // future-lobby hook: text shows a countdown chip above the NPC's name,
+  // null hides it. Layout is already reserved — nothing shifts.
+  setNpcTimer(id, text) {
+    const rec = this.archRecs[id]?.label;
+    if (!rec?.timer) return;
+    rec.timer.hidden = text == null;
+    rec.timer.textContent = text ?? "";
+    this.needsRender = true;
   },
 
   // GPS proximity result from backend: in range -> dynamic idle runs.
@@ -1833,10 +1843,13 @@ export const world3d = {
     api.group.position.copy(pos);
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(1, 24),
-      new THREE.MeshBasicMaterial({ color: 0x0a0e14, transparent: true, opacity: 0.25 }));
+      new THREE.MeshBasicMaterial({ color: 0x0a0e14, transparent: true, opacity: 0.25,
+        depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
     shadow.rotation.x = -Math.PI / 2;
     shadow.scale.set(5.4, 2.6, 1);
-    shadow.position.set(pos.x, pos.y + 0.42, pos.z);
+    // hug the ground: the old +0.42 lift read as a ring around the shins
+    // and made everyone look airborne at map zoom
+    shadow.position.set(pos.x, pos.y + 0.08, pos.z);
     parent.add(api.group);
     parent.add(shadow);
     // character tick()s write group.position.y as an ABSOLUTE bob offset
@@ -1895,11 +1908,16 @@ export const world3d = {
         }).catch(() => install(undefined)); // fall back to procedural
       } else if (!LEGACY_CHAR) {
         const token = (this._glbToken = (this._glbToken ?? 0) + 1);
-        (ANIM_CHAR ? makeAnimatedCharacter : makeHumanCharacter)(opts.avatar).then(api => {
+        const arrive = api => {
           if (token !== this._glbToken) return;
           if (this.player) { this.removeChar(this.player, this.scene); this.player = null; }
           install(api);
-        }).catch(() => install(undefined)); // fall back to the blob
+        };
+        (ANIM_CHAR ? makeAnimatedCharacter : makeHumanCharacter)(opts.avatar)
+          .then(arrive)
+          // anim clips missing/broken -> static humanoid -> blob
+          .catch(() => makeHumanCharacter(opts.avatar).then(arrive)
+            .catch(() => install(undefined)));
       } else {
         install(undefined);
       }
@@ -1938,7 +1956,7 @@ export const world3d = {
     this.anchor(el, () => new THREE.Vector3(p.x, p.y + headY, p.z));
   },
   anchorAtNpc(el, npcId) {
-    const n = NPC_DEFS.find(n => n.id === npcId);
+    const n = ARCH_NPC_DEFS.find(n => n.id === npcId);
     if (!n) return;
     this.anchorAtZone(el, n.lat, n.lng);
   },
@@ -2139,7 +2157,7 @@ export const world3d = {
       rec.api.tick(t);
       rec.api.group.position.y += rec.baseY;
       rec.shadow.position.set(rec.api.group.position.x,
-        terrainY(rec.api.group.position.x, rec.api.group.position.z) + 0.42,
+        terrainY(rec.api.group.position.x, rec.api.group.position.z) + 0.08,
         rec.api.group.position.z);
     }
 
