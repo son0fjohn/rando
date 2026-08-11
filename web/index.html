@@ -237,6 +237,41 @@
   .wl-hero { font-size: 12px; font-weight: 700; }
   .wl-player { background: rgba(10, 132, 255, 0.85); color: #fff; font-size: 11px; }
   .wl-exit { font-size: 10px; color: #ffe9c4; background: rgba(24, 20, 26, 0.62); }
+  /* archetype NPC tag: stacked — countdown slot on top (hidden until a
+     lobby is active nearby), name · archetype pill below. Never fades or
+     shrinks with distance (see placeLabels kind "npc"). */
+  .wl-npc {
+    background: none;
+    padding: 0;
+    text-align: center;
+  }
+  .wl-npc .npc-name {
+    background: rgba(24, 20, 26, 0.82);
+    border: 1px solid rgba(255, 214, 10, 0.55);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #ffe9a8;
+  }
+  .wl-npc .npc-arch {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #c8bfae;
+  }
+  .wl-npc .npc-timer {
+    display: inline-block;
+    margin-bottom: 3px;
+    background: rgba(255, 214, 10, 0.92);
+    color: #241d0a;
+    border-radius: 8px;
+    padding: 1px 8px;
+    font-size: 10px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .wl-npc .npc-timer[hidden] { display: none; }
 
   /* DOM overlays (bubbles, YOU tag) pinned to 3D points by world3d.js */
   #bubble-layer {
@@ -1170,6 +1205,73 @@
     transform: translate(-50%, -50%);
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
   }
+  /* lobby-scoped chat: bottom-right column, clear of the joystick */
+  #lobby-chat {
+    position: absolute;
+    right: 10px;
+    bottom: 16px;
+    z-index: 6;
+    width: min(62%, 250px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  #lobby-chat-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 132px;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  #lobby-chat-feed .lc-msg {
+    align-self: flex-end;
+    max-width: 100%;
+    background: rgba(15, 17, 22, 0.72);
+    color: #f2ecdf;
+    border-radius: 10px;
+    padding: 4px 9px;
+    font-size: 11px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+  #lobby-chat-feed .lc-msg b {
+    color: #ffd60a;
+    font-weight: 700;
+    margin-right: 4px;
+  }
+  #lobby-chat-feed .lc-sys {
+    align-self: flex-end;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 9.5px;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  }
+  #lobby-chat-form {
+    display: flex;
+    gap: 5px;
+  }
+  #lobby-chat-form input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-size: 12px;
+    background: rgba(15, 17, 22, 0.72);
+    color: #fff;
+    outline: none;
+  }
+  #lobby-chat-form input::placeholder { color: rgba(255, 255, 255, 0.45); }
+  #lobby-chat-form button {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 214, 10, 0.92);
+    color: #241d0a;
+    font-weight: 800;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -1322,6 +1424,14 @@
         <button id="lobby-exit" type="button" aria-label="Leave">&#10005;</button>
         <div id="lobby-title"></div>
         <div id="lobby-stick"><div id="lobby-nub"></div></div>
+        <!-- lobby-scoped chat: only players inside THIS lobby instance -->
+        <div id="lobby-chat">
+          <div id="lobby-chat-feed"></div>
+          <form id="lobby-chat-form">
+            <input id="lobby-chat-input" maxlength="160" placeholder="say it to the lobby&hellip;" autocomplete="off">
+            <button type="submit" aria-label="Send">&#8593;</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>
