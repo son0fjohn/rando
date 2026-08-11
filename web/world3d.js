@@ -7,10 +7,24 @@ import * as THREE from "https://esm.sh/three@0.160.0";
 import { mergeGeometries } from "https://esm.sh/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { makeCharacter, makeGLBCharacter, makeGLBCharacterSync, loadGLBTemplate } from "./character3d.js";
+import { makeHumanCharacter, makeHumanCharacterSync, loadHumanTemplate,
+         makeAnimatedCharacter, staticize, matteify } from "./avatar3.js";
 import { THEME } from "./theme.js";
 
 // generated GLB characters are the default; ?glb=0 falls back to procedural
-const GLB_MODE = new URLSearchParams(location.search).get("glb") !== "0";
+// character system: avatar3 humanoid by default; ?legacy=glb keeps the old
+// animated Tripo GLB, ?legacy=blob the procedural blob (?glb=0 kept as an
+// alias of blob for old links)
+const LEGACY_CHAR = (() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("legacy") === "glb") return "glb";
+  if (q.get("legacy") === "blob" || q.get("glb") === "0") return "blob";
+  return null;
+})();
+const GLB_MODE = LEGACY_CHAR === "glb";
+// ?anim=1: player uses the Tripo-retargeted skinned clips (idle/walk) with
+// runtime weight-transfer garments — opt-in until visually signed off
+const ANIM_CHAR = new URLSearchParams(location.search).get("anim") === "1";
 
 const CHAR_H = 15;
 
@@ -80,6 +94,24 @@ export function terrainY(x, z) {
   }
   return h;
 }
+
+// Archetype quest NPCs — the three mascots, each locked to its real venue.
+// Static in place (no roaming); their dynamic idle plays only while the
+// player is physically in range (GPS proximity, resolved by backend.js via
+// the meetup-confirm readDeviceCoords pattern). glb files are the rigged
+// Tripo MVP mascots; rendering is static-mesh + group-level motion, same
+// contract as every other character system here.
+export const ARCH_NPC_DEFS = [
+  { id: "arch-chill",  arch: "chill",  name: "Nabi",
+    glb: "npcs/chill.glb",  lat: 37.5349347, lng: 126.9920648, // Ikovox cafe
+    idle: "sway",   yaw: 0 },
+  { id: "arch-chaos",  arch: "chaos",  name: "Nalli",
+    glb: "npcs/chaos.glb",  lat: 37.534086,  lng: 126.996588,  // Grand Ole Opry
+    idle: "bounce", yaw: 0 },
+  { id: "arch-sporty", arch: "sporty", name: "Dali",
+    glb: "npcs/sporty.glb", lat: 37.5496508, lng: 126.9933311, // Namsan 산스장
+    idle: "jog",    yaw: 0 },
+];
 
 // NPCs at real spots: one pair in Gyeongnidan, one by Itaewon station.
 const NPC_DEFS = [
@@ -217,7 +249,10 @@ export const world3d = {
     const spawnNpcs = () => {
       for (const n of NPC_DEFS) {
         const pos = geoPos(n.lat, n.lng);
-        const api = GLB_MODE ? makeGLBCharacterSync(n.preset) ?? undefined : undefined;
+        // NPCs stay on the colorful procedural blobs (variety); only the
+        // legacy GLB mode swaps them for the animated template
+        const api = GLB_MODE ? makeGLBCharacterSync(n.preset) ?? undefined
+          : makeCharacter(n.preset);
         const rec = this.makeChar(n.preset, pos, this.scene, api, n.name);
         const partner = NPC_DEFS.find(d => d.id === n.partner);
         if (partner) {
@@ -230,6 +265,12 @@ export const world3d = {
     // in GLB mode wait for the shared template so NPCs clone synchronously
     if (GLB_MODE) loadGLBTemplate().then(spawnNpcs, spawnNpcs);
     else spawnNpcs();
+    this.spawnArchNpcs();
+    // humanoid template loads in the background; once ready, rebuild any
+    // characters that spawned as blob fallbacks in the meantime
+    if (!LEGACY_CHAR) {
+      loadHumanTemplate().then(() => this.refreshChars(), () => {});
+    }
     this.loadWorld(); // async: real roads + zone-flavored buildings/trees
 
     this.bindControls();
@@ -1694,8 +1735,100 @@ export const world3d = {
   chars: new Set(),      // every live modular character (for animation)
   remoteRecs: [],
 
+  // ---- archetype quest NPCs (static mascots at their locked venues) ----
+  archRecs: {},          // id -> char rec (rec.meta.archId set)
+  onArchNpcTap: null,    // set by backend.js; receives the ARCH_NPC_DEFS entry
+
+  // per-archetype dynamic idles (group-level, same bob contract as every
+  // character: tick writes an ABSOLUTE bob y; world tick re-adds terrain).
+  // Only animated while rec.active — out of range they hold a static pose.
+  ARCH_IDLES: {
+    sway: (g, t, p, faceYaw) => {        // chill: slow calm float + lean
+      g.position.y = Math.sin(t * 1.5 + p) * 0.10 + 0.10;
+      g.rotation.z = Math.sin(t * 0.75 + p) * 0.06;
+      g.rotation.y = faceYaw + Math.sin(t * 0.5 + p) * 0.05;
+    },
+    bounce: (g, t, p, faceYaw) => {      // chaos: restless hops, looks around
+      g.position.y = Math.abs(Math.sin(t * 4.6 + p)) * 1.0;
+      g.rotation.z = Math.sin(t * 9.2 + p) * 0.07;
+      g.rotation.y = faceYaw + Math.sin(t * 2.3 + p) * 0.18;
+    },
+    jog: (g, t, p, faceYaw) => {         // sporty: quick light jog-in-place
+      g.position.y = Math.abs(Math.sin(t * 7 + p)) * 0.5;
+      g.rotation.x = 0.05 + Math.sin(t * 14 + p) * 0.02;
+      g.rotation.y = faceYaw;
+    },
+  },
+
+  spawnArchNpcs() {
+    const loader = new GLTFLoader();
+    for (const def of ARCH_NPC_DEFS) {
+      loader.loadAsync(def.glb).then(g => {
+        const src = g.scene;
+        src.updateWorldMatrix(true, true);
+        staticize(src);   // Tripo rig renders as static mesh (avatar3 rule)
+        matteify(src);
+        // normalize: chibi mascots stand a bit shorter than players
+        const holder = new THREE.Group();
+        holder.add(src);
+        holder.updateWorldMatrix(true, true);
+        const box = new THREE.Box3().setFromObject(holder);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const s = 11.5 / size.y;
+        holder.scale.setScalar(s);
+        holder.updateWorldMatrix(true, true);
+        const b2 = new THREE.Box3().setFromObject(holder);
+        holder.position.set(-(b2.min.x + b2.max.x) / 2, -b2.min.y, -(b2.min.z + b2.max.z) / 2);
+        const group = new THREE.Group();
+        group.add(holder);
+        group.rotation.y = def.yaw;
+        const idle = this.ARCH_IDLES[def.idle] ?? this.ARCH_IDLES.sway;
+        const api = {
+          group,
+          active: !!this.archActive[def.id], // sticky GPS proximity state
+          walking: false,
+          phase: Math.random() * Math.PI * 2,
+          tick(t) {
+            if (!this.active) {    // static pose out of range
+              group.position.y = 0;
+              group.rotation.z = 0;
+              group.rotation.x = 0;
+              group.rotation.y = def.yaw;
+              return;
+            }
+            idle(group, t, this.phase, def.yaw);
+          },
+        };
+        const pos = geoPos(def.lat, def.lng);
+        const rec = this.makeChar(def, pos, this.scene, api, def.name);
+        rec.meta = { archId: def.id, arch: def.arch, name: def.name };
+        // mascots are chibi — drop the name pill to just above the head
+        if (rec.label) {
+          this.removeLabel(rec.label);
+          rec.label = this.addLabel(def.name, "player", 2,
+            () => rec.api.group.position.clone().setY(rec.api.group.position.y + 16.5));
+        }
+        this.archRecs[def.id] = rec;
+        this.needsRender = true;
+      }).catch(e => console.warn("[rando] arch npc load failed:", def.id, e));
+    }
+  },
+
+  // GPS proximity result from backend: in range -> dynamic idle runs.
+  // Sticky: the backend may report before the async GLB finishes loading,
+  // so the desired state is kept and applied at spawn.
+  archActive: {},
+  setArchNpcActive(id, active) {
+    this.archActive[id] = active;
+    const rec = this.archRecs[id];
+    if (rec) { rec.api.active = active; this.needsRender = true; }
+  },
+
   makeChar(avatarCfg, pos, parent, apiOverride, handle) {
-    const api = apiOverride ?? makeCharacter(avatarCfg);
+    const api = apiOverride
+      ?? (LEGACY_CHAR ? undefined : makeHumanCharacterSync(avatarCfg) ?? undefined)
+      ?? makeCharacter(avatarCfg);
     api.group.traverse(o => { if (o.isMesh || o.isSkinnedMesh) o.castShadow = true; });
     api.group.position.copy(pos);
     const shadow = new THREE.Mesh(
@@ -1706,7 +1839,11 @@ export const world3d = {
     shadow.position.set(pos.x, pos.y + 0.42, pos.z);
     parent.add(api.group);
     parent.add(shadow);
-    const rec = { api, shadow, walkTarget: null };
+    // character tick()s write group.position.y as an ABSOLUTE bob offset
+    // (blob/humanoid contract), which flattened everyone onto y≈0 — floating
+    // at the station plaza (terrain ≈ −2), sunk to the knees uphill. The
+    // world owns the terrain base; tick() re-adds it after the bob (below).
+    const rec = { api, shadow, walkTarget: null, baseY: terrainY(pos.x, pos.z) };
     if (handle) { // crisp DOM name pill following the head (a PERSON cue)
       rec.label = this.addLabel(handle, "player", 2,
         () => api.group.position.clone().setY(api.group.position.y + 21.5));
@@ -1718,11 +1855,21 @@ export const world3d = {
   removeChar(rec, parent) {
     parent.remove(rec.api.group);
     parent.remove(rec.shadow);
+    rec.api.dispose?.();            // frees per-instance materials/textures
+    rec.shadow.geometry.dispose();  // shadow disc is minted per character
+    rec.shadow.material.dispose();
     if (rec.label) this.removeLabel(rec.label);
     this.chars.delete(rec);
   },
 
+  refreshChars() { // re-issue last placements (e.g. once a template lands)
+    if (this._lastRemotes) this.setRemotes(this._lastRemotes);
+    if (this._lastPlayerOpts) this.setPlayer(this._lastPlayerOpts);
+    this.needsRender = true;
+  },
+
   setPlayer(opts) { // { avatar, lat, lng } | null
+    this._lastPlayerOpts = opts || null;
     const prevPos = this.player ? this.player.api.group.position.clone() : null;
     if (this.player) {
       this.removeChar(this.player, this.scene);
@@ -1746,6 +1893,13 @@ export const world3d = {
           if (this.player) { this.removeChar(this.player, this.scene); this.player = null; }
           install(api);
         }).catch(() => install(undefined)); // fall back to procedural
+      } else if (!LEGACY_CHAR) {
+        const token = (this._glbToken = (this._glbToken ?? 0) + 1);
+        (ANIM_CHAR ? makeAnimatedCharacter : makeHumanCharacter)(opts.avatar).then(api => {
+          if (token !== this._glbToken) return;
+          if (this.player) { this.removeChar(this.player, this.scene); this.player = null; }
+          install(api);
+        }).catch(() => install(undefined)); // fall back to the blob
       } else {
         install(undefined);
       }
@@ -1756,6 +1910,7 @@ export const world3d = {
   },
 
   setRemotes(list) { // [{ avatar, lat, lng, slot }]
+    this._lastRemotes = list;
     for (const rec of this.remoteRecs) this.removeChar(rec, this.remoteGroup);
     this.remoteRecs = [];
     this.remoteGroup.clear();
@@ -1779,8 +1934,8 @@ export const world3d = {
     this.placeAnchor(this.anchors[this.anchors.length - 1]);
   },
   anchorAtZone(el, lat, lng, headY = CHAR_H + 1) {
-    const p = geoPos(lat, lng);
-    this.anchor(el, () => new THREE.Vector3(p.x, headY, p.z));
+    const p = geoPos(lat, lng); // p.y is the terrain height at the zone
+    this.anchor(el, () => new THREE.Vector3(p.x, p.y + headY, p.z));
   },
   anchorAtNpc(el, npcId) {
     const n = NPC_DEFS.find(n => n.id === npcId);
@@ -1788,8 +1943,11 @@ export const world3d = {
     this.anchorAtZone(el, n.lat, n.lng);
   },
   anchorAtPlayer(el, headY = CHAR_H + 1) {
-    this.anchor(el, () =>
-      this.player ? this.player.api.group.position.clone().setY(headY) : null);
+    this.anchor(el, () => {
+      if (!this.player) return null;
+      const p = this.player.api.group.position;
+      return new THREE.Vector3(p.x, this.player.baseY + headY, p.z);
+    });
   },
   placeAnchor(a) {
     if (!a.el.isConnected) return false;
@@ -1827,19 +1985,31 @@ export const world3d = {
   // onCharTap(meta). Set by backend.js; meta = { userId, handle, avatar }.
   onCharTap: null,
   tryCharTap(clientX, clientY) {
-    if (!this.onCharTap || !this.remoteRecs.length) return;
+    const archList = Object.values(this.archRecs);
+    if ((!this.onCharTap || !this.remoteRecs.length) &&
+        (!this.onArchNpcTap || !archList.length)) return;
     const r = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((clientX - r.left) / r.width) * 2 - 1,
       -((clientY - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
-    const hits = ray.intersectObjects(this.remoteRecs.map(x => x.api.group), true);
+    const targets = [
+      ...this.remoteRecs.map(x => x.api.group),
+      ...archList.map(x => x.api.group),
+    ];
+    const hits = ray.intersectObjects(targets, true);
     if (!hits.length) return;
     let node = hits[0].object;
     while (node) {
       const rec = this.remoteRecs.find(x => x.api.group === node);
-      if (rec?.meta?.userId) { this.onCharTap(rec.meta); return; }
+      if (rec?.meta?.userId) { this.onCharTap?.(rec.meta); return; }
+      const arch = archList.find(x => x.api.group === node);
+      if (arch?.meta?.archId) {
+        const def = ARCH_NPC_DEFS.find(d => d.id === arch.meta.archId);
+        if (def) this.onArchNpcTap?.(def, arch.api.active);
+        return;
+      }
       node = node.parent;
     }
   },
@@ -1960,10 +2130,14 @@ export const world3d = {
           rec.api.group.rotation.y = Math.atan2(d.x, d.z);
           d.normalize().multiplyScalar(Math.min(dist, dt * 16));
           gp.add(d);
-          gp.y = terrainY(gp.x, gp.z); // hug the hillside mid-walk
+          rec.baseY = terrainY(gp.x, gp.z); // hug the hillside mid-walk
         }
       }
+      // zero y, let tick() write its absolute bob (GLB clips leave y alone),
+      // then lift by the terrain base the world owns
+      rec.api.group.position.y = 0;
       rec.api.tick(t);
+      rec.api.group.position.y += rec.baseY;
       rec.shadow.position.set(rec.api.group.position.x,
         terrainY(rec.api.group.position.x, rec.api.group.position.z) + 0.42,
         rec.api.group.position.z);
