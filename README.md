@@ -6,13 +6,29 @@ Launch test market: Itaewon, Seoul.
 
 Full product spec: [spec/rando-spec.md](spec/rando-spec.md)
 
-## World demo
+## The world
 
-A static, no-build demo of the populated world: map background, player + 4 NPCs
-with matched lighting and cast shadows, zone/GPS chip, looping public (grey) /
-private (blue) chat bubbles, and a tap-an-NPC private chat thread view.
+A static, no-build 3D world demo (`web/`): real Itaewon geography — OSM roads,
+~4,470 VWorld registry buildings with class-driven facades, hillside terrain
+rising toward Namsan — with presence, matching, chat, and encounters backed by
+Supabase (phone-OTP/guest auth, coarse zone presence, mutual tap-confirm).
 
-Run it with any static file server from the repo root, e.g.:
+**Characters** are customizable humanoids (`web/avatar3.js`): one rigged Tripo
+body, 5 skin tones and 5 hair colors as runtime texture recolors, 6 face
+designs × 6 iris colors as decals, and hair/top/bottom/shoe GLB pieces sharing
+a single fit transform. Ambient NPCs stay procedural blobs for variety.
+
+**Archetype NPCs** stand at their real venues — Nabi the halo bunny at Ikovox
+cafe, Nalli the chaos imp at Grand Ole Opry, Dali the sporty fox at the Namsan
+exercise park. Their dynamic idles play while you're physically in range
+(on-device GPS check, same privacy pattern as meetup confirm). Tap one, accept
+the quest, and the screen drops into that archetype's **2D pixel lobby** — a
+9:16 16-bit room where you walk around as a runtime-pixelated sprite of your
+actual avatar.
+
+## Running it
+
+Any static file server from the repo root:
 
 ```
 py -3 -m http.server 8743
@@ -20,29 +36,35 @@ py -3 -m http.server 8743
 
 then open http://localhost:8743/web/index.html
 
-- `?chibi=1` starts in the chibi-proportion test (also toggleable in the UI)
-- Minigames are deliberately not built yet (see spec) — the demo shows the
-  world, characters, and chat visual systems.
+Dev flags (query params):
+
+| Flag | Effect |
+|---|---|
+| `?mode=day` / `?mode=night` | force the lighting mode (default: local time) |
+| `?legacy=blob` / `?legacy=glb` | old procedural blob / old animated GLB players |
+| `?anim=1` | opt-in skinned idle/walk clips on the player (review) |
+| `?devnpc=1` | force all archetype NPCs "in range" |
+| `?devlat=&devlng=` | spoof device GPS |
+| `?devzone=` | force a presence zone |
+| `?acct=2` | second auth session in another tab |
+
+Dev harness: `web/avatar3_test.html` renders an avatar QC grid.
+
+## Deploy
+
+Static deploy of `web/` only (the repo also carries art sources and pipeline
+scripts that never need to ship): `vercel.json` and `netlify.toml` are both
+configured. Supabase URL + anon key live in `web/config.js` (public client
+values). Secrets (`TRIPO_API_KEY` etc.) live in `.env` — gitignored, used only
+by local pipeline scripts, never needed in production.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `assets/` | Generated art: world background, NPC renders, player character system |
-| `web/` | The demo page (`index.html`) |
-| `web/lit/` | Characters relit to match the day scene, cropped to feet (generated) |
-| `web/chibi/` | Chibi-proportion warped variants (generated) |
-| `scripts/` | Python pipeline that produces `web/lit` and `web/chibi` |
+| `web/` | The app: `index.html`, `backend.js` (Supabase), `world3d.js` (3D world), `avatar3.js` + `avatar3/` (character system), `lobby.js` + `lobbies/` (pixel lobbies), `npcs/` (mascots) |
+| `assets/` | Generated art sources (world, player pieces, NPC refs) |
+| `scripts/` | Python pipelines (Tripo v3 client, road/building fetch, asset prep) |
+| `supabase/` | SQL migrations (profiles, presence, matching, messages, encounters, friends) |
 | `spec/` | Product spec |
-
-## Regenerating derived assets
-
-Requires Python 3 with Pillow + numpy:
-
-```
-py -3 scripts/relight.py   # assets -> web/lit  (lighting match + feet crop)
-py -3 scripts/chibi.py     # web/lit -> web/chibi  (proportion warp)
-```
-
-Note: script output paths assume the repo lives at `E:\rando`; adjust the
-`BASE` constant at the top of each script if it lives elsewhere.
+| `pitch/` | Pitch deck + design handoff |
