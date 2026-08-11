@@ -864,6 +864,10 @@ world3d.onCharTap = meta => { chat.openDm(meta); };
 // world. Tap in range -> in-character quest offer -> yes -> 2D pixel lobby.
 // ?devnpc=1 forces every NPC in range for desk testing.
 const archQuests = {
+  // DEMO MODE: false = everyone is "in range" everywhere, so the quest flow
+  // can be tried without standing at the venue. Flip to true to restore the
+  // launch behavior (on-device GPS gate, idles only while physically near).
+  GATE_BY_GPS: false,
   RANGE_M: 150,          // urban GPS is sloppy; venue-scale, not doorstep
   CHECK_MS: 90 * 1000,
   near: {},              // id -> bool
@@ -892,6 +896,10 @@ const archQuests = {
   },
 
   async start() {
+    if (!this.GATE_BY_GPS) {
+      for (const def of ARCH_NPC_DEFS) this.setNear(def.id, true);
+      return;
+    }
     // never trigger the geolocation permission prompt just by loading the
     // page — passive checks run only once permission is already granted
     // (going open asks for it), or under the dev overrides
