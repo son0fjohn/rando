@@ -2,11 +2,23 @@
 // Loaded as an ES module by web/index.html.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
-import { world3d } from "./world3d.js";
+import { world3d, ARCH_NPC_DEFS } from "./world3d.js";
+import { lobby } from "./lobby.js";
 import {
-  PART_OPTIONS, DEFAULT_AVATAR, normalizeAvatar, avatarThumb,
-  BODY_HEX, IRIS_HEX, IRIS_CAPABLE,
-} from "./character3d.js";
+  PART_OPTIONS3, DEFAULT_AVATAR3, normalizeAvatar3, avatarThumb3,
+  SKIN_RGB, HAIR_RGB, IRIS3_HEX, loadFaceDecals,
+} from "./avatar3.js";
+// avatar v3 humanoid replaces the blob system; keep the old names local so
+// the rest of this file reads unchanged
+const DEFAULT_AVATAR = DEFAULT_AVATAR3;
+const normalizeAvatar = normalizeAvatar3;
+const avatarThumb = avatarThumb3;
+// thumbs drawn before the face decals finish loading come out faceless and
+// nothing re-rendered them — draw now, redraw once decals are in
+const setAvatarThumb = (img, avatar) => {
+  img.src = avatarThumb(avatar);
+  loadFaceDecals().then(() => { img.src = avatarThumb(avatar); });
+};
 
 world3d.init(document.querySelector(".frame"));
 const bubbleLayer = document.getElementById("bubble-layer");
@@ -588,7 +600,7 @@ export const matching = {
   showCard() {
     if (!this.partner) return;
     mcHandle.textContent = this.partner.handle;
-    document.querySelector("#match-card .mc-avatar").src = avatarThumb(this.partner.avatar);
+    setAvatarThumb(document.querySelector("#match-card .mc-avatar"), this.partner.avatar);
     matchCard.hidden = false;
   },
 
@@ -670,7 +682,7 @@ export const chat = {
     const { data: { session } } = await sb.auth.getSession();
     this.myId = session.user.id;
     cName.textContent = target.partner.handle;
-    cAvatar.src = avatarThumb(target.partner.avatar);
+    setAvatarThumb(cAvatar, target.partner.avatar);
     cBadge.textContent = target.badge;
     cThread.innerHTML = "";
     this.seen.clear();
@@ -844,6 +856,116 @@ chat.openPanel = async function (target) {
 
 // world tap → private chat (any visible character, ungated)
 world3d.onCharTap = meta => { chat.openDm(meta); };
+
+// ===================== archetype NPC quests =====================
+// The three mascots stand at their locked real venues. In-range detection
+// reuses the meetup-confirm pattern: coordinates are read ON-DEVICE
+// (readDeviceCoords honors ?devlat/?devlng) and only a boolean reaches the
+// world. Tap in range -> in-character quest offer -> yes -> 2D pixel lobby.
+// ?devnpc=1 forces every NPC in range for desk testing.
+const archQuests = {
+  RANGE_M: 150,          // urban GPS is sloppy; venue-scale, not doorstep
+  CHECK_MS: 90 * 1000,
+  near: {},              // id -> bool
+  timer: null,
+  pending: null,         // def shown in the card
+
+  LINES: {
+    chill: {
+      venue: "Ikovox · coffee",
+      line: "oh — you found my spot.\nthe beans here hit different when it rains.\nwanna come pick today's playlist with me?",
+      far: "Nabi is curled up at Ikovox.\nSwing by the cafe to wake them up.",
+      yes: "let's chill",
+    },
+    chaos: {
+      venue: "Grand Ole Opry · bar",
+      line: "YOO you actually CAME?!\nthe wall ate my setlist AGAIN and the show is TONIGHT.\nhelp me find it?? it's gonna get LOUD in here.",
+      far: "Nalli is bouncing off the walls at the Grand Ole Opry.\nGet over there before something breaks.",
+      yes: "LET'S GO",
+    },
+    sporty: {
+      venue: "Namsan 산스장 · exercise park",
+      line: "nice pace getting up the hill!\nI'm mid-set — spot me for one round\nand I'll show you my secret trail after.",
+      far: "Dali is doing pull-ups at the Namsan 산스장.\nHike up and join a set.",
+      yes: "I'm in",
+    },
+  },
+
+  async start() {
+    // never trigger the geolocation permission prompt just by loading the
+    // page — passive checks run only once permission is already granted
+    // (going open asks for it), or under the dev overrides
+    const devOk = params.get("devnpc") === "1" ||
+      (params.get("devlat") && params.get("devlng"));
+    let granted = false;
+    try {
+      const st = await navigator.permissions.query({ name: "geolocation" });
+      granted = st.state === "granted";
+      st.addEventListener?.("change", () => {
+        if (st.state === "granted" && !this.timer) this.start();
+      });
+    } catch { /* permissions API unavailable -> stay passive */ }
+    if (!devOk && !granted) return;
+    this.check();
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.check(), this.CHECK_MS);
+  },
+
+  async check() {
+    if (params.get("devnpc") === "1") {
+      for (const def of ARCH_NPC_DEFS) this.setNear(def.id, true);
+      return;
+    }
+    let coords;
+    try { coords = await readDeviceCoords(); }
+    catch { return; } // no GPS permission -> everyone stays out of range
+    for (const def of ARCH_NPC_DEFS) {
+      const d = presence.haversine(coords.lat, coords.lng, def.lat, def.lng);
+      this.setNear(def.id, d <= this.RANGE_M);
+    }
+  },
+
+  setNear(id, val) {
+    if (this.near[id] === val) return;
+    this.near[id] = val;
+    world3d.setArchNpcActive(id, val);
+  },
+
+  onTap(def, active) {
+    const L = this.LINES[def.arch];
+    if (!L) return;
+    this.pending = active ? def : null;
+    npcPortrait.src = `npcs/${def.arch}_portrait.jpg`;
+    npcName.textContent = def.name;
+    npcVenue.textContent = L.venue;
+    npcLine.textContent = active ? L.line : L.far;
+    npcYes.hidden = !active;
+    npcYes.textContent = L.yes;
+    npcNo.textContent = active ? "not now" : "ok";
+    npcCard.hidden = false;
+  },
+
+  accept() {
+    const def = this.pending;
+    npcCard.hidden = true;
+    if (!def) return;
+    // 3D world -> the archetype's 2D pixel lobby, as the player's own
+    // customized avatar (runtime pixel sprite)
+    lobby.enter(def.arch, avatar.mine, def.name);
+  },
+};
+
+const npcCard = document.getElementById("npc-card");
+const npcPortrait = document.getElementById("npc-portrait");
+const npcName = document.getElementById("npc-name");
+const npcVenue = document.getElementById("npc-venue");
+const npcLine = document.getElementById("npc-line");
+const npcYes = document.getElementById("npc-yes");
+const npcNo = document.getElementById("npc-no");
+npcYes.addEventListener("click", () => archQuests.accept());
+npcNo.addEventListener("click", () => { npcCard.hidden = true; archQuests.pending = null; });
+world3d.onArchNpcTap = (def, active) => archQuests.onTap(def, active);
+archQuests.start();
 const _closePanel = chat.closePanel.bind(chat);
 chat.closePanel = function () {
   _closePanel();
@@ -903,7 +1025,7 @@ export const friends = {
       row.className = "friend-row";
       const img = document.createElement("img");
       img.className = "friend-avatar";
-      img.src = avatarThumb(f.avatar);
+      setAvatarThumb(img, f.avatar);
       const name = document.createElement("span");
       name.textContent = f.handle;
       row.append(img, name);
@@ -942,7 +1064,7 @@ export const friendChat = {
     this.myId = session.user.id;
     this.friendshipId = friend.friendship_id;
     fcName.textContent = friend.handle;
-    fcAvatar.src = avatarThumb(friend.avatar);
+    setAvatarThumb(fcAvatar, friend.avatar);
     fcThread.innerHTML = "";
     this.seen.clear();
     const { data: history } = await sb
@@ -1046,13 +1168,26 @@ presence.goClosed = async function () {
 // avatar shape normalizes to a valid config. Others see changes on their
 // next world poll.
 
-// v2 categories; Iris only appears for eye styles with a colorable iris
+// v3 categories: every slot mixes independently on the humanoid base
 const TABS = [
-  { key: "body", label: "Body" },
-  { key: "eyes", label: "Eyes" },
+  { key: "skin", label: "Skin" },
+  { key: "hair", label: "Hair" },
+  { key: "hairColor", label: "Hair color" },
+  { key: "face", label: "Face" },
   { key: "iris", label: "Iris" },
-  { key: "head", label: "Head" },
+  { key: "top", label: "Top" },
+  { key: "bottom", label: "Bottom" },
+  { key: "shoes", label: "Shoes" },
 ];
+const rgbCss = a => `rgb(${a[0]},${a[1]},${a[2]})`;
+// option tile art: category -> value -> image url (prep-generated crops)
+const OPTION_ICON = {
+  hair: v => `avatar3/icons/hair_${v}.jpg`,
+  face: v => null, // face options render the decal itself on a skin tile
+  top: v => `avatar3/icons/top_${v}.jpg`,
+  bottom: v => `avatar3/icons/bottom_${v}.jpg`,
+  shoes: v => `avatar3/icons/shoe_${v}.jpg`,
+};
 
 const outfitBtn = document.getElementById("outfit-btn");
 const outfitSheet = document.getElementById("outfit-sheet");
@@ -1090,14 +1225,11 @@ export const avatar = {
   },
 
   renderGrid() {
-    // iris tab only exists while the chosen eye style has a colorable iris
-    const visibleTabs = TABS.filter(t =>
-      t.key !== "iris" || IRIS_CAPABLE.includes(this.mine.eyes));
-    if (!visibleTabs.some(t => t.key === this.tab)) this.tab = "body";
+    if (!TABS.some(t => t.key === this.tab)) this.tab = "skin";
 
     const tabsEl = document.getElementById("outfit-tabs");
     tabsEl.innerHTML = "";
-    for (const t of visibleTabs) {
+    for (const t of TABS) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "look-tab" + (this.tab === t.key ? " active" : "");
@@ -1107,17 +1239,32 @@ export const avatar = {
     }
 
     outfitGrid.innerHTML = "";
-    const swatchHex = this.tab === "body" ? BODY_HEX : this.tab === "iris" ? IRIS_HEX : null;
-    for (const value of PART_OPTIONS[this.tab]) {
+    const swatch = this.tab === "skin" ? v => rgbCss(SKIN_RGB[v])
+      : this.tab === "hairColor" ? v => rgbCss(HAIR_RGB[v])
+      : this.tab === "iris" ? v => IRIS3_HEX[v] : null;
+    for (const value of PART_OPTIONS3[this.tab]) {
       const b = document.createElement("button");
       b.type = "button";
-      if (swatchHex) {
-        b.className = "swatch" + (this.mine[this.tab] === value ? " selected" : "");
-        b.style.background = swatchHex[value];
+      const sel = this.mine[this.tab] === value;
+      if (swatch) {
+        b.className = "swatch" + (sel ? " selected" : "");
+        b.style.background = swatch(value);
         b.title = value;
+      } else if (this.tab === "face") {
+        b.className = "opt-tile face-tile" + (sel ? " selected" : "");
+        const img = document.createElement("img");
+        img.src = `avatar3/faces/${value}_${this.mine.iris}.png`;
+        img.alt = value;
+        b.appendChild(img);
+      } else if (value === "none") {
+        b.className = "part-chip" + (sel ? " selected" : "");
+        b.textContent = "none";
       } else {
-        b.className = "part-chip" + (this.mine[this.tab] === value ? " selected" : "");
-        b.textContent = value;
+        b.className = "opt-tile" + (sel ? " selected" : "");
+        const img = document.createElement("img");
+        img.src = OPTION_ICON[this.tab](value);
+        img.alt = value;
+        b.appendChild(img);
       }
       b.addEventListener("click", () => this.pick(this.tab, value));
       outfitGrid.appendChild(b);
