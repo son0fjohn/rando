@@ -963,6 +963,75 @@ const archQuests = {
   },
 };
 
+// ===================== lobby-scoped chat =====================
+// Inside a quest lobby, chat switches to that lobby instance's channel: a
+// Supabase Realtime BROADCAST channel (`lobby-<arch>`), ephemeral by
+// design — only players currently inside receive it, nothing is stored.
+// World chat is untouched: zone pubchat, DMs, and friend threads keep
+// their state and are reachable again the moment you exit (per the locked
+// presence rule — chat persists across app states, only map presence
+// doesn't).
+const lobbyChat = {
+  ch: null,
+  handle: null,
+  feed: document.getElementById("lobby-chat-feed"),
+  form: document.getElementById("lobby-chat-form"),
+  input: document.getElementById("lobby-chat-input"),
+
+  async join(arch) {
+    this.leave();
+    this.feed.innerHTML = "";
+    this.sys("only people in this lobby can see this chat");
+    if (!this.handle) {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) {
+        const { data } = await sb.from("profiles")
+          .select("handle").eq("id", session.user.id).maybeSingle();
+        this.handle = data?.handle ?? null;
+      }
+    }
+    this.ch = sb.channel(`lobby-${arch}`, { config: { broadcast: { self: true } } });
+    this.ch.on("broadcast", { event: "msg" }, ({ payload }) => this.render(payload));
+    this.ch.subscribe();
+  },
+
+  leave() {
+    if (this.ch) { sb.removeChannel(this.ch); this.ch = null; }
+  },
+
+  send(text) {
+    if (!this.ch || !text.trim()) return;
+    this.ch.send({ type: "broadcast", event: "msg",
+      payload: { from: this.handle ?? "someone", text: text.trim().slice(0, 160) } });
+  },
+
+  render({ from, text }) {
+    const div = document.createElement("div");
+    div.className = "lc-msg";
+    const b = document.createElement("b");
+    b.textContent = from;
+    div.appendChild(b);
+    div.appendChild(document.createTextNode(text));
+    this.feed.appendChild(div);
+    while (this.feed.children.length > 40) this.feed.firstChild.remove();
+    this.feed.scrollTop = this.feed.scrollHeight;
+  },
+
+  sys(text) {
+    const div = document.createElement("div");
+    div.className = "lc-sys";
+    div.textContent = text;
+    this.feed.appendChild(div);
+  },
+};
+lobbyChat.form.addEventListener("submit", e => {
+  e.preventDefault();
+  lobbyChat.send(lobbyChat.input.value);
+  lobbyChat.input.value = "";
+});
+lobby.onEnter = arch => lobbyChat.join(arch);
+lobby.onExit = () => lobbyChat.leave();
+
 const npcCard = document.getElementById("npc-card");
 const npcPortrait = document.getElementById("npc-portrait");
 const npcName = document.getElementById("npc-name");
@@ -1435,11 +1504,12 @@ presence.onSignedOut = function () {
 // ===================== ambience & camera chrome =====================
 recenterBtn.addEventListener("click", () => world3d.recenter());
 
-// looping grey NPC bubbles keep the plaza feeling alive
+// looping grey NPC bubbles keep the world feeling alive — voiced by the
+// three archetype mascots at their venues (the blob pairs are retired)
 const AMBIENCE = [
-  { id: "npc-dreads",  text: "anyone up for a quick game?",            at: 600,   hold: 3200 },
-  { id: "npc-buzzcut", text: "who's got next on the board?",           at: 4400,  hold: 3200 },
-  { id: "npc-silver",  text: "sketching by the crossing, come say hi", at: 15800, hold: 3200 },
+  { id: "arch-chill",  text: "the beans hit different today… come thru", at: 600,   hold: 3200 },
+  { id: "arch-chaos",  text: "SOUNDCHECK!! ok it's fine. it's fine.",    at: 4400,  hold: 3200 },
+  { id: "arch-sporty", text: "morning set at the bars, join a round",    at: 15800, hold: 3200 },
 ];
 
 function npcBubble({ id, text, hold }) {

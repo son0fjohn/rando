@@ -109,6 +109,7 @@ export const lobby = {
   player: null,        // { x, y, dir, moving, sprites }
   npc: null,           // { x, y, sprites, phase }
   stick: { dx: 0, dy: 0, on: false },
+  onEnter: null,   // backend hooks lobby-scoped chat here
   onExit: null,
 
   async enter(arch, avatarCfg, npcName) {
@@ -125,6 +126,7 @@ export const lobby = {
     this.npc = { ...NPC_SPOTS[arch], sprites: null, phase: Math.random() * 6 };
     this.bindOnce();
     this.loop();
+    this.onEnter?.(arch);
     // sprites bake in the background; simple shadow discs render meanwhile
     bakePlayerSprites(avatarCfg).then(s => { if (this.active === arch) this.player.sprites = s; });
     bakeMascotSprites(arch).then(s => { if (this.active === arch) this.npc.sprites = s; });
@@ -171,11 +173,13 @@ export const lobby = {
     const end = () => { this.stick.on = false; this.stick.dx = this.stick.dy = 0; setNub(0, 0); };
     pad.addEventListener("pointerup", end);
     pad.addEventListener("pointercancel", end);
-    // desktop: arrows / WASD
+    // desktop: arrows / WASD — but never while typing (lobby chat input)
     this.keys = new Set();
+    const typing = e => /^(INPUT|TEXTAREA)$/.test(e.target?.tagName ?? "");
     window.addEventListener("keydown", e => {
-      if (this.active) this.keys.add(e.key.toLowerCase());
-      if (this.active && e.key === "Escape") this.exit();
+      if (!this.active || typing(e)) return;
+      this.keys.add(e.key.toLowerCase());
+      if (e.key === "Escape") this.exit();
     });
     window.addEventListener("keyup", e => this.keys.delete(e.key.toLowerCase()));
   },
