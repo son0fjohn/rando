@@ -27,7 +27,7 @@ const GLB_MODE = LEGACY_CHAR === "glb";
 // the crossfade). ?anim=0 falls back to the static bob.
 const ANIM_CHAR = new URLSearchParams(location.search).get("anim") !== "0";
 
-const CHAR_H = 15;
+export const CHAR_H = 15;
 
 // Geographic world: coordinates ARE real Itaewon geography, projected the
 // same way scripts/fetch_roads.py bakes the OSM roads.
@@ -35,7 +35,7 @@ const GEO_CENTER = [37.5346, 126.9946]; // Itaewon station
 const GEO_SCALE = 0.55;                 // world units per metre
 const WORLD_EDGE = 1050;                // far positions clamp to this radius
 
-function geoPos(lat, lng) {
+export function geoPos(lat, lng) {
   const mLat = 110540.0, mLng = 111320.0 * Math.cos(GEO_CENTER[0] * Math.PI / 180);
   let x = (Number(lng) - GEO_CENTER[1]) * mLng * GEO_SCALE;
   let z = -(Number(lat) - GEO_CENTER[0]) * mLat * GEO_SCALE; // north = -z
@@ -1657,6 +1657,7 @@ export const world3d = {
     const W = this.frame.clientWidth, H = this.frame.clientHeight;
     const placed = [];
     for (const L of this.labels) {
+      if (L.hidden) { L.el.style.display = "none"; continue; }
       const pos = L.getPos();
       if (!pos) { L.el.style.display = "none"; continue; }
       const v = pos.clone().project(this.camera);
@@ -1710,6 +1711,7 @@ export const world3d = {
 
   chars: new Set(),      // every live modular character (for animation)
   remoteRecs: [],
+  tickHooks: [],         // fn(t, dt) called every frame (arena engine, fx)
 
   // ---- archetype quest NPCs (static mascots at their locked venues) ----
   archRecs: {},          // id -> char rec (rec.meta.archId set)
@@ -2135,6 +2137,18 @@ export const world3d = {
     // animate characters: walking movement + idle/waddle cycles
     if (this.chars.size) this.needsRender = true;
     for (const rec of this.chars) {
+      // joystick-driven velocity (arena/sim movement): overrides walkTarget
+      if (rec.walkVel && (rec.walkVel.x || rec.walkVel.z)) {
+        const gp = rec.api.group.position;
+        const vx = rec.walkVel.x, vz = rec.walkVel.z;
+        rec.walkTarget = null;
+        rec.api.walking = true;
+        rec.api.group.rotation.y = Math.atan2(vx, vz);
+        gp.x += vx * dt; gp.z += vz * dt;
+        rec.baseY = terrainY(gp.x, gp.z);
+      } else if (rec.walkVel && rec.api.walking && !rec.walkTarget) {
+        rec.api.walking = false;
+      }
       if (rec.walkTarget) {
         const gp = rec.api.group.position;
         const d = new THREE.Vector3().subVectors(rec.walkTarget, gp);
@@ -2195,6 +2209,7 @@ export const world3d = {
       if (Math.abs(g.theta - c.theta) < 0.005 && Math.abs(g.dist - c.dist) < 1) this.camGoal = null;
       this.applyCamera();
     }
+    for (const fn of this.tickHooks) { try { fn(t, dt); } catch (e) { console.warn("[rando] tick hook", e); } }
     this.anchors = this.anchors.filter(a => this.placeAnchor(a));
     this.placeLabels();
     if (this.needsRender) {
