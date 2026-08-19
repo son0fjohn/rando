@@ -65,7 +65,7 @@ const TIMEBOMB = {
         game.emit("holder", { id: s.holder, round: s.round });
       },
       hostTick(s, dt) {
-        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) { game.stop(); ctx.onEnd(); } return; }
+        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) { game.finish(); } return; }
         s.left -= dt * 1000; s.cool = Math.max(0, s.cool - dt * 1000);
         syncHumans(s, ctx);
         const P = Object.values(s.players);
@@ -142,7 +142,7 @@ const DEATHTAG = {
         game.emit("it", { id: it });
       },
       hostTick(s, dt) {
-        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) { game.stop(); ctx.onEnd(); } return; }
+        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) { game.finish(); } return; }
         s.left -= dt * 1000; syncHumans(s, ctx);
         const P = Object.values(s.players), taggers = P.filter(p => p.role === "tagger"), runners = P.filter(p => p.role === "runner");
         for (const p of P) {
@@ -183,7 +183,7 @@ const CAPTION = {
       hostTick(s, dt) {
         s.left -= dt * 1000;
         const P = Object.values(s.players);
-        if (s.phase === "write") { for (const b of P) if (b.isBot && !b.cap && game.rng() < dt * 0.2) b.cap = pick(game.rng, CAPTION_POOL); if (P.every(p => p.cap)) s.left = Math.min(s.left, 1500); }
+        if (s.phase === "write") { for (const b of P) if (b.isBot && !b.cap && game.rng() < dt * 0.2) { const used = new Set(P.map(p => p.cap)); b.cap = pick(game.rng, CAPTION_POOL.filter(c => !used.has(c))) ?? pick(game.rng, CAPTION_POOL); } if (P.every(p => p.cap)) s.left = Math.min(s.left, 1500); }
         if (s.phase === "vote") { for (const b of P) if (b.isBot && !b.vote && game.rng() < dt * 0.5) { const o = P.filter(p => p.id !== b.id && p.cap); if (o.length) b.vote = pick(game.rng, o).id; } if (P.every(p => p.vote)) s.left = Math.min(s.left, 1000); }
         if (s.left > 0) return;
         if (s.phase === "write") { s.phase = "vote"; s.left = 25000; s.order = P.filter(p => p.cap).map(p => p.id).sort(() => game.rng() - 0.5); game.emit("phase", { phase: "vote" }); }
@@ -198,7 +198,7 @@ const CAPTION = {
           if (s.round + 1 < s.photos.length) { s.round++; for (const p of P) { p.cap = null; p.vote = null; } s.phase = "write"; s.left = 40000; game.emit("phase", { phase: "write" }); }
           else { s.phase = "end"; s.left = 14000; game.emit("finish", {}); }
         }
-        else if (s.phase === "end") { game.stop(); ctx.onEnd(); }
+        else if (s.phase === "end") { game.finish(); }
       },
       hostInput(s, m) { const p = s.players[m.from]; if (!p) return; if (m.in === "cap" && s.phase === "write") p.cap = String(m.text).slice(0, 90); if (m.in === "vote" && s.phase === "vote" && m.who !== m.from) p.vote = m.who; },
       render(s) {
@@ -256,7 +256,7 @@ const IMPOSTER = {
           s.phase = "reveal"; s.left = 9000; game.emit("phase", { phase: "reveal", caught });
         }
         else if (s.phase === "reveal") { if (s.round + 1 < s.rounds.length) { s.round++; newRound(s); game.emit("phase", { phase: "hint" }); } else { s.phase = "end"; s.left = 14000; game.emit("finish", {}); } }
-        else if (s.phase === "end") { game.stop(); ctx.onEnd(); }
+        else if (s.phase === "end") { game.finish(); }
       },
       hostInput(s, m) { const p = s.players[m.from]; if (!p) return; if (m.in === "hint" && s.phase === "hint") p.hint = String(m.text).slice(0, 24); if (m.in === "say" && s.phase === "talk") { s.talk.push({ who: p.handle, text: String(m.text).slice(0, 120) }); s.talk = s.talk.slice(-10); } if (m.in === "vote" && s.phase === "vote" && m.who !== m.from) p.vote = m.who; },
       render(s) {
@@ -307,7 +307,7 @@ const SPLITCLUE = {
         s.phase = "play"; s.left = 150000; s.talk = []; s.solved = null;
       },
       hostTick(s, dt) {
-        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) { game.stop(); ctx.onEnd(); } return; }
+        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) { game.finish(); } return; }
         s.left -= dt * 1000;
         const P = Object.values(s.players);
         // bots: say their known cells one by one, and fill unknown cells from their partner's grid (they "listen")
@@ -361,7 +361,7 @@ const DRAW = {
     const game = new HostGame(ctx, {
       hostInit(s) { s.players = seed(ctx, game.rng, 4, null, () => ({ guessed: false })); s.order = Object.keys(s.players).sort(() => game.rng() - 0.5).slice(0, 4); s.turn = 0; s.talk = []; newTurn(s); },
       hostTick(s, dt) {
-        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) { game.stop(); ctx.onEnd(); } return; }
+        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) { game.finish(); } return; }
         s.left -= dt * 1000;
         const P = Object.values(s.players);
         const drawer = s.players[s.drawer];

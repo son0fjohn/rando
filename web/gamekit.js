@@ -28,7 +28,10 @@ export class HostGame {
     this.s = initial;
     this.room.on("state", this._onState = m => { if (!this.hosting) { this.s = m.s; try { this.h.render?.(this.s); } catch (e) { this._err("render", e); } } });
     this.room.on("input", this._onInput = m => { if (this.hosting && this.s) { try { this.h.hostInput?.(this.s, m); } catch (e) { this._err("hostInput", e); } } });
-    this.room.on("ev", this._onEv = m => { try { this.h.onEvent?.(m); } catch (e) { this._err("onEvent", e); } });
+    this.room.on("ev", this._onEv = m => {
+      if (m.ev === "__end") { if (!this._ended) { this._ended = true; this.stop(); this.ctx.onEnd(); } return; }
+      try { this.h.onEvent?.(m); } catch (e) { this._err("onEvent", e); }
+    });
     if (this.hosting) this.h.hostInit?.(this.s);
     const tick = () => {
       if (!this.running) return;
@@ -64,6 +67,14 @@ export class HostGame {
   }
   // host-originated one-off event for everyone (incl. host)
   emit(type, payload = {}) { this.room.send("ev", { ev: type, ...payload }); }
+  // host: end the game for EVERYONE (clients learn it from the broadcast)
+  finish() {
+    if (this._ended) return;
+    this._ended = true;
+    this.emit("__end");
+    this.stop();
+    this.ctx.onEnd();
+  }
   // client -> host
   input(type, payload = {}) { this.room.send("input", { in: type, ...payload }); }
 }
