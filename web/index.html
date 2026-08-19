@@ -1272,6 +1272,116 @@
     font-weight: 800;
     cursor: pointer;
   }
+
+  /* ===== demo build: rooms / arena / games ===== */
+  #rooms-btn.rooms { background: #ffd60a; }
+  .edge-arrow { position:absolute; transform:translate(-50%,-50%); display:flex; align-items:center; gap:6px; font:700 11px/1 -apple-system,"Segoe UI",sans-serif; color:#fff; pointer-events:none; }
+  .edge-arrow .ea-dot { position:relative; width:14px; height:14px; border-radius:50%; background:var(--c,#ffd60a); animation:ea-pulse 1.2s ease-out infinite; transform:rotate(var(--rot,0deg)); }
+  .edge-arrow .ea-dot::after { content:""; position:absolute; left:14px; top:3px; border:4px solid transparent; border-left:7px solid var(--c,#ffd60a); }
+  .edge-arrow .ea-txt { background:rgba(15,17,22,.78); padding:3px 7px; border-radius:999px; white-space:nowrap; }
+  @keyframes ea-pulse { 0%{box-shadow:0 0 0 0 rgba(255,214,10,.7)} 100%{box-shadow:0 0 0 12px rgba(255,214,10,0)} }
+  #rooms-panel, #host-sheet, #room-panel { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:300; width:min(92%,360px); max-height:84%; overflow:auto; background:#f5f5f7; border-radius:18px; padding:14px 16px 16px; box-shadow:0 12px 40px rgba(8,11,16,.45); color:#1c1c1e; }
+  #rooms-panel[hidden], #host-sheet[hidden], #room-panel[hidden] { display:none; }
+  .rp-head { display:flex; justify-content:space-between; align-items:center; font-size:16px; font-weight:800; margin-bottom:8px; }
+  .rp-head button { border:none; background:#e6e6ea; border-radius:999px; padding:5px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+  .rl-h { font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:#5b6b80; margin:10px 0 6px; }
+  .rl-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid #e4e4e8; }
+  .rl-row img { width:38px; height:38px; border-radius:50%; object-fit:cover; }
+  .rl-row .rl-dot { width:12px; height:12px; border-radius:50%; background:#ffd60a; margin:0 13px; }
+  .rl-row > div { flex:1; display:flex; flex-direction:column; font-size:12px; color:#5b6b80; }
+  .rl-row b { color:#1c1c1e; font-size:13px; }
+  .rl-row b.open { color:#1c7a3c; } .rl-row b.live { color:#c0392b; }
+  .rl-row button { border:none; background:var(--apple-blue); color:#fff; border-radius:10px; padding:7px 12px; font-weight:700; font-size:12px; cursor:pointer; }
+  .rl-row button.ghost { background:#e6e6ea; color:#5b6b80; }
+  #host-btn { width:100%; margin-top:12px; border:none; background:#ffd60a; border-radius:12px; padding:11px; font-weight:800; font-size:14px; cursor:pointer; }
+  #host-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .host-card { text-align:left; border:1px solid #e4e4e8; background:#fff; border-radius:12px; padding:10px; cursor:pointer; display:flex; flex-direction:column; gap:3px; }
+  .host-card b { font-size:13px; } .host-card span { font-size:11px; color:#5b6b80; line-height:1.3; } .host-card em { font-size:10px; color:#8a94a4; font-style:normal; }
+  .rp-sub { font-size:12px; color:#5b6b80; } .rp-cd { font-size:13px; font-weight:800; color:#1c7a3c; margin:8px 0; }
+  #room-members { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  #room-members .rm { background:#e6e6ea; border-radius:999px; padding:4px 9px; font-size:12px; font-weight:700; }
+  #room-members .rm.host { background:#ffd60a; }
+  #room-chat-feed { max-height:140px; overflow:auto; display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
+  #room-chat-feed .lc-msg { background:#fff; border-radius:10px; padding:4px 9px; font-size:12px; }
+  #room-chat-feed .lc-msg b { color:#0a84ff; margin-right:4px; }
+  #room-chat-form { display:flex; gap:6px; } #room-chat-form input { flex:1; border:1px solid #d5d5da; border-radius:999px; padding:8px 12px; font-size:13px; }
+  #room-chat-form button { border:none; background:var(--apple-blue); color:#fff; border-radius:50%; width:34px; height:34px; font-weight:800; }
+  #room-start { width:100%; margin-top:10px; border:none; background:#1c7a3c; color:#fff; border-radius:12px; padding:11px; font-weight:800; font-size:14px; cursor:pointer; }
+  #npc-card #npc-dev { display:block; margin:10px auto 0; border:1px dashed #b9b9c2; background:transparent; color:#5b6b80; border-radius:8px; padding:6px 10px; font-size:11px; cursor:pointer; }
+  #npc-card #npc-dev[hidden] { display:none; }
+  /* arena HUD */
+  #arena-hud { position:absolute; inset:0; pointer-events:none; z-index:120; }
+  #arena-hud[hidden] { display:none; }
+  #arena-stick { position:absolute; left:18px; bottom:22px; width:112px; height:112px; border-radius:50%; background:rgba(15,17,22,.28); border:1.5px solid rgba(255,255,255,.4); touch-action:none; pointer-events:auto; }
+  #arena-stick .nub { position:absolute; left:50%; top:50%; width:46px; height:46px; border-radius:50%; background:rgba(255,255,255,.85); transform:translate(-50%,-50%); box-shadow:0 3px 10px rgba(0,0,0,.4); }
+  #arena-radar { position:absolute; right:14px; top:74px; width:88px; height:88px; border-radius:50%; background:radial-gradient(circle, rgba(10,14,20,.55) 0%, rgba(10,14,20,.35) 60%, rgba(10,14,20,.15) 100%); border:1.5px solid rgba(255,255,255,.35); overflow:hidden; }
+  #arena-radar::before { content:""; position:absolute; inset:26%; border-radius:50%; border:1px dashed rgba(255,255,255,.25); }
+  #arena-radar .me { position:absolute; left:50%; top:50%; width:8px; height:8px; margin:-4px; border-radius:50%; background:#fff; }
+  #arena-radar .blip { position:absolute; width:9px; height:9px; margin:-4.5px; border-radius:50%; background:#4da6ff; }
+  #arena-radar .blip.bot { background:#4da6ff; } #arena-radar .blip.human { background:#7dff5e; } #arena-radar .blip.hunter { background:#ff2a4a; }
+  #arena-radar .blip.faint { opacity:.55; width:7px; height:7px; }
+  #arena-near { position:absolute; right:14px; top:166px; font:700 11px/1.2 -apple-system,"Segoe UI",sans-serif; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.8); width:110px; text-align:right; }
+  #arena-near.warm { color:#ffd60a; } #arena-near.hot { color:#ff5d6d; }
+  #arena-hud .mode { position:absolute; right:14px; top:60px; font:600 9.5px/1 -apple-system,sans-serif; color:rgba(255,255,255,.6); text-transform:uppercase; letter-spacing:.08em; }
+  /* duel */
+  #duel { position:fixed; inset:0; z-index:700; display:flex; align-items:center; justify-content:center; background:rgba(10,8,14,.66); }
+  #duel[hidden] { display:none; }
+  .duel-card { width:min(86%,340px); background:#15171c; color:#fff; border-radius:22px; padding:22px 18px 20px; text-align:center; border:2px solid rgba(255,255,255,.12); }
+  .duel-names { font-size:14px; font-weight:800; } .duel-names em { color:#8a94a4; font-style:normal; margin:0 6px; }
+  #duel-verb { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#ffd60a; margin:8px 0 6px; }
+  #duel-big { font-size:44px; font-weight:900; letter-spacing:-.02em; min-height:56px; line-height:1.2; }
+  #duel-big.wait { color:#8a94a4; font-size:22px; } #duel-big.now { color:#ffd60a; animation:duel-now .18s ease-out; } #duel-big.good { color:#7dff5e; } #duel-big.bad { color:#ff5d6d; }
+  @keyframes duel-now { from{transform:scale(.4)} to{transform:scale(1)} }
+  #duel-tap { margin-top:14px; width:100%; height:92px; border:none; border-radius:18px; background:#ff2a4a; color:#fff; font-size:26px; font-weight:900; letter-spacing:.06em; cursor:pointer; }
+  #duel.role-defender #duel-tap { background:#0a84ff; }
+  /* game layer */
+  #game-layer { position:fixed; inset:0; z-index:500; pointer-events:none; background-size:cover; background-position:center; font-family:-apple-system,"Segoe UI",Helvetica,sans-serif; }
+  #game-layer[hidden] { display:none; }
+  #game-layer.arch-chill { background-color:rgba(30,24,18,.55); }
+  #game-hud { position:absolute; top:0; left:0; right:0; padding:10px 12px; pointer-events:none; }
+  .hq { display:flex; gap:10px; align-items:center; background:rgba(15,17,22,.78); color:#fff; border-radius:12px; padding:8px 12px; font-size:12px; font-weight:700; flex-wrap:wrap; }
+  .hq b { color:#ffd60a; letter-spacing:.06em; } .hq .clk { font-size:16px; font-variant-numeric:tabular-nums; } .hq .clk.urgent { color:#ff5d6d; }
+  #game-feed { position:absolute; top:64px; left:12px; right:12px; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+  .gt { align-self:flex-start; background:rgba(15,17,22,.82); color:#fff; border-radius:10px; padding:6px 10px; font-size:12px; font-weight:600; max-width:92%; transition:opacity .3s; }
+  .gt.out { opacity:0; } .gt.rip { background:rgba(178,42,58,.9); } .gt.dodge { background:rgba(28,122,60,.9); } .gt.phase { background:rgba(255,214,10,.95); color:#241d0a; } .gt.tip { background:rgba(90,70,160,.92); } .gt.duel { background:rgba(255,77,109,.9); }
+  #game-panel { position:absolute; left:0; right:0; bottom:0; pointer-events:auto; max-height:74%; overflow:auto; }
+  #game-panel[hidden] { display:none; }
+  #game-panel.stage-wrap { top:60px; bottom:0; max-height:none; display:flex; align-items:flex-start; justify-content:center; padding:8px 10px 96px; }
+  #game-panel.bottom { padding:0 10px 132px; }
+  .stage { width:min(100%,420px); background:rgba(245,245,247,.97); color:#1c1c1e; border-radius:18px; padding:16px 16px 18px; box-shadow:0 12px 40px rgba(8,11,16,.45); }
+  .stage h2 { margin:2px 0 10px; font-size:20px; line-height:1.2; } .stage .st-sub { font-size:11px; color:#5b6b80; letter-spacing:.06em; text-transform:uppercase; }
+  .stage p { margin:0 0 10px; font-size:13.5px; line-height:1.45; } .stage .st-body ol, .stage .st-body ul { padding-left:18px; font-size:13px; margin:6px 0; }
+  .st-list { display:flex; flex-wrap:wrap; gap:6px; } .tagchip { background:#ffd60a; border-radius:999px; padding:3px 9px; font-size:12px; font-weight:700; } .tagchip.bot { background:#e6e6ea; }
+  .ab-sub { font-size:12px; color:#5b6b80; margin-top:6px; }
+  .actionbar { background:rgba(15,17,22,.85); border-radius:16px; padding:10px; color:#fff; text-align:center; margin:0 0 0 132px; }
+  .actionbar .ab-sub { color:rgba(255,255,255,.7); }
+  button.big { width:100%; height:64px; border:none; border-radius:14px; background:#3a3f48; color:#fff; font-size:18px; font-weight:900; letter-spacing:.04em; cursor:pointer; }
+  button.big.hot { background:#ff2a4a; animation:ea-pulse 1s infinite; } button.big:disabled { opacity:.6; }
+  .ghost { background:rgba(40,30,70,.92); color:#fff; border-radius:16px; padding:10px; margin-left:132px; font-size:12.5px; }
+  .ghost-row { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; } .ghost-row label { font-size:11.5px; background:rgba(255,255,255,.1); border-radius:8px; padding:4px 7px; }
+  .choices { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0; }
+  button.ch { border:1px solid #d5d5da; background:#fff; border-radius:12px; padding:10px 14px; font-size:14px; font-weight:700; cursor:pointer; color:#1c1c1e; text-align:left; }
+  button.ch.small { padding:6px 10px; font-size:12px; } button.ch.on { background:#0a84ff; color:#fff; border-color:#0a84ff; } button.ch:disabled { opacity:.5; }
+  .gp-form { display:flex; gap:6px; margin:6px 0; } .gp-form input { flex:1; border:1px solid #d5d5da; border-radius:12px; padding:10px 12px; font-size:15px; } .gp-form button { border:none; background:#0a84ff; color:#fff; border-radius:12px; padding:0 14px; font-weight:800; }
+  .bar { height:10px; background:#e6e6ea; border-radius:999px; overflow:hidden; flex:1; } .bar i { display:block; height:100%; background:#0a84ff; } .bar.plant i { background:#ff2a4a; }
+  .rev-row { display:flex; align-items:center; gap:8px; font-size:13px; margin:5px 0; } .rev-row span { flex:1; } .rev-row b { min-width:22px; text-align:right; }
+  .podium { padding-left:22px; font-size:14px; } .podium li { margin:4px 0; display:flex; justify-content:space-between; } .podium li span { color:#5b6b80; font-size:12px; }
+  .story { margin-top:10px; font-size:12.5px; } .story b { display:block; margin-bottom:3px; } .story ul { padding-left:18px; margin:0; }
+  button.share { margin-top:10px; width:100%; border:none; background:#ffd60a; border-radius:12px; padding:10px; font-weight:800; font-size:13px; cursor:pointer; }
+  .role { padding:8px 10px; border-radius:10px; } .role.hunter { background:#ffe1e1; } .role.runner { background:#e3f1e8; }
+  .cups .cup { border-top:1px solid #e4e4e8; padding:8px 0; } .cup p { font-style:italic; margin:0 0 6px; }
+  .receipt { font-family:"IBM Plex Mono",Consolas,monospace; font-size:12px; background:#fff; border:1px dashed #b9b9c2; padding:12px; } .rc-h { font-weight:700; text-align:center; margin-bottom:8px; letter-spacing:.04em; }
+  .rc-row { display:flex; justify-content:space-between; gap:10px; padding:3px 0; border-bottom:1px dotted #e4e4e8; } .rc-row.total { font-weight:700; border-bottom:2px solid #1c1c1e; } .rc-note { margin-top:8px; font-weight:700; color:#1c7a3c; }
+  .photo { width:100%; border-radius:12px; display:block; margin-bottom:8px; }
+  .gchat { margin-top:8px; } .gchat-feed { max-height:120px; overflow:auto; font-size:12.5px; background:#fff; border-radius:10px; padding:6px 8px; } .gchat-feed b { color:#0a84ff; margin-right:4px; }
+  .gchat-form { display:flex; gap:6px; margin-top:6px; } .gchat-form input { flex:1; border:1px solid #d5d5da; border-radius:999px; padding:8px 12px; font-size:13px; } .gchat-form button { border:none; background:#0a84ff; color:#fff; border-radius:50%; width:34px; }
+  .hints { background:#fff; border-radius:10px; padding:6px 10px; margin:6px 0; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,64px); gap:6px; justify-content:center; margin:8px 0; } .grid3.big { grid-template-columns:repeat(3,80px); }
+  .grid3 .cell, .grid3 i { width:64px; height:64px; border-radius:10px; border:2px solid #1c1c1e; font-size:22px; font-weight:900; cursor:pointer; display:block; } .grid3.big i { width:80px; height:80px; } .grid3 .cell.known { border-style:solid; cursor:default; } .grid3 .cell.unk { border-style:dashed; background:#fff; }
+  .palette { display:flex; gap:8px; justify-content:center; margin:6px 0; } .palette .sw { width:34px; height:34px; border-radius:50%; border:3px solid transparent; cursor:pointer; } .palette .sw.on { border-color:#1c1c1e; }
+  #draw-cv { width:100%; aspect-ratio:600/420; background:#fff; border-radius:12px; touch-action:none; display:block; }
+  .mono { font-family:"IBM Plex Mono",Consolas,monospace; letter-spacing:.15em; }
+
 </style>
 </head>
 <body>
@@ -1284,6 +1394,7 @@
       <button id="match-btn" class="icon-btn" type="button" hidden title="Match me">&#127922;</button>
       <button id="chat-pill" class="icon-btn" type="button" hidden title="Chat">&#128172;</button>
       <button id="recenter" class="icon-btn" type="button" hidden aria-label="Recenter on your character" title="Recenter">&#9678;</button>
+      <button id="rooms-btn" class="icon-btn rooms" type="button" title="Rooms &amp; quests">&#127922;</button>
     </div>
 
     <div id="zone-chip">
@@ -1414,6 +1525,7 @@
       <div id="npc-line"></div>
       <button id="npc-yes" type="button">Yes</button>
       <button id="npc-no" type="button">Not now</button>
+      <button id="npc-dev" type="button" class="dev" hidden>open the window now (demo)</button>
     </div>
 
     <!-- 2D pixel lobby: full-screen scene entered through an NPC quest -->
@@ -1434,6 +1546,48 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ===== demo build: rooms / arena / games ===== -->
+  <div id="rooms-panel" hidden>
+    <div class="rp-head"><b>Rooms &amp; quests</b><button id="rooms-close" type="button" aria-label="Close">&#10005;</button></div>
+    <div id="rooms-list"></div>
+    <button id="host-btn" type="button">+ host a room</button>
+  </div>
+  <div id="host-sheet" hidden>
+    <div class="rp-head"><b>Pick a game</b><button id="host-close" type="button" aria-label="Close">&#10005;</button></div>
+    <div id="host-grid"></div>
+  </div>
+  <div id="room-panel" hidden>
+    <div class="rp-head"><b id="room-title">room</b><button id="room-leave" type="button">leave</button></div>
+    <div id="room-sub" class="rp-sub"></div>
+    <div id="room-countdown" class="rp-cd"></div>
+    <div id="room-members"></div>
+    <div id="room-chat-feed"></div>
+    <form id="room-chat-form"><input id="room-chat-input" maxlength="160" placeholder="say hi / bluff / plan&hellip;" autocomplete="off"><button type="submit">&#8593;</button></form>
+    <button id="room-start" type="button" hidden>start</button>
+  </div>
+
+  <div id="arena-hud" hidden>
+    <div id="arena-radar"><i class="me"></i></div>
+    <div id="arena-near"></div>
+    <div id="arena-mode" class="mode"></div>
+    <div id="arena-stick"><div class="nub"></div></div>
+  </div>
+
+  <div id="duel" hidden>
+    <div class="duel-card">
+      <div class="duel-names"><span id="duel-a"></span> <em>vs</em> <span id="duel-b"></span></div>
+      <div id="duel-verb"></div>
+      <div id="duel-big">&hellip;</div>
+      <button id="duel-tap" type="button">TAP</button>
+    </div>
+  </div>
+
+  <div id="game-layer" hidden>
+    <div id="game-hud"></div>
+    <div id="game-feed"></div>
+    <div id="game-panel" hidden></div>
   </div>
 
   <script type="module" src="backend.js"></script>

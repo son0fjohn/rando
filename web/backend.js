@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import { world3d, ARCH_NPC_DEFS } from "./world3d.js";
 import { lobby } from "./lobby.js";
+import { rooms } from "./rooms.js";
 import {
   PART_OPTIONS3, DEFAULT_AVATAR3, normalizeAvatar3, avatarThumb3,
   SKIN_RGB, HAIR_RGB, IRIS3_HEX, loadFaceDecals,
@@ -115,6 +116,9 @@ async function refreshStatus() {
     nickname.show(profile.handle);
   }
   presence.onSignedIn();
+  // demo build: identity for rooms/quests (avatar fills in when it loads)
+  rooms.me = { id: session.user.id, handle: profile ? profile.handle : "rando", avatar: rooms.me?.avatar ?? avatar.mine };
+  if (!rooms._inited) { rooms._inited = true; rooms.init(); }
 }
 
 // ===================== nickname =====================
@@ -1041,7 +1045,8 @@ const npcYes = document.getElementById("npc-yes");
 const npcNo = document.getElementById("npc-no");
 npcYes.addEventListener("click", () => archQuests.accept());
 npcNo.addEventListener("click", () => { npcCard.hidden = true; archQuests.pending = null; });
-world3d.onArchNpcTap = (def, active) => archQuests.onTap(def, active);
+// demo build: tapping an NPC goes to the raid-lobby flow (rooms.js)
+world3d.onArchNpcTap = (def) => rooms.onNpcTap(def);
 archQuests.start();
 const _closePanel = chat.closePanel.bind(chat);
 chat.closePanel = function () {
@@ -1279,6 +1284,7 @@ export const avatar = {
     if (!session) return;
     const { data } = await sb.from("profiles").select("avatar").eq("id", session.user.id).maybeSingle();
     this.mine = normalizeAvatar(data && data.avatar);
+    if (rooms.me) rooms.me.avatar = this.mine;
     this.applyOwn();
     outfitBtn.hidden = false;
   },
@@ -1295,6 +1301,7 @@ export const avatar = {
 
   async pick(key, value) {
     this.mine = { ...this.mine, [key]: value };
+    if (rooms.me) rooms.me.avatar = this.mine;
     this.applyOwn();
     this.renderGrid();
     const { data: { session } } = await sb.auth.getSession();
