@@ -110,9 +110,8 @@ export const rooms = {
     $("npc-line").textContent = `${line}\n\n${q.title} — ${q.tagline}`;
     const yes = $("npc-yes"), no = $("npc-no"), dev = $("npc-dev");
     if (st.phase === "open") { yes.hidden = false; yes.textContent = `join · starts ${fmtClock(st.msToStart)}`; }
-    else if (st.phase === "live") { yes.hidden = false; yes.textContent = "join late (spectate)"; }
     else { yes.hidden = true; }
-    no.textContent = st.phase === "dark" ? `next window in ${fmtClock(st.msToOpen)}` : "not now";
+    no.textContent = st.phase === "dark" ? `next window in ${fmtClock(st.msToOpen)}` : st.phase === "live" ? `running now · next in ${fmtClock(st.msToOpen ?? 0)}` : "not now";
     dev.hidden = st.phase !== "dark";
     dev.onclick = () => { RAID._devOpen[def.arch] = Date.now() + 3000; $("npc-card").hidden = true; this.raidTick(); };
     yes.onclick = () => { $("npc-card").hidden = true; this.joinNpc(def.arch); };
@@ -123,6 +122,13 @@ export const rooms = {
   async joinNpc(arch) {
     const st = raidStatus(arch);
     if (st.phase === "dark") return;
+    if (st.phase === "live" && !this.current) {
+      // mid-quest joining (spectating) isn't built yet — say so instead of stranding them in a lobby
+      const { ui } = await import("./gamekit.js");
+      ui.show(); ui.toast(`${QUESTS[arch].title} is already running — next window opens in ${fmtClock(st.msToOpen ?? 0)}`, "phase");
+      setTimeout(() => { if (!this.current) ui.hide(); }, 3600);
+      return;
+    }
     await this.leave();
     const id = `npc-${st.windowId}`;
     const room = new Room(id, this.me);
