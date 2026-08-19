@@ -164,7 +164,8 @@ export function raidStatus(arch, now = Date.now()) {
     const startAt = openAt + RAID.JOIN_MS;
     if (now < openAt) return { phase: "dark", openAt, startAt, msToOpen: openAt - now, windowId: `dev-${arch}` };
     if (now < startAt) return { phase: "open", openAt, startAt, msToStart: startAt - now, windowId: `dev-${arch}` };
-    return { phase: "live", openAt, startAt, since: now - startAt, windowId: `dev-${arch}` };
+    if (now < startAt + 10 * 60 * 1000) return { phase: "live", openAt, startAt, since: now - startAt, windowId: `dev-${arch}` };
+    delete RAID._devOpen[arch];   // the demo window is over: back to the real schedule
   }
   const off = RAID.OFFSETS[arch] ?? 0;
   const cycleIdx = Math.floor((now - off) / RAID.CYCLE_MS);

@@ -174,7 +174,7 @@ const SPORTY = {
           else if (s.phase === "scatter") { s.phase = "hunt"; s.left = Q.PHASES.hunt; game.emit("phase", { phase: "hunt" }); }
           else if (s.phase === "hunt") { s.phase = "sudden"; s.left = Q.PHASES.sudden; s.r0 = s.radius; game.emit("phase", { phase: "sudden" }); }
           else if (s.phase === "sudden") { finish(s); }
-          else if (s.phase === "end") { game.stop(); ctx.onEnd(); return; }
+          else if (s.phase === "end") { game.finish(); return; }
         }
         if (s.phase === "sudden") {
           s.radius = Math.max(14, s.r0 * (s.left / Q.PHASES.sudden) + 14 * (1 - s.left / Q.PHASES.sudden));
@@ -315,7 +315,7 @@ const SPORTY = {
       const mine = me ? (me.alive ? `🏷 ${me.tags.length} tag${me.tags.length === 1 ? "" : "s"}` : "👻 ghost") : "spectating";
       ui.hud(`<div class="hq"><b>${phaseName}</b><span class="clk">${ui.clock(s.left)}</span><span>${alive.length} alive</span><span>${mine}</span></div>`);
       if (s.phase === "brief") {
-        ui.once("brief", () => ui.stage("이름표 뜯기", `<p>Everyone here wears a <b>name tag</b>. Get close to someone and hit <b>RIP</b> — a reaction duel decides it.<br>Lose your tag and you're a <b>ghost</b>: you see <i>everyone</i> on the radar, and you can whisper tips to the living. Alliances, betrayals, your call.</p>
+        ui.once("brief", () => ui.stage("이름표 뜯기", `<img class="photo" src="quests/nametag.jpg" alt="" style="max-height:120px;object-fit:cover"><p>Everyone here wears a <b>name tag</b>. Get close to someone and hit <b>RIP</b> — a reaction duel decides it.<br>Lose your tag and you're a <b>ghost</b>: you see <i>everyone</i> on the radar, and you can whisper tips to the living. Alliances, betrayals, your call.</p>
           <p class="st-list">${Object.values(s.players).map(p => `<span class="tagchip ${p.isBot ? "bot" : ""}">${p.handle}</span>`).join("")}</p>`, `Namsan Park · the whistle is coming`));
         return;
       }
@@ -410,7 +410,7 @@ const CHAOS = {
           if (s.phase === "brief") { s.phase = "hunt"; s.left = Q.PHASES.hunt; game.emit("phase", { phase: "hunt" }); }
           else if (s.phase === "hunt") { s.phase = "final"; s.left = Q.PHASES.final; game.emit("phase", { phase: "final" }); }
           else if (s.phase === "final") finish(s, "hunters");
-          else if (s.phase === "end") { game.stop(); ctx.onEnd(); return; }
+          else if (s.phase === "end") { game.finish(); return; }
         }
         if (s.phase === "hunt" || s.phase === "final") {
           // sticker planting: stand inside a spot ring for 6 s
@@ -612,7 +612,7 @@ const CHILL = {
           // score the round: the table syncs if the plurality answer has >= 60%
           const counts = {}; for (const p of P) { const a = p.answers[s.round] ?? "—"; counts[a] = (counts[a] || 0) + 1; }
           const [top, n] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-          const synced = n / P.length >= 0.6;
+          const synced = top !== "—" && n / P.length >= 0.6;
           s.results.push({ q: s.rounds[s.round].q, top, n, synced, counts });
           if (synced) { s.streak++; for (const p of P) if (p.answers[s.round] === top) p.score += 1; } else s.streak = 0;
           s.phase = "reveal"; s.left = Q.PHASES.reveal; game.emit("phase", { phase: "reveal", synced, top });
@@ -647,7 +647,7 @@ const CHILL = {
           for (const p of P) { const q = s.players[p.pair]; if (q && q.pair === p.id && p.id < q.id) s.pairs.push([p.id, q.id]); }
           s.phase = "end"; s.left = Q.PHASES.end; game.emit("finish", {});
         }
-        else if (s.phase === "end") { game.stop(); ctx.onEnd(); }
+        else if (s.phase === "end") { game.finish(); }
       },
       hostInput(s, m) {
         const p = s.players[m.from]; if (!p) return;
