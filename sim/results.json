@@ -1,0 +1,5975 @@
+{
+ "mechanics": {
+  "Order Up": {
+   "family": "signature",
+   "arch": "chill",
+   "lo": 2,
+   "hi": 16,
+   "target": "3-5 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 153.0,
+      "duration_p90_s": 153.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "trivial_2p": 1.0
+      },
+      "inter_per_round": 5.6,
+      "inter_msg": 3.6,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.09,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.037,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 1.0
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 153.0,
+      "duration_p90_s": 153.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "trivial_2p": 1.0
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.39,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 1.0
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 156.0,
+      "duration_p90_s": 156.0,
+      "resolve_rate": 0.4,
+      "degenerate_rate": 0.6,
+      "degenerate_breakdown": {
+       "tie_no_tiebreak": 0.6
+      },
+      "inter_per_round": 19.5,
+      "inter_msg": 7.5,
+      "inter_tap": 12.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.87,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.487
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 156.0,
+      "duration_p90_s": 156.0,
+      "resolve_rate": 0.58,
+      "degenerate_rate": 0.42,
+      "degenerate_breakdown": {
+       "tie_no_tiebreak": 0.42
+      },
+      "inter_per_round": 12.0,
+      "inter_msg": 0.0,
+      "inter_tap": 12.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.15,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.457
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 192.0,
+      "duration_p90_s": 192.0,
+      "resolve_rate": 0.417,
+      "degenerate_rate": 0.583,
+      "degenerate_breakdown": {
+       "tie_no_tiebreak": 0.583
+      },
+      "inter_per_round": 75.6,
+      "inter_msg": 19.6,
+      "inter_tap": 56.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.95,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.377
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 192.0,
+      "duration_p90_s": 192.0,
+      "resolve_rate": 0.53,
+      "degenerate_rate": 0.47,
+      "degenerate_breakdown": {
+       "tie_no_tiebreak": 0.47
+      },
+      "inter_per_round": 56.0,
+      "inter_msg": 0.0,
+      "inter_tap": 56.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.19,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.33
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 204.0,
+      "duration_p90_s": 204.0,
+      "resolve_rate": 0.543,
+      "degenerate_rate": 0.457,
+      "degenerate_breakdown": {
+       "tie_no_tiebreak": 0.457
+      },
+      "inter_per_round": 278.7,
+      "inter_msg": 38.7,
+      "inter_tap": 240.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 5.12,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.24
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 204.0,
+      "duration_p90_s": 204.0,
+      "resolve_rate": 0.613,
+      "degenerate_rate": 0.387,
+      "degenerate_breakdown": {
+       "tie_no_tiebreak": 0.387
+      },
+      "inter_per_round": 240.0,
+      "inter_msg": 0.0,
+      "inter_tap": 240.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 4.41,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.233
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 204.0,
+    "duration_range_s": [
+     153.0,
+     204.0
+    ],
+    "inter_per_round": 278.7,
+    "inter_ppm": 5.12,
+    "inter_ppm_max": 5.12,
+    "resolve": 0.543,
+    "degenerate": 0.457,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "silent-completable",
+    "unresolved 45%",
+    "degenerate 45% (tie_no_tiebreak)",
+    "needs 3+"
+   ],
+   "verdict": "rework",
+   "score": 0.596
+  },
+  "Split or Steal": {
+   "family": "signature",
+   "arch": "chaos",
+   "lo": 2,
+   "hi": 16,
+   "target": "45 s / pair",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 42.0,
+      "duration_p90_s": 42,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.537,
+      "degenerate_breakdown": {
+       "both_split_no_prize": 0.377,
+       "both_steal_both_out": 0.16
+      },
+      "inter_per_round": 5.4,
+      "inter_msg": 3.4,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 3.83,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.073,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.766
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 42.0,
+      "duration_p90_s": 42,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.497,
+      "degenerate_breakdown": {
+       "both_split_no_prize": 0.347,
+       "both_steal_both_out": 0.15
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.43,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.71
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 42.0,
+      "duration_p90_s": 42,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.517,
+      "degenerate_breakdown": {
+       "both_split_no_prize": 0.36,
+       "both_steal_both_out": 0.157
+      },
+      "inter_per_round": 6.0,
+      "inter_msg": 4.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.13,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.037,
+      "active_frac": 0.5,
+      "participation": 0.644,
+      "top_skill_win_rate": 0.344,
+      "notes": [
+       "tournament of 2 pairs ~ 84 s"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 42.0,
+      "duration_p90_s": 42,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.457,
+      "degenerate_breakdown": {
+       "both_split_no_prize": 0.277,
+       "both_steal_both_out": 0.18
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.71,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.5,
+      "participation": 0.5,
+      "top_skill_win_rate": 0.362,
+      "notes": [
+       "tournament of 2 pairs ~ 84 s"
+      ]
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 42.0,
+      "duration_p90_s": 42,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.55,
+      "degenerate_breakdown": {
+       "both_split_no_prize": 0.427,
+       "both_steal_both_out": 0.123
+      },
+      "inter_per_round": 7.7,
+      "inter_msg": 5.7,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.37,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.013,
+      "active_frac": 0.25,
+      "participation": 0.505,
+      "top_skill_win_rate": 0.171,
+      "notes": [
+       "tournament of 4 pairs ~ 168 s"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 42.0,
+      "duration_p90_s": 42,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.527,
+      "degenerate_breakdown": {
+       "both_split_no_prize": 0.34,
+       "both_steal_both_out": 0.187
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.36,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.25,
+      "participation": 0.25,
+      "top_skill_win_rate": 0.168,
+      "notes": [
+       "tournament of 4 pairs ~ 168 s"
+      ]
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 42.0,
+      "duration_p90_s": 42,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.58,
+      "degenerate_breakdown": {
+       "both_split_no_prize": 0.397,
+       "both_steal_both_out": 0.183
+      },
+      "inter_per_round": 11.2,
+      "inter_msg": 9.2,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 0.125,
+      "participation": 0.415,
+      "top_skill_win_rate": 0.11,
+      "notes": [
+       "tournament of 8 pairs ~ 336 s"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 42.0,
+      "duration_p90_s": 42,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.573,
+      "degenerate_breakdown": {
+       "both_split_no_prize": 0.38,
+       "both_steal_both_out": 0.193
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.18,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.125,
+      "participation": 0.125,
+      "top_skill_win_rate": 0.066,
+      "notes": [
+       "tournament of 8 pairs ~ 336 s"
+      ]
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 42.0,
+    "duration_range_s": [
+     42.0,
+     42.0
+    ],
+    "inter_per_round": 5.4,
+    "inter_ppm": 3.83,
+    "inter_ppm_max": 3.83,
+    "resolve": 1.0,
+    "degenerate": 0.537,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 0.415,
+    "active_min": 0.125
+   },
+   "flags": [
+    "silent-completable",
+    "degenerate 53% (both_split_no_prize)",
+    "sit-out at 16p"
+   ],
+   "verdict": "rework",
+   "score": 0.606
+  },
+  "Sheep Raid": {
+   "family": "signature",
+   "arch": "sporty",
+   "lo": 4,
+   "hi": 8,
+   "target": "5-8 min fixed",
+   "by_n": {
+    "2": null,
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.16,
+      "degenerate_breakdown": {
+       "tie": 0.16
+      },
+      "inter_per_round": 61.6,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 61.6,
+      "inter_ppm": 2.57,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.496,
+      "notes": [
+       "final 13-32",
+       "final 14-31",
+       "final 15-29",
+       "final 15-31"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.137,
+      "degenerate_breakdown": {
+       "tie": 0.137
+      },
+      "inter_per_round": 63.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 63.0,
+      "inter_ppm": 2.62,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.51,
+      "notes": [
+       "final 13-30",
+       "final 13-32",
+       "final 15-31",
+       "final 16-29"
+      ]
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.19,
+      "degenerate_breakdown": {
+       "tie": 0.18,
+       "runaway": 0.01
+      },
+      "inter_per_round": 232.3,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 232.3,
+      "inter_ppm": 4.84,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.492,
+      "notes": [
+       "final 11-34",
+       "final 15-28",
+       "final 15-30",
+       "final 16-29"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.2,
+      "degenerate_breakdown": {
+       "tie": 0.2
+      },
+      "inter_per_round": 232.8,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 232.8,
+      "inter_ppm": 4.85,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.517,
+      "notes": [
+       "final 13-29",
+       "final 16-29",
+       "final 17-27",
+       "final 19-24"
+      ]
+     }
+    },
+    "16": null
+   },
+   "best_n": 8,
+   "summary": {
+    "duration_s": 360.0,
+    "duration_range_s": [
+     360.0,
+     360.0
+    ],
+    "inter_per_round": 232.3,
+    "inter_ppm": 4.84,
+    "inter_ppm_max": 4.84,
+    "resolve": 1.0,
+    "degenerate": 0.19,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [],
+   "verdict": "keep",
+   "score": 0.745
+  },
+  "Trivia (first to 3)": {
+   "family": "catalog",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "1-3 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 110.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.873,
+      "degenerate_rate": 0.36,
+      "degenerate_breakdown": {
+       "runaway_3_0": 0.233,
+       "timeout": 0.127
+      },
+      "inter_per_round": 1.9,
+      "inter_msg": 1.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.51,
+      "zero_p2p_frac": 0.233,
+      "zero_msg_frac": 0.233,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.775
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 108.7,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.867,
+      "degenerate_rate": 0.333,
+      "degenerate_breakdown": {
+       "runaway_3_0": 0.2,
+       "timeout": 0.133
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.75
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 89.0,
+      "duration_p90_s": 135.0,
+      "resolve_rate": 0.987,
+      "degenerate_rate": 0.027,
+      "degenerate_breakdown": {
+       "timeout": 0.013,
+       "runaway_3_0": 0.013
+      },
+      "inter_per_round": 2.8,
+      "inter_msg": 2.8,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.48,
+      "zero_p2p_frac": 0.117,
+      "zero_msg_frac": 0.117,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.514
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 89.5,
+      "duration_p90_s": 135.0,
+      "resolve_rate": 0.983,
+      "degenerate_rate": 0.053,
+      "degenerate_breakdown": {
+       "runaway_3_0": 0.037,
+       "timeout": 0.017
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.559
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 73.5,
+      "duration_p90_s": 120.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 4.7,
+      "inter_msg": 4.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.47,
+      "zero_p2p_frac": 0.02,
+      "zero_msg_frac": 0.02,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.427
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 74.6,
+      "duration_p90_s": 105.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.37
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 71.8,
+      "duration_p90_s": 105.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 8.7,
+      "inter_msg": 8.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.45,
+      "zero_p2p_frac": 0.003,
+      "zero_msg_frac": 0.003,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.267
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 68.9,
+      "duration_p90_s": 105.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.273
+     }
+    }
+   },
+   "best_n": 8,
+   "summary": {
+    "duration_s": 73.5,
+    "duration_range_s": [
+     71.8,
+     110.0
+    ],
+    "inter_per_round": 4.7,
+    "inter_ppm": 0.47,
+    "inter_ppm_max": 0.51,
+    "resolve": 1.0,
+    "degenerate": 0.0,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "ZERO-INTERACTION"
+   ],
+   "verdict": "cut",
+   "score": -0.515
+  },
+  "Trivia: Majority Rules": {
+   "family": "catalog",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "1-3 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 127.0,
+      "duration_p90_s": 198.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_majority_2p": 1.0
+      },
+      "inter_per_round": 2.6,
+      "inter_msg": 2.6,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.62,
+      "zero_p2p_frac": 0.14,
+      "zero_msg_frac": 0.14,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 129.8,
+      "duration_p90_s": 198.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_majority_2p": 1.0
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 87.2,
+      "duration_p90_s": 126.0,
+      "resolve_rate": 0.393,
+      "degenerate_rate": 0.79,
+      "degenerate_breakdown": {
+       "tie_or_timeout": 0.607,
+       "frequent_even_splits": 0.183
+      },
+      "inter_per_round": 4.0,
+      "inter_msg": 4.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.68,
+      "zero_p2p_frac": 0.04,
+      "zero_msg_frac": 0.04,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.407
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 92.0,
+      "duration_p90_s": 144.0,
+      "resolve_rate": 0.563,
+      "degenerate_rate": 0.67,
+      "degenerate_breakdown": {
+       "tie_or_timeout": 0.437,
+       "frequent_even_splits": 0.233
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.284
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 71.2,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.137,
+      "degenerate_rate": 0.903,
+      "degenerate_breakdown": {
+       "tie_or_timeout": 0.863,
+       "frequent_even_splits": 0.04
+      },
+      "inter_per_round": 7.0,
+      "inter_msg": 7.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.73,
+      "zero_p2p_frac": 0.003,
+      "zero_msg_frac": 0.003,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.22
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.6,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.247,
+      "degenerate_rate": 0.813,
+      "degenerate_breakdown": {
+       "tie_or_timeout": 0.753,
+       "frequent_even_splits": 0.06
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.257
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 63.4,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.003,
+      "degenerate_rate": 0.997,
+      "degenerate_breakdown": {
+       "tie_or_timeout": 0.997
+      },
+      "inter_per_round": 12.6,
+      "inter_msg": 12.6,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.74,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.0
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 64.2,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.02,
+      "degenerate_rate": 0.987,
+      "degenerate_breakdown": {
+       "tie_or_timeout": 0.98,
+       "frequent_even_splits": 0.007
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.167
+     }
+    }
+   },
+   "best_n": 4,
+   "summary": {
+    "duration_s": 87.2,
+    "duration_range_s": [
+     63.4,
+     127.0
+    ],
+    "inter_per_round": 4.0,
+    "inter_ppm": 0.68,
+    "inter_ppm_max": 0.74,
+    "resolve": 0.393,
+    "degenerate": 0.79,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "ZERO-INTERACTION",
+    "unresolved 60%",
+    "degenerate 79% (tie_or_timeout)",
+    "needs 3+"
+   ],
+   "verdict": "cut",
+   "score": -0.809
+  },
+  "Trivia: Higher or Lower": {
+   "family": "catalog",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "1-2 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 50.4,
+      "duration_p90_s": 72.0,
+      "resolve_rate": 0.86,
+      "degenerate_rate": 0.14,
+      "degenerate_breakdown": {
+       "simultaneous_finish_tie": 0.14
+      },
+      "inter_per_round": 0.9,
+      "inter_msg": 0.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.51,
+      "zero_p2p_frac": 0.437,
+      "zero_msg_frac": 0.437,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.589
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 50.9,
+      "duration_p90_s": 72.0,
+      "resolve_rate": 0.867,
+      "degenerate_rate": 0.133,
+      "degenerate_breakdown": {
+       "simultaneous_finish_tie": 0.133
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.573
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 43.3,
+      "duration_p90_s": 60.0,
+      "resolve_rate": 0.67,
+      "degenerate_rate": 0.33,
+      "degenerate_breakdown": {
+       "simultaneous_finish_tie": 0.33
+      },
+      "inter_per_round": 1.6,
+      "inter_msg": 1.6,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.55,
+      "zero_p2p_frac": 0.21,
+      "zero_msg_frac": 0.21,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.328
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 44.2,
+      "duration_p90_s": 60.0,
+      "resolve_rate": 0.66,
+      "degenerate_rate": 0.34,
+      "degenerate_breakdown": {
+       "simultaneous_finish_tie": 0.34
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.364
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 38.5,
+      "duration_p90_s": 48.0,
+      "resolve_rate": 0.397,
+      "degenerate_rate": 0.603,
+      "degenerate_breakdown": {
+       "simultaneous_finish_tie": 0.603
+      },
+      "inter_per_round": 3.1,
+      "inter_msg": 3.1,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.6,
+      "zero_p2p_frac": 0.053,
+      "zero_msg_frac": 0.053,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.21
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 38.8,
+      "duration_p90_s": 48.0,
+      "resolve_rate": 0.47,
+      "degenerate_rate": 0.53,
+      "degenerate_breakdown": {
+       "simultaneous_finish_tie": 0.53
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.163
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 36.5,
+      "duration_p90_s": 36.0,
+      "resolve_rate": 0.15,
+      "degenerate_rate": 0.85,
+      "degenerate_breakdown": {
+       "simultaneous_finish_tie": 0.85
+      },
+      "inter_per_round": 5.3,
+      "inter_msg": 5.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.55,
+      "zero_p2p_frac": 0.013,
+      "zero_msg_frac": 0.013,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.089
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 36.8,
+      "duration_p90_s": 36.0,
+      "resolve_rate": 0.133,
+      "degenerate_rate": 0.867,
+      "degenerate_breakdown": {
+       "simultaneous_finish_tie": 0.867
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.125
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 50.4,
+    "duration_range_s": [
+     36.5,
+     50.4
+    ],
+    "inter_per_round": 0.9,
+    "inter_ppm": 0.51,
+    "inter_ppm_max": 0.6,
+    "resolve": 0.86,
+    "degenerate": 0.14,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "ZERO-INTERACTION",
+    "unresolved 14%"
+   ],
+   "verdict": "cut",
+   "score": -0.572
+  },
+  "Draw My Thing": {
+   "family": "catalog",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "per-drawer 60 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 110.6,
+      "duration_p90_s": 150.0,
+      "resolve_rate": 0.283,
+      "degenerate_rate": 0.717,
+      "degenerate_breakdown": {
+       "tie": 0.677,
+       "mostly_dud_rounds": 0.04
+      },
+      "inter_per_round": 7.8,
+      "inter_msg": 7.8,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.12,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.833
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 106.6,
+      "duration_p90_s": 150.0,
+      "resolve_rate": 0.25,
+      "degenerate_rate": 0.75,
+      "degenerate_breakdown": {
+       "tie": 0.723,
+       "mostly_dud_rounds": 0.027
+      },
+      "inter_per_round": 7.3,
+      "inter_msg": 7.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.05,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.857
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 155.3,
+      "duration_p90_s": 186.0,
+      "resolve_rate": 0.757,
+      "degenerate_rate": 0.243,
+      "degenerate_breakdown": {
+       "tie": 0.243
+      },
+      "inter_per_round": 19.0,
+      "inter_msg": 19.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.84,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.407
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 156.4,
+      "duration_p90_s": 192.0,
+      "resolve_rate": 0.713,
+      "degenerate_rate": 0.287,
+      "degenerate_breakdown": {
+       "tie": 0.287
+      },
+      "inter_per_round": 19.3,
+      "inter_msg": 19.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.85,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.45
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 261.1,
+      "duration_p90_s": 282.0,
+      "resolve_rate": 0.577,
+      "degenerate_rate": 0.423,
+      "degenerate_breakdown": {
+       "tie": 0.423
+      },
+      "inter_per_round": 38.3,
+      "inter_msg": 38.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.1,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.243
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 260.4,
+      "duration_p90_s": 276.0,
+      "resolve_rate": 0.543,
+      "degenerate_rate": 0.457,
+      "degenerate_breakdown": {
+       "tie": 0.457
+      },
+      "inter_per_round": 37.4,
+      "inter_msg": 37.4,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.08,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.263
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 488.7,
+      "duration_p90_s": 498.0,
+      "resolve_rate": 0.727,
+      "degenerate_rate": 0.273,
+      "degenerate_breakdown": {
+       "tie": 0.273
+      },
+      "inter_per_round": 75.6,
+      "inter_msg": 75.6,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.58,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.13,
+      "notes": [
+       "long at 16"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 488.6,
+      "duration_p90_s": 498.0,
+      "resolve_rate": 0.677,
+      "degenerate_rate": 0.323,
+      "degenerate_breakdown": {
+       "tie": 0.323
+      },
+      "inter_per_round": 77.3,
+      "inter_msg": 77.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.59,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.09,
+      "notes": [
+       "long at 16"
+      ]
+     }
+    }
+   },
+   "best_n": 4,
+   "summary": {
+    "duration_s": 155.3,
+    "duration_range_s": [
+     110.6,
+     488.7
+    ],
+    "inter_per_round": 19.0,
+    "inter_ppm": 1.84,
+    "inter_ppm_max": 2.12,
+    "resolve": 0.757,
+    "degenerate": 0.243,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 0.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "unresolved 24%",
+    "needs 3+"
+   ],
+   "verdict": "rework",
+   "score": 0.486
+  },
+  "Caption This (\uc81c\ubaa9 \uc9d3\uae30)": {
+   "family": "catalog",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "~90 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 69.0,
+      "duration_p90_s": 69.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "always_tie_2p": 1.0
+      },
+      "inter_per_round": 3.0,
+      "inter_msg": 1.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.29,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.39,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 1.0
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 69.0,
+      "duration_p90_s": 69.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "always_tie_2p": 1.0
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.87,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 1.0
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 73.0,
+      "duration_p90_s": 73.0,
+      "resolve_rate": 0.773,
+      "degenerate_rate": 0.227,
+      "degenerate_breakdown": {
+       "tie": 0.227
+      },
+      "inter_per_round": 5.7,
+      "inter_msg": 1.7,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.17,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.193,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.463
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 73.0,
+      "duration_p90_s": 73.0,
+      "resolve_rate": 0.72,
+      "degenerate_rate": 0.28,
+      "degenerate_breakdown": {
+       "tie": 0.28
+      },
+      "inter_per_round": 4.0,
+      "inter_msg": 0.0,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.82,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.507
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 81.0,
+      "duration_p90_s": 81.0,
+      "resolve_rate": 0.647,
+      "degenerate_rate": 0.353,
+      "degenerate_breakdown": {
+       "tie": 0.353
+      },
+      "inter_per_round": 11.6,
+      "inter_msg": 3.6,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.08,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.033,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.367
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 81.0,
+      "duration_p90_s": 81.0,
+      "resolve_rate": 0.6,
+      "degenerate_rate": 0.4,
+      "degenerate_breakdown": {
+       "tie": 0.4
+      },
+      "inter_per_round": 8.0,
+      "inter_msg": 0.0,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.74,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.327
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 97.0,
+      "duration_p90_s": 97.0,
+      "resolve_rate": 0.627,
+      "degenerate_rate": 0.373,
+      "degenerate_breakdown": {
+       "tie": 0.373
+      },
+      "inter_per_round": 23.3,
+      "inter_msg": 7.3,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.9,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.297
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 97.0,
+      "duration_p90_s": 97.0,
+      "resolve_rate": 0.64,
+      "degenerate_rate": 0.36,
+      "degenerate_breakdown": {
+       "tie": 0.36
+      },
+      "inter_per_round": 16.0,
+      "inter_msg": 0.0,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.62,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.2
+     }
+    }
+   },
+   "best_n": 4,
+   "summary": {
+    "duration_s": 73.0,
+    "duration_range_s": [
+     69.0,
+     97.0
+    ],
+    "inter_per_round": 5.7,
+    "inter_ppm": 1.17,
+    "inter_ppm_max": 1.29,
+    "resolve": 0.773,
+    "degenerate": 0.227,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "silent-completable",
+    "unresolved 22%",
+    "needs 3+"
+   ],
+   "verdict": "rework",
+   "score": 0.437
+  },
+  "Performance": {
+   "family": "catalog",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "per-performer 45 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 90.0,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.7,
+      "degenerate_rate": 0.3,
+      "degenerate_breakdown": {
+       "tie": 0.3
+      },
+      "inter_per_round": 9.8,
+      "inter_msg": 9.8,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 3.27,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.683
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 90.0,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.72,
+      "degenerate_rate": 0.28,
+      "degenerate_breakdown": {
+       "tie": 0.28
+      },
+      "inter_per_round": 9.8,
+      "inter_msg": 9.8,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 3.26,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.697
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.797,
+      "degenerate_rate": 0.203,
+      "degenerate_breakdown": {
+       "tie": 0.203
+      },
+      "inter_per_round": 58.9,
+      "inter_msg": 58.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 4.91,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.46
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.753,
+      "degenerate_rate": 0.247,
+      "degenerate_breakdown": {
+       "tie": 0.247
+      },
+      "inter_per_round": 58.6,
+      "inter_msg": 58.6,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 4.88,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.46
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 0.81,
+      "degenerate_rate": 0.19,
+      "degenerate_breakdown": {
+       "tie": 0.19
+      },
+      "inter_per_round": 274.5,
+      "inter_msg": 274.5,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 5.72,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.47
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 0.847,
+      "degenerate_rate": 0.153,
+      "degenerate_breakdown": {
+       "tie": 0.153
+      },
+      "inter_per_round": 274.7,
+      "inter_msg": 274.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 5.72,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.42
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 720.0,
+      "duration_p90_s": 720.0,
+      "resolve_rate": 0.893,
+      "degenerate_rate": 0.107,
+      "degenerate_breakdown": {
+       "tie": 0.107
+      },
+      "inter_per_round": 1177.9,
+      "inter_msg": 1177.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 6.13,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.383
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 720.0,
+      "duration_p90_s": 720.0,
+      "resolve_rate": 0.877,
+      "degenerate_rate": 0.123,
+      "degenerate_breakdown": {
+       "tie": 0.123
+      },
+      "inter_per_round": 1175.7,
+      "inter_msg": 1175.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 6.12,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.417
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 720.0,
+    "duration_range_s": [
+     90.0,
+     720.0
+    ],
+    "inter_per_round": 1177.9,
+    "inter_ppm": 6.13,
+    "inter_ppm_max": 6.13,
+    "resolve": 0.893,
+    "degenerate": 0.107,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 0.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "unresolved 10%"
+   ],
+   "verdict": "rework",
+   "score": 0.823
+  },
+  "Split Clue": {
+   "family": "catalog",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "1.5-2.5 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 71.5,
+      "duration_p90_s": 96.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 17.9,
+      "inter_msg": 17.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 7.5,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 1.0
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 73.0,
+      "duration_p90_s": 96.0,
+      "resolve_rate": 0.993,
+      "degenerate_rate": 0.007,
+      "degenerate_breakdown": {
+       "no_pair_solved_timeout": 0.007
+      },
+      "inter_per_round": 18.2,
+      "inter_msg": 18.2,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 7.5,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 1.0
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 62.2,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 31.1,
+      "inter_msg": 31.1,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 7.5,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.597
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 61.8,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 30.9,
+      "inter_msg": 30.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 7.5,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.64
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 55.3,
+      "duration_p90_s": 64.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 55.3,
+      "inter_msg": 55.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 7.5,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.337
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 55.9,
+      "duration_p90_s": 64.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 55.9,
+      "inter_msg": 55.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 7.5,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.413
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 51.7,
+      "duration_p90_s": 56.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 103.4,
+      "inter_msg": 103.4,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 7.5,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.21
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 51.5,
+      "duration_p90_s": 56.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 102.9,
+      "inter_msg": 102.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 7.5,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.21
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 71.5,
+    "duration_range_s": [
+     51.7,
+     71.5
+    ],
+    "inter_per_round": 17.9,
+    "inter_ppm": 7.5,
+    "inter_ppm_max": 7.5,
+    "resolve": 1.0,
+    "degenerate": 0.0,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 0.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [],
+   "verdict": "keep",
+   "score": 0.966
+  },
+  "Boss Fight": {
+   "family": "catalog",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "30-90 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 52.0,
+      "duration_p90_s": 57.6,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 2.5,
+      "inter_msg": 2.5,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.45,
+      "zero_p2p_frac": 0.13,
+      "zero_msg_frac": 0.13,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no loser"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 52.1,
+      "duration_p90_s": 57.4,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no loser"
+      ]
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 45.4,
+      "duration_p90_s": 49.1,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 4.3,
+      "inter_msg": 4.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.44,
+      "zero_p2p_frac": 0.017,
+      "zero_msg_frac": 0.017,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no loser"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 45.6,
+      "duration_p90_s": 49.2,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no loser"
+      ]
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 40.2,
+      "duration_p90_s": 42.5,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 7.1,
+      "inter_msg": 7.1,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.33,
+      "zero_p2p_frac": 0.003,
+      "zero_msg_frac": 0.003,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no loser"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 40.3,
+      "duration_p90_s": 42.6,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no loser"
+      ]
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 35.7,
+      "duration_p90_s": 37.1,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 12.7,
+      "inter_msg": 12.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.34,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no loser"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 35.8,
+      "duration_p90_s": 37.1,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no loser"
+      ]
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 52.0,
+    "duration_range_s": [
+     35.7,
+     52.0
+    ],
+    "inter_per_round": 2.5,
+    "inter_ppm": 1.45,
+    "inter_ppm_max": 1.45,
+    "resolve": 1.0,
+    "degenerate": 0.0,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "ZERO-INTERACTION"
+   ],
+   "verdict": "cut",
+   "score": -0.45
+  },
+  "Death Tag / Cops & Robbers": {
+   "family": "catalog",
+   "arch": "sporty",
+   "lo": 2,
+   "hi": 16,
+   "target": "2-4 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 28.1,
+      "duration_p90_s": 24.5,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.063,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.047,
+       "no_tags": 0.017
+      },
+      "inter_per_round": 4.1,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 4.1,
+      "inter_ppm": 4.36,
+      "zero_p2p_frac": 0.017,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.945,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 36.4,
+      "duration_p90_s": 147.5,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.097,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.07,
+       "no_tags": 0.027
+      },
+      "inter_per_round": 4.7,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 4.7,
+      "inter_ppm": 3.91,
+      "zero_p2p_frac": 0.027,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.949,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 66.6,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.127,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.113,
+       "no_tags": 0.013
+      },
+      "inter_per_round": 10.5,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 10.5,
+      "inter_ppm": 2.36,
+      "zero_p2p_frac": 0.013,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.985,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 67.1,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.117,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.11,
+       "no_tags": 0.007
+      },
+      "inter_per_round": 10.4,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 10.4,
+      "inter_ppm": 2.33,
+      "zero_p2p_frac": 0.007,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.986,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 94.0,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.11,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.093,
+       "no_tags": 0.017
+      },
+      "inter_per_round": 23.7,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 23.7,
+      "inter_ppm": 1.89,
+      "zero_p2p_frac": 0.017,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.993,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 96.4,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.11,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.097,
+       "no_tags": 0.013
+      },
+      "inter_per_round": 23.9,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 23.9,
+      "inter_ppm": 1.86,
+      "zero_p2p_frac": 0.013,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.993,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 141.3,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.133,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.12,
+       "no_tags": 0.013
+      },
+      "inter_per_round": 52.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 52.0,
+      "inter_ppm": 1.38,
+      "zero_p2p_frac": 0.013,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.996,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 143.0,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.133,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.117,
+       "no_tags": 0.017
+      },
+      "inter_per_round": 50.8,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 50.8,
+      "inter_ppm": 1.33,
+      "zero_p2p_frac": 0.017,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.996,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 28.1,
+    "duration_range_s": [
+     28.1,
+     141.3
+    ],
+    "inter_per_round": 4.1,
+    "inter_ppm": 4.36,
+    "inter_ppm_max": 4.36,
+    "resolve": 1.0,
+    "degenerate": 0.063,
+    "zero_p2p_antisocial_max": 0.027,
+    "zero_p2p_antisocial_core": 0.027,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 0.945
+   },
+   "flags": [],
+   "verdict": "keep",
+   "score": 0.737
+  },
+  "Timebomb / Hot Potato": {
+   "family": "catalog",
+   "arch": "chaos",
+   "lo": 2,
+   "hi": 16,
+   "target": "45-60 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 45.0,
+      "duration_p90_s": 45.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.007,
+      "degenerate_breakdown": {
+       "zero_toss": 0.007
+      },
+      "inter_per_round": 27.0,
+      "inter_msg": 0.0,
+      "inter_tap": 7.3,
+      "inter_prox": 19.7,
+      "inter_ppm": 18.03,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 45.0,
+      "duration_p90_s": 45.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.01,
+      "degenerate_breakdown": {
+       "zero_toss": 0.01
+      },
+      "inter_per_round": 27.0,
+      "inter_msg": 0.0,
+      "inter_tap": 7.4,
+      "inter_prox": 19.6,
+      "inter_ppm": 18.01,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 45.0,
+      "duration_p90_s": 45.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 28.7,
+      "inter_msg": 0.0,
+      "inter_tap": 7.5,
+      "inter_prox": 21.2,
+      "inter_ppm": 9.57,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 45.0,
+      "duration_p90_s": 45.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.007,
+      "degenerate_breakdown": {
+       "zero_toss": 0.007
+      },
+      "inter_per_round": 28.5,
+      "inter_msg": 0.0,
+      "inter_tap": 7.5,
+      "inter_prox": 21.0,
+      "inter_ppm": 9.49,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 45.0,
+      "duration_p90_s": 45.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 30.1,
+      "inter_msg": 0.0,
+      "inter_tap": 7.5,
+      "inter_prox": 22.6,
+      "inter_ppm": 5.01,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 45.0,
+      "duration_p90_s": 45.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 30.7,
+      "inter_msg": 0.0,
+      "inter_tap": 7.6,
+      "inter_prox": 23.1,
+      "inter_ppm": 5.11,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 45.0,
+      "duration_p90_s": 45.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 33.4,
+      "inter_msg": 0.0,
+      "inter_tap": 7.8,
+      "inter_prox": 25.6,
+      "inter_ppm": 2.79,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 45.0,
+      "duration_p90_s": 45.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 33.6,
+      "inter_msg": 0.0,
+      "inter_tap": 8.2,
+      "inter_prox": 25.4,
+      "inter_ppm": 2.8,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 4,
+   "summary": {
+    "duration_s": 45.0,
+    "duration_range_s": [
+     45.0,
+     45.0
+    ],
+    "inter_per_round": 28.7,
+    "inter_ppm": 9.57,
+    "inter_ppm_max": 18.03,
+    "resolve": 1.0,
+    "degenerate": 0.0,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [],
+   "verdict": "keep",
+   "score": 1.0
+  },
+  "Tile Wars": {
+   "family": "catalog",
+   "arch": "sporty",
+   "lo": 2,
+   "hi": 16,
+   "target": "3 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.967,
+      "degenerate_rate": 0.087,
+      "degenerate_breakdown": {
+       "teams_never_met": 0.05,
+       "tie": 0.033,
+       "runaway": 0.003
+      },
+      "inter_per_round": 14.4,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 14.4,
+      "inter_ppm": 2.4,
+      "zero_p2p_frac": 0.05,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "tiles 100-148",
+       "tiles 101-149",
+       "tiles 101-155",
+       "tiles 102-154"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.97,
+      "degenerate_rate": 0.09,
+      "degenerate_breakdown": {
+       "teams_never_met": 0.06,
+       "tie": 0.03
+      },
+      "inter_per_round": 14.6,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 14.6,
+      "inter_ppm": 2.43,
+      "zero_p2p_frac": 0.06,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "tiles 100-107",
+       "tiles 100-126",
+       "tiles 100-132",
+       "tiles 101-122"
+      ]
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.99,
+      "degenerate_rate": 0.01,
+      "degenerate_breakdown": {
+       "tie": 0.01
+      },
+      "inter_per_round": 38.7,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 38.7,
+      "inter_ppm": 3.23,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "tiles 100-123",
+       "tiles 101-107",
+       "tiles 101-125",
+       "tiles 101-151"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.99,
+      "degenerate_rate": 0.01,
+      "degenerate_breakdown": {
+       "tie": 0.01
+      },
+      "inter_per_round": 41.2,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 41.2,
+      "inter_ppm": 3.43,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "tiles 100-108",
+       "tiles 100-111",
+       "tiles 100-153",
+       "tiles 100-88"
+      ]
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.977,
+      "degenerate_rate": 0.04,
+      "degenerate_breakdown": {
+       "tie": 0.023,
+       "runaway": 0.017
+      },
+      "inter_per_round": 104.8,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 104.8,
+      "inter_ppm": 4.37,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "tiles 100-156",
+       "tiles 101-154",
+       "tiles 101-155",
+       "tiles 103-119"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.977,
+      "degenerate_rate": 0.04,
+      "degenerate_breakdown": {
+       "tie": 0.023,
+       "runaway": 0.017
+      },
+      "inter_per_round": 106.1,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 106.1,
+      "inter_ppm": 4.42,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "tiles 100-141",
+       "tiles 100-154",
+       "tiles 100-156",
+       "tiles 101-155"
+      ]
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.983,
+      "degenerate_rate": 0.027,
+      "degenerate_breakdown": {
+       "tie": 0.017,
+       "runaway": 0.01
+      },
+      "inter_per_round": 317.4,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 317.4,
+      "inter_ppm": 6.61,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "tiles 100-156",
+       "tiles 101-151",
+       "tiles 101-155",
+       "tiles 102-154"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.997,
+      "degenerate_rate": 0.01,
+      "degenerate_breakdown": {
+       "runaway": 0.007,
+       "tie": 0.003
+      },
+      "inter_per_round": 312.8,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 312.8,
+      "inter_ppm": 6.52,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "tiles 100-156",
+       "tiles 101-155",
+       "tiles 102-154",
+       "tiles 103-153"
+      ]
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 180.0,
+    "duration_range_s": [
+     180.0,
+     180.0
+    ],
+    "inter_per_round": 317.4,
+    "inter_ppm": 6.61,
+    "inter_ppm_max": 6.61,
+    "resolve": 0.983,
+    "degenerate": 0.027,
+    "zero_p2p_antisocial_max": 0.06,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "zero-interaction possible at 2p"
+   ],
+   "verdict": "keep",
+   "score": 0.895
+  },
+  "Infection Zones": {
+   "family": "catalog",
+   "arch": "sporty",
+   "lo": 2,
+   "hi": 16,
+   "target": "3-4 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 114.2,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.183,
+      "degenerate_breakdown": {
+       "timeout_many_survivors": 0.183
+      },
+      "inter_per_round": 16.3,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 16.3,
+      "inter_ppm": 4.28,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.993,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 121.3,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.203,
+      "degenerate_breakdown": {
+       "timeout_many_survivors": 0.203
+      },
+      "inter_per_round": 17.4,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 17.4,
+      "inter_ppm": 4.31,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.994,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 140.2,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.227,
+      "degenerate_breakdown": {
+       "timeout_many_survivors": 0.227
+      },
+      "inter_per_round": 49.1,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 49.1,
+      "inter_ppm": 5.25,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.796,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 132.4,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.193,
+      "degenerate_breakdown": {
+       "timeout_many_survivors": 0.193
+      },
+      "inter_per_round": 45.3,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 45.3,
+      "inter_ppm": 5.13,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.8,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 140.8,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.24,
+      "degenerate_breakdown": {
+       "timeout_many_survivors": 0.24
+      },
+      "inter_per_round": 169.7,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 169.7,
+      "inter_ppm": 9.04,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.659,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 151.3,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.257,
+      "degenerate_breakdown": {
+       "timeout_many_survivors": 0.257
+      },
+      "inter_per_round": 166.5,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 166.5,
+      "inter_ppm": 8.25,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.624,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 170.0,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.3,
+      "degenerate_breakdown": {
+       "timeout_many_survivors": 0.3
+      },
+      "inter_per_round": 399.7,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 399.7,
+      "inter_ppm": 8.82,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.512,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 171.2,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.303,
+      "degenerate_breakdown": {
+       "timeout_many_survivors": 0.303
+      },
+      "inter_per_round": 402.4,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 402.4,
+      "inter_ppm": 8.82,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.512,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 8,
+   "summary": {
+    "duration_s": 140.8,
+    "duration_range_s": [
+     114.2,
+     170.0
+    ],
+    "inter_per_round": 169.7,
+    "inter_ppm": 9.04,
+    "inter_ppm_max": 9.04,
+    "resolve": 1.0,
+    "degenerate": 0.24,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 0.512
+   },
+   "flags": [],
+   "verdict": "keep",
+   "score": 0.952
+  },
+  "Five Buttons": {
+   "family": "unshaped",
+   "arch": "chaos",
+   "lo": 2,
+   "hi": 16,
+   "target": "<30 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 11.7,
+      "duration_p90_s": 20.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.237,
+      "degenerate_breakdown": {
+       "instant_first_press": 0.237
+      },
+      "inter_per_round": 0.4,
+      "inter_msg": 0.4,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.94,
+      "zero_p2p_frac": 0.703,
+      "zero_msg_frac": 0.703,
+      "active_frac": 0.882,
+      "participation": 0.882,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 12.1,
+      "duration_p90_s": 20.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.16,
+      "degenerate_breakdown": {
+       "instant_first_press": 0.16
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.92,
+      "participation": 0.92,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 12.2,
+      "duration_p90_s": 20.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.197,
+      "degenerate_breakdown": {
+       "instant_first_press": 0.197
+      },
+      "inter_per_round": 0.9,
+      "inter_msg": 0.9,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.14,
+      "zero_p2p_frac": 0.437,
+      "zero_msg_frac": 0.437,
+      "active_frac": 0.703,
+      "participation": 0.703,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 12.3,
+      "duration_p90_s": 20.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.21,
+      "degenerate_breakdown": {
+       "instant_first_press": 0.21
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.711,
+      "participation": 0.711,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 11.6,
+      "duration_p90_s": 20.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.217,
+      "degenerate_breakdown": {
+       "instant_first_press": 0.217
+      },
+      "inter_per_round": 1.7,
+      "inter_msg": 1.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.12,
+      "zero_p2p_frac": 0.207,
+      "zero_msg_frac": 0.207,
+      "active_frac": 0.362,
+      "participation": 0.362,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 11.8,
+      "duration_p90_s": 20.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.233,
+      "degenerate_breakdown": {
+       "instant_first_press": 0.233
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.37,
+      "participation": 0.37,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 12.1,
+      "duration_p90_s": 20.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.187,
+      "degenerate_breakdown": {
+       "instant_first_press": 0.187
+      },
+      "inter_per_round": 3.6,
+      "inter_msg": 3.6,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.1,
+      "zero_p2p_frac": 0.077,
+      "zero_msg_frac": 0.077,
+      "active_frac": 0.189,
+      "participation": 0.189,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 12.0,
+      "duration_p90_s": 20.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.2,
+      "degenerate_breakdown": {
+       "instant_first_press": 0.2
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.188,
+      "participation": 0.188,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 12.1,
+    "duration_range_s": [
+     11.6,
+     12.2
+    ],
+    "inter_per_round": 3.6,
+    "inter_ppm": 1.1,
+    "inter_ppm_max": 1.14,
+    "resolve": 1.0,
+    "degenerate": 0.187,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 0.189,
+    "active_min": 0.189
+   },
+   "flags": [
+    "ZERO-INTERACTION",
+    "sit-out at 8,16p"
+   ],
+   "verdict": "cut",
+   "score": -0.509
+  },
+  "31 (Nim)": {
+   "family": "unshaped",
+   "arch": "any",
+   "lo": 2,
+   "hi": 16,
+   "target": "~1 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 65.4,
+      "duration_p90_s": 72.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.3,
+      "degenerate_breakdown": {
+       "solved_game_perfect_play": 0.3
+      },
+      "inter_per_round": 1.2,
+      "inter_msg": 1.2,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.53,
+      "zero_p2p_frac": 0.363,
+      "zero_msg_frac": 0.363,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.633
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 64.9,
+      "duration_p90_s": 72.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.293,
+      "degenerate_breakdown": {
+       "solved_game_perfect_play": 0.293
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.597
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 65.5,
+      "duration_p90_s": 72.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "kingmaking_multiplayer": 1.0
+      },
+      "inter_per_round": 2.5,
+      "inter_msg": 2.5,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.57,
+      "zero_p2p_frac": 0.093,
+      "zero_msg_frac": 0.093,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 65.4,
+      "duration_p90_s": 76.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "kingmaking_multiplayer": 1.0
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 65.9,
+      "duration_p90_s": 76.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "kingmaking_multiplayer": 1.0
+      },
+      "inter_per_round": 4.6,
+      "inter_msg": 4.6,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.53,
+      "zero_p2p_frac": 0.02,
+      "zero_msg_frac": 0.02,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 65.7,
+      "duration_p90_s": 76.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "kingmaking_multiplayer": 1.0
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 65.2,
+      "duration_p90_s": 72.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "kingmaking_multiplayer": 1.0
+      },
+      "inter_per_round": 9.4,
+      "inter_msg": 9.4,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.54,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 0.971,
+      "participation": 0.971,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 65.3,
+      "duration_p90_s": 72.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "kingmaking_multiplayer": 1.0
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.971,
+      "participation": 0.971,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 65.4,
+    "duration_range_s": [
+     65.2,
+     65.9
+    ],
+    "inter_per_round": 1.2,
+    "inter_ppm": 0.53,
+    "inter_ppm_max": 0.57,
+    "resolve": 1.0,
+    "degenerate": 0.3,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 0.971,
+    "active_min": 0.971
+   },
+   "flags": [
+    "ZERO-INTERACTION"
+   ],
+   "verdict": "cut",
+   "score": -0.571
+  },
+  "Truth or Dare": {
+   "family": "unshaped",
+   "arch": "chaos",
+   "lo": 2,
+   "hi": 16,
+   "target": "per-turn 45 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 90.0,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_win_condition": 1.0
+      },
+      "inter_per_round": 5.2,
+      "inter_msg": 5.2,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.73,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 90.0,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_win_condition": 1.0
+      },
+      "inter_per_round": 4.0,
+      "inter_msg": 4.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.33,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_win_condition": 1.0
+      },
+      "inter_per_round": 15.2,
+      "inter_msg": 15.2,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.26,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_win_condition": 1.0
+      },
+      "inter_per_round": 8.0,
+      "inter_msg": 8.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.67,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_win_condition": 1.0
+      },
+      "inter_per_round": 50.2,
+      "inter_msg": 50.2,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.05,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_win_condition": 1.0
+      },
+      "inter_per_round": 16.0,
+      "inter_msg": 16.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.33,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 720.0,
+      "duration_p90_s": 720.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_win_condition": 1.0
+      },
+      "inter_per_round": 180.0,
+      "inter_msg": 180.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.94,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 720.0,
+      "duration_p90_s": 720.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "no_win_condition": 1.0
+      },
+      "inter_per_round": 32.0,
+      "inter_msg": 32.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.17,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 90.0,
+    "duration_range_s": [
+     90.0,
+     720.0
+    ],
+    "inter_per_round": 5.2,
+    "inter_ppm": 1.73,
+    "inter_ppm_max": 1.73,
+    "resolve": 0.0,
+    "degenerate": 1.0,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 0.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "unresolved 100%",
+    "degenerate 100% (no_win_condition)",
+    "needs 3+"
+   ],
+   "verdict": "rework",
+   "score": 0.119
+  },
+  "Liar Game / Mafia": {
+   "family": "unshaped",
+   "arch": "chaos",
+   "lo": 2,
+   "hi": 16,
+   "target": "2-4 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 84.0,
+      "duration_p90_s": 84.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "two_player_coinflip": 1.0
+      },
+      "inter_per_round": 6.1,
+      "inter_msg": 4.1,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.16,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 84.0,
+      "duration_p90_s": 84.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "two_player_coinflip": 1.0
+      },
+      "inter_per_round": 4.0,
+      "inter_msg": 2.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.43,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 108.0,
+      "duration_p90_s": 108.0,
+      "resolve_rate": 0.807,
+      "degenerate_rate": 0.193,
+      "degenerate_breakdown": {
+       "vote_tie": 0.193
+      },
+      "inter_per_round": 12.2,
+      "inter_msg": 8.2,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.7,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 108.0,
+      "duration_p90_s": 108.0,
+      "resolve_rate": 0.82,
+      "degenerate_rate": 0.18,
+      "degenerate_breakdown": {
+       "vote_tie": 0.18
+      },
+      "inter_per_round": 8.0,
+      "inter_msg": 4.0,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.11,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 156.0,
+      "duration_p90_s": 156.0,
+      "resolve_rate": 0.83,
+      "degenerate_rate": 0.17,
+      "degenerate_breakdown": {
+       "vote_tie": 0.17
+      },
+      "inter_per_round": 24.2,
+      "inter_msg": 16.2,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.16,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 156.0,
+      "duration_p90_s": 156.0,
+      "resolve_rate": 0.8,
+      "degenerate_rate": 0.2,
+      "degenerate_breakdown": {
+       "vote_tie": 0.2
+      },
+      "inter_per_round": 16.0,
+      "inter_msg": 8.0,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.77,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 252.0,
+      "duration_p90_s": 252.0,
+      "resolve_rate": 0.947,
+      "degenerate_rate": 0.053,
+      "degenerate_breakdown": {
+       "vote_tie": 0.053
+      },
+      "inter_per_round": 48.4,
+      "inter_msg": 32.4,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.72,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 252.0,
+      "duration_p90_s": 252.0,
+      "resolve_rate": 0.927,
+      "degenerate_rate": 0.073,
+      "degenerate_breakdown": {
+       "vote_tie": 0.073
+      },
+      "inter_per_round": 32.0,
+      "inter_msg": 16.0,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.48,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 252.0,
+    "duration_range_s": [
+     84.0,
+     252.0
+    ],
+    "inter_per_round": 48.4,
+    "inter_ppm": 0.72,
+    "inter_ppm_max": 2.16,
+    "resolve": 0.947,
+    "degenerate": 0.053,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 0.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "needs 3+"
+   ],
+   "verdict": "keep",
+   "score": 0.575
+  },
+  "Tee Game (photo + slogan)": {
+   "family": "unshaped",
+   "arch": "chill",
+   "lo": 2,
+   "hi": 16,
+   "target": "~90 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "always_tie_2p": 1.0
+      },
+      "inter_per_round": 3.3,
+      "inter_msg": 1.3,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.41,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.313,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "always_tie_2p": 1.0
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.86,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.733,
+      "degenerate_rate": 0.267,
+      "degenerate_breakdown": {
+       "tie": 0.267
+      },
+      "inter_per_round": 6.7,
+      "inter_msg": 2.7,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.45,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.087,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.71,
+      "degenerate_rate": 0.29,
+      "degenerate_breakdown": {
+       "tie": 0.29
+      },
+      "inter_per_round": 4.0,
+      "inter_msg": 0.0,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.86,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.603,
+      "degenerate_rate": 0.397,
+      "degenerate_breakdown": {
+       "tie": 0.397
+      },
+      "inter_per_round": 13.3,
+      "inter_msg": 5.3,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.43,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.007,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.617,
+      "degenerate_rate": 0.383,
+      "degenerate_breakdown": {
+       "tie": 0.383
+      },
+      "inter_per_round": 8.0,
+      "inter_msg": 0.0,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.86,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.653,
+      "degenerate_rate": 0.347,
+      "degenerate_breakdown": {
+       "tie": 0.347
+      },
+      "inter_per_round": 26.9,
+      "inter_msg": 10.9,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.44,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.637,
+      "degenerate_rate": 0.363,
+      "degenerate_breakdown": {
+       "tie": 0.363
+      },
+      "inter_per_round": 16.0,
+      "inter_msg": 0.0,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.86,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 4,
+   "summary": {
+    "duration_s": 70.0,
+    "duration_range_s": [
+     70.0,
+     70.0
+    ],
+    "inter_per_round": 6.7,
+    "inter_ppm": 1.45,
+    "inter_ppm_max": 1.45,
+    "resolve": 0.733,
+    "degenerate": 0.267,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "silent-completable",
+    "unresolved 26%",
+    "needs 3+"
+   ],
+   "verdict": "rework",
+   "score": 0.43
+  },
+  "Guess the Number (timing imposter)": {
+   "family": "unshaped",
+   "arch": "chaos",
+   "lo": 2,
+   "hi": 16,
+   "target": "~75 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "two_player_coinflip": 1.0
+      },
+      "inter_per_round": 3.4,
+      "inter_msg": 1.4,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.47,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.283,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "imposter not the worst timer"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "two_player_coinflip": 1.0
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.86,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "imposter not the worst timer"
+      ]
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.873,
+      "degenerate_rate": 0.127,
+      "degenerate_breakdown": {
+       "vote_tie": 0.127
+      },
+      "inter_per_round": 6.9,
+      "inter_msg": 2.9,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.48,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.073,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "imposter not the worst timer"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.82,
+      "degenerate_rate": 0.18,
+      "degenerate_breakdown": {
+       "vote_tie": 0.18
+      },
+      "inter_per_round": 4.0,
+      "inter_msg": 0.0,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.86,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "imposter not the worst timer"
+      ]
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.99,
+      "degenerate_rate": 0.01,
+      "degenerate_breakdown": {
+       "vote_tie": 0.01
+      },
+      "inter_per_round": 13.9,
+      "inter_msg": 5.9,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.48,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.01,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "imposter not the worst timer"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.897,
+      "degenerate_rate": 0.103,
+      "degenerate_breakdown": {
+       "vote_tie": 0.103
+      },
+      "inter_per_round": 8.0,
+      "inter_msg": 0.0,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.86,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "imposter not the worst timer"
+      ]
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 27.5,
+      "inter_msg": 11.5,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.48,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "imposter not the worst timer"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.0,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.997,
+      "degenerate_rate": 0.003,
+      "degenerate_breakdown": {
+       "vote_tie": 0.003
+      },
+      "inter_per_round": 16.0,
+      "inter_msg": 0.0,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.86,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "imposter not the worst timer"
+      ]
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 70.0,
+    "duration_range_s": [
+     70.0,
+     70.0
+    ],
+    "inter_per_round": 27.5,
+    "inter_ppm": 1.48,
+    "inter_ppm_max": 1.48,
+    "resolve": 1.0,
+    "degenerate": 0.0,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "silent-completable",
+    "needs 3+"
+   ],
+   "verdict": "rework",
+   "score": 0.552
+  },
+  "Catch the Imposter": {
+   "family": "unshaped",
+   "arch": "chaos",
+   "lo": 2,
+   "hi": 16,
+   "target": "~90 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 80.0,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "two_player_coinflip": 1.0
+      },
+      "inter_per_round": 3.7,
+      "inter_msg": 1.7,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.4,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.21,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 80.0,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 0.0,
+      "degenerate_rate": 1.0,
+      "degenerate_breakdown": {
+       "two_player_coinflip": 1.0
+      },
+      "inter_per_round": 2.0,
+      "inter_msg": 0.0,
+      "inter_tap": 2.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.75,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 80.0,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 0.823,
+      "degenerate_rate": 0.177,
+      "degenerate_breakdown": {
+       "vote_tie": 0.177
+      },
+      "inter_per_round": 7.7,
+      "inter_msg": 3.7,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.45,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.023,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 80.0,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 0.8,
+      "degenerate_rate": 0.2,
+      "degenerate_breakdown": {
+       "vote_tie": 0.2
+      },
+      "inter_per_round": 4.0,
+      "inter_msg": 0.0,
+      "inter_tap": 4.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.75,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 80.0,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 0.963,
+      "degenerate_rate": 0.037,
+      "degenerate_breakdown": {
+       "vote_tie": 0.037
+      },
+      "inter_per_round": 15.5,
+      "inter_msg": 7.5,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.45,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.003,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 80.0,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 0.923,
+      "degenerate_rate": 0.077,
+      "degenerate_breakdown": {
+       "vote_tie": 0.077
+      },
+      "inter_per_round": 8.0,
+      "inter_msg": 0.0,
+      "inter_tap": 8.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.75,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 80.0,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 0.88,
+      "degenerate_rate": 0.12,
+      "degenerate_breakdown": {
+       "vote_tie": 0.12
+      },
+      "inter_per_round": 30.6,
+      "inter_msg": 14.6,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 1.43,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 80.0,
+      "duration_p90_s": 80.0,
+      "resolve_rate": 0.843,
+      "degenerate_rate": 0.157,
+      "degenerate_breakdown": {
+       "vote_tie": 0.157
+      },
+      "inter_per_round": 16.0,
+      "inter_msg": 0.0,
+      "inter_tap": 16.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.75,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 8,
+   "summary": {
+    "duration_s": 80.0,
+    "duration_range_s": [
+     80.0,
+     80.0
+    ],
+    "inter_per_round": 15.5,
+    "inter_ppm": 1.45,
+    "inter_ppm_max": 1.45,
+    "resolve": 0.963,
+    "degenerate": 0.037,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "silent-completable",
+    "needs 3+"
+   ],
+   "verdict": "rework",
+   "score": 0.533
+  },
+  "Rival Teams (generic)": {
+   "family": "superseded",
+   "arch": "sporty",
+   "lo": 4,
+   "hi": 16,
+   "target": "2 min",
+   "by_n": {
+    "2": null,
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 120.0,
+      "duration_p90_s": 120.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.337,
+      "degenerate_breakdown": {
+       "runaway_by_skill_sum": 0.24,
+       "tie": 0.097
+      },
+      "inter_per_round": 5.4,
+      "inter_msg": 5.4,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.67,
+      "zero_p2p_frac": 0.01,
+      "zero_msg_frac": 0.01,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.777,
+      "notes": [
+       "framework, not a mechanic"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 120.0,
+      "duration_p90_s": 120.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.383,
+      "degenerate_breakdown": {
+       "runaway_by_skill_sum": 0.277,
+       "tie": 0.107
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.783,
+      "notes": [
+       "framework, not a mechanic"
+      ]
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 120.0,
+      "duration_p90_s": 120.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.193,
+      "degenerate_breakdown": {
+       "runaway_by_skill_sum": 0.117,
+       "tie": 0.077
+      },
+      "inter_per_round": 10.2,
+      "inter_msg": 10.2,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.64,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.753,
+      "notes": [
+       "framework, not a mechanic"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 120.0,
+      "duration_p90_s": 120.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.203,
+      "degenerate_breakdown": {
+       "runaway_by_skill_sum": 0.147,
+       "tie": 0.057
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.763,
+      "notes": [
+       "framework, not a mechanic"
+      ]
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 120.0,
+      "duration_p90_s": 120.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.05,
+      "degenerate_breakdown": {
+       "tie": 0.033,
+       "runaway_by_skill_sum": 0.017
+      },
+      "inter_per_round": 21.6,
+      "inter_msg": 21.6,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.68,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.657,
+      "notes": [
+       "framework, not a mechanic"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 120.0,
+      "duration_p90_s": 120.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.07,
+      "degenerate_breakdown": {
+       "tie": 0.043,
+       "runaway_by_skill_sum": 0.027
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.637,
+      "notes": [
+       "framework, not a mechanic"
+      ]
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 120.0,
+    "duration_range_s": [
+     120.0,
+     120.0
+    ],
+    "inter_per_round": 21.6,
+    "inter_ppm": 0.68,
+    "inter_ppm_max": 0.68,
+    "resolve": 1.0,
+    "degenerate": 0.05,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "ZERO-INTERACTION",
+    "skill-deterministic (77% top-skill wins)"
+   ],
+   "verdict": "cut",
+   "score": -0.513
+  },
+  "Scavenger (planted object)": {
+   "family": "superseded",
+   "arch": "chill",
+   "lo": 2,
+   "hi": 16,
+   "target": "5-10 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 198.6,
+      "duration_p90_s": 287.6,
+      "resolve_rate": 0.993,
+      "degenerate_rate": 0.007,
+      "degenerate_breakdown": {
+       "nobody_found_it": 0.007
+      },
+      "inter_per_round": 2.7,
+      "inter_msg": 2.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.4,
+      "zero_p2p_frac": 0.1,
+      "zero_msg_frac": 0.1,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.537,
+      "notes": [
+       "needs physical pre-setup"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 195.5,
+      "duration_p90_s": 283.9,
+      "resolve_rate": 0.997,
+      "degenerate_rate": 0.003,
+      "degenerate_breakdown": {
+       "nobody_found_it": 0.003
+      },
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.545,
+      "notes": [
+       "needs physical pre-setup"
+      ]
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 161.3,
+      "duration_p90_s": 217.8,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 5.0,
+      "inter_msg": 5.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.47,
+      "zero_p2p_frac": 0.013,
+      "zero_msg_frac": 0.013,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.307,
+      "notes": [
+       "needs physical pre-setup"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 160.0,
+      "duration_p90_s": 228.7,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.29,
+      "notes": [
+       "needs physical pre-setup"
+      ]
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 134.5,
+      "duration_p90_s": 171.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 10.3,
+      "inter_msg": 10.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.57,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.167,
+      "notes": [
+       "needs physical pre-setup"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 135.0,
+      "duration_p90_s": 172.9,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.13,
+      "notes": [
+       "needs physical pre-setup"
+      ]
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 117.4,
+      "duration_p90_s": 141.1,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 21.1,
+      "inter_msg": 21.1,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.67,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.097,
+      "notes": [
+       "needs physical pre-setup"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 116.2,
+      "duration_p90_s": 140.9,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.113,
+      "notes": [
+       "needs physical pre-setup"
+      ]
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 117.4,
+    "duration_range_s": [
+     117.4,
+     198.6
+    ],
+    "inter_per_round": 21.1,
+    "inter_ppm": 0.67,
+    "inter_ppm_max": 0.67,
+    "resolve": 1.0,
+    "degenerate": 0.0,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "ZERO-INTERACTION"
+   ],
+   "verdict": "cut",
+   "score": -0.504
+  },
+  "Race / Manhunt-Tag": {
+   "family": "superseded",
+   "arch": "sporty",
+   "lo": 2,
+   "hi": 16,
+   "target": "2-4 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 28.1,
+      "duration_p90_s": 24.5,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.063,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.047,
+       "no_tags": 0.017
+      },
+      "inter_per_round": 2.2,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 2.2,
+      "inter_ppm": 2.36,
+      "zero_p2p_frac": 0.017,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.918,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 36.4,
+      "duration_p90_s": 147.5,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.097,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.07,
+       "no_tags": 0.027
+      },
+      "inter_per_round": 2.9,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 2.9,
+      "inter_ppm": 2.42,
+      "zero_p2p_frac": 0.027,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.923,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 134.3,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.423,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.41,
+       "no_tags": 0.013
+      },
+      "inter_per_round": 8.1,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 8.1,
+      "inter_ppm": 0.9,
+      "zero_p2p_frac": 0.013,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.673,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 133.2,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.403,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.387,
+       "no_tags": 0.017
+      },
+      "inter_per_round": 8.4,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 8.4,
+      "inter_ppm": 0.94,
+      "zero_p2p_frac": 0.017,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.68,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 120.4,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.267,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.263,
+       "no_tags": 0.003
+      },
+      "inter_per_round": 15.9,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 15.9,
+      "inter_ppm": 0.99,
+      "zero_p2p_frac": 0.003,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.627,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 131.9,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.313,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.313
+      },
+      "inter_per_round": 15.5,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 15.5,
+      "inter_ppm": 0.88,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.614,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 157.7,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.303,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.303
+      },
+      "inter_per_round": 32.7,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 32.7,
+      "inter_ppm": 0.78,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.552,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 154.2,
+      "duration_p90_s": 240.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.277,
+      "degenerate_breakdown": {
+       "timeout_survivors": 0.277
+      },
+      "inter_per_round": 32.1,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 32.1,
+      "inter_ppm": 0.78,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.556,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 28.1,
+    "duration_range_s": [
+     28.1,
+     157.7
+    ],
+    "inter_per_round": 2.2,
+    "inter_ppm": 2.36,
+    "inter_ppm_max": 2.36,
+    "resolve": 1.0,
+    "degenerate": 0.063,
+    "zero_p2p_antisocial_max": 0.027,
+    "zero_p2p_antisocial_core": 0.027,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 0.552
+   },
+   "flags": [],
+   "verdict": "keep",
+   "score": 0.6
+  },
+  "Accuracy / Long Jump": {
+   "family": "superseded",
+   "arch": "sporty",
+   "lo": 2,
+   "hi": 16,
+   "target": "per-player 45 s",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 90.0,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 2.0,
+      "inter_msg": 2.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.65,
+      "zero_p2p_frac": 0.18,
+      "zero_msg_frac": 0.18,
+      "active_frac": 0.5,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.937
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 90.0,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.5,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.92
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 7.8,
+      "inter_msg": 7.8,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.65,
+      "zero_p2p_frac": 0.007,
+      "zero_msg_frac": 0.007,
+      "active_frac": 0.25,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.877
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 180.0,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.25,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.853
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 31.3,
+      "inter_msg": 31.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.65,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 0.125,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.81
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 360.0,
+      "duration_p90_s": 360.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.125,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.773
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 720.0,
+      "duration_p90_s": 720.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 126.3,
+      "inter_msg": 126.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.66,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 0.062,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.71
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 720.0,
+      "duration_p90_s": 720.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 0.0,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 0.0,
+      "zero_p2p_frac": 1.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.062,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.68
+     }
+    }
+   },
+   "best_n": 16,
+   "summary": {
+    "duration_s": 720.0,
+    "duration_range_s": [
+     90.0,
+     720.0
+    ],
+    "inter_per_round": 126.3,
+    "inter_ppm": 0.66,
+    "inter_ppm_max": 0.66,
+    "resolve": 1.0,
+    "degenerate": 0.0,
+    "zero_p2p_antisocial_max": 1.0,
+    "zero_p2p_antisocial_core": 1.0,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 0.062
+   },
+   "flags": [
+    "ZERO-INTERACTION",
+    "low agency at 4,8,16p",
+    "skill-deterministic (87% top-skill wins)"
+   ],
+   "verdict": "cut",
+   "score": -0.505
+  },
+  "Team Challenge (2p coop physical)": {
+   "family": "superseded",
+   "arch": "sporty",
+   "lo": 2,
+   "hi": 16,
+   "target": "1-2 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 79.0,
+      "duration_p90_s": 102.0,
+      "resolve_rate": 0.963,
+      "degenerate_rate": 0.037,
+      "degenerate_breakdown": {
+       "timeout": 0.037
+      },
+      "inter_per_round": 26.3,
+      "inter_msg": 13.2,
+      "inter_tap": 0.0,
+      "inter_prox": 13.2,
+      "inter_ppm": 10.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 1.0
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 77.8,
+      "duration_p90_s": 102.0,
+      "resolve_rate": 0.963,
+      "degenerate_rate": 0.037,
+      "degenerate_breakdown": {
+       "timeout": 0.037
+      },
+      "inter_per_round": 25.9,
+      "inter_msg": 13.0,
+      "inter_tap": 0.0,
+      "inter_prox": 13.0,
+      "inter_ppm": 10.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 1.0
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 69.9,
+      "duration_p90_s": 84.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 46.6,
+      "inter_msg": 23.3,
+      "inter_tap": 0.0,
+      "inter_prox": 23.3,
+      "inter_ppm": 10.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.553
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 70.9,
+      "duration_p90_s": 90.0,
+      "resolve_rate": 0.997,
+      "degenerate_rate": 0.003,
+      "degenerate_breakdown": {
+       "timeout": 0.003
+      },
+      "inter_per_round": 47.3,
+      "inter_msg": 23.6,
+      "inter_tap": 0.0,
+      "inter_prox": 23.6,
+      "inter_ppm": 10.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.589
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 61.1,
+      "duration_p90_s": 72.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 81.4,
+      "inter_msg": 40.7,
+      "inter_tap": 0.0,
+      "inter_prox": 40.7,
+      "inter_ppm": 10.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.357
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 62.6,
+      "duration_p90_s": 78.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 83.5,
+      "inter_msg": 41.8,
+      "inter_tap": 0.0,
+      "inter_prox": 41.8,
+      "inter_ppm": 10.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.283
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 56.7,
+      "duration_p90_s": 66.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 151.3,
+      "inter_msg": 75.7,
+      "inter_tap": 0.0,
+      "inter_prox": 75.7,
+      "inter_ppm": 10.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.197
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 56.8,
+      "duration_p90_s": 66.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.0,
+      "degenerate_breakdown": {},
+      "inter_per_round": 151.4,
+      "inter_msg": 75.7,
+      "inter_tap": 0.0,
+      "inter_prox": 75.7,
+      "inter_ppm": 10.0,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": 0.177
+     }
+    }
+   },
+   "best_n": 4,
+   "summary": {
+    "duration_s": 69.9,
+    "duration_range_s": [
+     56.7,
+     79.0
+    ],
+    "inter_per_round": 46.6,
+    "inter_ppm": 10.0,
+    "inter_ppm_max": 10.0,
+    "resolve": 1.0,
+    "degenerate": 0.0,
+    "zero_p2p_antisocial_max": 0.0,
+    "zero_p2p_antisocial_core": 0.0,
+    "zero_msg_antisocial_max": 0.0,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [],
+   "verdict": "keep",
+   "score": 1.0
+  },
+  "Hide and Seek": {
+   "family": "superseded",
+   "arch": "sporty",
+   "lo": 2,
+   "hi": 16,
+   "target": "4-6 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 156.3,
+      "duration_p90_s": 300.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.16,
+      "degenerate_breakdown": {
+       "nobody_found": 0.16
+      },
+      "inter_per_round": 0.8,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.8,
+      "inter_ppm": 0.16,
+      "zero_p2p_frac": 0.16,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.704,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 156.8,
+      "duration_p90_s": 300.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.17,
+      "degenerate_breakdown": {
+       "nobody_found": 0.17
+      },
+      "inter_per_round": 0.8,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.8,
+      "inter_ppm": 0.16,
+      "zero_p2p_frac": 0.17,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.714,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 233.5,
+      "duration_p90_s": 300.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.437,
+      "degenerate_breakdown": {
+       "timeout_hiders_win": 0.433,
+       "nobody_found": 0.003
+      },
+      "inter_per_round": 2.5,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 2.5,
+      "inter_ppm": 0.16,
+      "zero_p2p_frac": 0.003,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.599,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 241.3,
+      "duration_p90_s": 300.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.427,
+      "degenerate_breakdown": {
+       "timeout_hiders_win": 0.423,
+       "nobody_found": 0.003
+      },
+      "inter_per_round": 2.5,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 2.5,
+      "inter_ppm": 0.15,
+      "zero_p2p_frac": 0.003,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.6,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 278.5,
+      "duration_p90_s": 300.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.69,
+      "degenerate_breakdown": {
+       "timeout_hiders_win": 0.69
+      },
+      "inter_per_round": 5.8,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 5.8,
+      "inter_ppm": 0.16,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.501,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 283.0,
+      "duration_p90_s": 300.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.753,
+      "degenerate_breakdown": {
+       "timeout_hiders_win": 0.753
+      },
+      "inter_per_round": 5.7,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 5.7,
+      "inter_ppm": 0.15,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.513,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 248.4,
+      "duration_p90_s": 300.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.343,
+      "degenerate_breakdown": {
+       "timeout_hiders_win": 0.343
+      },
+      "inter_per_round": 13.6,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 13.6,
+      "inter_ppm": 0.21,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.367,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 248.8,
+      "duration_p90_s": 300.0,
+      "resolve_rate": 1.0,
+      "degenerate_rate": 0.36,
+      "degenerate_breakdown": {
+       "timeout_hiders_win": 0.36
+      },
+      "inter_per_round": 13.6,
+      "inter_msg": 0.0,
+      "inter_tap": 0.0,
+      "inter_prox": 13.6,
+      "inter_ppm": 0.2,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 1.0,
+      "active_frac": 0.37,
+      "participation": 1.0,
+      "top_skill_win_rate": null
+     }
+    }
+   },
+   "best_n": 2,
+   "summary": {
+    "duration_s": 156.3,
+    "duration_range_s": [
+     156.3,
+     278.5
+    ],
+    "inter_per_round": 0.8,
+    "inter_ppm": 0.16,
+    "inter_ppm_max": 0.21,
+    "resolve": 1.0,
+    "degenerate": 0.16,
+    "zero_p2p_antisocial_max": 0.17,
+    "zero_p2p_antisocial_core": 0.17,
+    "zero_msg_antisocial_max": 1.0,
+    "participation_min": 1.0,
+    "active_min": 0.367
+   },
+   "flags": [
+    "ZERO-INTERACTION",
+    "low agency at 16p"
+   ],
+   "verdict": "cut",
+   "score": -0.568
+  },
+  "Consensus (debate to agree)": {
+   "family": "superseded",
+   "arch": "chill",
+   "lo": 2,
+   "hi": 16,
+   "target": "1-3 min",
+   "by_n": {
+    "2": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 34.2,
+      "duration_p90_s": 70.0,
+      "resolve_rate": 0.977,
+      "degenerate_rate": 0.307,
+      "degenerate_breakdown": {
+       "instant_agreement": 0.283,
+       "no_consensus_timeout": 0.023
+      },
+      "inter_per_round": 4.0,
+      "inter_msg": 4.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 3.53,
+      "zero_p2p_frac": 0.283,
+      "zero_msg_frac": 0.283,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no winner"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 75.5,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.817,
+      "degenerate_rate": 0.44,
+      "degenerate_breakdown": {
+       "instant_agreement": 0.257,
+       "no_consensus_timeout": 0.183
+      },
+      "inter_per_round": 5.2,
+      "inter_msg": 5.2,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.06,
+      "zero_p2p_frac": 0.257,
+      "zero_msg_frac": 0.257,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no winner"
+      ]
+     }
+    },
+    "4": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 49.1,
+      "duration_p90_s": 110.0,
+      "resolve_rate": 0.99,
+      "degenerate_rate": 0.03,
+      "degenerate_breakdown": {
+       "instant_agreement": 0.02,
+       "no_consensus_timeout": 0.01
+      },
+      "inter_per_round": 13.0,
+      "inter_msg": 13.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 3.96,
+      "zero_p2p_frac": 0.02,
+      "zero_msg_frac": 0.02,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no winner"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 112.6,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.74,
+      "degenerate_rate": 0.283,
+      "degenerate_breakdown": {
+       "no_consensus_timeout": 0.26,
+       "instant_agreement": 0.023
+      },
+      "inter_per_round": 15.7,
+      "inter_msg": 15.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.1,
+      "zero_p2p_frac": 0.023,
+      "zero_msg_frac": 0.023,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no winner"
+      ]
+     }
+    },
+    "8": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 71.9,
+      "duration_p90_s": 140.0,
+      "resolve_rate": 0.953,
+      "degenerate_rate": 0.047,
+      "degenerate_breakdown": {
+       "no_consensus_timeout": 0.047
+      },
+      "inter_per_round": 38.7,
+      "inter_msg": 38.7,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 4.03,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no winner"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 141.8,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.64,
+      "degenerate_rate": 0.36,
+      "degenerate_breakdown": {
+       "no_consensus_timeout": 0.36
+      },
+      "inter_per_round": 40.0,
+      "inter_msg": 40.0,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.11,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no winner"
+      ]
+     }
+    },
+    "16": {
+     "mixed": {
+      "rounds": 300,
+      "duration_mean_s": 92.2,
+      "duration_p90_s": 160.0,
+      "resolve_rate": 0.93,
+      "degenerate_rate": 0.07,
+      "degenerate_breakdown": {
+       "no_consensus_timeout": 0.07
+      },
+      "inter_per_round": 99.8,
+      "inter_msg": 99.8,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 4.06,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no winner"
+      ]
+     },
+     "antisocial": {
+      "rounds": 300,
+      "duration_mean_s": 167.7,
+      "duration_p90_s": 180.0,
+      "resolve_rate": 0.347,
+      "degenerate_rate": 0.653,
+      "degenerate_breakdown": {
+       "no_consensus_timeout": 0.653
+      },
+      "inter_per_round": 93.3,
+      "inter_msg": 93.3,
+      "inter_tap": 0.0,
+      "inter_prox": 0.0,
+      "inter_ppm": 2.09,
+      "zero_p2p_frac": 0.0,
+      "zero_msg_frac": 0.0,
+      "active_frac": 1.0,
+      "participation": 1.0,
+      "top_skill_win_rate": null,
+      "notes": [
+       "coop: no winner"
+      ]
+     }
+    }
+   },
+   "best_n": 4,
+   "summary": {
+    "duration_s": 49.1,
+    "duration_range_s": [
+     34.2,
+     92.2
+    ],
+    "inter_per_round": 13.0,
+    "inter_ppm": 3.96,
+    "inter_ppm_max": 4.06,
+    "resolve": 0.99,
+    "degenerate": 0.03,
+    "zero_p2p_antisocial_max": 0.257,
+    "zero_p2p_antisocial_core": 0.023,
+    "zero_msg_antisocial_max": 0.023,
+    "participation_min": 1.0,
+    "active_min": 1.0
+   },
+   "flags": [
+    "zero-interaction possible at 2p"
+   ],
+   "verdict": "keep",
+   "score": 0.721
+  }
+ },
+ "quest_loop": {
+  "chill/low": {
+   "arch": "chill",
+   "game": "Order Up",
+   "density": "low",
+   "min_players": 3,
+   "arrivals_per_hour": 5.2,
+   "games_per_hour": 0.07,
+   "players_served_per_hour": 0.2,
+   "stuck_lobbies_per_hour": 2.6,
+   "declined_per_hour": 2.0,
+   "abandoned_per_hour": 3.0,
+   "fill_time_mean_s": 136.5,
+   "dead_air_mean_s": 163.9,
+   "dead_air_p90_s": 169.7,
+   "avg_game_size": 3.0,
+   "spectator_share": null,
+   "no_game_hours_frac": 0.93
+  },
+  "chill/high": {
+   "arch": "chill",
+   "game": "Order Up",
+   "density": "high",
+   "min_players": 3,
+   "arrivals_per_hour": 24.9,
+   "games_per_hour": 2.73,
+   "players_served_per_hour": 8.8,
+   "stuck_lobbies_per_hour": 6.0,
+   "declined_per_hour": 9.9,
+   "abandoned_per_hour": 9.3,
+   "fill_time_mean_s": 110.3,
+   "dead_air_mean_s": 130.2,
+   "dead_air_p90_s": 216.2,
+   "avg_game_size": 3.1,
+   "spectator_share": null,
+   "no_game_hours_frac": 0.15
+  },
+  "chaos/low": {
+   "arch": "chaos",
+   "game": "Split or Steal",
+   "density": "low",
+   "min_players": 2,
+   "arrivals_per_hour": 5.2,
+   "games_per_hour": 0.53,
+   "players_served_per_hour": 1.1,
+   "stuck_lobbies_per_hour": 2.52,
+   "declined_per_hour": 2.0,
+   "abandoned_per_hour": 2.5,
+   "fill_time_mean_s": 99.7,
+   "dead_air_mean_s": 139.2,
+   "dead_air_p90_s": 150.1,
+   "avg_game_size": 2.0,
+   "spectator_share": 0.01,
+   "no_game_hours_frac": 0.67
+  },
+  "chaos/high": {
+   "arch": "chaos",
+   "game": "Split or Steal",
+   "density": "high",
+   "min_players": 2,
+   "arrivals_per_hour": 24.9,
+   "games_per_hour": 7.38,
+   "players_served_per_hour": 15.5,
+   "stuck_lobbies_per_hour": 5.22,
+   "declined_per_hour": 9.9,
+   "abandoned_per_hour": 5.2,
+   "fill_time_mean_s": 83.6,
+   "dead_air_mean_s": 72.0,
+   "dead_air_p90_s": 173.6,
+   "avg_game_size": 2.1,
+   "spectator_share": 0.03,
+   "no_game_hours_frac": 0.0
+  },
+  "sporty/low": {
+   "arch": "sporty",
+   "game": "Sheep Raid",
+   "density": "low",
+   "min_players": 4,
+   "arrivals_per_hour": 5.2,
+   "games_per_hour": 0.0,
+   "players_served_per_hour": 0.0,
+   "stuck_lobbies_per_hour": 2.65,
+   "declined_per_hour": 2.0,
+   "abandoned_per_hour": 3.2,
+   "fill_time_mean_s": null,
+   "dead_air_mean_s": 167.3,
+   "dead_air_p90_s": 171.4,
+   "avg_game_size": null,
+   "spectator_share": null,
+   "no_game_hours_frac": 1.0
+  },
+  "sporty/high": {
+   "arch": "sporty",
+   "game": "Sheep Raid",
+   "density": "high",
+   "min_players": 4,
+   "arrivals_per_hour": 24.9,
+   "games_per_hour": 0.7,
+   "players_served_per_hour": 3.0,
+   "stuck_lobbies_per_hour": 6.43,
+   "declined_per_hour": 9.9,
+   "abandoned_per_hour": 13.2,
+   "fill_time_mean_s": 146.9,
+   "dead_air_mean_s": 167.5,
+   "dead_air_p90_s": 237.5,
+   "avg_game_size": 4.2,
+   "spectator_share": null,
+   "no_game_hours_frac": 0.6
+  }
+ },
+ "rounds": 300
+}
