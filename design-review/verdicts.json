@@ -1,0 +1,119 @@
+{
+  "_legend": "jb = Jackbox-style party designer persona; mp = Mario Party-style designer persona. verdict ∈ keep | tweak | cut. Functional review personas based on the studios' public design philosophy — not real named individuals.",
+  "Order Up": {
+    "jb": "tweak", "jb_note": "Icebreaker DNA is perfect for strangers; the conversation round must be structured, not optional — give every player a 10-second 'defend your order' turn before guesses, and reveal one drink at a time so the room reacts to each person.",
+    "mp": "tweak", "mp_note": "Win state ('most right') needs a live scoreboard and a speed tiebreak; cap at 8 (16 drinks is unreadable). Reveal beat: big check/cross rain per guess."
+  },
+  "Split or Steal": {
+    "jb": "tweak", "jb_note": "Zero rules explanation and the best spectator moment on the list — but 'stolen from by a stranger, eliminated' is the one outcome that humiliates rather than amuses. Make stakes comedic (loser wears a badge / does a 10-second dare), and give the 14 watchers a job: predict the outcome.",
+    "mp": "tweak", "mp_note": "Instantly readable (two buttons). Run as a bracket so everyone gets a chair; audience bets for coins fix the sit-out; the reveal animation IS the payoff — invest there."
+  },
+  "Sheep Raid": {
+    "jb": "keep", "jb_note": "Not our genre, but it works: rules fit in one sentence ('grab sheep, pen them, raid theirs'), failure is funny (your pen gets robbed), strangers can play it without talking.",
+    "mp": "keep", "mp_note": "Pen counts are the score — readable. Add a golden sheep (worth 3) in the last 60 s as the comeback beat, and a shared countdown everyone can see. Our favourite of the signature three."
+  },
+  "Trivia (first to 3)": {
+    "jb": "cut", "jb_note": "No room in it: nobody reacts to anyone. Trivia is only a vehicle — fold the questions into Majority Rules / 'who's most likely to' where the answer is a person.",
+    "mp": "tweak", "mp_note": "Readable and fast, but knowledge decides it — mismatched players never win. Needs a luck layer (double-or-nothing final, random steals) or it's a filler only."
+  },
+  "Trivia: Majority Rules": {
+    "jb": "keep", "jb_note": "This is our bread and butter — 'what would the room say' is a personality reveal. Show the answers WITH names on the reveal ('who said gorilla?!') and it becomes about people. The sim's zero-interaction flag is about direction, not value: add a bonus for guessing a specific person's answer and the flag disappears.",
+    "mp": "keep", "mp_note": "Readable, luck-heavy (guessing the room levels the field), scales to 16. Needs a minimum of 3 and an odd-count or tiebreak rule for even splits."
+  },
+  "Trivia: Higher or Lower": {
+    "jb": "cut", "jb_note": "Pure knowledge, no reveal, no people. Cut.",
+    "mp": "tweak", "mp_note": "Fine 10-second filler on a shared screen if everyone answers together and the reveal is loud — but as a standalone game it has no payoff."
+  },
+  "Draw My Thing": {
+    "jb": "keep", "jb_note": "Proven format; bad drawings are the joke, so failure is funny and strangers relax. Fix the scale problem the sim found by drawing SIMULTANEOUSLY then guessing round-robin on phone — 16 players no longer means 8 minutes.",
+    "mp": "tweak", "mp_note": "Drawing skill dominates. Handicap rounds (non-dominant hand, 8-second limit, draw with eyes closed) level it and are funnier. Points to drawer AND guesser, speed tiebreak."
+  },
+  "Caption This (제목 짓기)": {
+    "jb": "keep", "jb_note": "Quiplash-shaped: zero explanation, the reveal is everyone reacting to one answer, strangers are safe behind anonymity until the vote. Minimum 3 (2 always ties — sim agrees).",
+    "mp": "keep", "mp_note": "Readable (votes). Use a head-to-head bracket vote instead of plurality to kill the ties the sim found, and animate the vote count."
+  },
+  "Performance": {
+    "jb": "tweak", "jb_note": "Best spectator moment on the list, but forced performing humiliates shy strangers. Make it opt-in per round, or pair performers, or flip it: the room DUBS a 10-second mime (the captions are the joke, not the acting).",
+    "mp": "tweak", "mp_note": "Score the guessers too so the performer isn't the only one on the hook; 3 random performers per game, not everyone — 16 performers is 12 minutes."
+  },
+  "Split Clue": {
+    "jb": "keep", "jb_note": "Keep-Talking energy: the whole game is two strangers talking, and miscommunication is funny. One sentence of rules. Low spectator value but that's fine for a catalog pick.",
+    "mp": "keep", "mp_note": "Readable (first pair done). Rotate puzzle difficulty randomly so the same pair doesn't always win."
+  },
+  "Boss Fight": {
+    "jb": "cut", "jb_note": "Tap-fest with no personality and no reveal. If it survives: make each player's ANSWER the attack (type an insult; the room votes; the best one does the damage).",
+    "mp": "tweak", "mp_note": "The spectacle (a shared HP bar dying) is very us, but nobody loses and nobody's MVP. Add last-hit bonus, random power-up turns, and a contribution podium."
+  },
+  "Death Tag / Cops & Robbers": {
+    "jb": "tweak", "jb_note": "Not our genre. Physical contact with strangers is the comfort issue — tag by phone proximity (the app already has it), never by touch.",
+    "mp": "keep", "mp_note": "Readable, everyone stays in (snowball), great at 8–16, last-survivor drama. Exactly what we'd ship."
+  },
+  "Timebomb / Hot Potato": {
+    "jb": "keep", "jb_note": "Zero explanation, the loser's phone going off is the laugh, proximity toss means no touching. Keep.",
+    "mp": "keep", "mp_note": "Readable, luck-ish, loud payoff (the boom), any headcount. Best catalog minigame on the list."
+  },
+  "Tile Wars": {
+    "jb": "cut", "jb_note": "Needs a map and an explanation; no moment where the room reacts to a person. Not ours.",
+    "mp": "keep", "mp_note": "Coverage is readable, teams scale, add random power tiles and a shrinking-map endgame so the 1v1 'teams never met' case can't happen."
+  },
+  "Infection Zones": {
+    "jb": "cut", "jb_note": "Physical, no laugh beat, requires a map. Not ours.",
+    "mp": "keep", "mp_note": "Inside/outside a shrinking circle is instantly readable, zone placement is luck, elimination is drama, 4–16 scales. Keep."
+  },
+  "Five Buttons": {
+    "jb": "tweak", "jb_note": "Not a game — a 20-second DECIDER. Everyone watches one person press; the buzz is the laugh. Use it between games to pick who goes first / who pays. The sim is right that it's zero-interaction as a game.",
+    "mp": "tweak", "mp_note": "Pure Chance Time. Keep it as the tiebreaker / interstitial, never as a headline game."
+  },
+  "31 (Nim)": {
+    "jb": "cut", "jb_note": "Solved, two-player, silent. Cut.",
+    "mp": "cut", "mp_note": "Skill decides it with perfect play and three-plus players is kingmaking. Cut."
+  },
+  "Truth or Dare": {
+    "jb": "tweak", "jb_note": "As-is it's not a game (no win). Its Jackbox form: everyone answers the truth question anonymously, the room votes who said it. Dares opt-in only with strangers.",
+    "mp": "cut", "mp_note": "No win condition, nothing to read. Cut unless scored."
+  },
+  "Liar Game / Mafia": {
+    "jb": "keep", "jb_note": "Fibbage / Fakin' It DNA. Time-box the discussion, give the liar a category hint, reveal with a drumroll.",
+    "mp": "tweak", "mp_note": "Readable only at the vote; the middle is talk. Put a visible 45-second timer on the discussion and a vote-count reveal."
+  },
+  "Tee Game (photo + slogan)": {
+    "jb": "keep", "jb_note": "Tee K.O. is literally ours. Minimum 4 so pairings stay surprising; bracket vote to kill ties.",
+    "mp": "keep", "mp_note": "Random pairing is luck — levels the field. Readable. Keep."
+  },
+  "Guess the Number (timing imposter)": {
+    "jb": "tweak", "jb_note": "The imposter layer is the interesting half and it belongs with Catch the Imposter. The timing-stop alone is a fine 15-second palate cleanser.",
+    "mp": "tweak", "mp_note": "Stop-at-5.00 is a classic reflex minigame — readable, quick, luck-ish. Ship that alone; the discussion/vote layer slows it down."
+  },
+  "Catch the Imposter": {
+    "jb": "keep", "jb_note": "Fakin' It shape. Force one sentence from each player before the vote (answers shown with names) so strangers can't sit silent — fixes the sim's 'silent-completable' flag.",
+    "mp": "keep", "mp_note": "Readable at the vote, luck in who's imposter, scales to 16 with two imposters. Keep."
+  },
+  "Rival Teams (generic)": {
+    "jb": "cut", "jb_note": "A framework, not a game — nothing to react to until a task exists.",
+    "mp": "cut", "mp_note": "Superseded by Sheep Raid, which is the concrete version. Cut."
+  },
+  "Scavenger (planted object)": {
+    "jb": "cut", "jb_note": "Physical pre-setup, no room, no reveal. Cut.",
+    "mp": "cut", "mp_note": "No readable win state, slow, doesn't scale. Cut (handcrafted-quest tier only)."
+  },
+  "Race / Manhunt-Tag": {
+    "jb": "cut", "jb_note": "Death Tag does the same thing without the tagged players sitting out bored.",
+    "mp": "cut", "mp_note": "Sit-out is the cardinal sin. Death Tag supersedes it."
+  },
+  "Accuracy / Long Jump": {
+    "jb": "cut", "jb_note": "A skill show-off that embarrasses the less athletic stranger. Cut.",
+    "mp": "cut", "mp_note": "Pure skill, the top athlete always wins (sim: 87%). Cut unless a random multiplier hides it."
+  },
+  "Team Challenge (2p coop physical)": {
+    "jb": "tweak", "jb_note": "Undefined. Its concrete forms are already on the list (Split Clue for talk, Sheep Raid for bodies). Define a task or drop the placeholder.",
+    "mp": "tweak", "mp_note": "Two-player synced button-mash / mirror-move is a classic minigame — but pick the actual task; as a framework it can't ship."
+  },
+  "Hide and Seek": {
+    "jb": "cut", "jb_note": "Long, sit-out, and a safety problem with strangers in a city. Cut.",
+    "mp": "cut", "mp_note": "Sit-out plus a win state you can't see. Cut."
+  },
+  "Consensus (debate to agree)": {
+    "jb": "tweak", "jb_note": "A conversation starter, not a game. Give it a twist — one secret dissenter who wins by steering the group wrong — and it becomes a game.",
+    "mp": "cut", "mp_note": "No winner, no readable state. Cut."
+  }
+}
