@@ -137,14 +137,14 @@ export const directory = {
 // ---------------------------------------------------------------- raid schedule
 // NPC signature quests are RARE, raid-style windows. Every client derives the
 // same schedule from the wall clock, so nobody coordinates anything:
-//   cycle = 15 min; each archetype opens once per cycle, staggered 5 min apart;
+//   cycle = 24 min; each archetype opens once per cycle, staggered 8 min apart;
 //   a window = JOIN_MS of lobby (visible countdown to start), then the quest
 //   runs; the NPC is dark the rest of the cycle.
 // ?raid=<arch> (dev) opens that archetype's window right now.
 export const RAID = {
-  CYCLE_MS: 15 * 60 * 1000,
+  CYCLE_MS: 24 * 60 * 1000,           // each NPC: 3 min open, ~9 min live, 12 min dark
   JOIN_MS: 3 * 60 * 1000,
-  OFFSETS: { sporty: 0, chaos: 5 * 60 * 1000, chill: 10 * 60 * 1000 },
+  OFFSETS: { sporty: 0, chaos: 8 * 60 * 1000, chill: 16 * 60 * 1000 },   // never two open at once
   _devOpen: {},     // arch -> openAt (ms), from ?raid=
 };
 {
@@ -164,7 +164,7 @@ export function raidStatus(arch, now = Date.now()) {
     const startAt = openAt + RAID.JOIN_MS;
     if (now < openAt) return { phase: "dark", openAt, startAt, msToOpen: openAt - now, windowId: `dev-${arch}` };
     if (now < startAt) return { phase: "open", openAt, startAt, msToStart: startAt - now, windowId: `dev-${arch}` };
-    if (now < startAt + 10 * 60 * 1000) return { phase: "live", openAt, startAt, since: now - startAt, windowId: `dev-${arch}` };
+    if (now < startAt + 9 * 60 * 1000) return { phase: "live", openAt, startAt, since: now - startAt, windowId: `dev-${arch}` };
     delete RAID._devOpen[arch];   // the demo window is over: back to the real schedule
   }
   const off = RAID.OFFSETS[arch] ?? 0;
@@ -174,7 +174,7 @@ export function raidStatus(arch, now = Date.now()) {
   const windowId = `${arch}-${cycleIdx}`;
   if (now < startAt) return { phase: "open", openAt, startAt, msToStart: startAt - now, windowId };
   // quest live window: quests last up to ~10 min after start
-  if (now < startAt + 10 * 60 * 1000) {
+  if (now < startAt + 9 * 60 * 1000) {
     const nextOpen = openAt + RAID.CYCLE_MS;
     return { phase: "live", openAt, startAt, since: now - startAt, windowId, nextOpenAt: nextOpen, msToOpen: nextOpen - now };
   }
