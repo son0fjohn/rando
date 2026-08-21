@@ -62,3 +62,36 @@ export const CUP_BOT_LINES = {
 export const SPLITCLUE_COLORS = ["red", "blue", "green", "yellow", "pink", "black"];
 export const DRAW_WORDS = ["umbrella", "cat", "pizza", "subway", "tower", "bicycle", "ghost", "snowman", "guitar", "rocket", "ice cream", "crown", "octopus", "ladder", "mushroom"];
 export const GHOST_TIPS = ["{x} is right behind you", "{x} is circling the west side", "{x} just ripped someone — they're slow for 5 s", "{x} is camping by the NPC", "run east, nobody's there", "{x} is hunting YOU"];
+
+// receipts: bot "facts" (text + whether it's true for the bot)
+export const RECEIPT_POOL = [
+  { t: "I've been on TV twice", truth: false },
+  { t: "I can't ride a bicycle", truth: true },
+  { t: "I once ate 14 tangerines in one sitting", truth: true },
+  { t: "I've never seen the ocean", truth: false },
+  { t: "I speak three languages", truth: false },
+  { t: "I cried at a phone commercial last week", truth: true },
+  { t: "I have a black belt", truth: false },
+  { t: "I've walked from Itaewon to Gangnam", truth: true },
+  { t: "I've never broken a bone", truth: true },
+  { t: "my first concert was a trot singer", truth: true },
+  { t: "I can solve a Rubik's cube under a minute", truth: false },
+  { t: "I've been inside the DMZ", truth: false },
+  { t: "I own 9 identical black t-shirts", truth: true },
+  { t: "I got scouted on the street once", truth: false },
+];
+// majority rules: A-or-B room questions
+export const MAJORITY_PROMPTS = [
+  { q: "pineapple on pizza?", a: "obviously yes", b: "crime" },
+  { q: "window or aisle?", a: "window", b: "aisle" },
+  { q: "text back speed", a: "instant", b: "three business days" },
+  { q: "first date", a: "coffee", b: "soju" },
+  { q: "hangover cure", a: "해장국", b: "sleep till 3pm" },
+  { q: "karaoke pick", a: "ballad", b: "scream-rap" },
+  { q: "rainy Namsan or sunny Han river?", a: "rainy Namsan", b: "sunny Han" },
+  { q: "money or fame?", a: "money", b: "fame" },
+  { q: "night bus or dawn walk?", a: "night bus", b: "dawn walk" },
+  { q: "mint choco?", a: "yes and proud", b: "toothpaste" },
+  { q: "call or text?", a: "call", b: "text" },
+  { q: "lose your photos or your chats?", a: "photos", b: "chats" },
+];

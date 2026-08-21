@@ -41,12 +41,18 @@ export const rooms = {
     // catalog picker
     const grid = $("host-grid");
     grid.innerHTML = "";
-    for (const g of CATALOG) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "host-card";
-      b.innerHTML = `<b>${g.title}</b><span>${g.blurb}</span><em>${g.minPlayers}–${g.maxPlayers} · ${g.length}</em>`;
-      b.addEventListener("click", () => { this.showHostSheet(false); this.host(g.id); });
-      grid.appendChild(b);
+    const LANES = [["sporty", "SPORTY · bodies in space"], ["chaos", "CHAOS · nerve & bluff"], ["chill", "CHILL · talk & reveal"]];
+    for (const [arch, label] of LANES) {
+      const h = document.createElement("div");
+      h.className = `lane-h lane-${arch}`; h.textContent = label;
+      grid.appendChild(h);
+      for (const g of CATALOG.filter(g => g.arch === arch)) {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = `host-card hc-${arch}`;
+        b.innerHTML = `<b>${g.title}</b><span>${g.blurb}</span><em>${g.minPlayers}–${g.maxPlayers} · ${g.length}</em>`;
+        b.addEventListener("click", () => { this.showHostSheet(false); this.host(g.id); });
+        grid.appendChild(b);
+      }
     }
     clearInterval(this._raidTimer);
     this._raidTimer = setInterval(() => this.raidTick(), 500);

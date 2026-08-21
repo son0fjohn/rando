@@ -138,13 +138,72 @@ function duelClientHandlers(game, ctx, { verbA = "RIP", verbB = "DODGE" } = {}) 
   };
 }
 
+// ---------------------------------------------------------------- shared: NPC story beats
+// The host narrates the quest as the NPC (broadcast "story" events, self:true
+// so the host sees them too). Clients render a floating story card.
+const ARCH_NPC_NAME = { sporty: "Dali", chaos: "Nalli", chill: "Nabi" };
+let scEl = null, scTimer = null;
+export function storyCard(arch, text, { big = false } = {}) {
+  if (!scEl) { scEl = document.createElement("div"); document.body.appendChild(scEl); }
+  clearTimeout(scTimer);
+  scEl.className = `story-card sc-${arch}${big ? " big" : ""}`;
+  scEl.innerHTML = `<img src="npcs/${arch}_portrait.jpg" alt=""><div><b>${ARCH_NPC_NAME[arch]}</b><p>${text}</p></div>`;
+  setTimeout(() => scEl.classList.add("show"), 30);   // NOT rAF: must fire even when the tab is backgrounded
+  if (big) { sfx.ping(); buzz([40, 30, 80]); } else sfx.pop();
+  scTimer = setTimeout(() => scEl.classList.remove("show"), big ? 7000 : 5200);
+}
+function storyKit(game, arch) {
+  return { say: (text, big = false) => game.emit("story", { text, big: !!big }),
+           onStory: m => storyCard(arch, m.text, { big: m.big }) };
+}
+
+// ---------------------------------------------------------------- shared: visible name tags
+// Running-Man-style tag SPRITES on every back, so "rip the tag" is visible in
+// the world. The rip itself is phones-only (proximity + reaction duel) — the
+// quest never asks anyone to touch another person.
+const tagTexCache = new Map();
+function tagTexture(name, variant) {
+  const key = variant + ":" + name;
+  if (tagTexCache.has(key)) return tagTexCache.get(key);
+  const c = document.createElement("canvas"); c.width = 256; c.height = 120;
+  const g = c.getContext("2d");
+  g.fillStyle = variant === "gold" ? "#ffd60a" : variant === "ripped" ? "#8a8f98" : "#f7f7f2";
+  g.beginPath(); g.roundRect(6, 6, 244, 108, 16); g.fill();
+  g.lineWidth = 7; g.strokeStyle = "#14181f"; g.stroke();
+  g.fillStyle = "#14181f"; g.textAlign = "center"; g.textBaseline = "middle";
+  let size = 46; g.font = `800 ${size}px system-ui,sans-serif`;
+  while (g.measureText(name).width > 216 && size > 20) { size -= 3; g.font = `800 ${size}px system-ui,sans-serif`; }
+  g.fillText(name, 128, 62);
+  if (variant === "ripped") {
+    g.strokeStyle = "#ff2a4a"; g.lineWidth = 10;
+    g.beginPath(); g.moveTo(28, 100); g.lineTo(228, 22); g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tagTexCache.set(key, tex);
+  return tex;
+}
+function makeTagSprite(name, variant) {
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagTexture(name, variant), transparent: true }));
+  spr.scale.set(8.2, 3.85, 1); spr.position.set(0, 9.6, 0); spr.renderOrder = 5;
+  return spr;
+}
+// keep a tag sprite mounted on a character group, swapping texture by variant
+function mountTag(holder, group, name, variant) {
+  if (!group) return;
+  if (!holder.spr || holder.variant !== variant || holder.spr.parent !== group) {
+    holder.spr?.parent?.remove(holder.spr);
+    holder.spr = makeTagSprite(name, variant); holder.variant = variant;
+    group.add(holder.spr);
+  }
+}
+
 // ====================================================================
 // SPORTY — 이름표 뜯기 · Name Tag Rip @ Namsan Park
 // ====================================================================
 const SPORTY = {
   title: "이름표 뜯기 — Name Tag Rip",
   venue: "Namsan Park · 산스장",
-  tagline: "everyone wears a tag. last tag standing wins. ripped players become ghosts who see everything — and whisper.",
+  tagline: "everyone wears a visible name tag. rips happen on PHONES — get in range, win the tap duel, never touch anyone. ripped players become ghosts who whisper.",
   lineOpen: "the bars are warm and so am I. tags are on the table — grab one before the whistle.",
   lineLive: "it's ON up there. you can still come watch from the ghost side.",
   lineDark: "I'm between sets. the next name-tag run is on the clock — be here for it.",
@@ -170,11 +229,16 @@ const SPORTY = {
         const alive = Object.values(s.players).filter(p => p.alive);
         // phase transitions
         if (s.left <= 0) {
-          if (s.phase === "brief") { s.phase = "scatter"; s.left = Q.PHASES.scatter; game.emit("phase", { phase: "scatter" }); }
-          else if (s.phase === "scatter") { s.phase = "hunt"; s.left = Q.PHASES.hunt; game.emit("phase", { phase: "hunt" }); }
-          else if (s.phase === "hunt") { s.phase = "sudden"; s.left = Q.PHASES.sudden; s.r0 = s.radius; game.emit("phase", { phase: "sudden" }); }
+          if (s.phase === "brief") { s.phase = "scatter"; s.left = Q.PHASES.scatter; game.emit("phase", { phase: "scatter" }); sk.say("GO. spread out along the wall bars. when the whistle hits, everything is fair."); }
+          else if (s.phase === "scatter") { s.phase = "hunt"; s.left = Q.PHASES.hunt; game.emit("phase", { phase: "hunt" }); sk.say("tags are LIVE. phones out, eyes up — get in range, hit RIP, win the tap. hands stay to yourself.", true); }
+          else if (s.phase === "hunt") { s.phase = "sudden"; s.left = Q.PHASES.sudden; s.r0 = s.radius; game.emit("phase", { phase: "sudden" }); sk.say("the circle is CLOSING. last tags standing — come home.", true); }
           else if (s.phase === "sudden") { finish(s); }
           else if (s.phase === "end") { game.finish(); return; }
+        }
+        // mid-hunt twist: Dali pins the GOLDEN TAG on the current leader
+        if (s.phase === "hunt" && !s.golden && s.left < Q.PHASES.hunt / 2) {
+          const lead = alive.slice().sort((a, b) => b.tags.length - a.tags.length)[0];
+          if (lead) { s.golden = lead.id; game.emit("golden", { who: lead.id }); sk.say(`plot twist. my GOLDEN TAG is pinned on <b>${lead.handle}</b>. rip them and it moves to you — whoever wears it at the end gets +2 tags.`, true); }
         }
         if (s.phase === "sudden") {
           s.radius = Math.max(14, s.r0 * (s.left / Q.PHASES.sudden) + 14 * (1 - s.left / Q.PHASES.sudden));
@@ -241,15 +305,20 @@ const SPORTY = {
           if (m.phase === "sudden") { ui.toast("SUDDEN DEATH — the circle is closing", "phase"); sfx.klaxon(); shake(500, 2); }
         }
         else if (m.ev === "elim") { ui.toast(`${s.players[m.who]?.handle} is out (${m.why === "circle" ? "outside the circle" : "ripped"})`, "rip"); if (m.who === ctx.me.id) { myRole = "ghost"; arena.fullRadar = true; flash("#ff2a4a", 300); } }
+        else if (m.ev === "golden") { sfx.chime(); if (m.who === ctx.me.id) { flash("#ffd60a", 300); buzz([50, 40, 90]); ui.toast("YOU wear the GOLDEN TAG — everyone wants your back", "rip"); } }
+        else if (m.ev === "story") sk.onStory(m);
         else if (m.ev === "finish") { celebrate(center.clone().add(new THREE.Vector3(0, CHAR_H, 0))); reveal("sporty"); }
       },
     }, { hz: 5 });
     const dc = duelClientHandlers(game, ctx);
+    const sk = storyKit(game, "sporty");
+    const myTag = {}, theirTags = new Map();
 
     function eliminate(s, p, by, why) {
       if (!p.alive) return;
       p.alive = false;
       if (by) { by.tags.push(...p.tags); p.tags = []; }
+      if (s.golden === p.id && by) { s.golden = by.id; game.emit("golden", { who: by.id }); sk.say(`the golden tag moves to <b>${by.handle}</b>.`); }
       s.log.push({ t: Date.now(), type: why, who: p.id, by: by?.id ?? null });
       game.emit("elim", { who: p.id, by: by?.id ?? null, why });
     }
@@ -263,8 +332,14 @@ const SPORTY = {
         const ranked = Object.values(s.players).sort((a, b) => (b.tags.length - a.tags.length) || (b.alive - a.alive));
         winner = ranked[0]?.id ?? null;
       }
+      if (s.golden && s.players[s.golden]?.alive) {
+        s.players[s.golden].tags.push("g1", "g2");
+        const ranked2 = Object.values(s.players).sort((a, b) => (b.tags.length - a.tags.length) || (b.alive - a.alive));
+        winner = alive.length === 1 ? winner : (ranked2[0]?.id ?? winner);
+      }
       s.winner = winner; s.phase = "end"; s.left = Q.PHASES.end;
       game.emit("finish", { winner });
+      sk.say(`that's a WRAP. <b>${s.players[winner]?.handle ?? "nobody"}</b> keeps the tag wall. same hill, next window.`);
     }
     function botBrain(s, p, dt, now) {
       const sp = 13 + p.skill * 6 + (p.boost > 0 ? 4 : 0);
@@ -293,7 +368,7 @@ const SPORTY = {
       moveBot(p, p.brain.wp, sp * 0.8, dt, center, s.radius);
     }
     // host-side duel kit needs the live state object: re-create once started
-    const initial = { phase: "brief", left: this.PHASES.brief, radius: this.RADIUS, players: {}, duels: {}, log: [], tips: [], winner: null, duelSeq: 0 };
+    const initial = { phase: "brief", left: this.PHASES.brief, radius: this.RADIUS, players: {}, duels: {}, log: [], tips: [], winner: null, duelSeq: 0, golden: null };
     Object.assign(duels, duelKit(game, initial, ctx, (d, winner) => {
       const s = game.s;
       const a = s.players[d.a], b = s.players[d.b];
@@ -306,16 +381,24 @@ const SPORTY = {
     function renderSporty(s) {
       arena.setEntities(entitiesFrom(s, p => ({ tag: p.tags?.length })));
       arena.setRadius(s.radius);
+      // visible name tags on every back (gold for the golden-tag carrier, slashed when ripped)
+      const meP = s.players[ctx.me.id];
+      if (meP && world3d.player) mountTag(myTag, world3d.player.api.group, meP.handle, !meP.alive ? "ripped" : s.golden === ctx.me.id ? "gold" : "white");
+      for (const e of arena.entities.values()) {
+        if (!e.char) continue;
+        let h = theirTags.get(e.id); if (!h) { h = {}; theirTags.set(e.id, h); }
+        mountTag(h, e.char.api.group, e.handle, e.alive === false ? "ripped" : s.golden === e.id ? "gold" : "white");
+      }
       const me = s.players[ctx.me.id];
       const alive = Object.values(s.players).filter(p => p.alive);
       const now = performance.now();
       if (now - lastHud < 150) return;
       lastHud = now;
       const phaseName = { brief: "BRIEFING", scatter: "SCATTER", hunt: "HUNT", sudden: "SUDDEN DEATH", end: "RESULT" }[s.phase];
-      const mine = me ? (me.alive ? `🏷 ${me.tags.length} tag${me.tags.length === 1 ? "" : "s"}` : "👻 ghost") : "spectating";
+      const mine = me ? (me.alive ? `${s.golden === ctx.me.id ? "⭐ " : ""}🏷 ${me.tags.length} tag${me.tags.length === 1 ? "" : "s"}` : "👻 ghost") : "spectating";
       ui.hud(`<div class="hq"><b>${phaseName}</b><span class="clk">${ui.clock(s.left)}</span><span>${alive.length} alive</span><span>${mine}</span></div>`);
       if (s.phase === "brief") {
-        ui.once("brief", () => ui.stage("이름표 뜯기", `<img class="photo" src="quests/nametag.jpg" alt="" style="max-height:120px;object-fit:cover"><p>Everyone here wears a <b>name tag</b>. Get close to someone and hit <b>RIP</b> — a reaction duel decides it.<br>Lose your tag and you're a <b>ghost</b>: you see <i>everyone</i> on the radar, and you can whisper tips to the living. Alliances, betrayals, your call.</p>
+        ui.once("brief", () => ui.stage("이름표 뜯기", `<img class="photo" src="quests/nametag.jpg" alt="" style="max-height:120px;object-fit:cover"><p>Everyone wears a <b>name tag on their back</b> — look around, you can see them. To rip one: get within ~11 m and hit <b>RIP</b>. Both phones flash a reaction duel; fastest tap takes it. <b>All phones, zero touching</b> — never grab anyone.<br>Lose your tag and you're a <b>ghost</b>: you see <i>everyone</i> on the radar, and you can whisper tips to the living. Alliances, betrayals, your call.</p>
           <p class="st-list">${Object.values(s.players).map(p => `<span class="tagchip ${p.isBot ? "bot" : ""}">${p.handle}</span>`).join("")}</p>`, `Namsan Park · the whistle is coming`));
         return;
       }
@@ -366,21 +449,31 @@ const SPORTY = {
     }
     // cleanup when the game ends (onEnd is called by host tick; everyone leaves via rooms)
     const origEnd = ctx.onEnd;
-    ctx.onEnd = () => { game.stop(); arena.leave(); ui.hide(); arena.duel.end(); origEnd(); };
+    ctx.onEnd = () => { game.stop(); myTag.spr?.parent?.remove(myTag.spr); theirTags.clear(); arena.leave(); ui.hide(); arena.duel.end(); origEnd(); };
   },
 };
 
 // ====================================================================
-// CHAOS — 추격전 · Opry Manhunt (hidden roles)
+// CHAOS — 추격전 · The Opry Heist (story chase: 3 acts, a mole, the doors)
 // ====================================================================
+// Nalli stole the Opry's golden record and framed the room. The crew
+// (runners) clears the heist in three acts — hold a marked ring as a TEAM —
+// while hunters chase. One runner is secretly Nalli's MOLE and wins with the
+// hunters. Finale: the doors open and every surviving runner sprints for it.
 const CHAOS = {
-  title: "추격전 — Opry Manhunt",
+  title: "추격전 — The Opry Heist",
   venue: "Grand Ole Opry · the alley",
-  tagline: "two of you are hunters and nobody knows who. runners plant three stickers and make it back to the door.",
-  lineOpen: "SOMEONE in this alley is a hunter. could be you. stickers are on the wall — go go GO.",
-  lineLive: "they're already running. come haunt the alley.",
-  lineDark: "the wall's quiet… for now. next manhunt is on the clock.",
-  RADIUS: 95, CATCH: m2u(10), PHASES: { brief: 30000, hunt: 420000, final: 90000, end: 45000 },
+  tagline: "Nalli framed the room for the golden-record heist. clear three jobs as a crew, dodge the hunters, and make the doors — but one of you is the mole.",
+  lineOpen: "tonight's story: a golden record, a frame job, and YOU. doors in a few. one of you already works for me.",
+  lineLive: "the heist is mid-act. come haunt the alley till the next telling.",
+  lineDark: "the Opry's dark. the next heist is on the clock.",
+  RADIUS: 95, CATCH: m2u(10), HOLD_MS: 8000,
+  PHASES: { brief: 30000, act: 150000, doors: 100000, end: 45000 },
+  ACTS: [
+    { name: "the ledger", spot: 0, line: "act one — the LEDGER. my bookkeeping is under the sign. hold the red ring 8 seconds, together, to cook it." },
+    { name: "the soundboard", spot: 1, line: "act two — the SOUNDBOARD. the back door. same deal, and the hunters can hear every second you hold it." },
+    { name: "the spotlight", spot: 2, line: "final act — the SPOTLIGHT. the corner. light it up and the back doors open PROPERLY." },
+  ],
 
   start(ctx) {
     const center = npcCenter("chaos");
@@ -388,52 +481,106 @@ const CHAOS = {
     ui.show(); ui.theme("chaos");
     reveal("chaos");
     const Q = this;
-    const spots = [0, 1, 2].map(i => { const a = (i / 3) * Math.PI * 2 + 0.4; return { x: center.x + Math.cos(a) * 48, z: center.z + Math.sin(a) * 48, name: ["the sign", "the back door", "the corner"][i] }; });
-    const spotMarks = spots.map(sp => arena.mark(sp, 0xff4d6d, 7));
-    const doorMark = arena.mark(center, 0xffd60a, 9);
-    let lastHud = 0, pingMarks = [];
+    const spots = [0, 1, 2].map(i => { const a = (i / 3) * Math.PI * 2 + 0.4; return { x: center.x + Math.cos(a) * 48, z: center.z + Math.sin(a) * 48, name: Q.ACTS[i].name }; });
+    const jail = { x: center.x + Math.cos(-1.25) * 30, z: center.z + Math.sin(-1.25) * 30 };
+    const jailMark = arena.mark(jail, 0x8a2be2, 6.5);
+    let actMark = null, doorMark = null, lastHud = 0, pingMarks = [];
+    function setActMark(i) { if (actMark) { arena.unmark(actMark); actMark = null; } if (i !== null) actMark = arena.mark(spots[i], 0xff4d6d, 7); }
     const game = new HostGame(ctx, {
       hostInit(s) {
-        s.players = seedPlayers(ctx, game.rng, center, 7, () => ({ role: "runner", stickers: [], lastRip: -99, stun: 0, progress: 0, at: null }));
+        s.players = seedPlayers(ctx, game.rng, center, 8, () => ({ role: "runner", lastRip: -99, stun: 0, escaped: false, jailed: false }));
         const ids = Object.keys(s.players);
-        const nH = ids.length >= 6 ? 2 : 1;
         const shuffled = [...ids].sort(() => game.rng() - 0.5);
+        const nH = ids.length >= 6 ? 2 : 1;
         for (let i = 0; i < nH; i++) s.players[shuffled[i]].role = "hunter";
+        for (const p of Object.values(s.players)) if (p.isBot) p.reaction = p.role === "hunter" ? 355 : 305;
+        const runners = shuffled.slice(nH);
+        s.mole = ids.length >= 5 ? runners[0] : null;   // secret-ish: UI only shows it to the mole until the epilogue
         for (const p of Object.values(s.players)) p.brain ??= { wp: null, until: 0 };
+        s.act = 0; s.secured = []; s.hold = 0; s.holders = 0; s.escaped = []; s.tipAt = performance.now(); s.briefBeat = 0; s.rescue = 0; s.jailBeat = 0;
       },
       hostTick(s, dt) {
         s.left -= dt * 1000;
         const now = performance.now();
         syncHumanPositions(s, ctx);
-        const runners = Object.values(s.players).filter(p => p.role === "runner");
+        const P = Object.values(s.players);
+        const allRunners = P.filter(p => p.role === "runner" && !p.escaped);
+        const runners = allRunners.filter(p => !p.jailed);
+        // jailed bodies sit at the boiler room; a jailbreak frees everyone at once
+        for (const p of allRunners) if (p.jailed && p.isBot) { p.x = jail.x + Math.sin(p.id.length + performance.now() / 900) * 2; p.z = jail.z + Math.cos(p.id.length) * 2; }
+        if (s.phase === "act" || s.phase === "doors") {
+          const jailedN = allRunners.filter(p => p.jailed).length;
+          if (jailedN) {
+            const rescuers = runners.filter(p => dist2(p, jail) < 6.5 && !p.duel);
+            if (rescuers.length) {
+              s.rescue += dt * 1000 * (1 + 0.3 * (rescuers.length - 1));
+              if (s.rescue >= 3000) {
+                s.rescue = 0;
+                for (const p of allRunners) if (p.jailed) p.jailed = false;
+                s.log.push({ t: Date.now(), type: "jailbreak", who: rescuers.map(r => r.id) });
+                game.emit("jailbreak", { by: rescuers[0].id });
+                sk.say(`JAILBREAK — <b>${s.players[rescuers[0].id]?.handle}</b> kicked the boiler-room door. I love this crew.`, true);
+              }
+            } else s.rescue = Math.max(0, s.rescue - dt * 2000);
+          } else s.rescue = 0;
+          // hunters win the moment every remaining runner is locked up
+          if (!runners.length && allRunners.length) { finish(s); return; }
+        }
+        // staged briefing beats
+        if (s.phase === "brief") {
+          const gone = Q.PHASES.brief - s.left;
+          if (s.briefBeat === 0 && gone > 1500) { s.briefBeat = 1; sk.say("settle in. tonight's story: somebody lifted the Opry's GOLDEN RECORD."); }
+          else if (s.briefBeat === 1 && gone > 9000) { s.briefBeat = 2; sk.say("the hunters say it was one of you. clear the heist — three jobs — and walk out the back doors clean."); }
+          else if (s.briefBeat === 2 && gone > 18000) { s.briefBeat = 3; sk.say("oh — one more thing. one of you is MINE. trust nobody.", true); }
+        }
         if (s.left <= 0) {
-          if (s.phase === "brief") { s.phase = "hunt"; s.left = Q.PHASES.hunt; game.emit("phase", { phase: "hunt" }); }
-          else if (s.phase === "hunt") { s.phase = "final"; s.left = Q.PHASES.final; game.emit("phase", { phase: "final" }); }
-          else if (s.phase === "final") finish(s, "hunters");
+          if (s.phase === "brief") { s.phase = "act"; s.left = Q.PHASES.act; game.emit("phase", { phase: "act", act: 0 }); sk.say(Q.ACTS[0].line, true); }
+          else if (s.phase === "act") {
+            sk.say(`too slow — ${Q.ACTS[s.act].name} stays dirty. moving on.`);
+            nextAct(s, false);
+          }
+          else if (s.phase === "doors") { finish(s); }
           else if (s.phase === "end") { game.finish(); return; }
         }
-        if (s.phase === "hunt" || s.phase === "final") {
-          // sticker planting: stand inside a spot ring for 6 s
-          for (const p of runners) {
-            const sp = spots.findIndex(q => dist2(p, q) < 6.5);
-            if (sp >= 0 && !p.stickers.includes(sp)) {
-              if (p.at !== sp) { p.at = sp; p.progress = 0; }
-              p.progress += dt * 1000;
-              if (p.progress >= 6000) { p.stickers.push(sp); p.progress = 0; p.at = null; s.log.push({ t: Date.now(), type: "sticker", who: p.id, spot: sp }); game.emit("ping", { who: p.id, spot: sp, x: spots[sp].x, z: spots[sp].z }); }
-            } else { p.at = null; p.progress = 0; }
-            // win: three stickers and at the door
-            if (p.stickers.length >= 3 && dist2(p, center) < 9) { finish(s, "runners", p.id); return; }
+        if (s.phase === "act") {
+          // team hold: any runners inside the active ring push the meter together
+          const spot = spots[Q.ACTS[s.act].spot];
+          const inRing = runners.filter(p => dist2(p, spot) < 6.5 && !p.duel);
+          const wasHolding = s.holders > 0;
+          s.holders = inRing.length;
+          if (inRing.length) {
+            if (!wasHolding) game.emit("holdstart", { act: s.act, x: spot.x, z: spot.z });
+            s.hold += dt * 1000 * (1 + 0.35 * (inRing.length - 1));
+            if (s.hold >= Q.HOLD_MS) {
+              s.log.push({ t: Date.now(), type: "secure", act: s.act, who: inRing.map(p => p.id) });
+              game.emit("secure", { act: s.act });
+              const left = 2 - s.secured.length;
+              sk.say(`${Q.ACTS[s.act].name} is COOKED. ${left > 0 ? left + " to go." : "the doors are listening…"}`, true);
+              nextAct(s, true);
+            }
+          } else if (wasHolding) { s.hold = Math.max(0, s.hold - dt * 3000); }
+          else s.hold = Math.max(0, s.hold - dt * 1500);
+          // the mole leaves a trail: hunters get a fix on the runner nearest the objective
+          if (s.mole && now - s.tipAt > 35000) {
+            s.tipAt = now;
+            const near = runners.filter(p => p.id !== s.mole).sort((a, b) => dist2(a, spot) - dist2(b, spot))[0];
+            if (near) { game.emit("trail", { x: near.x, z: near.z, who: near.id }); if (!s.trailBeat) { s.trailBeat = 1; sk.say("the hunters look… well-informed. someone's been TALKING.", true); } }
           }
-          if (!runners.length) { finish(s, "hunters"); return; }
-          for (const p of Object.values(s.players)) { if (p.isBot && !p.duel) botBrain(s, p, dt, now); if (p.stun > 0) p.stun -= dt * 1000; }
+        }
+        if (s.phase === "doors") {
+          for (const p of runners) if (dist2(p, center) < 9) { p.escaped = true; s.escaped.push(p.id); game.emit("escape", { who: p.id }); sk.say(`<b>${p.handle}</b> is OUT.`); }
+          if (!P.filter(p => p.role === "runner" && !p.escaped && !p.jailed).length) { finish(s); return; }
+        }
+        if (s.phase === "act" || s.phase === "doors") {
+          for (const p of P) { if (p.isBot && !p.duel && !p.escaped && !p.jailed) botBrain(s, p, dt, now); if (p.stun > 0) p.stun -= dt * 1000; }
         }
         duels.tick();
       },
       hostInput(s, m) {
         if (m.in === "catch") {
           const a = s.players[m.from], b = s.players[m.target];
-          if (!a || !b || a.role !== "hunter" || b.role !== "runner" || a.duel || b.duel || a.stun > 0) return;
-          if (!(s.phase === "hunt" || s.phase === "final")) return;
+          if (!a || !b || a.role !== "hunter" || b.role !== "runner" || b.escaped || b.jailed || a.duel || b.duel || a.stun > 0) return;
+          if (!(s.phase === "act" || s.phase === "doors")) return;
           if (dist2(a, b) > Q.CATCH * 1.25) return;
           if (performance.now() - a.lastRip < 4000) return;
           a.lastRip = performance.now(); duels.open(a.id, b.id);
@@ -445,108 +592,174 @@ const CHAOS = {
         if (m.ev === "duel") dc.duel(m, s.players);
         else if (m.ev === "duel_end") {
           dc.duel_end(m, s.players, ctx.me.id);
-          if (m.winner === m.a) ui.toast(`${s.players[m.a]?.handle} CAUGHT ${s.players[m.b]?.handle} — they hunt now`, "rip");
+          if (m.winner === m.a) ui.toast(`${s.players[m.a]?.handle} locked up ${s.players[m.b]?.handle} — boiler room`, "rip");
           else ui.toast(`${s.players[m.b]?.handle} slipped away from ${s.players[m.a]?.handle}`, "dodge");
         }
-        else if (m.ev === "ping") {
-          const mine = s.players[ctx.me.id];
-          if (mine?.role === "hunter") { ui.toast(`📍 a sticker was planted at ${spots[m.spot].name}`, "tip"); sfx.ping(); const mk = arena.mark({ x: m.x, z: m.z }, 0xff2a4a, 10); pingMarks.push(mk); setTimeout(() => arena.unmark(mk), 6000); }
-          else if (m.who === ctx.me.id) { ui.toast(`sticker planted (${mine.stickers?.length ?? "?"}/3) — hunters just felt that`, "phase"); sfx.stamp(); buzz(50); }
-        }
+        else if (m.ev === "story") sk.onStory(m);
         else if (m.ev === "phase") {
-          if (m.phase === "hunt") { ui.toast("HUNT — runners, plant your stickers", "phase"); sfx.klaxon(); flash("#ff2a4a", 220); buzz([60, 40, 60]); }
-          if (m.phase === "final") { ui.toast("FINAL 90 s — runners to the DOOR", "phase"); sfx.klaxon(); shake(500, 2); }
+          if (m.phase === "act") { setActMark(Q.ACTS[m.act ?? 0].spot); sfx.klaxon(); flash("#ff2a4a", 220); buzz([60, 40, 60]); }
+          if (m.phase === "doors") { setActMark(null); if (!doorMark) doorMark = arena.mark(center, 0xffd60a, 9); sfx.klaxon(); shake(500, 2); }
         }
+        else if (m.ev === "holdstart") {
+          const mine = s.players[ctx.me.id];
+          if (mine?.role === "hunter") { ui.toast(`🔊 they're holding ${spots.find(x => x.x === m.x)?.name ?? "a ring"} — GO`, "tip"); sfx.ping(); const mk = arena.mark({ x: m.x, z: m.z }, 0xff2a4a, 10); pingMarks.push(mk); setTimeout(() => arena.unmark(mk), 5000); }
+        }
+        else if (m.ev === "trail") {
+          const mine = s.players[ctx.me.id];
+          if (mine?.role === "hunter") { ui.toast("🐀 the mole left a trail — fresh fix on the radar", "tip"); sfx.ping(); const mk = arena.mark({ x: m.x, z: m.z }, 0xb04dff, 8); pingMarks.push(mk); setTimeout(() => arena.unmark(mk), 6000); }
+          else if (m.who === ctx.me.id) { ui.toast("you feel watched.", "tip"); buzz(40); }
+        }
+        else if (m.ev === "secure") { sfx.stamp(); flash("#7bffb0", 200); }
+        else if (m.ev === "jailbreak") { sfx.chime(); shake(300, 1.6); if (game.s?.players[ctx.me.id]?.jailed === false) buzz(60); }
+        else if (m.ev === "escape") { sfx.chime(); if (m.who === ctx.me.id) { flash("#ffd60a", 300); buzz([50, 40, 90]); } }
         else if (m.ev === "finish") { celebrate(center.clone().add(new THREE.Vector3(0, CHAR_H, 0))); reveal("chaos"); }
       },
     }, { hz: 5 });
     const dc = duelClientHandlers(game, ctx, { verbA: "CATCH", verbB: "SLIP" });
+    const sk = storyKit(game, "chaos");
     const duels = {};
-    function finish(s, side, hero = null) {
+    function nextAct(s, secured) {
+      if (secured) s.secured.push(s.act);
+      if (s.act < 2) { s.act++; s.hold = 0; s.holders = 0; s.left = Q.PHASES.act; game.emit("phase", { phase: "act", act: s.act }); if (secured) sk.say(Q.ACTS[s.act].line, true); else setTimeout(() => { if (game.running) sk.say(Q.ACTS[s.act].line, true); }, 2500); }
+      else { s.phase = "doors"; s.hold = 0; s.holders = 0; s.left = Q.PHASES.doors; game.emit("phase", { phase: "doors" }); sk.say(s.secured.length === 3 ? "all three jobs COOKED. the doors are OPEN — get the record OUT." : "that's all the time we have. DOORS. RUN.", true); }
+    }
+    function finish(s) {
       if (s.phase === "end") return;
-      s.phase = "end"; s.left = Q.PHASES.end; s.winnerSide = side; s.hero = hero;
-      game.emit("finish", { side, hero });
+      s.phase = "end"; s.left = Q.PHASES.end;
+      s.winnerSide = s.escaped.length ? "runners" : "hunters";
+      s.clean = s.secured.length === 3;
+      game.emit("finish", { side: s.winnerSide });
+      const moleName = s.mole ? s.players[s.mole]?.handle : null;
+      sk.say(s.winnerSide === "runners"
+        ? `${s.escaped.length} of you made it out${s.clean ? " WITH the record" : " — empty-handed, but out"}. ${moleName ? `and the mole? <b>${moleName}</b>. I love this town.` : "clean crew tonight."}`
+        : `nobody made the doors. the alley keeps the record — ${moleName ? `and <b>${moleName}</b> was mine the whole time.` : "and the night."}`, true);
     }
     function botBrain(s, p, dt, now) {
       const sp = 12 + p.skill * 6;
       if (p.stun > 0) return;
       if (p.role === "runner") {
-        const next = [0, 1, 2].find(i => !p.stickers.includes(i));
-        const target = next === undefined ? center : spots[next];
-        // hunters visible nearby? sidestep
+        const isMole = p.id === s.mole;
+        const target = s.phase === "doors" ? center : spots[Q.ACTS[s.act].spot];
         const hunters = Object.values(s.players).filter(o => o.role === "hunter" && dist2(o, p) < m2u(20));
-        if (hunters.length && game.rng() < 0.6 && next !== undefined) {
+        if (hunters.length && game.rng() < 0.6 && s.phase !== "doors") {
           const h = hunters[0]; const away = { x: p.x + (p.x - h.x), z: p.z + (p.z - h.z) };
           moveBot(p, away, sp, dt, center, s.radius); return;
         }
-        if (dist2(p, target) > 3.5) moveBot(p, target, sp, dt, center, s.radius);   // then stand still to plant
-      } else {
-        const runners = Object.values(s.players).filter(o => o.role === "runner");
-        const near = runners.map(o => ({ o, d: dist2(o, p) })).sort((a, b) => a.d - b.d)[0];
-        if (near && near.d < m2u(30)) {
-          moveBot(p, near.o, sp * 1.05, dt, center, s.radius);
-          if (near.d < Q.CATCH * 0.9 && now - p.lastRip > 6000 && !near.o.duel) { p.lastRip = now; duels.open(p.id, near.o.id); }
+        const jailedN = Object.values(s.players).filter(o => o.jailed).length;
+        if (!isMole && jailedN && (s.phase === "act" || s.phase === "doors")) {
+          const hunterNearJail = Object.values(s.players).some(o => o.role === "hunter" && dist2(o, jail) < m2u(7));
+          if (!hunterNearJail && (p.brain.rescue || game.rng() < dt * 0.45)) {
+            p.brain.rescue = true;
+            if (dist2(p, jail) > 3) moveBot(p, jail, sp * 1.08, dt, center, s.radius);
+            return;
+          }
+          if (hunterNearJail) p.brain.rescue = false;
+        } else p.brain.rescue = false;
+        if (isMole && s.phase === "act") {
+          // the mole hovers NEAR the ring but stalls outside it, looking busy
+          const d = dist2(p, target);
+          if (d < 8) { const away = { x: p.x + (p.x - target.x) * 2, z: p.z + (p.z - target.z) * 2 }; moveBot(p, away, sp * 0.7, dt, center, s.radius); }
+          else if (d > 16) moveBot(p, target, sp * 0.8, dt, center, s.radius);
           return;
         }
-        // patrol between sticker spots and the door
-        if (!p.brain.wp || dist2(p, p.brain.wp) < 3 || now > p.brain.until) { p.brain.wp = pickOne(game.rng, [...spots, center]); p.brain.until = now + 9000; }
+        if (dist2(p, target) > 3.5) moveBot(p, target, sp, dt, center, s.radius);   // then stand in the ring
+      } else {
+        const runners = Object.values(s.players).filter(o => o.role === "runner" && !o.escaped && !o.jailed);
+        const jailedN = Object.values(s.players).filter(o => o.jailed).length;
+        // one hunter falls back to guard the boiler room when it holds someone
+        if (jailedN && !s._guard) s._guard = p.id;
+        if (!jailedN) s._guard = null;
+        if (s._guard === p.id && jailedN) {
+          const d = dist2(p, jail);
+          if (d > 12) { moveBot(p, jail, sp * 0.95, dt, center, s.radius); return; }
+          const intruder = runners.map(o => ({ o, d: dist2(o, jail) })).filter(x => x.d < m2u(16)).sort((a, b) => a.d - b.d)[0];
+          if (intruder) { moveBot(p, intruder.o, sp, dt, center, s.radius); if (dist2(p, intruder.o) < Q.CATCH * 0.9 && now - p.lastRip > 6000 && !intruder.o.duel) { p.lastRip = now; duels.open(p.id, intruder.o.id); } }
+          return;
+        }
+        const near = runners.map(o => ({ o, d: dist2(o, p) })).sort((a, b) => a.d - b.d)[0];
+        if (near && near.d < m2u(30)) {
+          moveBot(p, near.o, sp * 0.98, dt, center, s.radius);
+          if (near.d < Q.CATCH * 0.9 && now - p.lastRip > 9500 && !near.o.duel) { p.lastRip = now; duels.open(p.id, near.o.id); }
+          return;
+        }
+        const focus = s.phase === "doors" ? center : spots[Q.ACTS[s.act].spot];
+        if (!p.brain.wp || dist2(p, p.brain.wp) < 3 || now > p.brain.until) { p.brain.wp = game.rng() < 0.7 ? focus : pickOne(game.rng, [...spots, center]); p.brain.until = now + 9000; }
         moveBot(p, p.brain.wp, sp * 0.85, dt, center, s.radius);
       }
     }
-    const initial = { phase: "brief", left: this.PHASES.brief, radius: this.RADIUS, players: {}, duels: {}, log: [], winnerSide: null, hero: null, duelSeq: 0 };
+    const initial = { phase: "brief", left: this.PHASES.brief, players: {}, duels: {}, log: [], winnerSide: null, duelSeq: 0, act: 0, secured: [], hold: 0, holders: 0, escaped: [], mole: null, briefBeat: 0, rescue: 0, jailBeat: 0 };
     Object.assign(duels, duelKit(game, initial, ctx, (d, winner) => {
       const s = game.s; const a = s.players[d.a], b = s.players[d.b];
-      if (winner === d.a) { b.role = "hunter"; b.caughtBy = a.id; s.log.push({ t: Date.now(), type: "catch", who: b.id, by: a.id }); }
+      if (winner === d.a) {
+        b.jailed = true; b.caughtBy = a.id; b.x = jail.x; b.z = jail.z;
+        a.stun = 6000;   // walking the perp to the boiler room — the crew's rescue window
+        s.log.push({ t: Date.now(), type: "jail", who: b.id, by: a.id });
+        if (b.id === s.mole) { sk.say(`ha — you locked up <b>${b.handle}</b>? that one was already MINE.`, true); s.moleBurned = true; }
+        else if (!s.jailBeat) { s.jailBeat = 1; sk.say(`first one in the BOILER ROOM (purple ring). crew can spring them — hold that door 4 seconds.`, true); }
+      }
       else { a.stun = 5000; s.log.push({ t: Date.now(), type: "slip", who: b.id, by: a.id }); }
     }));
     game.start(initial);
 
     function renderChaos(s) {
-      arena.setEntities(entitiesFrom(s));
+      arena.setEntities(entitiesFrom(s).map(e => ({ ...e, alive: !s.players[e.id]?.escaped })));
       const me = s.players[ctx.me.id];
+      // the mole sees everything (their edge over honest runners)
+      if (me && (me.role === "hunter" || ctx.me.id === s.mole)) arena.fullRadar = true;
       const now = performance.now();
       if (now - lastHud < 150) return;
       lastHud = now;
-      const runners = Object.values(s.players).filter(p => p.role === "runner");
-      const phaseName = { brief: "BRIEFING", hunt: "HUNT", final: "FINAL DASH", end: "RESULT" }[s.phase];
-      const role = me ? (me.role === "hunter" ? "🔴 HUNTER" : `🟢 RUNNER · ${me.stickers?.length ?? 0}/3`) : "spectating";
-      ui.hud(`<div class="hq"><b>${phaseName}</b><span class="clk">${ui.clock(s.left)}</span><span>${runners.length} runners left</span><span>${role}</span></div>`);
+      const runners = Object.values(s.players).filter(p => p.role === "runner" && !p.escaped);
+      const phaseName = { brief: "THE SETUP", act: `ACT ${s.act + 1}/3`, doors: "THE DOORS", end: "EPILOGUE" }[s.phase];
+      const iAmMole = ctx.me.id === s.mole;
+      const role = me ? (me.role === "hunter" ? "🔴 HUNTER" : me.escaped ? "🏃 OUT" : me.jailed ? "🔒 JAILED" : iAmMole ? "🐀 MOLE" : "🟢 CREW") : "spectating";
+      ui.hud(`<div class="hq"><b>${phaseName}</b><span class="clk">${ui.clock(s.left)}</span><span>${s.secured.length}/3 jobs · ${runners.length} in play</span><span>${role}</span></div>`);
       if (s.phase === "brief") {
-        if (!ui.once(`brief:${me?.role ?? ""}`, () => {})) return;
+        if (!ui.once(`brief:${me?.role ?? ""}:${iAmMole}`, () => {})) return;
         const card = me?.role === "hunter"
-          ? `<p class="role hunter">You are a <b>HUNTER</b>. Nobody knows. Catch runners — get close and hit CATCH (reaction duel). Every sticker they plant <b>pings</b> you with its location.</p>`
-          : `<p class="role runner">You are a <b>RUNNER</b>. Plant stickers at the three marked spots (stand in the ring 6 s), then get back to the Opry door. Every sticker you plant pings the hunters. Caught runners <b>become hunters</b>.</p>`;
-        ui.stage("추격전 · Opry Manhunt", `${card}<p class="st-list">${Object.values(s.players).map(p => `<span class="tagchip ${p.isBot ? "bot" : ""}">${p.handle}</span>`).join("")}</p><p class="ab-sub">bluff in the lobby chat if you like. nobody can check.</p>`, `Grand Ole Opry · ${ui.clock(s.left)} to the siren`);
+          ? `<p class="role hunter">You are a <b>HUNTER</b>. The crew will try to cook three jobs — every ring they hold makes NOISE you can hear. Catch runners (get close, hit CATCH, win the tap duel — phones only, never touch). Caught crew goes to the boiler room; guard it or they'll get sprung.</p>`
+          : iAmMole
+            ? `<p class="role hunter">🐀 You are <b>NALLI'S MOLE</b>. Look like crew. You can see <i>everyone</i> on the radar. Stall the jobs, waste their time — you WIN if nobody makes the doors. If the crew wins anyway, walk out with them and smile.</p>`
+            : `<p class="role runner">You are <b>CREW</b>. Three jobs: hold each marked ring 8 s (more crew = faster). Every second you hold, the hunters hear you. Get caught (lose the tap duel) and you sit in the <b>boiler room</b> — the purple ring — until crew holds its door 4 s to spring you. Clear the jobs, then make the DOORS. And… Nalli says one of you is a mole.</p>`;
+        ui.stage("추격전 · The Opry Heist", `${card}<p class="st-list">${Object.values(s.players).map(p => `<span class="tagchip ${p.isBot ? "bot" : ""}">${p.handle}</span>`).join("")}</p><p class="ab-sub">bluff in chat. nobody can check.</p>`, `Grand Ole Opry · ${ui.clock(s.left)} to act one`);
         return;
       }
       if (s.phase === "end") {
         if (!ui.once("end", () => {})) return;
         const hunters = Object.values(s.players).filter(p => p.role === "hunter");
-        const story = s.log.map(l => l.type === "catch" ? `${s.players[l.by]?.handle} caught ${s.players[l.who]?.handle}` : l.type === "slip" ? `${s.players[l.who]?.handle} slipped ${s.players[l.by]?.handle}` : `${s.players[l.who]?.handle} planted a sticker at ${spots[l.spot].name}`);
-        const title = s.winnerSide === "runners" ? `${s.players[s.hero]?.handle} made it to the door` : "the hunters took the alley";
-        ui.stage(title, `<div class="story"><b>The hunters were</b><p>${hunters.map(h => h.handle + (h.caughtBy ? ` (turned by ${s.players[h.caughtBy]?.handle})` : " (original)")).join(" · ")}</p></div>
-          <div class="story"><b>The chase</b>${story.length ? "<ul>" + story.map(x => `<li>${x}</li>`).join("") + "</ul>" : "<p>quiet night.</p>"}</div>
-          <button class="share" id="share-btn">share the chase</button>`, "Opry Manhunt");
-        $("share-btn")?.addEventListener("click", () => shareText(`Opry Manhunt — ${title}.\n` + story.join("\n")));
+        const story = s.log.map(l => l.type === "jail" ? `${s.players[l.by]?.handle} locked up ${s.players[l.who]?.handle}` : l.type === "slip" ? `${s.players[l.who]?.handle} slipped ${s.players[l.by]?.handle}` : l.type === "jailbreak" ? `${(l.who || []).map(i => s.players[i]?.handle).join(" + ")} kicked the boiler-room door — JAILBREAK` : `${(l.who || []).map(i => s.players[i]?.handle).join(" + ")} cooked ${Q.ACTS[l.act].name}`);
+        const escaped = s.escaped.map(id => s.players[id]?.handle);
+        const title = s.winnerSide === "runners" ? (s.clean ? "the crew got the record OUT" : "they escaped — empty-handed") : "nobody made the doors";
+        const moleWon = s.mole && s.winnerSide === "hunters";
+        ui.stage(title, `
+          ${s.mole ? `<div class="story"><b>the mole was</b><p>🐀 <b>${s.players[s.mole]?.handle}</b>${moleWon ? " — and the mole WINS" : s.players[s.mole]?.escaped ? " — walked out smiling with the crew" : ""}</p></div>` : ""}
+          <div class="story"><b>the hunters</b><p>${hunters.map(h => h.handle).join(" · ")}</p></div>
+          ${escaped.length ? `<div class="story"><b>made the doors</b><p>${escaped.join(" · ")}</p></div>` : ""}
+          <div class="story"><b>the chase</b>${story.length ? "<ul>" + story.map(x => `<li>${x}</li>`).join("") + "</ul>" : "<p>quiet night.</p>"}</div>
+          <button class="share" id="share-btn">share the story</button>`, "The Opry Heist");
+        $("share-btn")?.addEventListener("click", () => shareText(`The Opry Heist — ${title}.\n` + story.join("\n")));
         return;
       }
       if (!me) { ui.once("spec", () => ui.panel(`<div class="ab-sub">spectating</div>`, "bottom")); return; }
+      if (me.escaped) { ui.once("out", () => ui.panel(`<div class="ab-sub">🏃 you're OUT — watch the rest make it (or not)</div>`, "bottom")); return; }
+      if (me.jailed) { ui.once("jailed", () => ui.panel(`<div class="ab-sub">🔒 you're in the BOILER ROOM. crew can spring you by holding the purple ring 4 s. yell in chat.</div>`, "bottom")); return; }
       if (me.role === "hunter") {
-        const t = arena.near(Q.CATCH).filter(e => e.role === "runner").sort((a, b) => arena.distTo(a) - arena.distTo(b))[0];
+        const t = arena.near(Q.CATCH).filter(e => s.players[e.id]?.role === "runner" && !s.players[e.id]?.escaped).sort((a, b) => arena.distTo(a) - arena.distTo(b))[0];
         const can = t && !(me.stun > 0) && !me.duel;
-        if (!ui.once(`catch:${can ? 1 : 0}:${t?.id ?? ""}:${me.stun > 0 ? 1 : 0}`, () => {})) return;
-        ui.panel(`<div class="actionbar"><button id="catch-btn" class="big ${can ? "hot" : ""}" ${can ? "" : "disabled"}>${me.stun > 0 ? "stunned…" : t ? `CATCH ${t.handle}` : "hunt — pings show on the radar"}</button><div class="ab-sub">runners show up within ~26 m · stickers ping you</div></div>`, "bottom");
+        if (!ui.once(`catch:${can ? 1 : 0}:${t?.id ?? ""}:${me.stun > 0 ? 1 : 0}:${s.act}`, () => {})) return;
+        ui.panel(`<div class="actionbar"><button id="catch-btn" class="big ${can ? "hot" : ""}" ${can ? "" : "disabled"}>${me.stun > 0 ? "stunned…" : t ? `CATCH ${t.handle}` : "hunt — holds and trails ping your radar"}</button><div class="ab-sub">phones only — win the tap duel to turn them</div></div>`, "bottom");
         $("catch-btn").onclick = () => { if (can) { game.input("catch", { target: t.id }); sfx.pop(); } };
       } else {
-        const next = [0, 1, 2].find(i => !me.stickers.includes(i));
-        const goal = next === undefined ? "all stickers planted — get to the DOOR (gold ring)" : `plant at ${spots[next].name} (red ring ${Math.round(dist2(arena.myPos(), spots[next]) / 0.55)} m away)`;
-        const planting = me.at !== null && me.at !== undefined;
-        ui.resetKey();   // progress bar is live; cheap to rebuild
-        ui.panel(`<div class="actionbar"><div class="ab-sub">${goal}</div>${planting ? ui.bar(me.progress / 6000, "plant") + `<div class="ab-sub">planting… stay in the ring</div>` : ""}</div>`, "bottom");
+        const spot = s.phase === "doors" ? { ...center, name: "the DOORS" } : spots[Q.ACTS[s.act].spot];
+        const d = Math.round(dist2(arena.myPos(), spot) / 0.55);
+        const goal = s.phase === "doors" ? `RUN — the doors are ${d} m away` : `${Q.ACTS[s.act].name}: hold the red ring together (${d} m)`;
+        const holding = s.phase === "act" && s.holders > 0;
+        ui.resetKey();   // live meter; cheap to rebuild
+        ui.panel(`<div class="actionbar"><div class="ab-sub">${iAmMole ? "🐀 look busy. stall. you see everything." : goal}</div>${holding ? ui.bar(s.hold / Q.HOLD_MS, "plant") + `<div class="ab-sub">${s.holders} in the ring — hunters can hear this</div>` : ""}</div>`, "bottom");
       }
     }
     const origEnd = ctx.onEnd;
-    ctx.onEnd = () => { game.stop(); arena.leave(); ui.hide(); arena.duel.end(); origEnd(); };
+    ctx.onEnd = () => { game.stop(); setActMark(null); arena.unmark(jailMark); if (doorMark) arena.unmark(doorMark); for (const mk of pingMarks) arena.unmark(mk); arena.leave(); ui.hide(); arena.duel.end(); origEnd(); };
   },
 };
 
@@ -662,6 +875,11 @@ const CHILL = {
       onEvent(m) {
         if (m.ev === "phase") {
           myPicked = null;
+          const BEATS = { cups_write: "now the cups. one honest line each — write soft, guess sharp.",
+                          tab_vote: "somebody's picking up the tab tonight. choose with love.",
+                          last_call: "last call. names and one true thing — or the tab doubles." };
+          if (BEATS[m.phase]) storyCard("chill", BEATS[m.phase]);
+          if (m.phase === "ans" && m.round === 0) storyCard("chill", "first course: telepathy. answer what THIS table would answer. sync and everyone drinks free.");
           if (m.phase === "ans") { sfx.pop(); }
           if (m.phase === "reveal") { if (m.synced) { sfx.chime(); flash("#7dd3a0", 160); } else { sfx.lose(); } }
           if (m.phase === "cups_write") { sfx.ping(); ui.toast("cups out — write one line", "phase"); }

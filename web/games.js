@@ -1,12 +1,14 @@
-// Catalog minigames for player-hosted rooms (demo build). Six from the top of
-// the simulation ranking: two arena chase games, three talk/party games, and
-// the drawing game. All host-authoritative with bots filling seats.
+// Catalog minigames for player-hosted rooms, organized by archetype lane
+// (sporty = bodies in space, chaos = nerve & bluff, chill = talk & reveal).
+// Final lineup = simulation ranking x design review x the user's picks.
+// All host-authoritative with bots filling seats; nothing ever requires
+// touching another person - proximity, taps and votes only.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { world3d } from "./world3d.js";
 import { arena, m2u } from "./arena.js";
-import { HostGame, makeBots, ui, shareText } from "./gamekit.js";
+import { HostGame, makeBots, gauss, ui, shareText } from "./gamekit.js";
 import { sfx, buzz, flash, shake, celebrate } from "./fx.js";
-import { CAPTION_POOL, IMPOSTER_WORDS, IMPOSTER_HINTS, GENERIC_HINTS, SPLITCLUE_COLORS, DRAW_WORDS } from "./bots.js";
+import { CAPTION_POOL, IMPOSTER_WORDS, IMPOSTER_HINTS, GENERIC_HINTS, SPLITCLUE_COLORS, DRAW_WORDS, RECEIPT_POOL, MAJORITY_PROMPTS } from "./bots.js";
 
 const $ = id => document.getElementById(id);
 const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
@@ -49,7 +51,7 @@ function myCenter() { return world3d.player?.api.group.position.clone() ?? new T
 // TIMEBOMB / HOT POTATO — arena
 // ====================================================================
 const TIMEBOMB = {
-  id: "timebomb", title: "Timebomb", blurb: "hold it when it blows and you lose. get close to toss.", minPlayers: 2, maxPlayers: 12, length: "3 × 45 s",
+  id: "timebomb", title: "Timebomb", arch: "chaos", blurb: "hold it when it blows and you lose. get close to toss.", minPlayers: 2, maxPlayers: 12, length: "3 × 45 s",
   RADIUS: 55, TOSS: m2u(7), ROUND: 45000,
   start(ctx) {
     const center = myCenter(); center.y = 0;
@@ -127,7 +129,7 @@ const TIMEBOMB = {
 // DEATH TAG — arena, snowball
 // ====================================================================
 const DEATHTAG = {
-  id: "deathtag", title: "Death Tag", blurb: "one tagger. tagged players join the chase. last runner wins.", minPlayers: 3, maxPlayers: 16, length: "~3 min",
+  id: "deathtag", title: "Death Tag", arch: "sporty", blurb: "one tagger. tagged players join the chase. last runner wins.", minPlayers: 3, maxPlayers: 16, length: "~3 min",
   RADIUS: 70, TAG: m2u(4.5), T: 180000,
   start(ctx) {
     const center = myCenter(); center.y = 0;
@@ -174,7 +176,7 @@ const DEATHTAG = {
 // CAPTION THIS — photo, write, vote
 // ====================================================================
 const CAPTION = {
-  id: "caption", title: "Caption This", blurb: "a random photo. everyone writes a caption. funniest wins the vote.", minPlayers: 3, maxPlayers: 12, length: "3 rounds · ~5 min",
+  id: "caption", title: "Caption This", arch: "chill", blurb: "a random photo. everyone writes a caption. funniest wins the vote.", minPlayers: 3, maxPlayers: 12, length: "3 rounds · ~5 min",
   start(ctx) {
     ui.show(); ui.theme("chill");
     let lastHud = 0, myPicked = null;
@@ -233,7 +235,7 @@ const CAPTION = {
 // CATCH THE IMPOSTER — hints, talk, vote
 // ====================================================================
 const IMPOSTER = {
-  id: "imposter", title: "Catch the Imposter", blurb: "everyone gets the word except one. one hint each, talk, vote.", minPlayers: 4, maxPlayers: 12, length: "3 rounds · ~6 min",
+  id: "imposter", title: "Catch the Imposter", arch: "chaos", blurb: "everyone gets the word except one. one hint each, talk, vote.", minPlayers: 4, maxPlayers: 12, length: "3 rounds · ~6 min",
   start(ctx) {
     ui.show(); ui.theme("chaos");
     let lastHud = 0, myPicked = null;
@@ -293,7 +295,7 @@ const IMPOSTER = {
 // SPLIT CLUE — pairs, each sees half a colour grid, talk to fill it
 // ====================================================================
 const SPLITCLUE = {
-  id: "splitclue", title: "Split Clue", blurb: "you and a partner each see half of a 3×3 colour code. talk to fill it.", minPlayers: 2, maxPlayers: 12, length: "~2 min",
+  id: "splitclue", title: "Split Clue", arch: "chill", blurb: "you and a partner each see half of a 3×3 colour code. talk to fill it.", minPlayers: 2, maxPlayers: 12, length: "~2 min",
   start(ctx) {
     ui.show(); ui.theme("chill");
     let lastHud = 0;
@@ -354,7 +356,7 @@ const SPLITCLUE = {
 // DRAW MY THING — synced strokes, guesses
 // ====================================================================
 const DRAW = {
-  id: "draw", title: "Draw My Thing", blurb: "one draws, everyone guesses against the clock.", minPlayers: 3, maxPlayers: 10, length: "~4 min",
+  id: "draw", title: "Draw My Thing", arch: "chill", blurb: "one draws, everyone guesses against the clock.", minPlayers: 3, maxPlayers: 10, length: "~4 min",
   start(ctx) {
     ui.show(); ui.theme("chill");
     let lastHud = 0, strokes = [], drawing = false, cur = null, canvasBound = false;
@@ -421,4 +423,636 @@ const DRAW = {
   },
 };
 
-export const CATALOG = [TIMEBOMB, CAPTION, IMPOSTER, SPLITCLUE, DEATHTAG, DRAW];
+
+// ====================================================================
+// COIN RAIN — arena · sporty. coins drop, sprint and scoop.
+// ====================================================================
+const COINRAIN = {
+  id: "coinrain", title: "Coin Rain", blurb: "coins drop all over the ring for 90 s. scoop more than everyone else.", arch: "sporty", minPlayers: 2, maxPlayers: 16, length: "90 s",
+  RADIUS: 48, GRAB: m2u(3.5), T: 90000,
+  start(ctx) {
+    const center = myCenter(); center.y = 0;
+    arena.enter({ room: ctx.room, me: ctx.me, center, radius: this.RADIUS, visRange: m2u(70) });
+    arena.fullRadar = true;
+    ui.show(); ui.theme("sporty");
+    const G = this;
+    let lastHud = 0, seq = 0, spawnAcc = 0;
+    const meshes = new Map();   // coinId -> mesh (client-side)
+    const coinMat = { 1: new THREE.MeshBasicMaterial({ color: 0xffd60a }), 3: new THREE.MeshBasicMaterial({ color: 0xffb020 }), 10: new THREE.MeshBasicMaterial({ color: 0xff7a00 }) };
+    const coinGeo = new THREE.CylinderGeometry(1, 1, 0.6, 14);
+    const game = new HostGame(ctx, {
+      hostInit(s) { s.players = seed(ctx, game.rng, 6, center); s.coins = []; s.left = G.T; s.phase = "play"; },
+      hostTick(s, dt) {
+        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) game.finish(); return; }
+        s.left -= dt * 1000; syncHumans(s, ctx);
+        // spawn: ~1/s, doubled in the last 15 s ("the jackpot minute")
+        spawnAcc += dt * (s.left < 15000 ? 2.2 : 1.1);
+        while (spawnAcc > 1) {
+          spawnAcc -= 1;
+          const r = game.rng(), v = r < 0.7 ? 1 : r < 0.94 ? 3 : 10;
+          const a = game.rng() * Math.PI * 2, rr = game.rng() * (s.radius - 4);
+          const c = { id: "c" + (++seq), x: center.x + Math.cos(a) * rr, z: center.z + Math.sin(a) * rr, v, ttl: 12000 };
+          s.coins.push(c);
+          if (v === 10) game.emit("gold", { x: c.x, z: c.z });
+        }
+        for (const c of s.coins) c.ttl -= dt * 1000;
+        s.coins = s.coins.filter(c => c.ttl > 0);
+        // bots: sprint at the juiciest close coin
+        for (const p of Object.values(s.players)) {
+          if (!p.isBot) continue;
+          const best = s.coins.map(c => ({ c, u: c.v / (8 + dist2(c, p)) })).sort((a, b) => b.u - a.u)[0];
+          if (best) moveTo(p, best.c, 12 + p.skill * 8, dt, center, s.radius);
+        }
+        // grabs (host authoritative, first body on it takes it)
+        for (const c of [...s.coins]) {
+          const g = Object.values(s.players).find(p => dist2(p, c) < G.GRAB);
+          if (g) { g.score += c.v; s.coins = s.coins.filter(x => x !== c); game.emit("grab", { who: g.id, v: c.v, x: c.x, z: c.z }); }
+        }
+        if (s.left <= 0) { s.phase = "end"; s.left = 12000; game.emit("finish", {}); }
+      },
+      render(s) {
+        arena.setEntities(ents(s));
+        // client-side coin meshes from state
+        const live = new Set();
+        for (const c of s.coins) {
+          live.add(c.id);
+          let mh = meshes.get(c.id);
+          if (!mh) { mh = new THREE.Mesh(coinGeo, coinMat[c.v] ?? coinMat[1]); mh.scale.setScalar(c.v === 10 ? 2.2 : c.v === 3 ? 1.5 : 1); mh.position.set(c.x, 1.2, c.z); world3d.scene.add(mh); meshes.set(c.id, mh); }
+          mh.rotation.y += 0.08; mh.position.y = 1.2 + Math.sin(performance.now() / 300 + c.x) * 0.35;
+        }
+        for (const [id, mh] of meshes) if (!live.has(id)) { world3d.scene.remove(mh); meshes.delete(id); }
+        const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
+        const me = s.players[ctx.me.id];
+        const top = Object.values(s.players).sort((a, b) => b.score - a.score)[0];
+        ui.hud(`<div class="hq"><b>COIN RAIN</b><span class="clk ${s.left < 15000 ? "urgent" : ""}">${ui.clock(s.left)}</span><span>💰 ${me?.score ?? 0}</span><span>top: ${top?.handle} ${top?.score}</span></div>`);
+        if (s.phase === "end") { if (ui.once("end", () => {})) finishBoard("coin count", s.players, "Coin Rain", "score", "coins"); return; }
+        ui.once("play", () => ui.panel(`<div class="ab-sub">run over coins to scoop them — orange are 3, big ones 10. the last 15 s rains double.</div>`, "bottom"));
+      },
+      onEvent(m) {
+        const s = game.s; if (!s) return;
+        if (m.ev === "grab" && m.who === ctx.me.id) { sfx.pop(); buzz(30); }
+        if (m.ev === "gold") { sfx.ping(); ui.toast("💰 a BIG coin dropped", "phase"); }
+        if (m.ev === "finish") { sfx.win(); celebrate(center.clone().add(new THREE.Vector3(0, 12, 0))); }
+      },
+    }, { hz: 6 });
+    game.start({ phase: "play", left: this.T, radius: this.RADIUS, players: {}, coins: [] });
+    wrapEnd(ctx, game, () => { for (const mh of meshes.values()) world3d.scene.remove(mh); meshes.clear(); arena.leave(); });
+  },
+};
+
+// ====================================================================
+// TILE WARS — arena · sporty. stand on tiles to paint them.
+// ====================================================================
+const TILEWARS = {
+  id: "tilewars", title: "Tile Wars", blurb: "two teams. walk on tiles to paint them your colour. most tiles when the clock dies.", arch: "sporty", minPlayers: 2, maxPlayers: 16, length: "~3 min",
+  N: 7, TILE: 8, T: 170000, LOCK_AT: 45000,
+  start(ctx) {
+    const center = myCenter(); center.y = 0;
+    const G = this;
+    const span = G.N * G.TILE;
+    arena.enter({ room: ctx.room, me: ctx.me, center, radius: span * 0.72, visRange: m2u(80) });
+    arena.fullRadar = true;
+    ui.show(); ui.theme("sporty");
+    let lastHud = 0;
+    const tileMeshes = [];   // client-side, built once
+    const COL = { 0: 0x39404d, red: 0xff4d6d, blue: 0x4da6ff };
+    function tileCenter(i) { const gx = i % G.N, gz = Math.floor(i / G.N); return { x: center.x + (gx - (G.N - 1) / 2) * G.TILE, z: center.z + (gz - (G.N - 1) / 2) * G.TILE }; }
+    function tileAt(p) { const gx = Math.round((p.x - center.x) / G.TILE + (G.N - 1) / 2), gz = Math.round((p.z - center.z) / G.TILE + (G.N - 1) / 2); return gx >= 0 && gx < G.N && gz >= 0 && gz < G.N ? gz * G.N + gx : -1; }
+    const isEdge = i => { const gx = i % G.N, gz = Math.floor(i / G.N); return gx === 0 || gz === 0 || gx === G.N - 1 || gz === G.N - 1; };
+    const game = new HostGame(ctx, {
+      hostInit(s) {
+        s.players = seed(ctx, game.rng, 8, center);
+        const ids = Object.values(s.players).sort((a, b) => (a.isBot - b.isBot));
+        ids.forEach((p, i) => { p.team = i % 2 === 0 ? "red" : "blue"; p.claims = 0; });
+        s.tiles = Array(G.N * G.N).fill(0);
+        s.power = []; while (s.power.length < 3) { const i = Math.floor(game.rng() * G.N * G.N); if (!s.power.includes(i) && !isEdge(i)) s.power.push(i); }
+        s.left = G.T; s.phase = "play"; s.locked = false;
+      },
+      hostTick(s, dt) {
+        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) game.finish(); return; }
+        s.left -= dt * 1000; syncHumans(s, ctx);
+        if (!s.locked && s.left <= G.LOCK_AT) { s.locked = true; game.emit("lock", {}); }
+        for (const p of Object.values(s.players)) {
+          if (p.isBot) {
+            if (!p.brain.wp || game.rng() < dt * 0.4) {
+              const want = s.tiles.map((t, i) => ({ t, i })).filter(o => o.t !== p.team && !(s.locked && isEdge(o.i)));
+              const scored = want.map(o => { const c = tileCenter(o.i); return { c, u: (s.power.includes(o.i) ? 3 : 1) / (10 + dist2(c, p)) }; }).sort((a, b) => b.u - a.u)[0];
+              if (scored) p.brain.wp = scored.c;
+            }
+            if (p.brain.wp) moveTo(p, p.brain.wp, 11 + p.skill * 7, dt, center, s.radius);
+          }
+          const i = tileAt(p);
+          if (i >= 0 && s.tiles[i] !== p.team && !(s.locked && isEdge(i))) { s.tiles[i] = p.team; p.claims++; }
+        }
+        if (s.left <= 0) {
+          s.phase = "end"; s.left = 12000;
+          const count = t => s.tiles.reduce((n, o, i) => n + (o === t ? (s.power.includes(i) ? 3 : 1) : 0), 0);
+          s.final = { red: count("red"), blue: count("blue") };
+          for (const p of Object.values(s.players)) p.score = p.claims;
+          game.emit("finish", s.final);
+        }
+      },
+      render(s) {
+        arena.setEntities(ents(s).map(e => ({ ...e, role: s.players[e.id]?.team === "red" ? "hunter" : undefined })));
+        if (!tileMeshes.length && s.tiles?.length) {
+          const geo = new THREE.PlaneGeometry(G.TILE * 0.92, G.TILE * 0.92);
+          for (let i = 0; i < G.N * G.N; i++) {
+            const c = tileCenter(i);
+            const mh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: COL[0], transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide }));
+            mh.rotation.x = -Math.PI / 2; mh.position.set(c.x, 0.25, c.z);
+            world3d.scene.add(mh); tileMeshes.push(mh);
+          }
+        }
+        for (let i = 0; i < tileMeshes.length; i++) {
+          const own = s.tiles[i];
+          const mh = tileMeshes[i];
+          mh.material.color.setHex(own === 0 ? COL[0] : COL[own]);
+          mh.material.opacity = s.power.includes(i) ? 0.8 : (s.locked && isEdge(i) ? 0.12 : 0.42);
+        }
+        const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
+        const me = s.players[ctx.me.id];
+        const cnt = t => s.tiles.filter(o => o === t).length;
+        ui.hud(`<div class="hq"><b>TILE WARS</b><span class="clk ${s.left < 20000 ? "urgent" : ""}">${ui.clock(s.left)}</span><span style="color:#ff8ba0">■ ${cnt("red")}</span><span style="color:#8ec8ff">■ ${cnt("blue")}</span><span>you: ${me?.team ?? "?"}</span></div>`);
+        if (s.phase === "end") {
+          if (!ui.once("end", () => {})) return;
+          const w = s.final.red === s.final.blue ? null : s.final.red > s.final.blue ? "red" : "blue";
+          const mvp = Object.values(s.players).sort((a, b) => b.claims - a.claims)[0];
+          ui.stage(w ? `team ${w} takes the floor` : "dead heat", `<p class="bignum" style="color:${w === "red" ? "#ff4d6d" : "#4da6ff"}">${s.final.red} : ${s.final.blue}</p><p class="ab-sub">bright tiles counted 3× · MVP: <b>${mvp?.handle}</b> with ${mvp?.claims} paints</p>`, "Tile Wars");
+          return;
+        }
+        ui.once(`play:${me?.team}:${s.locked ? 1 : 0}`, () => ui.panel(`<div class="ab-sub">you're team <b style="color:${me?.team === "red" ? "#ff4d6d" : "#4da6ff"}">${me?.team}</b> — walk on tiles to paint them. bright tiles are worth 3.${s.locked ? " <b>outer ring is LOCKED — fight for the middle.</b>" : ""}</div>`, "bottom"));
+      },
+      onEvent(m) {
+        if (m.ev === "lock") { sfx.klaxon(); shake(400, 2); ui.toast("outer ring LOCKED — inner tiles only", "phase"); }
+        if (m.ev === "finish") { sfx.win(); celebrate(center.clone().add(new THREE.Vector3(0, 12, 0))); }
+      },
+    }, { hz: 6 });
+    game.start({ phase: "play", left: this.T, radius: span * 0.72, players: {}, tiles: [], power: [], locked: false });
+    wrapEnd(ctx, game, () => { for (const mh of tileMeshes) { world3d.scene.remove(mh); mh.material.dispose(); } tileMeshes.length = 0; arena.leave(); });
+  },
+};
+
+// ====================================================================
+// INFECTION ZONES — arena · sporty. safe zones with capacity, shrinking odds.
+// ====================================================================
+const INFECTION = {
+  id: "infection", title: "Infection Zones", blurb: "one infected. safe zones hold 3 people and keep moving. survive 2½ minutes.", arch: "sporty", minPlayers: 4, maxPlayers: 16, length: "~2.5 min",
+  RADIUS: 60, TAG: m2u(3), ZONE_R: m2u(6.5), ZONE_MS: 18000, CAP: 3, T: 150000,
+  start(ctx) {
+    const center = myCenter(); center.y = 0;
+    arena.enter({ room: ctx.room, me: ctx.me, center, radius: this.RADIUS, visRange: m2u(60) });
+    arena.fullRadar = true;
+    ui.show(); ui.theme("sporty");
+    const G = this;
+    let lastHud = 0, zoneMarks = new Map();
+    const game = new HostGame(ctx, {
+      hostInit(s) {
+        s.players = seed(ctx, game.rng, 8, center, () => ({ role: "clean", safe: false, surv: 0, cool: 0 }));
+        // scatter WIDE — clustered spawns let patient zero chain the whole lobby
+        for (const p of Object.values(s.players)) { const a = game.rng() * Math.PI * 2, rr = 12 + game.rng() * (G.RADIUS * 0.75 - 12); p.x = center.x + Math.cos(a) * rr; p.z = center.z + Math.sin(a) * rr; }
+        const bots = Object.values(s.players).filter(p => p.isBot);
+        const z0 = bots.length ? pick(game.rng, bots) : pick(game.rng, Object.values(s.players));
+        z0.role = "infected"; s.zero = z0.id;
+        s.zones = []; s.zseq = 0; s.left = G.T; s.phase = "play"; s.grace = 8000;
+        game.emit("zero", { id: z0.id });
+      },
+      hostTick(s, dt) {
+        if (s.phase === "end") { s.left -= dt * 1000; if (s.left <= 0) game.finish(); return; }
+        s.left -= dt * 1000; syncHumans(s, ctx);
+        if (s.grace > 0) s.grace -= dt * 1000;
+        const now = Date.now();
+        // keep two zones alive
+        s.zones = s.zones.filter(z => z.until > now);
+        while (s.zones.length < 3) {
+          const pos = { x: center.x + (game.rng() - 0.5) * s.radius * 1.5, z: center.z + (game.rng() - 0.5) * s.radius * 1.5 };
+          s.zones.push({ id: "z" + (++s.zseq), ...pos, until: now + G.ZONE_MS + game.rng() * 6000 });
+          game.emit("zone", {});
+        }
+        const P = Object.values(s.players);
+        const clean = P.filter(p => p.role === "clean"), inf = P.filter(p => p.role === "infected");
+        // capacity: nearest CAP clean players inside each zone are safe
+        for (const p of clean) p.safe = false;
+        for (const z of s.zones) {
+          clean.filter(p => dist2(p, z) < G.ZONE_R).sort((a, b) => dist2(a, z) - dist2(b, z)).slice(0, G.CAP).forEach(p => p.safe = true);
+        }
+        for (const p of clean) p.surv += dt * 1000;
+        // bots
+        for (const p of P) {
+          if (!p.isBot) continue;
+          const sp = 12 + p.skill * 7;
+          if (p.role === "infected") {
+            const t = clean.filter(o => !o.safe).sort((a, b) => dist2(a, p) - dist2(b, p))[0] ?? clean.sort((a, b) => dist2(a, p) - dist2(b, p))[0];
+            if (t) moveTo(p, t, sp * 0.92, dt, center, s.radius);
+          } else {
+            const danger = inf.sort((a, b) => dist2(a, p) - dist2(b, p))[0];
+            const heat = danger ? dist2(danger, p) : 1e9;
+            if (p.safe) { /* hold the zone */ }
+            else if (heat < m2u(35)) {
+              // proactively book a zone with a free slot; flee raw only if none reachable
+              const open = s.zones.map(z => ({ z, d: dist2(z, p), n: clean.filter(o => o.safe && dist2(o, z) < G.ZONE_R).length })).filter(o => o.n < G.CAP).sort((a, b) => a.d - b.d)[0];
+              if (open && (open.d < heat * 1.6 || heat > m2u(12))) moveTo(p, open.z, sp, dt, center, s.radius);
+              else flee(p, danger, sp, dt, center, s.radius, game.rng);
+            } else if (!p.brain.wp || dist2(p, p.brain.wp) < 2) p.brain.wp = { x: center.x + (game.rng() - 0.5) * s.radius * 1.5, z: center.z + (game.rng() - 0.5) * s.radius * 1.5 };
+            else moveTo(p, p.brain.wp, sp * 0.6, dt, center, s.radius);
+          }
+        }
+        // tags: only after the grace window, and each infected needs a beat between tags
+        for (const p of P) if (p.cool > 0) p.cool -= dt * 1000;
+        if (s.grace <= 0) for (const t of inf) for (const r of clean) {
+          if (r.role === "clean" && !r.safe && t.cool <= 0 && dist2(t, r) < G.TAG) { r.role = "infected"; r.cool = 4000; t.cool = 2200; game.emit("infect", { by: t.id, who: r.id }); }
+        }
+        const still = P.filter(p => p.role === "clean");
+        if (!still.length || s.left <= 0) {
+          s.phase = "end"; s.left = 12000;
+          for (const p of P) p.score = p.role === "clean" ? 3 : (p.id === s.zero ? 1 : Math.round(p.surv / 60000));
+          s.survivors = still.map(p => p.id);
+          game.emit("finish", { survivors: s.survivors });
+        }
+      },
+      render(s) {
+        arena.setEntities(ents(s).map(e => ({ ...e, role: s.players[e.id]?.role === "infected" ? "hunter" : undefined })));
+        // zone marks
+        const live = new Set(s.zones.map(z => z.id));
+        for (const z of s.zones) if (!zoneMarks.has(z.id)) zoneMarks.set(z.id, arena.mark(z, 0x35d07a, G.ZONE_R));
+        for (const [id, mk] of zoneMarks) if (!live.has(id)) { arena.unmark(mk); zoneMarks.delete(id); }
+        const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
+        const me = s.players[ctx.me.id];
+        const clean = Object.values(s.players).filter(p => p.role === "clean").length;
+        ui.hud(`<div class="hq"><b>INFECTION</b><span class="clk ${s.left < 20000 ? "urgent" : ""}">${ui.clock(s.left)}</span><span>${clean} clean</span><span>${s.grace > 0 ? "⏳ " + Math.ceil(s.grace / 1000) + "s grace" : me?.role === "infected" ? "🧟 infected" : me?.safe ? "🛡 SAFE" : "🟢 run"}</span></div>`);
+        if (s.phase === "end") {
+          if (!ui.once("end", () => {})) return;
+          const sv = (s.survivors ?? []).map(id => s.players[id]?.handle).join(", ");
+          ui.stage(sv ? `${sv} never got caught` : "the infection took everyone", `<p class="ab-sub">patient zero: <b>${s.players[s.zero]?.handle}</b></p>`, "Infection Zones");
+          return;
+        }
+        ui.once(`p:${me?.role}`, () => ui.panel(`<div class="ab-sub">${me?.role === "infected" ? "tag the clean — you can't touch anyone standing safe in a green zone" : "green zones hold 3 people max and keep moving. never stop running."}</div>`, "bottom"));
+      },
+      onEvent(m) {
+        const s = game.s; if (!s) return;
+        if (m.ev === "zero" && m.id === ctx.me.id) { ui.toast("YOU are patient zero — go", "rip"); buzz(120); }
+        if (m.ev === "infect") { sfx.rip(); if (m.who === ctx.me.id) { flash("#7bffb0", 250); buzz(90); ui.toast("INFECTED — turn the rest", "rip"); } else ui.toast(`${s.players[m.who]?.handle} got infected`, "rip"); }
+        if (m.ev === "zone") sfx.ping();
+        if (m.ev === "finish") { sfx.win(); celebrate(center.clone().add(new THREE.Vector3(0, 12, 0))); }
+      },
+    }, { hz: 6 });
+    game.start({ phase: "play", left: this.T, radius: this.RADIUS, players: {}, zones: [] });
+    wrapEnd(ctx, game, () => { for (const mk of zoneMarks.values()) arena.unmark(mk); zoneMarks.clear(); arena.leave(); });
+  },
+};
+
+// ====================================================================
+// LAST TAP — panel · chaos. hold your nerve, release before the hidden bell.
+// ====================================================================
+const LASTTAP = {
+  id: "lasttap", title: "Last Tap", blurb: "a hidden bell. release as LATE as you dare — still holding when it rings and you bust.", arch: "chaos", minPlayers: 2, maxPlayers: 16, length: "3 rounds · ~2 min",
+  ROUNDS: 3,
+  start(ctx) {
+    ui.show(); ui.theme("chaos");
+    let lastHud = 0, holdT0 = 0, released = false, tickTimer = null;
+    const bells = {};    // host-only secret: round -> bell ms
+    const game = new HostGame(ctx, {
+      hostInit(s) {
+        s.players = seed(ctx, game.rng, 5, null, () => ({ ms: null, bust: false, pts: 0 }));
+        s.round = 1; s.phase = "get"; s.left = 3500; s.reveal = null;
+      },
+      hostTick(s, dt) {
+        s.left -= dt * 1000;
+        const P = Object.values(s.players);
+        if (s.phase === "hold") {
+          const bell = bells[s.round];
+          for (const b of P) if (b.isBot && b.ms === null && b.plan !== undefined && (bell - s.left) >= b.plan) { b.ms = b.plan; }
+          if (P.every(p => p.ms !== null)) s.left = Math.min(s.left, 300);
+        }
+        if (s.left > 0) return;
+        if (s.phase === "get") {
+          const bell = 3000 + Math.floor(game.rng() * 3500);
+          bells[s.round] = bell;
+          for (const b of P) { b.ms = null; b.bust = false; if (b.isBot) { const plan = Math.round(bell * (0.74 + game.rng() * 0.30)); b.plan = plan > bell ? null : plan; } }
+          s.phase = "hold"; s.left = bell; game.emit("hold", { round: s.round });
+        } else if (s.phase === "hold") {
+          const bell = bells[s.round];
+          for (const p of P) if (p.ms === null) { p.bust = true; p.ms = 0; }
+          const ok = P.filter(p => !p.bust).sort((a, b) => b.ms - a.ms);
+          ok.slice(0, 3).forEach((p, i) => p.pts += [3, 2, 1][i]);
+          s.reveal = { bell, rows: P.map(p => ({ id: p.id, ms: p.bust ? null : p.ms })).sort((a, b) => (b.ms ?? -1) - (a.ms ?? -1)), winner: ok[0]?.id ?? null };
+          s.phase = "reveal"; s.left = 7000; game.emit("bell", { round: s.round, bell });
+        } else if (s.phase === "reveal") {
+          if (s.round >= LASTTAP.ROUNDS) { s.phase = "end"; s.left = 12000; game.emit("finish", {}); }
+          else { s.round++; s.phase = "get"; s.left = 3000; game.emit("get", { round: s.round }); }
+        } else if (s.phase === "end") game.finish();
+      },
+      hostInput(s, m) {
+        if (m.in === "rel" && s.phase === "hold") { const p = s.players[m.from]; if (p && p.ms === null) p.ms = Math.max(0, Math.min(m.ms, bells[s.round] + 500)); }
+      },
+      render(s) {
+        const now = performance.now(); if (now - lastHud < 100) return; lastHud = now;
+        const me = s.players[ctx.me.id];
+        ui.hud(`<div class="hq"><b>LAST TAP r${s.round}/${LASTTAP.ROUNDS}</b><span>${me?.pts ?? 0} pts</span><span>${Object.values(s.players).length} in</span></div>`);
+        if (s.phase === "get") { ui.once(`get:${s.round}`, () => ui.stage(`round ${s.round}`, `<p>when the hand appears, <b>everyone is holding the wire</b>.<br>let go as LATE as you dare. still holding when the hidden bell rings — <b>BUST</b>.</p>`, "nerve check")); return; }
+        if (s.phase === "hold") {
+          if (ui.once(`hold:${s.round}:${released ? 1 : 0}`, () => {
+            if (!released) {
+              ui.panel(`<div class="holdwrap"><button id="rel-btn" class="big hot holdbtn">HOLDING…<br><small>tap to let go</small></button><div class="ab-sub">the bell is hidden. latest release wins.</div></div>`, "center");
+              const b = $("rel-btn");
+              b.onclick = () => { released = true; const ms = Math.round(performance.now() - holdT0); game.input("rel", { ms }); ui.panel(`<div class="bignum">${(ms / 1000).toFixed(2)}s</div><div class="ab-sub" style="text-align:center">released — pray the bell was later</div>`, "center"); sfx.pop(); buzz(40); };
+            }
+          })) {}
+          return;
+        }
+        if (s.phase === "reveal") {
+          if (!ui.once(`rev:${s.round}`, () => {})) return;
+          const r = s.reveal;
+          const rows = r.rows.map(o => `<div class="rev-row ${o.id === r.winner ? "win" : ""}"><span>${s.players[o.id]?.handle}</span><b>${o.ms === null ? "💥 BUST" : (o.ms / 1000).toFixed(2) + "s"}</b></div>`).join("");
+          ui.stage(`bell rang at ${(r.bell / 1000).toFixed(2)}s`, `${rows}`, r.winner ? `${s.players[r.winner]?.handle} held longest` : "everyone busted");
+          return;
+        }
+        if (s.phase === "end") { if (ui.once("end", () => {})) finishBoard("nerves of steel", s.players, "Last Tap", "pts", "pts"); }
+      },
+      onEvent(m) {
+        if (m.ev === "hold") { holdT0 = performance.now(); released = false; ui.resetKey(); sfx.tick(); buzz(30); clearInterval(tickTimer); tickTimer = setInterval(() => sfx.tick(), 900); }
+        if (m.ev === "bell") { clearInterval(tickTimer); sfx.klaxon(); flash("#ff2a4a", 220); shake(300, 2); }
+        if (m.ev === "get") { clearInterval(tickTimer); sfx.pop(); ui.resetKey(); }
+        if (m.ev === "finish") { clearInterval(tickTimer); sfx.win(); }
+      },
+    }, { hz: 5 });
+    game.start({ phase: "get", left: 3500, players: {}, round: 1, reveal: null });
+    wrapEnd(ctx, game, () => clearInterval(tickTimer));
+  },
+};
+
+// ====================================================================
+// STOP AT 5.00 — panel · chaos. the clock hides after 1.5 s.
+// ====================================================================
+const STOPFIVE = {
+  id: "stopfive", title: "Stop at 5.00", blurb: "the stopwatch hides after 1.5 s. stop it at exactly 5.00 in your head.", arch: "chaos", minPlayers: 2, maxPlayers: 16, length: "3 rounds · ~2 min",
+  ROUNDS: 3, TARGET: 5000,
+  start(ctx) {
+    ui.show(); ui.theme("chaos");
+    let lastHud = 0, runT0 = 0, stopped = false, uiTimer = null;
+    const game = new HostGame(ctx, {
+      hostInit(s) { s.players = seed(ctx, game.rng, 5, null, () => ({ ms: null, pts: 0 })); s.round = 1; s.phase = "get"; s.left = 3000; s.reveal = null; },
+      hostTick(s, dt) {
+        s.left -= dt * 1000;
+        const P = Object.values(s.players);
+        if (s.phase === "run") {
+          for (const b of P) if (b.isBot && b.ms === null && (8000 - s.left) >= b.plan) b.ms = b.plan;
+          if (P.every(p => p.ms !== null)) s.left = Math.min(s.left, 300);
+        }
+        if (s.left > 0) return;
+        if (s.phase === "get") {
+          for (const b of P) { b.ms = null; if (b.isBot) b.plan = Math.max(2500, Math.round(gauss(game.rng, 5000, 350 + (1 - b.skill) * 400))); }
+          s.phase = "run"; s.left = 8000; game.emit("run", { round: s.round });
+        } else if (s.phase === "run") {
+          for (const p of P) if (p.ms === null) p.ms = 8000;
+          const ranked = [...P].sort((a, b) => Math.abs(a.ms - STOPFIVE.TARGET) - Math.abs(b.ms - STOPFIVE.TARGET));
+          ranked.slice(0, 3).forEach((p, i) => p.pts += [3, 2, 1][i]);
+          s.reveal = { rows: ranked.map(p => ({ id: p.id, ms: p.ms })), winner: ranked[0]?.id ?? null };
+          s.phase = "reveal"; s.left = 7000; game.emit("reveal", { round: s.round });
+        } else if (s.phase === "reveal") {
+          if (s.round >= STOPFIVE.ROUNDS) { s.phase = "end"; s.left = 12000; game.emit("finish", {}); }
+          else { s.round++; s.phase = "get"; s.left = 2500; game.emit("get", { round: s.round }); }
+        } else if (s.phase === "end") game.finish();
+      },
+      hostInput(s, m) { if (m.in === "stop" && s.phase === "run") { const p = s.players[m.from]; if (p && p.ms === null) p.ms = Math.max(0, Math.min(m.ms, 8000)); } },
+      render(s) {
+        const now = performance.now(); if (now - lastHud < 100) return; lastHud = now;
+        const me = s.players[ctx.me.id];
+        ui.hud(`<div class="hq"><b>STOP AT 5.00 r${s.round}/${STOPFIVE.ROUNDS}</b><span>${me?.pts ?? 0} pts</span></div>`);
+        if (s.phase === "get") { ui.once(`get:${s.round}`, () => ui.stage(`round ${s.round}`, `<p>a stopwatch starts. it <b>disappears at 1.50</b>.<br>keep counting in your head and hit STOP at exactly <b>5.00</b>.</p>`, "internal clock check")); return; }
+        if (s.phase === "run") {
+          ui.once(`run:${s.round}`, () => {
+            ui.panel(`<div class="holdwrap"><div class="bignum" id="sw">0.00</div><button id="stop-btn" class="big hot">STOP</button></div>`, "center");
+            clearInterval(uiTimer);
+            uiTimer = setInterval(() => { const el = $("sw"); if (!el) return; const t = performance.now() - runT0; el.textContent = t < 1500 ? (t / 1000).toFixed(2) : "?.??"; }, 50);
+            $("stop-btn").onclick = () => {
+              if (stopped) return; stopped = true; clearInterval(uiTimer);
+              const ms = Math.round(performance.now() - runT0); game.input("stop", { ms });
+              ui.panel(`<div class="bignum">${(ms / 1000).toFixed(2)}</div><div class="ab-sub" style="text-align:center">locked in</div>`, "center"); sfx.pop(); buzz(40);
+            };
+          });
+          return;
+        }
+        if (s.phase === "reveal") {
+          if (!ui.once(`rev:${s.round}`, () => {})) return;
+          const rows = s.reveal.rows.map(o => { const d = o.ms - STOPFIVE.TARGET; return `<div class="rev-row ${o.id === s.reveal.winner ? "win" : ""}"><span>${s.players[o.id]?.handle}</span><b>${(o.ms / 1000).toFixed(2)} <small>(${d > 0 ? "+" : ""}${(d / 1000).toFixed(2)})</small></b></div>`; }).join("");
+          ui.stage(`${s.players[s.reveal.winner]?.handle} nailed it`, rows, "closest to 5.00");
+          return;
+        }
+        if (s.phase === "end") { if (ui.once("end", () => {})) finishBoard("best internal clock", s.players, "Stop at 5.00", "pts", "pts"); }
+      },
+      onEvent(m) {
+        if (m.ev === "run") { runT0 = performance.now(); stopped = false; ui.resetKey(); sfx.ping(); }
+        if (m.ev === "reveal") { clearInterval(uiTimer); sfx.chime(); }
+        if (m.ev === "get") { clearInterval(uiTimer); ui.resetKey(); sfx.pop(); }
+        if (m.ev === "finish") { clearInterval(uiTimer); sfx.win(); }
+      },
+    }, { hz: 5 });
+    game.start({ phase: "get", left: 3000, players: {}, round: 1, reveal: null });
+    wrapEnd(ctx, game, () => clearInterval(uiTimer));
+  },
+};
+
+// ====================================================================
+// RECEIPTS — panel · chill. one "fact" each, true or cap. the reveal is the person.
+// ====================================================================
+const RECEIPTS = {
+  id: "receipts", title: "Receipts", blurb: "everyone writes one fact about themselves — true or a lie. the room votes. the reveal is you.", arch: "chill", minPlayers: 3, maxPlayers: 10, length: "~5 min",
+  start(ctx) {
+    ui.show(); ui.theme("chill");
+    let lastHud = 0, myPicked = null, myCard = null;
+    let deck = [];   // host-only: [{author, text, truth}] — never broadcast before reveal
+    const game = new HostGame(ctx, {
+      hostInit(s) {
+        s.players = seed(ctx, game.rng, 5, null, () => ({ vote: null }));
+        for (const p of Object.values(s.players)) if (p.isBot) { const c = pick(game.rng, RECEIPT_POOL); p.sub = { text: c.t, truth: c.truth }; }
+        s.phase = "write"; s.left = 45000; s.cardIdx = -1; s.cur = null; s.results = [];
+      },
+      hostTick(s, dt) {
+        s.left -= dt * 1000;
+        const P = Object.values(s.players);
+        if (s.phase === "write" && P.every(p => p.sub)) s.left = Math.min(s.left, 1500);
+        if (s.phase === "vote") {
+          const card = deck[s.cardIdx];
+          for (const b of P) if (b.isBot && b.vote === null && b.id !== card.author && game.rng() < dt * 0.5) b.vote = game.rng() < 0.55;
+          if (P.filter(p => p.id !== card.author).every(p => p.vote !== null)) s.left = Math.min(s.left, 1000);
+        }
+        if (s.left > 0) return;
+        if (s.phase === "write") {
+          deck = P.filter(p => p.sub).map(p => ({ author: p.id, text: p.sub.text, truth: !!p.sub.truth })).sort(() => game.rng() - 0.5).slice(0, 6);
+          for (const p of P) delete p.sub;   // keep truths out of the broadcast state
+          if (!deck.length) { s.phase = "end"; s.left = 8000; return; }
+          nextCard(s);
+        } else if (s.phase === "vote") {
+          const card = deck[s.cardIdx];
+          const votes = P.filter(p => p.id !== card.author && p.vote !== null).map(p => ({ id: p.id, v: p.vote }));
+          const right = votes.filter(v => v.v === card.truth);
+          for (const v of right) s.players[v.id].score += 100;
+          const fooled = votes.length && right.length <= votes.length / 2;
+          if (fooled) s.players[card.author].score += 150;
+          s.results.push({ text: card.text, author: card.author, truth: card.truth, votes, fooled });
+          s.phase = "reveal"; s.left = 9000;
+          game.emit("flip", { author: card.author, truth: card.truth, fooled });
+        } else if (s.phase === "reveal") {
+          if (s.cardIdx + 1 < deck.length) nextCard(s);
+          else { s.phase = "end"; s.left = 14000; game.emit("finish", {}); }
+        } else if (s.phase === "end") game.finish();
+        function nextCard(s) {
+          s.cardIdx++;
+          for (const p of P) p.vote = null;
+          s.cur = { text: deck[s.cardIdx].text, n: s.cardIdx + 1, total: deck.length };
+          s.phase = "vote"; s.left = 18000; game.emit("card", { n: s.cur.n });
+        }
+      },
+      hostInput(s, m) {
+        const p = s.players[m.from]; if (!p) return;
+        if (m.in === "sub" && s.phase === "write") p.sub = { text: String(m.text).slice(0, 90), truth: !!m.truth };
+        if (m.in === "vote" && s.phase === "vote" && deck[s.cardIdx]?.author !== m.from) p.vote = !!m.v;
+      },
+      render(s) {
+        const now = performance.now(); if (now - lastHud < 150) return; lastHud = now;
+        const P = Object.values(s.players); const me = s.players[ctx.me.id];
+        ui.hud(`<div class="hq"><b>RECEIPTS ${s.cur ? s.cur.n + "/" + s.cur.total : ""}</b><span class="clk">${ui.clock(s.left)}</span><span>${me?.score ?? 0} pts</span></div>`);
+        if (s.phase === "write") {
+          if (!ui.once(`w:${myCard ? 1 : 0}`, () => {})) return;
+          if (!myCard) {
+            ui.stage("your receipt", `<p class="ab-sub">one fact about yourself. true — or a complete lie. the room decides.</p>` + ui.prompt("I once…", () => {}, { maxlength: 90, submitLabel: "…" }), "write");
+            const f = $("game-panel").querySelector(".gp-form");
+            if (f) { f.innerHTML += `<div class="choices"><button class="ch" data-t="1">submit as TRUE ✅</button><button class="ch" data-t="0">submit as CAP 🧢</button></div>`;
+              f.onsubmit = e => e.preventDefault();
+              f.querySelectorAll("button.ch").forEach(b => b.onclick = e => { e.preventDefault(); const v = $("gp-in").value.trim(); if (!v) return; myCard = v; game.input("sub", { text: v, truth: b.dataset.t === "1" }); sfx.pop(); ui.resetKey(); });
+            }
+          } else ui.stage("receipt filed", `<p class="ab-sub">poker face from here on. waiting for the table…</p>`, "write");
+          return;
+        }
+        if (s.phase === "vote" && s.cur) {
+          const isMine = myCard && s.cur.text === myCard;
+          if (!ui.once(`v:${s.cardIdx}:${myPicked ?? ""}:${isMine}`, () => {})) return;
+          const card = `<div class="receipt-card">“${s.cur.text}”</div>`;
+          if (isMine) ui.stage("your card is up", card + `<p class="ab-sub">say nothing. blink normally.</p>`, `card ${s.cur.n}/${s.cur.total}`);
+          else {
+            ui.stage("true — or cap?", card + ui.choices([{ value: "1", label: "TRUE ✅" }, { value: "0", label: "CAP 🧢" }], null, { picked: myPicked }), `card ${s.cur.n}/${s.cur.total}`);
+            ui.bindChoices(v => { myPicked = v; game.input("vote", { v: v === "1" }); sfx.pop(); ui.resetKey(); });
+          }
+          return;
+        }
+        if (s.phase === "reveal") {
+          if (!ui.once(`r:${s.cardIdx}`, () => {})) return;
+          const r = s.results[s.results.length - 1]; if (!r) return;
+          const who = s.players[r.author]?.handle ?? "?";
+          const t = P.filter(p => r.votes.find(v => v.id === p.id && v.v)).map(p => p.handle);
+          const f = P.filter(p => r.votes.find(v => v.id === p.id && !v.v)).map(p => p.handle);
+          ui.stage(`${who} — it was ${r.truth ? "TRUE ✅" : "CAP 🧢"}`, `<div class="receipt-card">“${r.text}”</div>
+            <div class="rev-row"><span>said TRUE</span><b>${t.join(", ") || "—"}</b></div>
+            <div class="rev-row"><span>said CAP</span><b>${f.join(", ") || "—"}</b></div>
+            ${r.fooled ? `<p class="ab-sub">💸 ${who} fooled the room (+150)</p>` : ""}`, "the reveal");
+          return;
+        }
+        if (s.phase === "end") { if (ui.once("end", () => {})) finishBoard("most receipts", s.players, "Receipts"); }
+      },
+      onEvent(m) {
+        if (m.ev === "card") { myPicked = null; ui.resetKey(); sfx.ping(); }
+        if (m.ev === "flip") { sfx.stamp(); if (m.author === ctx.me.id && m.fooled) { sfx.chime(); ui.toast("you fooled the room 💸", "phase"); } }
+        if (m.ev === "finish") sfx.win();
+      },
+    }, { hz: 4 });
+    game.start({ phase: "write", left: 45000, players: {}, cardIdx: -1, cur: null, results: [] });
+    wrapEnd(ctx, game);
+  },
+};
+
+// ====================================================================
+// MAJORITY RULES — panel · chill. side with the room, read one person.
+// ====================================================================
+const MAJORITY = {
+  id: "majority", title: "Majority Rules", blurb: "pick the side the room will pick — and call which way the spotlight player leans.", arch: "chill", minPlayers: 3, maxPlayers: 16, length: "5 rounds · ~4 min",
+  ROUNDS: 5,
+  start(ctx) {
+    ui.show(); ui.theme("chill");
+    let lastHud = 0, myPick = null, myCall = null;
+    const game = new HostGame(ctx, {
+      hostInit(s) {
+        s.players = seed(ctx, game.rng, 5, null, () => ({ pick: null, call: null }));
+        s.prompts = [...Array(MAJORITY_PROMPTS.length).keys()].sort(() => game.rng() - 0.5).slice(0, MAJORITY.ROUNDS);
+        const ids = Object.values(s.players).sort((a, b) => a.isBot - b.isBot).map(p => p.id);
+        s.spots = Array.from({ length: MAJORITY.ROUNDS }, (_, i) => ids[i % ids.length]);
+        s.round = 0; s.phase = "vote"; s.left = 18000; s.results = [];
+      },
+      hostTick(s, dt) {
+        s.left -= dt * 1000;
+        const P = Object.values(s.players);
+        const spot = s.spots[s.round];
+        if (s.phase === "vote") {
+          for (const b of P) if (b.isBot) {
+            if (b.pick === null && game.rng() < dt * 0.5) b.pick = game.rng() < 0.5 ? "a" : "b";
+            if (b.call === null && b.id !== spot && game.rng() < dt * 0.5) b.call = game.rng() < 0.5 ? "a" : "b";
+          }
+          if (P.every(p => p.pick !== null && (p.id === spot || p.call !== null))) s.left = Math.min(s.left, 1000);
+        }
+        if (s.left > 0) return;
+        if (s.phase === "vote") {
+          const a = P.filter(p => p.pick === "a"), b = P.filter(p => p.pick === "b");
+          const maj = a.length === b.length ? null : a.length > b.length ? "a" : "b";
+          if (maj) for (const p of P) if (p.pick === maj) p.score += 100;
+          const spotPick = s.players[spot]?.pick;
+          for (const p of P) if (p.id !== spot && p.call && p.call === spotPick) p.score += 50;
+          s.results.push({ q: s.prompts[s.round], a: a.map(p => p.id), b: b.map(p => p.id), maj, spot, spotPick });
+          s.phase = "reveal"; s.left = 9000; game.emit("tally", { maj, spot, spotPick });
+        } else if (s.phase === "reveal") {
+          if (s.round + 1 < MAJORITY.ROUNDS) { s.round++; for (const p of P) { p.pick = null; p.call = null; } s.phase = "vote"; s.left = 18000; game.emit("next", { round: s.round }); }
+          else { s.phase = "end"; s.left = 14000; game.emit("finish", {}); }
+        } else if (s.phase === "end") game.finish();
+      },
+      hostInput(s, m) {
+        const p = s.players[m.from]; if (!p || s.phase !== "vote") return;
+        if (m.in === "pick") p.pick = m.v === "a" ? "a" : "b";
+        if (m.in === "call" && m.from !== s.spots[s.round]) p.call = m.v === "a" ? "a" : "b";
+      },
+      render(s) {
+        const now = performance.now(); if (now - lastHud < 150) return; lastHud = now;
+        const me = s.players[ctx.me.id];
+        const pr = MAJORITY_PROMPTS[s.prompts[s.round]];
+        const spot = s.spots[s.round], spotName = s.players[spot]?.handle ?? "?";
+        ui.hud(`<div class="hq"><b>MAJORITY ${s.round + 1}/${MAJORITY.ROUNDS}</b><span class="clk">${ui.clock(s.left)}</span><span>${me?.score ?? 0} pts</span></div>`);
+        if (s.phase === "vote" && pr) {
+          if (!ui.once(`v:${s.round}:${myPick ?? ""}:${myCall ?? ""}`, () => {})) return;
+          const callBlock = spot === ctx.me.id
+            ? `<p class="ab-sub">🔦 YOU are the spotlight this round — everyone is calling your pick.</p>`
+            : `<p class="q2">🔦 and which way does <b>${spotName}</b> lean?</p>` + ui.choices([{ value: "ca", label: pr.a }, { value: "cb", label: pr.b }], null, { picked: myCall });
+          ui.stage(pr.q, ui.choices([{ value: "a", label: pr.a }, { value: "b", label: pr.b }], null, { picked: myPick }) + callBlock, "side with the majority");
+          ui.bindChoices(v => {
+            if (v === "a" || v === "b") { myPick = v; game.input("pick", { v }); }
+            else { myCall = v.slice(1); game.input("call", { v: myCall }); }
+            sfx.pop(); ui.resetKey();
+          });
+          return;
+        }
+        if (s.phase === "reveal") {
+          if (!ui.once(`r:${s.round}`, () => {})) return;
+          const r = s.results[s.results.length - 1]; if (!r) return;
+          const q = MAJORITY_PROMPTS[r.q];
+          const names = ids => ids.map(i => s.players[i]?.handle).join(", ") || "—";
+          ui.stage(r.maj ? `“${q[r.maj]}” wins the room` : "dead split — no points", `
+            <div class="rev-row ${r.maj === "a" ? "win" : ""}"><span>${q.a} (${r.a.length})</span><b>${names(r.a)}</b></div>
+            <div class="rev-row ${r.maj === "b" ? "win" : ""}"><span>${q.b} (${r.b.length})</span><b>${names(r.b)}</b></div>
+            <p class="ab-sub">🔦 ${s.players[r.spot]?.handle} went “${r.spotPick ? q[r.spotPick] : "…"}” — right callers +50</p>`, q.q);
+          return;
+        }
+        if (s.phase === "end") { if (ui.once("end", () => {})) finishBoard("read the room best", s.players, "Majority Rules"); }
+      },
+      onEvent(m) {
+        if (m.ev === "next") { myPick = null; myCall = null; ui.resetKey(); sfx.ping(); }
+        if (m.ev === "tally") sfx.chime();
+        if (m.ev === "finish") sfx.win();
+      },
+    }, { hz: 4 });
+    game.start({ phase: "vote", left: 18000, players: {}, round: 0, results: [], prompts: [], spots: [] });
+    wrapEnd(ctx, game);
+  },
+};
+
+// lane order: sporty, chaos, chill - the host sheet groups by `arch`.
+export const CATALOG = [
+  COINRAIN, DEATHTAG, INFECTION, TILEWARS,          // sporty
+  TIMEBOMB, IMPOSTER, LASTTAP, STOPFIVE,            // chaos
+  CAPTION, RECEIPTS, MAJORITY, SPLITCLUE, DRAW,     // chill
+];
