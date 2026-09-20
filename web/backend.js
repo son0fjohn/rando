@@ -5,6 +5,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import { world3d, ARCH_NPC_DEFS } from "./world3d.js";
 import { lobby } from "./lobby.js";
 import { rooms } from "./rooms.js";
+import { party } from "./party.js";
 import {
   PART_OPTIONS3, DEFAULT_AVATAR3, normalizeAvatar3, avatarThumb3,
   SKIN_RGB, HAIR_RGB, IRIS3_HEX, loadFaceDecals,
@@ -119,6 +120,7 @@ async function refreshStatus() {
   // demo build: identity for rooms/quests (avatar fills in when it loads)
   rooms.me = { id: session.user.id, handle: profile ? profile.handle : "rando", avatar: rooms.me?.avatar ?? avatar.mine };
   if (!rooms._inited) { rooms._inited = true; rooms.init(); }
+  if (!party._inited) { party._inited = true; party.init(); }
 }
 
 // ===================== nickname =====================
@@ -248,9 +250,10 @@ const zoneNameEl = document.getElementById("zone-name");
 const zminEl = document.getElementById("zmin");
 const recenterBtn = document.getElementById("recenter");
 
-// on-device coordinate read, shared by zone resolution and encounter
-// proximity confirm; ?devlat=&devlng= lets either be tested without GPS
-async function readDeviceCoords() {
+// on-device coordinate read, shared by zone resolution, encounter
+// proximity confirm and house-party joins; ?devlat=&devlng= lets any of
+// them be tested without GPS
+export async function readDeviceCoords() {
   if (params.get("devlat") && params.get("devlng")) {
     console.warn("[rando] DEV coordinates override active");
     return { lat: Number(params.get("devlat")), lng: Number(params.get("devlng")) };

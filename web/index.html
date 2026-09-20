@@ -1404,6 +1404,37 @@
   #draw-cv { width:100%; aspect-ratio:600/420; background:#fff; border-radius:12px; touch-action:none; display:block; }
   .mono { font-family:"IBM Plex Mono",Consolas,monospace; letter-spacing:.15em; }
 
+  /* ===== house party MVP: deliberately unstyled — gray boxes + plain text ===== */
+  #party-btn.party { background:#ff8c42; }
+  #party-panel { box-sizing:border-box; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:300; width:min(92%,360px); max-height:84%; overflow:auto; background:#f5f5f7; border-radius:18px; padding:14px 16px 16px; box-shadow:0 12px 40px rgba(8,11,16,.45); color:#1c1c1e; }
+  #party-panel[hidden] { display:none; }
+  .pt-sec { border-top:1px solid #d5d5da; margin-top:10px; padding-top:8px; }
+  .pt-lbl { font-size:11px; color:#5b6b80; margin:6px 0 3px; }
+  .pt-row { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0; align-items:center; }
+  .pt-row input { border:1px solid #888; border-radius:6px; padding:8px 10px; font-size:14px; flex:1; min-width:0; }
+  .pt-btn { border:1px solid #888; background:#eee; color:#1c1c1e; border-radius:6px; padding:8px 10px; font-size:13px; font-weight:700; cursor:pointer; }
+  .pt-btn.on { background:#888; color:#fff; } .pt-btn.win { outline:3px solid #1c7a3c; } .pt-btn:disabled { opacity:.45; }
+  .pt-btn.pt-primary { width:100%; margin-top:8px; padding:11px; font-size:14px; background:#ccc; }
+  .pt-note { font-size:12px; color:#5b6b80; margin:6px 0; } .pt-empty { font-size:12px; color:#8a94a4; padding:6px 0; }
+  .pt-err { font-size:12px; color:#c0392b; margin:6px 0; min-height:1em; }
+  .pt-dot { background:#ff8c42 !important; }
+  .pt-box { box-sizing:border-box; background:#d0d0d0; border:2px solid #888; color:#333; display:flex; align-items:center; justify-content:center; text-align:center; font-size:12px; padding:6px; overflow:hidden; }
+  #pt-spin { height:48px; font-size:15px; font-weight:800; margin:6px 0; }
+  #pt-members .rm { background:#e6e6ea; border-radius:999px; padding:4px 9px; font-size:12px; font-weight:700; } #pt-members .rm.host { background:#ff8c42; }
+  #pt-chat-feed { max-height:120px; overflow:auto; display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
+  #pt-chat-feed .lc-msg { background:#fff; border-radius:10px; padding:4px 9px; font-size:12px; } #pt-chat-feed .lc-msg b { color:#0a84ff; margin-right:4px; }
+  #pt-chat-form { display:flex; gap:6px; } #pt-chat-form input { flex:1; border:1px solid #d5d5da; border-radius:999px; padding:8px 12px; font-size:13px; }
+  #pt-chat-form button { border:none; background:#888; color:#fff; border-radius:50%; width:34px; height:34px; font-weight:800; }
+  /* art gallery */
+  .ag-frames { display:flex; gap:8px; margin:6px 0; }
+  .ag-frame { flex:1; aspect-ratio:1; min-width:0; padding:4px; font:inherit; font-size:11px; line-height:1.3; cursor:pointer; }
+  .ag-frame img { width:100%; height:100%; object-fit:cover; display:block; }
+  .ag-wall { width:100%; aspect-ratio:4/3; margin:6px 0; }
+  .ag-wall img { width:100%; height:100%; object-fit:contain; background:#222; }
+  .ag-titles { flex-direction:column; gap:6px; font-size:14px; font-weight:700; padding:10px; }
+  .pt-npc { background:#e8e8e8; border:1px dashed #888; padding:8px; font-size:13px; margin:6px 0; line-height:1.4; }
+  .ag-skip { margin-top:8px; }
+
 </style>
 </head>
 <body>
@@ -1417,6 +1448,7 @@
       <button id="chat-pill" class="icon-btn" type="button" hidden title="Chat">&#128172;</button>
       <button id="recenter" class="icon-btn" type="button" hidden aria-label="Recenter on your character" title="Recenter">&#9678;</button>
       <button id="rooms-btn" class="icon-btn rooms" type="button" title="Rooms &amp; quests">&#127922;</button>
+      <button id="party-btn" class="icon-btn party" type="button" title="House party">&#127968;</button>
     </div>
 
     <div id="zone-chip">
@@ -1589,6 +1621,9 @@
     <form id="room-chat-form"><input id="room-chat-input" maxlength="160" placeholder="say hi / bluff / plan&hellip;" autocomplete="off"><button type="submit">&#8593;</button></form>
     <button id="room-start" type="button" hidden>start</button>
   </div>
+
+  <!-- house party MVP (party.js renders into this; placeholder visuals) -->
+  <div id="party-panel" hidden></div>
 
   <div id="arena-hud" hidden>
     <div id="arena-radar"><i class="me"></i></div>

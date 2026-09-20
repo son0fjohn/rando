@@ -23,6 +23,7 @@ export const rooms = {
   nearby: [],               // directory list
   _pinged: new Set(),       // windows we've already pinged for
   _raidTimer: null,
+  onBeforeJoin: null,       // party.js: leave the house party before any room/raid join
 
   init() {
     directory.start();
@@ -128,6 +129,7 @@ export const rooms = {
   async joinNpc(arch) {
     const st = raidStatus(arch);
     if (st.phase === "dark") return;
+    await this.onBeforeJoin?.();
     if (st.phase === "live" && !this.current) {
       // mid-quest joining (spectating) isn't built yet — say so instead of stranding them in a lobby
       const { ui } = await import("./gamekit.js");
@@ -150,6 +152,7 @@ export const rooms = {
 
   // ---------------------------------------------------------------- player rooms
   async host(gameId) {
+    await this.onBeforeJoin?.();
     await this.leave();
     const id = `p-${this.me.id.slice(0, 6)}-${Date.now().toString(36)}`;
     const room = new Room(id, this.me);
@@ -162,6 +165,7 @@ export const rooms = {
     this._announce();
   },
   async join(id, info) {
+    await this.onBeforeJoin?.();
     await this.leave();
     const room = new Room(id, this.me);
     this.current = { room, kind: "player", gameId: info.game, launched: false };
