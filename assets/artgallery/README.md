@@ -42,8 +42,18 @@ each edge): left 22.8 · top 20.5 · right 23.0 · bottom 21.1. This is
 ## 3D (Tripo H3.1 via Higgsfield)
 
 The clasped-hands idle is a bad rigging pose (hands fuse), so the 3D
-conversion uses a dedicated A-pose. Two runs: single-image
-(`tripo_h3_1_image_to_3d`, front) and 3-view
-(`tripo_h3_1_multiview_to_3d`, ordered front / left / back). Rigging is
-a separate pass on the chosen GLB (`3d_rigging`). See the commit message
-for which one shipped as `dealer.glb`.
+conversion uses a dedicated A-pose.
+
+| File | Tool | Tris | Rig | Notes |
+|---|---|---|---|---|
+| `…4f0a3dfe_dealer-single.glb` (41 MB, untracked) | Tripo H3.1 single image | 1.45 M | no | monocle artifact on the side view |
+| `…793195af_dealer-multiview.glb` (41 MB, untracked) | Tripo H3.1 multiview front/left/back | 1.44 M | no | best geometry + texture; no face_limit |
+| `…40fb6a22_dealer-multiview-20k.glb` | same, `face_limit: 20000` | 18.7 k | no | visually identical to the 1.4 M one → shipped as `dealer_tripo_static.glb` |
+| `…80a75b97_dealer-meshy-rigged.glb` | Meshy `multi_image_to_3d` + `enable_rigging`, a-pose, 1.2 m | 19.4 k | **24 joints** (Mixamo-style names) | texture rougher than Tripo's (hair blob, scratchy coat, bald patch lost on the back) → shipped as `dealer.glb` |
+
+Rigging the Tripo GLB through Meshy's `3d_rigging` failed twice (no
+error detail returned), so the rigged model is a Meshy end-to-end run
+from the same three views. To get Tripo's texture on a rig: run Tripo's
+own rigging (`scripts/tripo_v3.py` + `TRIPO_API_KEY`) on the 20k GLB, or
+Meshy `meshy_v5_retexture` on `dealer.glb` with the Tripo render as
+`image_style_url`.
