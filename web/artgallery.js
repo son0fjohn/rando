@@ -32,6 +32,9 @@ const PHOTO_MS = 180000, TITLE_MS = 90000, COVER_MS = 3500, VOTE_MS = 25000, RES
 const MAX_FRAMES = 8;          // gallery cap so big parties don't drag
 const MAX_EDGE = 640, MAX_CHARS = 180000;   // shrunk photo: longest edge px / data-URL length budget
 const STOCK = [0, 1, 2, 3, 4, 5, 6, 7].map(i => `games/captions/c${i}.jpg`);   // bot photos
+const ASSET = "games/artgallery/";
+// transparent opening of frame.png, measured from its alpha (% of each edge)
+const FRAME_INSET = { l: 22.8, t: 20.5, r: 23.0, b: 21.1 };
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
 
 const DEALER = {
@@ -69,7 +72,45 @@ export const ART_GALLERY = {
       if (now - (needAsked[pid] || 0) > 4000) { needAsked[pid] = now; room.send("agneed", { pid }); }
       return null;
     }
-    const wall = (pid, s, cls = "ag-wall") => { const src = srcOf(pid, s); return `<div class="pt-box ${cls}">${src ? `<img src="${src}" alt="">` : "[photo loading…]"}</div>`; };
+    // ---- gallery scene (generated assets + code-driven tweens) ----
+    // The wall: gallery.jpg backdrop, the frame hung centre, the photo masked
+    // to the frame's measured opening, the cloth sprite on top, and the
+    // dealer sprite (idle / unveil crossfade) at the floor. `animate` plays
+    // the reveal tween (cloth slides off, dealer swaps pose) once per frame;
+    // rebuilds of the same frame render the settled state so votes coming in
+    // never replay it.
+    const framed = (pid, s, cls = "") => {
+      const src = srcOf(pid, s);
+      const inset = `top:${FRAME_INSET.t}%;right:${FRAME_INSET.r}%;bottom:${FRAME_INSET.b}%;left:${FRAME_INSET.l}%`;
+      return `<div class="ag-hang ${cls}"><div class="ag-photo" style="${inset}">${src ? `<img src="${src}" alt="">` : "<span>photo loading…</span>"}</div><img class="ag-frameimg" src="${ASSET}frame.png" alt=""><img class="ag-clothimg" src="${ASSET}cloth.png" alt=""></div>`;
+    };
+    const scene = (pid, s, { covered = false, unveil = false, animate = false, line = "" } = {}) =>
+      `<div class="ag-scene ${covered ? "covered" : "revealed"} ${unveil ? "unveil" : ""} ${animate ? "ag-anim" : ""}">
+        ${framed(pid, s)}
+        <div class="ag-dealer"><img class="ag-pose ag-idle" src="${ASSET}dealer_idle.png" alt=""><img class="ag-pose ag-unveil" src="${ASSET}dealer_unveil.png" alt=""></div>
+        ${line ? `<div class="ag-bubble">${line}</div>` : ""}
+      </div>`;
+    // reveal tween: the scene is built covered, then flipped on the next
+    // frame so the CSS transitions (cloth off, dealer pose) actually run
+    const revealed = new Set();
+    function playReveal(fi) {
+      const el = $("game-panel").querySelector(".ag-scene");
+      if (!el) return;
+      revealed.add(fi);
+      requestAnimationFrame(() => requestAnimationFrame(() => { el.classList.remove("covered"); el.classList.add("revealed", "unveil"); }));
+    }
+    // numeric count-up tween for the points
+    function countUp() {
+      const t0 = performance.now();
+      const els = [...$("game-panel").querySelectorAll("[data-count]")];
+      if (!els.length) return;
+      const step = () => {
+        const k = Math.min(1, (performance.now() - t0) / 800), e = 1 - Math.pow(1 - k, 3);
+        for (const el of els) el.textContent = `+${Math.round(+el.dataset.count * e)}`;
+        if (k < 1 && $("game-panel").contains(els[0])) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
 
     const game = new HostGame(ctx, {
       hostInit(s) {
@@ -220,11 +261,11 @@ export const ART_GALLERY = {
       if (s.phase === "photos") {
         const ready = active.filter(p => p.photos.length >= PHOTOS_PER).length;
         if (!ui.once(`p:${mine.length}:${ready}:${active.length}:${busy ? 1 : 0}`, () => {})) return;
+        const inset = `top:${FRAME_INSET.t}%;right:${FRAME_INSET.r}%;bottom:${FRAME_INSET.b}%;left:${FRAME_INSET.l}%`;
         const frames = [0, 1, 2].map(i => {
           const pid = mine[i];
-          if (pid) return `<div class="pt-box ag-frame"><img src="${photos.get(pid)}" alt=""></div>`;
-          if (busy && i === mine.length) return `<div class="pt-box ag-frame">[loading…]</div>`;
-          return `<button type="button" class="pt-box ag-frame ag-empty" data-i="${i}">[empty frame]<br>tap to add a photo</button>`;
+          const inner = pid ? `<img src="${photos.get(pid)}" alt="">` : `<span>${busy && i === mine.length ? "loading…" : "tap to add a photo"}</span>`;
+          return `<div class="pt-box ag-frame ${pid ? "" : "ag-empty"}" data-i="${i}"><div class="ag-hang"><div class="ag-photo" style="${inset}">${inner}</div><img class="ag-frameimg" src="${ASSET}frame.png" alt=""></div></div>`;
         }).join("");
         ui.stage("fill your 3 frames", `<div class="ag-frames">${frames}</div><input type="file" id="ag-file" accept="image/*" hidden>
           <p class="ab-sub">${mine.length}/${PHOTOS_PER} of yours in · ${ready}/${active.length} players ready · take a photo or pick one from your camera roll</p>${skipBtn()}`, `setup · ${ui.clock(s.left)}`);
@@ -241,7 +282,7 @@ export const ART_GALLERY = {
         if (!ui.once(`t:${cur ?? "-"}:${has ? 1 : 0}:${done}:${active.length}`, () => {})) return;
         if (cur) {
           const n = assigned.length - todo.length + 1;
-          ui.stage(`title this piece (${n}/${assigned.length})`, wall(cur, s) + ui.prompt("give it a title…", text => { myTitles[cur] = text; game.input("title", { pid: cur, text }); sfx.pop(); ui.resetKey(); }, { maxlength: TITLE_LEN, submitLabel: "lock it" })
+          ui.stage(`title this piece (${n}/${assigned.length})`, scene(cur, s) + ui.prompt("give it a title…", text => { myTitles[cur] = text; game.input("title", { pid: cur, text }); sfx.pop(); ui.resetKey(); }, { maxlength: TITLE_LEN, submitLabel: "lock it" })
             + `<p class="ab-sub">someone else is titling this exact photo too — you're competing</p>${skipBtn()}`, `titles · ${ui.clock(s.left)}`);
           bindSkip();
         } else {
@@ -253,7 +294,8 @@ export const ART_GALLERY = {
         const owner = s.players[s.pool?.[f.pid]?.owner]?.handle ?? "?";
         if (s.sub === "covered") {
           if (!ui.once(`c:${s.fi}`, () => {})) return;
-          ui.stage(`piece ${s.fi + 1} of ${s.frames.length}`, `<div class="pt-npc">[ART DEALER NPC]<br>“${DEALER.cover[s.fi % DEALER.cover.length]}”</div><div class="pt-box ag-wall">[frame covered in cloth]</div>`, "gallery");
+          srcOf(f.pid, s);   // warm the cache (asks the room now if we're missing it)
+          ui.stage(`piece ${s.fi + 1} of ${s.frames.length}`, scene(f.pid, s, { covered: true, line: `“${DEALER.cover[s.fi % DEALER.cover.length]}”` }), "gallery");
         } else if (s.sub === "reveal") {
           const writer = f.titles.some(t => t.by === ctx.me.id);
           const voted = f.votes[ctx.me.id] ?? myVote;
@@ -261,13 +303,16 @@ export const ART_GALLERY = {
           const eligible = active.filter(p => !f.titles.some(t => t.by === p.id)).length;
           const votesIn = Object.keys(f.votes).length;
           if (!ui.once(`v:${s.fi}:${voted ?? "-"}:${writer ? 1 : 0}:${has ? 1 : 0}:${votesIn}`, () => {})) return;
+          const first = !revealed.has(s.fi);          // play the reveal tween once per frame
           const titles = f.titles.map((t, i) => ({ value: i, label: `“${esc(t.text)}”` }));
-          const body = `<div class="pt-npc">[ART DEALER NPC]<br>“${DEALER.unveil[s.fi % DEALER.unveil.length]}”</div>` + wall(f.pid, s)
-            + (writer
-              ? `<div class="pt-box ag-titles">${titles.map(t => `<div>${t.label}</div>`).join("")}</div><p class="ab-sub">you wrote one of these — the room decides</p>`
-              : ui.choices(titles, null, { picked: voted }))
+          const body = scene(f.pid, s, { covered: first, unveil: !first, animate: first, line: `“${DEALER.unveil[s.fi % DEALER.unveil.length]}”` })
+            + `<div class="ag-cards">` + (writer
+              ? `<div class="choices">${titles.map(t => `<div class="ag-tcard">${t.label}</div>`).join("")}</div>`
+              : ui.choices(titles, null, { picked: voted })) + `</div>`
+            + (writer ? `<p class="ab-sub">you wrote one of these — the room decides</p>` : "")
             + `<p class="ab-sub">${votesIn}/${eligible} votes in</p>${skipBtn()}`;
           ui.stage("which title wins?", body, `vote · ${ui.clock(s.left)}`);
+          if (first) playReveal(s.fi);
           if (!writer) ui.bindChoices(v => { myVote = +v; game.input("vote", { idx: +v }); sfx.pop(); ui.resetKey(); });
           bindSkip();
         } else if (s.sub === "result") {
@@ -275,9 +320,10 @@ export const ART_GALLERY = {
           if (!ui.once(`r:${s.fi}:${has ? 1 : 0}`, () => {})) return;
           const c = f.counts || [0, 0], pts = f.pts || [0, 0];
           const top = c[0] === c[1] ? null : (c[0] > c[1] ? 0 : 1);
-          const rows = f.titles.map((t, i) => `<div class="rev-row ${top === i ? "win" : ""}"><span>“${esc(t.text)}” <small>— ${esc(s.players[t.by]?.handle ?? "?")}</small></span><b>${c[i]} vote${c[i] === 1 ? "" : "s"} · +${pts[i]}</b></div>`).join("");
+          const rows = f.titles.map((t, i) => `<div class="rev-row ${top === i ? "win" : ""}"><span>“${esc(t.text)}” <small>— ${esc(s.players[t.by]?.handle ?? "?")}</small></span><b>${c[i]} vote${c[i] === 1 ? "" : "s"} · <span data-count="${pts[i]}">+0</span></b></div>`).join("");
           const head = top === null ? "split decision" : `${esc(s.players[f.titles[top].by]?.handle ?? "?")} takes it`;
-          ui.stage(head, `<div class="pt-npc">[ART DEALER NPC]<br>“${DEALER.result[s.fi % DEALER.result.length]}”</div>` + wall(f.pid, s) + rows + `<p class="ab-sub">photo by ${esc(owner)}</p>`, "result");
+          ui.stage(head, scene(f.pid, s, { unveil: true, line: `“${DEALER.result[s.fi % DEALER.result.length]}”` }) + `<div class="ag-result">${rows}</div><p class="ab-sub">photo by ${esc(owner)}</p>`, "result");
+          countUp();
         }
       } else if (s.phase === "end") {
         if (!ui.once("end", () => {})) return;

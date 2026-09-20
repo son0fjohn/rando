@@ -1434,6 +1434,39 @@
   .ag-titles { flex-direction:column; gap:6px; font-size:14px; font-weight:700; padding:10px; }
   .pt-npc { background:#e8e8e8; border:1px dashed #888; padding:8px; font-size:13px; margin:6px 0; line-height:1.4; }
   .ag-skip { margin-top:8px; }
+  /* art gallery — generated assets + code tweens */
+  .ag-scene { position:relative; width:100%; aspect-ratio:4/5; background:#c9bda9 url(games/artgallery/gallery.jpg) center 44%/cover no-repeat; border-radius:10px; overflow:hidden; margin:6px 0; }
+  .ag-hang { position:absolute; left:22%; top:7%; width:56%; aspect-ratio:1; }
+  .ag-frame .ag-hang { position:relative; left:0; top:0; width:100%; }
+  .ag-photo { position:absolute; background:#2a2620; overflow:hidden; display:flex; align-items:center; justify-content:center; color:#9a8f80; font-size:10px; text-align:center; }
+  .ag-photo img { width:100%; height:100%; object-fit:cover; display:block; }
+  .ag-frameimg, .ag-clothimg { position:absolute; inset:0; width:100%; height:100%; display:block; pointer-events:none; }
+  .ag-clothimg { transform-origin:50% 0; transition:transform .9s cubic-bezier(.4,0,.2,1), opacity .9s ease; }
+  .ag-scene.revealed .ag-clothimg, .ag-frame .ag-clothimg { transform:translateY(-140%) rotate(-4deg); opacity:0; }
+  .ag-dealer { position:absolute; left:1%; bottom:0; width:40%; aspect-ratio:542/720; }
+  .ag-pose { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; object-position:bottom; transition:opacity .3s ease, transform .55s cubic-bezier(.34,1.56,.64,1); }
+  .ag-unveil { opacity:0; transform:translateX(-5%) scale(.94); }
+  .ag-scene.unveil .ag-unveil { opacity:1; transform:none; } .ag-scene.unveil .ag-idle { opacity:0; }
+  .ag-bubble { position:absolute; right:3%; bottom:8%; width:54%; background:rgba(245,240,230,.96); color:#2a2620; border-radius:12px 12px 12px 3px; padding:7px 9px; font-size:11px; line-height:1.35; box-shadow:0 2px 8px rgba(0,0,0,.25); }
+  .ag-anim .ag-bubble { animation:ag-pop .4s 1.1s both; }
+  /* setup: the three frames use the same frame asset */
+  .ag-frame { padding:0; background:transparent; border:none; overflow:visible; }
+  .ag-frame.ag-empty .ag-photo { cursor:pointer; }
+  .ag-frame.ag-empty .ag-photo span { font-size:9px; line-height:1.3; padding:4px; }
+  /* title cards slide in from either side after the reveal lands */
+  .ag-cards .choices { flex-direction:column; }
+  .ag-cards .ch, .ag-cards .ag-tcard { width:100%; box-sizing:border-box; transition:transform .25s cubic-bezier(.34,1.56,.64,1), background .25s, box-shadow .25s; }
+  .ag-cards .ag-tcard { border:1px solid #d5d5da; background:#fff; border-radius:12px; padding:10px 14px; font-size:14px; font-weight:700; }
+  .ag-anim .ag-cards > * > :nth-child(1) { animation:ag-in-l .5s 1.0s both; }
+  .ag-anim .ag-cards > * > :nth-child(2) { animation:ag-in-r .5s 1.15s both; }
+  .ag-cards .ch.on { transform:scale(1.04); box-shadow:0 4px 14px rgba(10,132,255,.35); }
+  /* result: winner scales up with a colour flash; points count up in JS */
+  .ag-result .rev-row { padding:6px 8px; border-radius:10px; transition:transform .3s; }
+  .ag-result .rev-row.win { animation:ag-win .8s .35s both; }
+  @keyframes ag-in-l { from { transform:translateX(-60%); opacity:0 } to { transform:none; opacity:1 } }
+  @keyframes ag-in-r { from { transform:translateX(60%); opacity:0 } to { transform:none; opacity:1 } }
+  @keyframes ag-pop { from { transform:scale(.7); opacity:0 } to { transform:none; opacity:1 } }
+  @keyframes ag-win { 0% { transform:scale(1); background:transparent } 35% { transform:scale(1.06); background:#ffd60a } 100% { transform:scale(1.03); background:rgba(53,208,122,.18) } }
 
 </style>
 </head>
