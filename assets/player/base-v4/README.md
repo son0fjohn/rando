@@ -73,30 +73,38 @@ valid config), so hair must not be fused into the body.
 | `base_tripo-multiview-20k.glb` | Tripo H3.1 multiview (front/left/back), `face_limit 20000` | 18.5 k | no | **pick** — wide round head, clean A-pose, ears intact. Comes in yawed +90° (front faces +X): load with `rotation.y = -Math.PI / 2` |
 | `base_tripo-single-20k.glb` | Tripo H3.1 single image (front) | ~19 k | no | fine, slightly narrower head in profile, arms closer to the body |
 
-### Rig status — read before wiring this in
+### Rigged + animated (`3d/rigged/`) — Tripo API, 2026-09-21
 
-The live avatar's clips (`web/avatar3/anims/idle.glb`, `walk.glb`) are
-Tripo **`preset:idle` / `preset:walk`** animations baked onto Tripo's own
-auto-rig (`tripo::Root`, `tripo::Spine_0`, …). They are produced per
-model by Tripo's rig + retarget API, which Higgsfield does not expose —
-its catalog only has Tripo *mesh* generation. Meshy's `3d_rigging`
-refused this Tripo GLB (3 attempts across two characters, no error
-detail), and a Meshy rig would use Mixamo-style bone names that the
-existing clips cannot drive anyway.
+`scripts/tripo_rig.py` (new): vertex-level yaw fix -> `/files` ->
+`/animations/rig-check` -> `/animations/rig` -> `/animations/retarget`.
 
-To finish the rig the way the current body was done: put a
-`TRIPO_API_KEY` in `.env` and run Tripo `animate_rig` then
-`animate_retarget` (`preset:idle`, `preset:walk`) on
-`base_tripo-multiview-20k.glb`, the same path that produced
-`web/avatar3/body.glb` + `anims/`. The archetype "gesture" motion in
-`world3d.js` is procedural (group-level bob/sway), so it needs no clips.
+| File | What |
+|---|---|
+| `_input_yawfixed.glb` | the multiview mesh rotated -98 deg **in the vertex data** so it faces +Z |
+| `body_rigged.glb` | Tripo rig **v2.5-20260210**, `rig_type: biped`, `spec: tripo` — 19 bones, `tripoRoot / tripoSpine_0 / tripoHead_0 ...` (same family as `web/avatar3/body.glb`) |
+| `idle.glb` | `preset:idle`, 15.4 s, baked, in place |
+| `walk.glb` | `preset:walk`, 2.4 s, baked, in place |
 
-### Rigged fallback
+What it took (so nobody repeats it):
+1. **Rig model matters.** The default `v1.0-20240301` rig (41 bones,
+   `Root/Hip/Pelvis...`) mislocates a chibi's hips and knees — every
+   retarget kicked a leg out sideways, idle included. `v2.5-20260210` is
+   the rigger that made the current avatar, and it is clean here too.
+2. **Tripo ignores node transforms.** A root-node yaw changes nothing on
+   their side; rotate positions/normals/tangents instead (`yaw_glb`).
+3. The raw multiview mesh faces ~+98 deg from +Z (found empirically —
+   PCA and mirror-symmetry estimates were both ~25 deg off because the
+   A-pose arms are angled forward).
+4. Output still sits ~20 deg off +Z after Tripo's pass; correct with a
+   group rotation at load, as `avatar3.js` already does for fit.
 
-`base_meshy-rigged-20k.glb` — Meshy `multi_image_to_3d` from the same
-three views with `enable_rigging` (a-pose, 1.2 m, symmetry on). It IS
-skinned (Mixamo-style bones: Hips / Spine / LeftArm / Head …), so it can
-be animated today with Mixamo-named clips or Meshy's action library —
-but NOT with the existing `tripo::*` idle/walk clips without retargeting,
-and Meshy's texture pass is rougher than Tripo's. Use it to prototype
-motion; ship the Tripo mesh once it has a Tripo rig.
+Meshy's `3d_rigging` refused the Tripo GLB every time (no error detail);
+`base_meshy-rigged-20k.glb` is a Mixamo-named fallback only.
+
+### Still to do before this replaces `web/avatar3/body.glb`
+
+- Re-fit hair / tops / bottoms / shoes: the v3 pieces were cut for a
+  3.5-head body; this is ~3 heads, so they will float or clip.
+- Skin-tone masks and face decals are keyed to the old body's UVs.
+- The archetype gesture motion in `world3d.js` is procedural (group-level
+  bob/sway) and needs no clips.
