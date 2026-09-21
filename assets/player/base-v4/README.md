@@ -65,3 +65,28 @@ No variant needed a regenerate on proportions, shading or facet density.
 A-pose front / left / back, all referenced off the base, **bald on
 purpose**: avatar v3 treats hair as a separate mesh (`hair: "none"` is a
 valid config), so hair must not be fused into the body.
+
+## 3D (`3d/`)
+
+| File | Tool | Tris | Rig | Notes |
+|---|---|---|---|---|
+| `base_tripo-multiview-20k.glb` | Tripo H3.1 multiview (front/left/back), `face_limit 20000` | 18.5 k | no | **pick** — wide round head, clean A-pose, ears intact. Comes in yawed +90° (front faces +X): load with `rotation.y = -Math.PI / 2` |
+| `base_tripo-single-20k.glb` | Tripo H3.1 single image (front) | ~19 k | no | fine, slightly narrower head in profile, arms closer to the body |
+
+### Rig status — read before wiring this in
+
+The live avatar's clips (`web/avatar3/anims/idle.glb`, `walk.glb`) are
+Tripo **`preset:idle` / `preset:walk`** animations baked onto Tripo's own
+auto-rig (`tripo::Root`, `tripo::Spine_0`, …). They are produced per
+model by Tripo's rig + retarget API, which Higgsfield does not expose —
+its catalog only has Tripo *mesh* generation. Meshy's `3d_rigging`
+refused this Tripo GLB (3 attempts across two characters, no error
+detail), and a Meshy rig would use Mixamo-style bone names that the
+existing clips cannot drive anyway.
+
+To finish the rig the way the current body was done: put a
+`TRIPO_API_KEY` in `.env` and run Tripo `animate_rig` then
+`animate_retarget` (`preset:idle`, `preset:walk`) on
+`base_tripo-multiview-20k.glb`, the same path that produced
+`web/avatar3/body.glb` + `anims/`. The archetype "gesture" motion in
+`world3d.js` is procedural (group-level bob/sway), so it needs no clips.
