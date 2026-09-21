@@ -90,3 +90,13 @@ To finish the rig the way the current body was done: put a
 `base_tripo-multiview-20k.glb`, the same path that produced
 `web/avatar3/body.glb` + `anims/`. The archetype "gesture" motion in
 `world3d.js` is procedural (group-level bob/sway), so it needs no clips.
+
+### Rigged fallback
+
+`base_meshy-rigged-20k.glb` — Meshy `multi_image_to_3d` from the same
+three views with `enable_rigging` (a-pose, 1.2 m, symmetry on). It IS
+skinned (Mixamo-style bones: Hips / Spine / LeftArm / Head …), so it can
+be animated today with Mixamo-named clips or Meshy's action library —
+but NOT with the existing `tripo::*` idle/walk clips without retargeting,
+and Meshy's texture pass is rougher than Tripo's. Use it to prototype
+motion; ship the Tripo mesh once it has a Tripo rig.
