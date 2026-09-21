@@ -66,45 +66,72 @@ A-pose front / left / back, all referenced off the base, **bald on
 purpose**: avatar v3 treats hair as a separate mesh (`hair: "none"` is a
 valid config), so hair must not be fused into the body.
 
-## 3D (`3d/`)
+## 3D + wardrobe — what is actually in the game (`web/avatar4/`, opt-in `?body=v4`)
 
-| File | Tool | Tris | Rig | Notes |
-|---|---|---|---|---|
-| `base_tripo-multiview-20k.glb` | Tripo H3.1 multiview (front/left/back), `face_limit 20000` | 18.5 k | no | **pick** — wide round head, clean A-pose, ears intact. Comes in yawed +90° (front faces +X): load with `rotation.y = -Math.PI / 2` |
-| `base_tripo-single-20k.glb` | Tripo H3.1 single image (front) | ~19 k | no | fine, slightly narrower head in profile, arms closer to the body |
+**Canonical body** = `wardrobe/_body/dressed.glb`: Tripo v3.1 multiview (front /
+left / back) with **`model_seed: 7`**, rigged with Tripo **v2.5** (`biped`,
+`spec: tripo`) after a vertex-level yaw fix, `preset:idle` + `preset:walk`
+baked in place -> `3d/rigged_seeded/` -> `web/avatar4/body.glb` + `anims/`.
+(`3d/base_*.glb` are the earlier unseeded meshes; `base_meshy-rigged-20k.glb`
+is a Mixamo-named fallback that the Tripo clips cannot drive.)
 
-### Rigged + animated (`3d/rigged/`) — Tripo API, 2026-09-21
+**Shipped wardrobe (13 pieces):** tops hoodie-maroon, tee-black, jacket-olive,
+bomber-black · bottoms pants-baggy-black, trousers-wide-olive,
+shorts-cargo-grey · hair short-cropped, medium-fringe, long-straight,
+curly-volume, buzz, messy-shag (generated light grey, tinted by the engine).
+`lineup_in-engine.png` is a render of all of it through the real engine.
 
-`scripts/tripo_rig.py` (new): vertex-level yaw fix -> `/files` ->
-`/animations/rig-check` -> `/animations/rig` -> `/animations/retarget`.
+**Shelved (sources kept in `wardrobe/`):** coat-charcoal,
+jeans-straight-blue, pants-fitted-charcoal. Not an extraction bug — the base
+body wears baggy shorts, and these sit INSIDE or against them, so the engine
+cannot treat them as covering the shorts and gaps open up.
 
-| File | What |
-|---|---|
-| `_input_yawfixed.glb` | the multiview mesh rotated -98 deg **in the vertex data** so it faces +Z |
-| `body_rigged.glb` | Tripo rig **v2.5-20260210**, `rig_type: biped`, `spec: tripo` — 19 bones, `tripoRoot / tripoSpine_0 / tripoHead_0 ...` (same family as `web/avatar3/body.glb`) |
-| `idle.glb` | `preset:idle`, 15.4 s, baked, in place |
-| `walk.glb` | `preset:walk`, 2.4 s, baked, in place |
+### Pipeline (`scripts/`)
 
-What it took (so nobody repeats it):
-1. **Rig model matters.** The default `v1.0-20240301` rig (41 bones,
-   `Root/Hip/Pelvis...`) mislocates a chibi's hips and knees — every
-   retarget kicked a leg out sideways, idle included. `v2.5-20260210` is
-   the rigger that made the current avatar, and it is clean here too.
-2. **Tripo ignores node transforms.** A root-node yaw changes nothing on
-   their side; rotate positions/normals/tangents instead (`yaw_glb`).
-3. The raw multiview mesh faces ~+98 deg from +Z (found empirically —
-   PCA and mirror-symmetry estimates were both ~25 deg off because the
-   A-pose arms are angled forward).
-4. Output still sits ~20 deg off +Z after Tripo's pass; correct with a
-   group rotation at load, as `avatar3.js` already does for fit.
+1. Higgsfield: the bare A-pose body (front / left / back renders in
+   `3d-input/`) WEARING one item — each view referenced off the matching bare
+   view, "ONE change", so framing matches to a few pixels.
+2. `tripo_wardrobe.py mesh <dir>` -> `dressed.glb` (30 cr).
+3. `wardrobe_server.py` + `wardrobe_extract.html`: `window.extract({dir, cat,
+   id})` registers the dressed mesh on the bare body and keeps only what
+   changed -> `web/avatar4/<cat>/<id>.glb`. Add the id to `V4_CATALOG` in
+   `web/avatar3.js`.
 
-Meshy's `3d_rigging` refused the Tripo GLB every time (no error detail);
-`base_meshy-rigged-20k.glb` is a Mixamo-named fallback only.
+`tripo_wardrobe.py segment` (40 cr) is NOT needed any more and the extractor
+ignores its output: Tripo's semantic parts are clean but its grouping is not
+trustworthy (coat tails filed under "legs", a sleeve under "arm"), so the
+extractor takes the whole mesh and decides per triangle.
 
-### Still to do before this replaces `web/avatar3/body.glb`
+### What it took (so nobody pays for it twice)
 
-- Re-fit hair / tops / bottoms / shoes: the v3 pieces were cut for a
-  3.5-head body; this is ~3 heads, so they will float or clip.
-- Skin-tone masks and face decals are keyed to the old body's UVs.
-- The archetype gesture motion in `world3d.js` is procedural (group-level
-  bob/sway) and needs no clips.
+- **Fixed `model_seed`.** Three views never show the far arm; unseeded, Tripo
+  resolves it differently per mesh and a sleeve lands 40 deg off the arm. A
+  mirrored 4th view pins the arm but projects arm skin down the chest.
+- **Rig model v2.5, not the v1.0 default** — v1.0 misplaces a chibi's hips and
+  every retarget kicks a leg out sideways. Tripo also ignores node transforms:
+  rotate the vertex data.
+- **Registration.** Garments: head-sphere anchor + brute-force yaw over the
+  regions the item cannot change. Hair: eyes for yaw + position, tee-collar
+  height for scale (a nearest-point cost cannot find scale — it always
+  improves as the figure shrinks toward its anchor).
+- **"What changed" filter.** Drop a triangle if it sits on the bare body AND
+  has the body's colour there (brightness *and* hue), never counting the base
+  item the category replaces (tee for tops, shorts for bottoms); then crop to
+  the category's height band, drop skin, drop base-outfit colour scraps, drop
+  small fragments judged against the whole piece, compact the vertex buffer
+  (the engine reads coverage from garment VERTICES), puff along
+  position-merged normals.
+- **Engine (v4 only).** Hides every non-skin body triangle a garment covers
+  (garment must sit OUTSIDE the surface along its normal, within the garment's
+  height span); one never-disposed draw-range geometry per character;
+  animated bounds via `updateMatrixWorld`; garment skinning against SKINNED
+  body positions with the matched vertex's skin matrix inverted; hair bound
+  rigidly to the head.
+
+### The real fix for everything shelved
+
+Regenerate the base body in plain fitted underwear (like avatar v3) instead of
+a tee + shorts. Every conflict above — poke-through, the replace/scrap colour
+rules, tight bottoms, long coats — exists only because the base is already
+dressed. The pipeline would run unchanged and most of its special cases
+could be deleted.

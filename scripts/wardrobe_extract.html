@@ -92,7 +92,7 @@ function frameOf(parts) {
   }
   mid.divideScalar(Math.max(1, nd));
   const dir = mid.clone().sub(head).setY(0).normalize();
-  return { y0, y1, H, head, yaw: Math.atan2(dir.x, dir.z), darkVerts: nd };
+  return { y0, y1, H, head, yaw: Math.atan2(dir.x, dir.z), darkVerts: nd, eyes: mid.clone() };
 }
 
 const isSkin = (r, g, b) => r > 120 && r - g >= 14 && r - g <= 85 && g - b >= 4 && g - b <= 60;
@@ -115,19 +115,30 @@ function describe(parts, fr) {
 // torso for shoes ...). Colour-free on purpose: eye-texel facing breaks as
 // soon as a dark hood or dark hair sits in the head band.
 const STABLE = { top: y => y < 0.25 || y > 0.60, bottom: y => y < 0.05 || y > 0.42,
-                 shoes: y => y > 0.16, hair: y => y < 0.50 };
-function bestYaw(body, bf, parts, df, s, cat) {
+                 shoes: y => y > 0.16, hair: y => y < 0.42 };
+// feet anchor (hair: the head sphere is buried under the hairstyle, and hair
+// adds height so Tripo's 1.0-tall normalisation shrinks the whole body —
+// anchor on the ground contact instead and let the caller search the scale)
+function feetOf(parts, fr) {
+  let x = 0, z = 0, n = 0;
+  for (const p of parts) for (let i = 0; i < p.P.length; i += 3) {
+    if (p.P[i + 1] > fr.y0 + fr.H * 0.06) continue;
+    x += p.P[i]; z += p.P[i + 2]; n++;
+  }
+  return new THREE.Vector3(x / n, fr.y0, z / n);
+}
+function bestYaw(body, bf, parts, df, s, cat, bA = bf.head, dA = df.head, hintDeg = null) {
   const cell = 0.02, grid = new Map();
   const key = (x, y, z) => `${Math.round(x / cell)},${Math.round(y / cell)},${Math.round(z / cell)}`;
   for (const p of body) for (let i = 0; i < p.P.length; i += 3) {
-    const x = p.P[i] - bf.head.x, y = p.P[i + 1] - bf.head.y, z = p.P[i + 2] - bf.head.z;
+    const x = p.P[i] - bA.x, y = p.P[i + 1] - bA.y, z = p.P[i + 2] - bA.z;
     const k = key(x, y, z); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(x, y, z);
   }
   const pts = [];
   for (const p of parts) for (let i = 0; i < p.P.length; i += 3) {
     const yn = (p.P[i + 1] - df.y0) / df.H;
     if (!STABLE[cat](yn)) continue;
-    pts.push((p.P[i] - df.head.x) * s, (p.P[i + 1] - df.head.y) * s, (p.P[i + 2] - df.head.z) * s);
+    pts.push((p.P[i] - dA.x) * s, (p.P[i + 1] - dA.y) * s, (p.P[i + 2] - dA.z) * s);
   }
   const step = Math.max(3, Math.floor(pts.length / 3 / 1400) * 3);
   const cost = th => {
@@ -148,12 +159,36 @@ function bestYaw(body, bf, parts, df, s, cat) {
     return sum / n;
   };
   let best = 0, bc = Infinity;
-  for (let d = 0; d < 360; d += 4) { const c = cost(d * Math.PI / 180); if (c < bc) { bc = c; best = d; } }
+  // seeded meshes all come out co-oriented, so a hint (the yaw the garments
+  // fitted at) replaces the full sweep — the hair search also sweeps scale
+  if (hintDeg !== null) { for (let d = hintDeg - 12; d <= hintDeg + 12; d += 2) { const c = cost(d * Math.PI / 180); if (c < bc) { bc = c; best = d; } } }
+  else for (let d = 0; d < 360; d += 4) { const c = cost(d * Math.PI / 180); if (c < bc) { bc = c; best = d; } }
   for (let d = best - 4; d <= best + 4; d += 0.5) { const c = cost(d * Math.PI / 180); if (c < bc) { bc = c; best = d; } }
   // three.js makeRotationY(t): x' = x cos t + z sin t  — same convention as cost()
   return { theta: best * Math.PI / 180, cost: bc, opposite: cost((best + 180) * Math.PI / 180) };
 }
 
+const REPLACES = {
+  top: (r, g, b) => Math.min(r, g, b) > 150 && Math.max(r, g, b) - Math.min(r, g, b) < 34,   // base tee: white
+  bottom: (r, g, b) => b - r > 16 && r < 135,                                                  // base shorts: dark blue
+};
+// per-category crop (fraction of body height, feet = 0): triangles entirely
+// outside are not this garment
+const CROP = { top: [0.22, 0.64], bottom: [0.0, 0.34], shoes: [0.0, 0.16], hair: [0.46, 1.4] };
+// colours that can never be THIS category's garment in this wardrobe: scraps of
+// the base outfit that survive the same-as-body test because the two meshes
+// never line up perfectly (a bottom kept a fist-sized piece of white tee and
+// drew it over whatever top was worn). Revisit if a white bottom / navy top
+// is ever added — pass notMine: null then.
+const NOT_MINE = {
+  // genuinely near-white only: at min>140 / chroma<32 the LIT front faces of pale
+  // denim counted as 'white' and the jeans lost their whole front
+  bottom: (r, g, b) => Math.min(r, g, b) > 172 && Math.max(r, g, b) - Math.min(r, g, b) < 20,  // tee + sneakers
+  top: (r, g, b) => b - r > 16 && r < 135,                                                     // shorts
+  // hair is generated light grey: near-white = tee collar, dark = eyes / brows.
+  // Left in, both get tinted with the hair colour (a 'scarf', a blob over one eye).
+  hair: (r, g, b) => (Math.min(r, g, b) > 186 && Math.max(r, g, b) - Math.min(r, g, b) < 22) || (r + g + b) / 3 < 88,
+};
 // vertical band (fraction of height, feet = 0) a part's centre must sit in
 const BAND = { top: [0.22, 0.62], bottom: [0.08, 0.40], shoes: [0.0, 0.14], hair: [0.55, 1.1] };
 
@@ -184,16 +219,57 @@ function inflate(geo, eps) {
   }
   pos.needsUpdate = true;
 }
-const INFLATE = { top: 0.014, bottom: 0.010, shoes: 0.010, hair: 0.004 };
+// remove connected components (welded by position) smaller than `frac` of the
+// piece — the scraps the filters leave behind
+function dropFragments(geo, minTris) {
+  if (!geo.index) return 0;
+  const pos = geo.attributes.position, idx = Array.from(geo.index.array);
+  const id = new Map(), vid = i => { const k = `${Math.round(pos.getX(i) * 2e3)},${Math.round(pos.getY(i) * 2e3)},${Math.round(pos.getZ(i) * 2e3)}`; let v = id.get(k); if (v === undefined) id.set(k, v = id.size); return v; };
+  const parent = [];
+  const find = a => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  const tv = idx.map(vid);
+  for (let i = 0; i < id.size; i++) parent[i] = i;
+  for (let t = 0; t < tv.length; t += 3) { const a = find(tv[t]), b = find(tv[t + 1]), c = find(tv[t + 2]); parent[b] = a; parent[c] = a; }
+  const count = new Map();
+  for (let t = 0; t < tv.length; t += 3) { const r = find(tv[t]); count.set(r, (count.get(r) || 0) + 1); }
+  const total = tv.length / 3, kept = [];
+  for (let t = 0; t < tv.length; t += 3) if (count.get(find(tv[t])) >= minTris) kept.push(idx[t], idx[t + 1], idx[t + 2]);
+  geo.setIndex(kept);
+  return total - kept.length / 3;
+}
+// drop vertices no triangle references any more. Not cosmetic: the engine
+// measures "what does this garment cover" from the garment's VERTICES, so the
+// ghosts of filtered-out triangles kept hiding the body's shorts.
+function compact(geo) {
+  const idx = geo.index.array, map = new Map(), order = [];
+  const nidx = new Uint32Array(idx.length);
+  for (let i = 0; i < idx.length; i++) { let v = map.get(idx[i]); if (v === undefined) { map.set(idx[i], v = order.length); order.push(idx[i]); } nidx[i] = v; }
+  const out = new THREE.BufferGeometry();
+  for (const [name, attr] of Object.entries(geo.attributes)) {
+    const sz = attr.itemSize, arr = new attr.array.constructor(order.length * sz);
+    for (let i = 0; i < order.length; i++) for (let c = 0; c < sz; c++) arr[i * sz + c] = attr.array[order[i] * sz + c];
+    out.setAttribute(name, new THREE.BufferAttribute(arr, sz, attr.normalized));
+  }
+  out.setIndex(new THREE.BufferAttribute(order.length > 65535 ? nidx : new Uint16Array(nidx), 1));
+  return out;
+}
+const INFLATE = { top: 0.014, bottom: 0.010, shoes: 0.010, hair: 0.022 }; // hair hugs the scalp: at 0.004 skin showed through the back
 
-window.extract = async ({ dir, cat, id, pick = null, save = true, maxSkin = 0.45, dropSkin = true, bodyUrl = "/web/avatar4/body.glb", puff = INFLATE[cat] }) => {
+window.extract = async ({ dir, cat, id, pick = null, save = true, maxSkin = 0.45, source = "dressed", debug = false, yawHint = null, crop = CROP[cat], notMine = NOT_MINE[cat], dropSkin = true, dropSame = true, sameDist = 0.03, sameColor = 45, minFragment = 0.04,
+                         bodyUrl = "/web/avatar4/body.glb", puff = INFLATE[cat] }) => {
   const body = sample((await load(bodyUrl)).scene);
   const bf = frameOf(body);
-  const seg = await load(`/${dir}/segmented.glb`);
+  // the unsegmented mesh is the default source now: with every part in play the
+  // segmenter adds nothing but one texture per part (3-6x the file size) and
+  // 40 credits a piece. source: "segmented" keeps the old path.
+  const seg = await load(`/${dir}/${source}.glb`);
   const parts = sample(seg.scene);
   const df = frameOf(parts);
   const desc = describe(parts, df);
-  const chosen = pick ?? desc.filter(d => d.cy >= BAND[cat][0] && d.cy <= BAND[cat][1] && d.skin <= maxSkin).map(d => d.k);
+  // default: EVERY part. The segmenter's grouping is not trusted (it files coat
+  // tails under "legs", a sleeve under "arm+hand"); crop + same-as-body + skin
+  // filters decide what is garment. `pick` remains for hand overrides.
+  const chosen = pick ?? desc.map(d => d.k);
   if (!chosen.length) return { error: "no parts matched", desc, bodyYaw: bf.yaw, dressedYaw: df.yaw };
 
   // body frame centre EXACTLY as avatar3.js gets T.srcCenter: Box3.setFromObject
@@ -211,33 +287,134 @@ window.extract = async ({ dir, cat, id, pick = null, save = true, maxSkin = 0.45
   const back = eb.getCenter(new THREE.Vector3());
   // scale: same Tripo normalisation, but a garment can change the bbox
   // height slightly — match head-centre-to-feet distance instead
-  const s = (bf.head.y - bf.y0) / (df.head.y - df.y0);
-  const fitYaw = bestYaw(body, bf, parts, df, s, cat);
+  let s = (bf.head.y - bf.y0) / (df.head.y - df.y0);
+  let bA = bf.head, dA = df.head, fitYaw;
+  if (cat === "hair") {
+    // Hair only has to frame the FACE, and the rest of a hair mesh may differ in
+    // pose (its arms came out 9 % shorter), so register on face landmarks alone:
+    //   yaw + position from the eyes (hair is generated light grey, so the dark
+    //   texels in the head band are the eyes and nothing else),
+    //   scale from the collar height — the top of the white tee above the ground
+    //   (a nearest-point cost cannot find scale: it always improves as the
+    //   figure shrinks toward its anchor).
+    const collar = (pts, fr) => {
+      const ys = [];
+      for (const p of pts) for (let i = 0, c = 0; i < p.P.length; i += 3, c += 3) {
+        const yn = (p.P[i + 1] - fr.y0) / fr.H; if (yn < 0.3 || yn > 0.62) continue;
+        const r = p.C[c], g = p.C[c + 1], bl = p.C[c + 2];
+        if (Math.min(r, g, bl) > 186 && Math.max(r, g, bl) - Math.min(r, g, bl) < 22) ys.push(p.P[i + 1] - fr.y0); // tee white, not grey hair
+      }
+      ys.sort((u, v) => v - u);
+      return ys.slice(0, Math.max(5, Math.floor(ys.length * 0.02))).reduce((a, v, _, arr) => a + v / arr.length, 0);
+    };
+    const cb = collar(body, bf), cd = collar(parts, df);
+    s = cb / cd;
+    bA = bf.eyes; dA = df.eyes;
+    fitYaw = { theta: bf.yaw - df.yaw, cost: 0, opposite: 0, tips: { collarBody: cb, collarDressed: cd, eyeVerts: [bf.darkVerts, df.darkVerts] } };
+  } else fitYaw = bestYaw(body, bf, parts, df, s, cat, bA, dA, yawHint);
   // q = Rot(yawB - yawD) * s * (p - headD) + headB ; piece = q - Rot(yawB)*srcCenter
   const M = new THREE.Matrix4()
-    .makeTranslation(bf.head.x - back.x, bf.head.y - back.y, bf.head.z - back.z)
+    .makeTranslation(bA.x - back.x, bA.y - back.y, bA.z - back.z)
     .multiply(new THREE.Matrix4().makeRotationY(fitYaw.theta))
     .multiply(new THREE.Matrix4().makeScale(s, s, s))
-    .multiply(new THREE.Matrix4().makeTranslation(-df.head.x, -df.head.y, -df.head.z));
+    .multiply(new THREE.Matrix4().makeTranslation(-dA.x, -dA.y, -dA.z));
 
+  // "same as the bare body" test: a dressed vertex that lands on the bare body's
+  // surface AND carries the body's colour there did not change — it is not
+  // garment. Catches what the segmenter merges (dark tee + dark shorts came back
+  // as ONE part), plus any skin / scalp riding along in a part.
+  const Mb = new THREE.Matrix4().makeTranslation(bA.x, bA.y, bA.z)
+    .multiply(new THREE.Matrix4().makeRotationY(fitYaw.theta))
+    .multiply(new THREE.Matrix4().makeScale(s, s, s))
+    .multiply(new THREE.Matrix4().makeTranslation(-dA.x, -dA.y, -dA.z));
+  const bcell = 0.025, bgrid = new Map();
+  for (const p of body) for (let i = 0, c = 0; i < p.P.length; i += 3, c += 3) {
+    const k = `${Math.floor(p.P[i] / bcell)},${Math.floor(p.P[i + 1] / bcell)},${Math.floor(p.P[i + 2] / bcell)}`;
+    let a = bgrid.get(k); if (!a) bgrid.set(k, a = []);
+    a.push(p.P[i], p.P[i + 1], p.P[i + 2], p.C[c], p.C[c + 1], p.C[c + 2]);
+  }
+  const tq = new THREE.Vector3();
+  const sameAsBody = (part, i) => {
+    tq.set(part.P[i * 3], part.P[i * 3 + 1], part.P[i * 3 + 2]).applyMatrix4(Mb);
+    const cx = Math.floor(tq.x / bcell), cy = Math.floor(tq.y / bcell), cz = Math.floor(tq.z / bcell);
+    let bd = sameDist * sameDist, col = null;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      const a = bgrid.get(`${cx + dx},${cy + dy},${cz + dz}`); if (!a) continue;
+      for (let j = 0; j < a.length; j += 6) {
+        const d = (a[j] - tq.x) ** 2 + (a[j + 1] - tq.y) ** 2 + (a[j + 2] - tq.z) ** 2;
+        if (d < bd) { bd = d; col = j; var hit = a; }
+      }
+    }
+    if (col === null) return false;
+    const r0 = hit[col + 3], g0 = hit[col + 4], b0 = hit[col + 5];
+    // the base outfit item this category REPLACES is never "unchanged": blue
+    // jeans over the blue base shorts lost their hips, a white top would lose
+    // everything to the white base tee
+    if (REPLACES[cat]?.(r0, g0, b0)) return false;
+    const r1 = part.C[i * 3], g1 = part.C[i * 3 + 1], b1 = part.C[i * 3 + 2];
+    const dr = r0 - r1, dg = g0 - g1, db = b0 - b1;
+    // brightness AND hue: a charcoal coat over dark-blue shorts is "close" in
+    // RGB distance but not in chroma — without this the coat got holes
+    return Math.sqrt(dr * dr + dg * dg + db * db) < sameColor &&
+           Math.abs((b0 - r0) - (b1 - r1)) < 18 && Math.abs((r0 - g0) - (r1 - g1)) < 18;
+  };
   const out = new THREE.Scene();
-  let dropped = 0;
+  let dropped = 0, droppedSame = 0, fragments = 0, cropped = 0;
+  // pass 1: per part, strip what is not this garment
+  const work = [];
   for (const k of chosen) {
     const src = parts[k].mesh;
-    const geo = src.geometry.clone();
-    if (dropSkin) {
-      const C = parts[k].C, idx = geo.index ? Array.from(geo.index.array) : [...Array(geo.attributes.position.count).keys()];
-      const sk = i => isSkin(C[i * 3], C[i * 3 + 1], C[i * 3 + 2]);
-      const kept = [];
-      for (let t = 0; t < idx.length; t += 3) if (!(sk(idx[t]) && sk(idx[t + 1]) && sk(idx[t + 2]))) kept.push(idx[t], idx[t + 1], idx[t + 2]);
-      dropped += (idx.length - kept.length) / 3;
-      geo.setIndex(kept);
+    let geo = src.geometry.clone();
+    if (!geo.index) geo.setIndex([...Array(geo.attributes.position.count).keys()]);
+    const filter = keepTri => {
+      const idx = Array.from(geo.index.array), kept = [];
+      for (let t = 0; t < idx.length; t += 3) if (keepTri(idx[t], idx[t + 1], idx[t + 2])) kept.push(idx[t], idx[t + 1], idx[t + 2]);
+      const d = (idx.length - kept.length) / 3; geo.setIndex(kept); return d;
+    };
+    { // category height band (body-normalised, feet = 0): with every part in
+      // play this is what keeps a top from claiming the shoes
+      const yn = i => { tq.set(parts[k].P[i * 3], parts[k].P[i * 3 + 1], parts[k].P[i * 3 + 2]).applyMatrix4(Mb); return (tq.y - bf.y0) / bf.H; };
+      const memo = new Float32Array(parts[k].n).fill(NaN);
+      const y = i => Number.isNaN(memo[i]) ? (memo[i] = yn(i)) : memo[i];
+      const inb = i => y(i) >= crop[0] && y(i) <= crop[1] ? 1 : 0;
+      cropped += filter((a, b, c) => inb(a) + inb(b) + inb(c) >= 2);
     }
-    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(M, src.matrixWorld));
+    if (dropSame) {
+      const memo = new Int8Array(parts[k].n).fill(-1);
+      const sm = i => memo[i] >= 0 ? memo[i] : (memo[i] = sameAsBody(parts[k], i) ? 1 : 0);
+      droppedSame += filter((a, b, c) => sm(a) + sm(b) + sm(c) < 2);
+    }
+    if (dropSkin) {
+      const C = parts[k].C, sk = i => isSkin(C[i * 3], C[i * 3 + 1], C[i * 3 + 2]);
+      dropped += filter((a, b, c) => !(sk(a) && sk(b) && sk(c)));
+    }
+    if (notMine) {
+      const C = parts[k].C, nm = i => notMine(C[i * 3], C[i * 3 + 1], C[i * 3 + 2]) ? 1 : 0;
+      dropped += filter((a, b, c) => nm(a) + nm(b) + nm(c) < 2);
+    }
+    work.push({ k, src, geo });
+  }
+  // debug: per height band, how many source vertices each filter flags
+  const bands = debug ? Array.from({ length: 8 }, () => ({ n: 0, same: 0, skin: 0, r: 0, g: 0, b: 0 })) : null;
+  if (debug) for (const k of chosen) { const P = parts[k];
+    for (let i = 0; i < P.n; i++) {
+      tq.set(P.P[i * 3], P.P[i * 3 + 1], P.P[i * 3 + 2]).applyMatrix4(Mb);
+      const bi = Math.floor(((tq.y - bf.y0) / bf.H) / 0.0625); if (bi < 0 || bi > 7) continue;
+      const B = bands[bi]; B.n++; B.same += sameAsBody(P, i) ? 1 : 0; B.skin += isSkin(P.C[i * 3], P.C[i * 3 + 1], P.C[i * 3 + 2]) ? 1 : 0;
+      B.r += P.C[i * 3]; B.g += P.C[i * 3 + 1]; B.b += P.C[i * 3 + 2];
+    } }
+  // pass 2: fragments are judged against the WHOLE piece (a head part that is
+  // 99 % stripped would otherwise keep its last scraps as "100 % of the part")
+  const totalTris = work.reduce((a, w) => a + w.geo.index.count / 3, 0);
+  for (const w of work) {
+    fragments += dropFragments(w.geo, totalTris * minFragment);
+    if (!w.geo.index.count) continue;
+    const geo = compact(w.geo);
+    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(M, w.src.matrixWorld));
     if (puff) inflate(geo, puff);
     geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: src.material.map, roughness: 1, metalness: 0 }));
-    m.name = `${cat}_${id}_${k}`;
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: w.src.material.map, roughness: 1, metalness: 0 }));
+    m.name = `${cat}_${id}_${w.k}`;
     out.add(m);
   }
   const glb = await new Promise((res, rej) => new GLTFExporter().parse(out, res, rej, { binary: true }));
@@ -245,8 +422,9 @@ window.extract = async ({ dir, cat, id, pick = null, save = true, maxSkin = 0.45
   let saved = null;
   if (save) saved = await (await fetch(`/__save?path=web/avatar4/${sub}/${id}.glb`, { method: "POST", body: glb })).text();
   return { chosen, desc, bodyYaw: +bf.yaw.toFixed(3), eyeYawDelta: +(bf.yaw - df.yaw).toFixed(3),
-           fitYaw: +fitYaw.theta.toFixed(3), fitCost: +fitYaw.cost.toFixed(4), oppositeCost: +fitYaw.opposite.toFixed(4), scale: +s.toFixed(4),
-           darkVerts: [bf.darkVerts, df.darkVerts], skinTrisDropped: dropped, bytes: glb.byteLength, saved };
+           fitYaw: +fitYaw.theta.toFixed(3), tips: fitYaw.tips, fitCost: +fitYaw.cost.toFixed(4), oppositeCost: +fitYaw.opposite.toFixed(4), scale: +s.toFixed(4),
+           darkVerts: [bf.darkVerts, df.darkVerts], skinTrisDropped: dropped, sameAsBodyTrisDropped: droppedSame, bands: bands?.map((B, i) => `y${(i * 0.0625).toFixed(2)}: n${B.n} same${B.same} skin${B.skin} rgb${Math.round(B.r / Math.max(1, B.n))},${Math.round(B.g / Math.max(1, B.n))},${Math.round(B.b / Math.max(1, B.n))}`),
+           fragmentTrisDropped: fragments, croppedTris: cropped, keptTris: out.children.reduce((a, m) => a + m.geometry.index.count / 3, 0), bytes: glb.byteLength, saved };
 };
 window.__w = { THREE, sample, frameOf, bestYaw, load };
 document.title = "wardrobe extract — READY";

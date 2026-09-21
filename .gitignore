@@ -32,3 +32,6 @@ scripts/osm_cache_*.json
 web/models/ref/
 scripts/venue_geocode_cache.json
 scripts/naver_usage.json
+
+# avatar v4 wardrobe: Tripo segmentation output is no longer used by the extractor
+assets/player/base-v4/wardrobe/*/segmented.glb

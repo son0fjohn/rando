@@ -20,7 +20,12 @@ import * as SkeletonUtils from "https://esm.sh/three@0.160.0/examples/jsm/utils/
 const V4 = new URLSearchParams(location.search).get("body") === "v4";
 const BASE = V4 ? "avatar4" : "avatar3";
 const FACE_BASE = "avatar3"; // face decal PNGs are shared
-const V4_CATALOG = { hair: [], top: ["hoodie-maroon"], bottom: [], shoes: [] };
+const V4_CATALOG = {
+  hair: ["short-cropped", "medium-fringe", "long-straight", "curly-volume", "buzz", "messy-shag"],
+  top: ["hoodie-maroon", "tee-black", "jacket-olive", "bomber-black"],
+  bottom: ["pants-baggy-black", "trousers-wide-olive", "shorts-cargo-grey"],
+  shoes: [],
+};
 const CHAR_H = 15;
 
 // palette sampled offline from the generated variant sheets (avatar3_prep):
@@ -531,10 +536,13 @@ function facePatch(cfg, owned, face = T.face) {
 // still shows the tee, cuffs still show wrists). Body geometry is shared
 // across characters, so each character gets a shallow geometry (same
 // attribute buffers, its own index).
-const COVER_R = 0.55; // world units at CHAR_H 15 (~3.5 % of height)
-function coveredTris(bodyMesh, mask, mw, mh, garmentRoot, R = COVER_R, skinned = false) {
-  const pos = bodyMesh.geometry.attributes.position, uv = bodyMesh.geometry.attributes.uv;
-  const idx = bodyMesh.geometry.index.array;
+const COVER_R = 0.62; // world units at CHAR_H 15 (~3.5 % of height)
+function coveredTris(bodyMesh, srcGeo, mask, mw, mh, garmentRoot, R = COVER_R, skinned = false) {
+  // srcGeo, not bodyMesh.geometry: once one garment is on, the mesh carries the
+  // re-packed shallow index, and flags computed in THAT order hide random
+  // triangles when applied in source order (speckled heads with top + bottom)
+  const pos = srcGeo.attributes.position, uv = srcGeo.attributes.uv;
+  const idx = srcGeo.index.array;
   const cell = R, grid = new Map();
   const v = new THREE.Vector3();
   let gLo = Infinity, gHi = -Infinity; // only hide INSIDE the garment's own height span,
@@ -542,7 +550,9 @@ function coveredTris(bodyMesh, mask, mw, mh, garmentRoot, R = COVER_R, skinned =
   garmentRoot.traverse(o => {
     if (!o.isMesh) return;
     const gp = o.geometry.attributes.position;
+    const used = o.geometry.index ? new Set(o.geometry.index.array) : null; // referenced verts only
     for (let i = 0; i < gp.count; i++) {
+      if (used && !used.has(i)) continue;
       v.fromBufferAttribute(gp, i).applyMatrix4(o.matrixWorld);
       gLo = Math.min(gLo, v.y); gHi = Math.max(gHi, v.y);
       const k = `${Math.floor(v.x / cell)},${Math.floor(v.y / cell)},${Math.floor(v.z / cell)}`;
@@ -557,16 +567,30 @@ function coveredTris(bodyMesh, mask, mw, mh, garmentRoot, R = COVER_R, skinned =
     return mask[y * mw + x] === 1;
   };
   const skinV = skinned ? (bodyMesh.applyBoneTransforms ?? bodyMesh.boneTransform).bind(bodyMesh) : null;
+  // "covered" = a garment vertex sits OUTSIDE this body vertex, roughly along
+  // its normal — not merely nearby. An open coat's lapels are near the tee
+  // they frame without covering it; a plain radius test ate ragged holes into
+  // everything visible through the opening.
+  const nrm = srcGeo.attributes.normal, nv = new THREE.Vector3(), dv = new THREE.Vector3();
+  const nMat = new THREE.Matrix3().getNormalMatrix(bodyMesh.matrixWorld);
   const near = i => {
     v.fromBufferAttribute(pos, i);
     if (skinV) skinV(i, v);
     v.applyMatrix4(bodyMesh.matrixWorld);
     if (v.y < gLo || v.y > gHi) return false;
+    if (nrm) nv.fromBufferAttribute(nrm, i).applyMatrix3(nMat).normalize();
     const cx = Math.floor(v.x / cell), cy = Math.floor(v.y / cell), cz = Math.floor(v.z / cell);
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
       const a = grid.get(`${cx + dx},${cy + dy},${cz + dz}`); if (!a) continue;
       for (let j = 0; j < a.length; j += 3) {
-        if ((a[j] - v.x) ** 2 + (a[j + 1] - v.y) ** 2 + (a[j + 2] - v.z) ** 2 < R * R) return true;
+        dv.set(a[j] - v.x, a[j + 1] - v.y, a[j + 2] - v.z);
+        const d2 = dv.lengthSq();
+        if (d2 >= R * R) continue;
+        if (!nrm) return true;
+        const along = dv.dot(nv);                       // + = garment is outside
+        // lateral tolerance ~ one garment vertex spacing: low-poly pieces are sparse,
+        // and at 0.6 R parts of the tee found no vertex above them and poked through
+        if (along > -0.25 * R && d2 - along * along < (0.95 * R) ** 2) return true;
       }
     }
     return false;
@@ -577,18 +601,29 @@ function coveredTris(bodyMesh, mask, mw, mh, garmentRoot, R = COVER_R, skinned =
   for (let t = 0; t < hide.length; t++) hide[t] = vertHide[idx[t * 3]] && vertHide[idx[t * 3 + 1]] && vertHide[idx[t * 3 + 2]] ? 1 : 0;
   return hide;
 }
-// shallow per-character geometry whose index skips the hidden triangles
-function geometryWithout(srcGeo, hideSets) {
-  const idx = srcGeo.index.array, kept = [];
-  for (let t = 0; t < idx.length / 3; t++) {
-    if (hideSets.some(h => h[t])) continue;
-    kept.push(idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]);
-  }
+// One shallow geometry per character: the template's attribute buffers by
+// reference, its OWN index copy. Hidden triangles are handled by packing the
+// kept ones to the front and shrinking the draw range — same-size index, so
+// nothing is reallocated per outfit change. NEVER dispose() one of these:
+// three frees the GPU buffers of every attribute it holds, and the template
+// plus every other character still point at them (it showed up as white
+// speckle all over the head as soon as a second garment re-applied covers).
+function shallowBodyGeometry(srcGeo) {
   const g = new THREE.BufferGeometry();
   for (const k of Object.keys(srcGeo.attributes)) g.setAttribute(k, srcGeo.attributes[k]);
-  g.setIndex(kept);
+  g.setIndex(new THREE.BufferAttribute(srcGeo.index.array.slice(), 1));
   g.boundingBox = srcGeo.boundingBox; g.boundingSphere = srcGeo.boundingSphere;
   return g;
+}
+function applyCovers(g, srcGeo, hideSets) {
+  const src = srcGeo.index.array, dst = g.index.array;
+  let w = 0;
+  for (let t = 0; t < src.length / 3; t++) {
+    if (hideSets.some(h => h[t])) continue;
+    dst[w++] = src[t * 3]; dst[w++] = src[t * 3 + 1]; dst[w++] = src[t * 3 + 2];
+  }
+  g.index.needsUpdate = true;
+  g.setDrawRange(0, w);
 }
 
 // per-style correction table (raw garment-frame units; pieces are
@@ -690,13 +725,11 @@ function buildHumanApi(cfg) {
           // group scale would, so the radius follows it
           group.updateWorldMatrix(true, true);
           const gs = group.getWorldScale(new THREE.Vector3()).x || 1;
-          T.cover[key] ??= coveredTris(bodyMesh, T.skinMask, T.face?.canvas.width ?? 0,
+          T.cover[key] ??= coveredTris(bodyMesh, bodySrcGeo, T.skinMask, T.face?.canvas.width ?? 0,
                                        T.face?.canvas.height ?? 0, wrap, COVER_R * gs);
           covers.push(T.cover[key]);
-          const g = geometryWithout(bodySrcGeo, covers);
-          if (bodyMesh.geometry !== bodySrcGeo) bodyMesh.geometry.dispose();
-          bodyMesh.geometry = g;
-          owned.push(g);
+          if (bodyMesh.geometry === bodySrcGeo) bodyMesh.geometry = shallowBodyGeometry(bodySrcGeo);
+          applyCovers(bodyMesh.geometry, bodySrcGeo, covers);
         }
       }).catch(e => console.warn("[avatar] attach", cat, id, e));
     }
@@ -777,7 +810,7 @@ export function loadAnimTemplate() {
 // world matrices; the garment geometry is rebuilt in the body's LOCAL
 // (bind) frame so the skinning math matches the body exactly.
 const _acc = new THREE.Matrix4(), _S = new THREE.Matrix4();
-function skinToBody(garmentMesh, bodySkinned) {
+function skinToBody(garmentMesh, bodySkinned, rigidToHead = false) {
   const gGeo = garmentMesh.geometry.clone();
   const gPos = gGeo.attributes.position;
   const bGeo = bodySkinned.geometry;
@@ -822,12 +855,17 @@ function skinToBody(garmentMesh, bodySkinned) {
     }
     return best;
   };
+  // hair rides the head RIGIDLY: spikes and long strands sit far from any body
+  // vertex, fall out of the nearest-vertex search and used to bind to the root
+  // bone (smeared upward for ever). Everything copies the head-top vertex.
+  let headTop = -1;
+  if (rigidToHead) { let hy = -Infinity; for (let i = 0; i < bPos.count; i++) if (bWorld[i * 3 + 1] > hy) { hy = bWorld[i * 3 + 1]; headTop = i; } }
   const inv = new THREE.Matrix4().copy(bodySkinned.matrixWorld).invert();
   const idx = new Uint16Array(gPos.count * 4);
   const wt = new Float32Array(gPos.count * 4);
   for (let i = 0; i < gPos.count; i++) {
     v.fromBufferAttribute(gPos, i).applyMatrix4(garmentMesh.matrixWorld);
-    const n = nearest(v.x, v.y, v.z);
+    const n = headTop >= 0 ? headTop : nearest(v.x, v.y, v.z);
     if (n >= 0) {
       for (let c = 0; c < 4; c++) {
         idx[i * 4 + c] = bIdx.getComponent(n, c);
@@ -891,6 +929,7 @@ function buildAnimApi(cfg) {
   rig.traverse(o => { if (o.isSkinnedMesh && !bodySkinned) bodySkinned = o; });
   const bodySrcGeoA = bodySkinned?.geometry ?? null; // shared template geometry
   let coversA = [];                                   // v4: hidden-triangle sets
+  let shallowA = null;                                // v4: this character's body geometry
 
   // Tripo rigs carry wild mesh-node transforms: a static Box3 measure is
   // off by orders of magnitude vs what the skinning pipeline renders.
@@ -942,7 +981,10 @@ function buildAnimApi(cfg) {
   const animFaceY = AT.face ? AT.face.C.y * s + fit.position.y : staticFaceY;
   // +0.3: the rigged head is also marginally smaller — measured delta alone
   // still leaves fringes brushing the eye line
-  const headLift = animFaceY - staticFaceY + 0.3;
+  // v4: no lift. AT.face.C is measured on the clip's UNSKINNED geometry, which on
+  // the v2.5 rig is not where the head renders — the 'correction' floated the
+  // hair a head-height above the character. Static jig + same world fit suffices.
+  const headLift = V4 ? 0 : animFaceY - staticFaceY + 0.3;
 
   const rebuild = () => {
     const myEpoch = ++epoch;
@@ -952,7 +994,10 @@ function buildAnimApi(cfg) {
     for (const c of [...(bodySkinned?.parent?.children ?? [])]) {
       if (c.userData.attachment) c.parent.remove(c);
     }
-    if (V4 && bodySkinned && bodySrcGeoA) { bodySkinned.geometry = bodySrcGeoA; coversA = []; }
+    if (V4 && bodySkinned && bodySrcGeoA) {
+      coversA = [];
+      if (shallowA) { applyCovers(shallowA, bodySrcGeoA, coversA); bodySkinned.geometry = shallowA; }
+    }
     if (bodySkinned) {
       bodySkinned.material = new THREE.MeshLambertMaterial({
         map: getAnimSkinTex(cfg.skin) ?? bodySkinned.material.map ?? null });
@@ -1000,19 +1045,19 @@ function buildAnimApi(cfg) {
           const keep = bodySkinned.geometry;
           bodySkinned.geometry = bodySrcGeoA; // measure on the full body
           AT.cover ??= {};
-          AT.cover[key] ??= coveredTris(bodySkinned, AT.skinMask, AT.face?.canvas.width ?? 0,
+          AT.cover[key] ??= coveredTris(bodySkinned, bodySrcGeoA, AT.skinMask, AT.face?.canvas.width ?? 0,
                                         AT.face?.canvas.height ?? 0, wrap, COVER_R * gs * 1.3, true); // anim fit differs ~2 % from the static jig
           bodySkinned.geometry = keep;
           coversA.push(AT.cover[key]);
-          const g = geometryWithout(bodySrcGeoA, coversA);
-          if (bodySkinned.geometry !== bodySrcGeoA) bodySkinned.geometry.dispose();
-          bodySkinned.geometry = g;
+          shallowA ??= shallowBodyGeometry(bodySrcGeoA);
+          bodySkinned.geometry = shallowA;
+          applyCovers(shallowA, bodySrcGeoA, coversA);
         }
         const skinned = [];
         wrap.traverse(o => {
           if (!o.isMesh) return;
           owned.push(o.material);
-          const sm = skinToBody(o, bodySkinned);
+          const sm = skinToBody(o, bodySkinned, V4 && cat === "hair");
           owned.push(sm.geometry);
           sm.material = o.material;
           skinned.push(sm);
