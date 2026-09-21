@@ -12,7 +12,15 @@ import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "https://esm.sh/three@0.160.0/examples/jsm/utils/SkeletonUtils.js";
 
-const BASE = "avatar3";
+// ?body=v4 swaps in the low-poly chibi base (web/avatar4: Tripo v2.5 rig +
+// preset idle/walk). Opt-in until its wardrobe is rebuilt — v3 pieces were
+// cut for a 3.5-head body and do not fit a 3-head one, so v4 carries its own
+// (initially empty) catalog and keeps its BAKED face: the half-lidded eyes
+// are the character, and the v3 decals would paint over them.
+const V4 = new URLSearchParams(location.search).get("body") === "v4";
+const BASE = V4 ? "avatar4" : "avatar3";
+const FACE_BASE = "avatar3"; // face decal PNGs are shared
+const V4_CATALOG = { hair: [], top: [], bottom: [], shoes: [] };
 const CHAR_H = 15;
 
 // palette sampled offline from the generated variant sheets (avatar3_prep):
@@ -31,7 +39,8 @@ export const IRIS3_HEX = { // UI swatches only; decals carry the real color
   brown: "#8a6a52", blue: "#3f7fd1", green: "#5d9c53",
 };
 
-export const HAIR_STYLES = ["f1", "f2", "f3", "f4", "f5", "m1", "m2", "m3", "m5"];
+export const HAIR_STYLES = V4 ? V4_CATALOG.hair
+  : ["f1", "f2", "f3", "f4", "f5", "m1", "m2", "m3", "m5"];
 export const PART_OPTIONS3 = {
   skin: ["1", "2", "3", "4", "5"],
   hair: ["none", ...HAIR_STYLES],
@@ -49,9 +58,13 @@ export const PART_OPTIONS3 = {
           "boot-work-tan", "clog-pink", "sneaker-white-stripe"],
 };
 
+if (V4) {
+  for (const k of ["top", "bottom", "shoes"]) PART_OPTIONS3[k] = ["none", ...V4_CATALOG[k]];
+}
+
 export const DEFAULT_AVATAR3 = {
-  skin: "1", hair: "f1", hairColor: "black", face: "f1", iris: "current",
-  top: "none", bottom: "none", shoes: "none",
+  skin: "1", hair: V4 ? (V4_CATALOG.hair[0] ?? "none") : "f1", hairColor: "black",
+  face: "f1", iris: "current", top: "none", bottom: "none", shoes: "none",
 };
 
 // old blob configs ({ body, eyes, iris, head }) carry no mappable meaning
@@ -85,7 +98,7 @@ export function loadFaceDecals() {
       const im = new Image();
       im.onload = () => { DECALS[`${de}_${ir}`] = im; res(); };
       im.onerror = () => res();
-      im.src = `${BASE}/faces/${de}_${ir}.png`;
+      im.src = `${FACE_BASE}/faces/${de}_${ir}.png`;
     }))));
   return decalsPromise;
 }
@@ -211,8 +224,10 @@ function analyzeFace(src) {
     const l = (px[i] + px[i + 1] + px[i + 2]) / 3;
     if (l > best) { best = l; fill = [px[i], px[i + 1], px[i + 2]]; }
   }
-  ctx.fillStyle = `rgb(${fill[0]},${fill[1]},${fill[2]})`;
-  ctx.fillRect(bx, by, bw, bh);
+  if (!V4) { // v4 keeps its baked eyes (see V4 note at the top)
+    ctx.fillStyle = `rgb(${fill[0]},${fill[1]},${fill[2]})`;
+    ctx.fillRect(bx, by, bw, bh);
+  }
   img.close?.();
   return { canvas: cv, C, R: sphereR, dir };
 }
@@ -233,6 +248,21 @@ function buildSkinMask(cv) {
     if (r > 150 && r - g >= 26 && r - g <= 85 && g - b >= 6 && g - b <= 55) mask[i] = 1;
   }
   return mask;
+}
+
+// median colour of the masked skin — the v4 texture's baked tone (v3 keeps
+// its hand-sampled SKIN_BASE so shipped tones do not shift)
+function skinBaseOf(cv, mask) {
+  if (!V4) return SKIN_BASE;
+  const d = cv.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, cv.width, cv.height).data;
+  const rs = [], gs = [], bs = [];
+  for (let i = 0; i < mask.length; i += 7) {
+    if (!mask[i]) continue;
+    rs.push(d[i * 4]); gs.push(d[i * 4 + 1]); bs.push(d[i * 4 + 2]);
+  }
+  if (rs.length < 50) return SKIN_BASE;
+  const med = a => a.sort((x, y) => x - y)[a.length >> 1];
+  return [med(rs), med(gs), med(bs)];
 }
 
 function recolorCanvas(srcCv, mask, gains) {
@@ -314,6 +344,7 @@ export function loadHumanTemplate() {
     await loadFaceDecals(); // all 36 face decal PNGs, ready for sync assembly
     T = {
       fit, face, skinMask, decals: DECALS,
+      skinBase: face ? skinBaseOf(face.canvas, skinMask) : SKIN_BASE,
       fitScale: s, fitOffset: off, yaw, srcCenter,
       skinTex: {},          // tone -> THREE.Texture
       pieces: {},           // "cat/id" -> template scene (matte)
@@ -361,7 +392,7 @@ const cropAboveY = (root, yLimit) => cropTris(root, v => v.y > yLimit);
 function getSkinTex(tone) {
   if (!T.face || !T.skinMask) return null;
   if (!T.skinTex[tone]) {
-    const gains = SKIN_RGB[tone].map((t, i) => t / SKIN_BASE[i]);
+    const gains = SKIN_RGB[tone].map((t, i) => t / T.skinBase[i]);
     T.skinTex[tone] = texFromCanvas(recolorCanvas(T.face.canvas, T.skinMask, gains));
   }
   return T.skinTex[tone];
@@ -440,6 +471,7 @@ function hairTexture(style, color) {
 // static template's analysis; the animated template passes its own (the
 // rigged export re-bakes the atlas, so face position/UVs differ).
 function facePatch(cfg, owned, face = T.face) {
+  if (V4) return null; // baked face (see V4 note at the top)
   const img = T.decals[`${cfg.face}_${cfg.iris}`];
   if (!img || !face) return null;
   const cv = document.createElement("canvas");
@@ -646,6 +678,7 @@ export function loadAnimTemplate() {
       scene,
       clips: { idle: gi.animations[0] ?? null, walk: gw.animations[0] ?? null },
       bodyMesh, face, skinMask,
+      skinBase: face ? skinBaseOf(face.canvas, skinMask) : SKIN_BASE,
       skinTex: {}, // tone -> texture, lazy (same recolor as the static path)
     };
     return AT;
@@ -723,7 +756,7 @@ function skinToBody(garmentMesh, bodySkinned) {
 function getAnimSkinTex(tone) {
   if (!AT?.face || !AT.skinMask) return null;
   if (!AT.skinTex[tone]) {
-    const gains = SKIN_RGB[tone].map((t, i) => t / SKIN_BASE[i]);
+    const gains = SKIN_RGB[tone].map((t, i) => t / AT.skinBase[i]);
     AT.skinTex[tone] = texFromCanvas(recolorCanvas(AT.face.canvas, AT.skinMask, gains));
   }
   return AT.skinTex[tone];
