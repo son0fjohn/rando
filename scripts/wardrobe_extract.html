@@ -1,0 +1,254 @@
+<!doctype html>
+<!-- dev tool (serve with scripts/wardrobe_server.py): cuts one garment out of
+     a Tripo-SEGMENTED dressed body and registers it onto the bare avatar-v4
+     body's frame, so the engine's single fit transform places it correctly.
+
+     window.extract({ dir, cat, id, pick?, save? }) -> diagnostics
+       dir  assets/player/base-v4/wardrobe/<piece>  (has segmented.glb)
+       cat  top | bottom | shoes | hair      id  catalog id
+       pick optional explicit part indices; default = auto by category band
+            + "not skin" colour test
+     Registration: both meshes are Tripo-normalised (1.0 tall) but arrive
+     with arbitrary yaw. Anchor = head-sphere centre; yaw = brute-force
+     search laying the garment-independent regions over the bare body. -->
+<html><head><meta charset="utf-8"><title>wardrobe extract</title>
+<style>body{margin:0;background:#777;color:#fff;font:12px monospace}canvas{display:block}</style></head>
+<body>
+<script type="module">
+import * as THREE from "https://esm.sh/three@0.160.0";
+import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import { GLTFExporter } from "https://esm.sh/three@0.160.0/examples/jsm/exporters/GLTFExporter.js";
+
+const loader = new GLTFLoader();
+const load = url => new Promise((res, rej) => loader.load(url + "?" + Date.now(), res, undefined, rej));
+
+// world-space vertex cloud + per-vertex texture colour for every mesh
+function sample(root) {
+  root.updateWorldMatrix(true, true);
+  const parts = [];
+  root.traverse(o => {
+    if (!o.isMesh && !o.isSkinnedMesh) return;
+    const pos = o.geometry.attributes.position, uv = o.geometry.attributes.uv;
+    const img = o.material.map?.image;
+    let px = null, W = 0, H = 0;
+    if (img) {
+      const cv = document.createElement("canvas");
+      const sc = Math.min(1, 1024 / img.width);
+      W = cv.width = Math.round(img.width * sc); H = cv.height = Math.round(img.height * sc);
+      const ctx = cv.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, W, H);
+      px = ctx.getImageData(0, 0, W, H).data;
+    }
+    const flipY = o.material.map ? o.material.map.flipY : false;
+    const P = [], C = [];
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      P.push(v.x, v.y, v.z);
+      if (px && uv) {
+        const x = Math.min(W - 1, Math.max(0, Math.round(uv.getX(i) * W)));
+        const yy = flipY ? 1 - uv.getY(i) : uv.getY(i);
+        const y = Math.min(H - 1, Math.max(0, Math.round(yy * H)));
+        const k = (y * W + x) * 4;
+        C.push(px[k], px[k + 1], px[k + 2]);
+      } else C.push(128, 128, 128);
+    }
+    parts.push({ mesh: o, P, C, n: pos.count });
+  });
+  return parts;
+}
+
+// facing + head-sphere centre of a whole character (list of parts)
+function frameOf(parts) {
+  let y0 = Infinity, y1 = -Infinity;
+  for (const p of parts) for (let i = 1; i < p.P.length; i += 3) { y0 = Math.min(y0, p.P[i]); y1 = Math.max(y1, p.P[i]); }
+  const H = y1 - y0;
+  // sphere fit on the crown (top 28 %)
+  const A = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], B = [0, 0, 0, 0];
+  for (const p of parts) for (let i = 0; i < p.P.length; i += 3) {
+    const x = p.P[i], y = p.P[i + 1], z = p.P[i + 2];
+    if (y < y0 + H * 0.72) continue;
+    const row = [2 * x, 2 * y, 2 * z, 1], rhs = x * x + y * y + z * z;
+    for (let r = 0; r < 4; r++) { for (let c = 0; c < 4; c++) A[r][c] += row[r] * row[c]; B[r] += row[r] * rhs; }
+  }
+  for (let col = 0; col < 4; col++) {
+    let piv = col;
+    for (let r = col + 1; r < 4; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    [A[col], A[piv]] = [A[piv], A[col]]; [B[col], B[piv]] = [B[piv], B[col]];
+    for (let r = 0; r < 4; r++) {
+      if (r === col) continue;
+      const f = A[r][col] / A[col][col];
+      for (let c = col; c < 4; c++) A[r][c] -= f * A[col][c];
+      B[r] -= f * B[col];
+    }
+  }
+  const head = new THREE.Vector3(B[0] / A[0][0], B[1] / A[1][1], B[2] / A[2][2]);
+  // dark texels in the head band = eyes -> facing
+  const mid = new THREE.Vector3(); let nd = 0;
+  for (const p of parts) for (let i = 0, c = 0; i < p.P.length; i += 3, c += 3) {
+    if (p.P[i + 1] < y0 + H * 0.55) continue;
+    if ((p.C[c] + p.C[c + 1] + p.C[c + 2]) / 3 > 95) continue;
+    mid.x += p.P[i]; mid.y += p.P[i + 1]; mid.z += p.P[i + 2]; nd++;
+  }
+  mid.divideScalar(Math.max(1, nd));
+  const dir = mid.clone().sub(head).setY(0).normalize();
+  return { y0, y1, H, head, yaw: Math.atan2(dir.x, dir.z), darkVerts: nd };
+}
+
+const isSkin = (r, g, b) => r > 120 && r - g >= 14 && r - g <= 85 && g - b >= 4 && g - b <= 60;
+
+function describe(parts, fr) {
+  return parts.map((p, k) => {
+    let cy = 0, skin = 0, R = 0, G = 0, Bl = 0, ymin = Infinity, ymax = -Infinity;
+    for (let i = 0, c = 0; i < p.P.length; i += 3, c += 3) {
+      const y = (p.P[i + 1] - fr.y0) / fr.H; cy += y; ymin = Math.min(ymin, y); ymax = Math.max(ymax, y);
+      R += p.C[c]; G += p.C[c + 1]; Bl += p.C[c + 2];
+      if (isSkin(p.C[c], p.C[c + 1], p.C[c + 2])) skin++;
+    }
+    return { k, n: p.n, cy: +(cy / p.n).toFixed(3), y: [+ymin.toFixed(2), +ymax.toFixed(2)],
+             skin: +(skin / p.n).toFixed(2), rgb: [R, G, Bl].map(v => Math.round(v / p.n)) };
+  });
+}
+
+// Yaw that best lays the dressed mesh over the bare body, judged ONLY on the
+// regions this garment category cannot have changed (legs for a top, head +
+// torso for shoes ...). Colour-free on purpose: eye-texel facing breaks as
+// soon as a dark hood or dark hair sits in the head band.
+const STABLE = { top: y => y < 0.25 || y > 0.60, bottom: y => y < 0.05 || y > 0.42,
+                 shoes: y => y > 0.16, hair: y => y < 0.50 };
+function bestYaw(body, bf, parts, df, s, cat) {
+  const cell = 0.02, grid = new Map();
+  const key = (x, y, z) => `${Math.round(x / cell)},${Math.round(y / cell)},${Math.round(z / cell)}`;
+  for (const p of body) for (let i = 0; i < p.P.length; i += 3) {
+    const x = p.P[i] - bf.head.x, y = p.P[i + 1] - bf.head.y, z = p.P[i + 2] - bf.head.z;
+    const k = key(x, y, z); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(x, y, z);
+  }
+  const pts = [];
+  for (const p of parts) for (let i = 0; i < p.P.length; i += 3) {
+    const yn = (p.P[i + 1] - df.y0) / df.H;
+    if (!STABLE[cat](yn)) continue;
+    pts.push((p.P[i] - df.head.x) * s, (p.P[i + 1] - df.head.y) * s, (p.P[i + 2] - df.head.z) * s);
+  }
+  const step = Math.max(3, Math.floor(pts.length / 3 / 1400) * 3);
+  const cost = th => {
+    const c = Math.cos(th), sn = Math.sin(th); let sum = 0, n = 0;
+    for (let i = 0; i < pts.length; i += step) {
+      const x = pts[i] * c + pts[i + 2] * sn, y = pts[i + 1], z = -pts[i] * sn + pts[i + 2] * c;
+      let best = 0.06 * 0.06;
+      const cx = Math.round(x / cell), cy = Math.round(y / cell), cz = Math.round(z / cell);
+      for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) for (let dz = -2; dz <= 2; dz++) {
+        const a = grid.get(`${cx + dx},${cy + dy},${cz + dz}`); if (!a) continue;
+        for (let j = 0; j < a.length; j += 3) {
+          const d = (a[j] - x) ** 2 + (a[j + 1] - y) ** 2 + (a[j + 2] - z) ** 2;
+          if (d < best) best = d;
+        }
+      }
+      sum += Math.sqrt(best); n++;
+    }
+    return sum / n;
+  };
+  let best = 0, bc = Infinity;
+  for (let d = 0; d < 360; d += 4) { const c = cost(d * Math.PI / 180); if (c < bc) { bc = c; best = d; } }
+  for (let d = best - 4; d <= best + 4; d += 0.5) { const c = cost(d * Math.PI / 180); if (c < bc) { bc = c; best = d; } }
+  // three.js makeRotationY(t): x' = x cos t + z sin t  — same convention as cost()
+  return { theta: best * Math.PI / 180, cost: bc, opposite: cost((best + 180) * Math.PI / 180) };
+}
+
+// vertical band (fraction of height, feet = 0) a part's centre must sit in
+const BAND = { top: [0.22, 0.62], bottom: [0.08, 0.40], shoes: [0.0, 0.14], hair: [0.55, 1.1] };
+
+// dropSkin: cut triangles that are entirely skin-coloured (a sleeve part often
+// carries the hand) — they would cover the body's tone-recoloured skin with
+// the default tone. Turn OFF for tan / beige garments.
+// inflate: the v4 base wears its own tee/shorts/sneakers, as bulky as any
+// garment — without a small outward push they poke through it. Offset is along
+// POSITION-MERGED normals (the meshes are flat-shaded with split vertices; a
+// per-vertex-normal push would crack every facet apart).
+function inflate(geo, eps) {
+  if (!geo.index) geo.setIndex([...Array(geo.attributes.position.count).keys()]);
+  const pos = geo.attributes.position, idx = geo.index.array;
+  const keyOf = i => `${Math.round(pos.getX(i) * 2e3)},${Math.round(pos.getY(i) * 2e3)},${Math.round(pos.getZ(i) * 2e3)}`;
+  const acc = new Map();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  for (let t = 0; t < idx.length; t += 3) {
+    a.fromBufferAttribute(pos, idx[t]); b.fromBufferAttribute(pos, idx[t + 1]); c.fromBufferAttribute(pos, idx[t + 2]);
+    n.subVectors(b, a).cross(c.sub(a));              // area-weighted face normal
+    for (const i of [idx[t], idx[t + 1], idx[t + 2]]) {
+      const k = keyOf(i); const v = acc.get(k) ?? acc.set(k, new THREE.Vector3()).get(k); v.add(n);
+    }
+  }
+  for (let i = 0; i < pos.count; i++) {
+    const v = acc.get(keyOf(i)); if (!v || v.lengthSq() === 0) continue;
+    n.copy(v).normalize();
+    pos.setXYZ(i, pos.getX(i) + n.x * eps, pos.getY(i) + n.y * eps, pos.getZ(i) + n.z * eps);
+  }
+  pos.needsUpdate = true;
+}
+const INFLATE = { top: 0.014, bottom: 0.010, shoes: 0.010, hair: 0.004 };
+
+window.extract = async ({ dir, cat, id, pick = null, save = true, maxSkin = 0.45, dropSkin = true, bodyUrl = "/web/avatar4/body.glb", puff = INFLATE[cat] }) => {
+  const body = sample((await load(bodyUrl)).scene);
+  const bf = frameOf(body);
+  const seg = await load(`/${dir}/segmented.glb`);
+  const parts = sample(seg.scene);
+  const df = frameOf(parts);
+  const desc = describe(parts, df);
+  const chosen = pick ?? desc.filter(d => d.cy >= BAND[cat][0] && d.cy <= BAND[cat][1] && d.skin <= maxSkin).map(d => d.k);
+  if (!chosen.length) return { error: "no parts matched", desc, bodyYaw: bf.yaw, dressedYaw: df.yaw };
+
+  // body frame centre EXACTLY as avatar3.js gets T.srcCenter: Box3.setFromObject
+  // (non-precise) = the mesh's LOCAL geometry bbox pushed through its world
+  // matrix, so its centre is matrixWorld * localBoxCentre — NOT the centre of
+  // the world-space vertex AABB (they differ by a few % on a yawed,
+  // front/back-asymmetric body: enough to sink a hoodie front into the chest).
+  // The engine then yaws by -T.yaw; undoing that for the piece frame cancels,
+  // so `back` is simply that world-space point.
+  const eb = new THREE.Box3();
+  for (const p of body) {
+    p.mesh.geometry.computeBoundingBox();
+    eb.union(p.mesh.geometry.boundingBox.clone().applyMatrix4(p.mesh.matrixWorld));
+  }
+  const back = eb.getCenter(new THREE.Vector3());
+  // scale: same Tripo normalisation, but a garment can change the bbox
+  // height slightly — match head-centre-to-feet distance instead
+  const s = (bf.head.y - bf.y0) / (df.head.y - df.y0);
+  const fitYaw = bestYaw(body, bf, parts, df, s, cat);
+  // q = Rot(yawB - yawD) * s * (p - headD) + headB ; piece = q - Rot(yawB)*srcCenter
+  const M = new THREE.Matrix4()
+    .makeTranslation(bf.head.x - back.x, bf.head.y - back.y, bf.head.z - back.z)
+    .multiply(new THREE.Matrix4().makeRotationY(fitYaw.theta))
+    .multiply(new THREE.Matrix4().makeScale(s, s, s))
+    .multiply(new THREE.Matrix4().makeTranslation(-df.head.x, -df.head.y, -df.head.z));
+
+  const out = new THREE.Scene();
+  let dropped = 0;
+  for (const k of chosen) {
+    const src = parts[k].mesh;
+    const geo = src.geometry.clone();
+    if (dropSkin) {
+      const C = parts[k].C, idx = geo.index ? Array.from(geo.index.array) : [...Array(geo.attributes.position.count).keys()];
+      const sk = i => isSkin(C[i * 3], C[i * 3 + 1], C[i * 3 + 2]);
+      const kept = [];
+      for (let t = 0; t < idx.length; t += 3) if (!(sk(idx[t]) && sk(idx[t + 1]) && sk(idx[t + 2]))) kept.push(idx[t], idx[t + 1], idx[t + 2]);
+      dropped += (idx.length - kept.length) / 3;
+      geo.setIndex(kept);
+    }
+    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(M, src.matrixWorld));
+    if (puff) inflate(geo, puff);
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: src.material.map, roughness: 1, metalness: 0 }));
+    m.name = `${cat}_${id}_${k}`;
+    out.add(m);
+  }
+  const glb = await new Promise((res, rej) => new GLTFExporter().parse(out, res, rej, { binary: true }));
+  const sub = { hair: "hair", top: "tops", bottom: "bottoms", shoes: "shoes" }[cat];
+  let saved = null;
+  if (save) saved = await (await fetch(`/__save?path=web/avatar4/${sub}/${id}.glb`, { method: "POST", body: glb })).text();
+  return { chosen, desc, bodyYaw: +bf.yaw.toFixed(3), eyeYawDelta: +(bf.yaw - df.yaw).toFixed(3),
+           fitYaw: +fitYaw.theta.toFixed(3), fitCost: +fitYaw.cost.toFixed(4), oppositeCost: +fitYaw.opposite.toFixed(4), scale: +s.toFixed(4),
+           darkVerts: [bf.darkVerts, df.darkVerts], skinTrisDropped: dropped, bytes: glb.byteLength, saved };
+};
+window.__w = { THREE, sample, frameOf, bestYaw, load };
+document.title = "wardrobe extract — READY";
+</script>
+</body></html>

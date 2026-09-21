@@ -20,7 +20,7 @@ import * as SkeletonUtils from "https://esm.sh/three@0.160.0/examples/jsm/utils/
 const V4 = new URLSearchParams(location.search).get("body") === "v4";
 const BASE = V4 ? "avatar4" : "avatar3";
 const FACE_BASE = "avatar3"; // face decal PNGs are shared
-const V4_CATALOG = { hair: [], top: [], bottom: [], shoes: [] };
+const V4_CATALOG = { hair: [], top: ["hoodie-maroon"], bottom: [], shoes: [] };
 const CHAR_H = 15;
 
 // palette sampled offline from the generated variant sheets (avatar3_prep):
@@ -349,6 +349,7 @@ export function loadHumanTemplate() {
       skinTex: {},          // tone -> THREE.Texture
       pieces: {},           // "cat/id" -> template scene (matte)
       pieceLoads: {},       // in-flight piece loads
+      cover: {},            // v4: "cat/id" -> hidden body-triangle flags
       hairCv: {},           // style -> { canvas, base }  (neutral texture)
       hairTex: {},          // "style_color" -> THREE.Texture
     };
@@ -523,6 +524,73 @@ function facePatch(cfg, owned, face = T.face) {
   return holder;
 }
 
+// ---- v4: hide the base outfit under a garment ----
+// The v4 base wears its own tee/shorts/sneakers, as bulky as any garment, so
+// they poke through whatever is worn on top. Hide every NON-SKIN body triangle
+// that sits within COVER_R of a garment vertex (skin is never hidden: a V-neck
+// still shows the tee, cuffs still show wrists). Body geometry is shared
+// across characters, so each character gets a shallow geometry (same
+// attribute buffers, its own index).
+const COVER_R = 0.55; // world units at CHAR_H 15 (~3.5 % of height)
+function coveredTris(bodyMesh, mask, mw, mh, garmentRoot, R = COVER_R, skinned = false) {
+  const pos = bodyMesh.geometry.attributes.position, uv = bodyMesh.geometry.attributes.uv;
+  const idx = bodyMesh.geometry.index.array;
+  const cell = R, grid = new Map();
+  const v = new THREE.Vector3();
+  let gLo = Infinity, gHi = -Infinity; // only hide INSIDE the garment's own height span,
+  garmentRoot.updateWorldMatrix(true, true);   // or the radius nibbles shorts below a hem
+  garmentRoot.traverse(o => {
+    if (!o.isMesh) return;
+    const gp = o.geometry.attributes.position;
+    for (let i = 0; i < gp.count; i++) {
+      v.fromBufferAttribute(gp, i).applyMatrix4(o.matrixWorld);
+      gLo = Math.min(gLo, v.y); gHi = Math.max(gHi, v.y);
+      const k = `${Math.floor(v.x / cell)},${Math.floor(v.y / cell)},${Math.floor(v.z / cell)}`;
+      let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(v.x, v.y, v.z);
+    }
+  });
+  bodyMesh.updateWorldMatrix(true, false);
+  const isSkin = i => {
+    if (!mask || !uv) return false;
+    const x = Math.min(mw - 1, Math.max(0, Math.round(uv.getX(i) * mw)));
+    const y = Math.min(mh - 1, Math.max(0, Math.round(uv.getY(i) * mh)));
+    return mask[y * mw + x] === 1;
+  };
+  const skinV = skinned ? (bodyMesh.applyBoneTransforms ?? bodyMesh.boneTransform).bind(bodyMesh) : null;
+  const near = i => {
+    v.fromBufferAttribute(pos, i);
+    if (skinV) skinV(i, v);
+    v.applyMatrix4(bodyMesh.matrixWorld);
+    if (v.y < gLo || v.y > gHi) return false;
+    const cx = Math.floor(v.x / cell), cy = Math.floor(v.y / cell), cz = Math.floor(v.z / cell);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      const a = grid.get(`${cx + dx},${cy + dy},${cz + dz}`); if (!a) continue;
+      for (let j = 0; j < a.length; j += 3) {
+        if ((a[j] - v.x) ** 2 + (a[j + 1] - v.y) ** 2 + (a[j + 2] - v.z) ** 2 < R * R) return true;
+      }
+    }
+    return false;
+  };
+  const vertHide = new Uint8Array(pos.count);
+  for (let i = 0; i < pos.count; i++) vertHide[i] = !isSkin(i) && near(i) ? 1 : 0;
+  const hide = new Uint8Array(idx.length / 3);
+  for (let t = 0; t < hide.length; t++) hide[t] = vertHide[idx[t * 3]] && vertHide[idx[t * 3 + 1]] && vertHide[idx[t * 3 + 2]] ? 1 : 0;
+  return hide;
+}
+// shallow per-character geometry whose index skips the hidden triangles
+function geometryWithout(srcGeo, hideSets) {
+  const idx = srcGeo.index.array, kept = [];
+  for (let t = 0; t < idx.length / 3; t++) {
+    if (hideSets.some(h => h[t])) continue;
+    kept.push(idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]);
+  }
+  const g = new THREE.BufferGeometry();
+  for (const k of Object.keys(srcGeo.attributes)) g.setAttribute(k, srcGeo.attributes[k]);
+  g.setIndex(kept);
+  g.boundingBox = srcGeo.boundingBox; g.boundingSphere = srcGeo.boundingSphere;
+  return g;
+}
+
 // per-style correction table (raw garment-frame units; pieces are
 // zero-centered, body is 1.0 tall). lift: f2 rides low. yaw: f5's GLB
 // exports facing backwards — its curtain hung over the face. trim: f2's
@@ -573,6 +641,8 @@ function buildHumanApi(cfg) {
     // castShadow is set HERE, not just by the world at spawn: rebuild()
     // replaces the meshes, so spawn-time flags are lost on outfit changes.
     const body = T.fit.clone(true);
+    let bodyMesh = null, bodySrcGeo = null;
+    const covers = []; // v4: hidden-triangle sets, one per attached garment
     body.traverse(o => {
       if (o.isMesh || o.isSkinnedMesh) {
         o.material = new THREE.MeshLambertMaterial({
@@ -580,6 +650,7 @@ function buildHumanApi(cfg) {
         o.frustumCulled = false;
         o.castShadow = true;
         owned.push(o.material); // map is the shared tone cache — material only
+        if (!bodyMesh) { bodyMesh = o; bodySrcGeo = o.geometry; }
       }
     });
     group.add(body);
@@ -612,7 +683,22 @@ function buildHumanApi(cfg) {
           if (o.isMesh) { o.castShadow = true; owned.push(o.material); }
         });
         group.add(wrap);
-      }).catch(() => {});
+        if (V4 && cat !== "hair" && bodyMesh && bodySrcGeo.index) {
+          // same body + same piece => same answer for every character
+          const key = `${cat}/${id}`;
+          // rigid placement of the character does not change distances; only a
+          // group scale would, so the radius follows it
+          group.updateWorldMatrix(true, true);
+          const gs = group.getWorldScale(new THREE.Vector3()).x || 1;
+          T.cover[key] ??= coveredTris(bodyMesh, T.skinMask, T.face?.canvas.width ?? 0,
+                                       T.face?.canvas.height ?? 0, wrap, COVER_R * gs);
+          covers.push(T.cover[key]);
+          const g = geometryWithout(bodySrcGeo, covers);
+          if (bodyMesh.geometry !== bodySrcGeo) bodyMesh.geometry.dispose();
+          bodyMesh.geometry = g;
+          owned.push(g);
+        }
+      }).catch(e => console.warn("[avatar] attach", cat, id, e));
     }
   };
   rebuild();
@@ -690,6 +776,7 @@ export function loadAnimTemplate() {
 // mesh and bind it to the body's skeleton. Both inputs must have live
 // world matrices; the garment geometry is rebuilt in the body's LOCAL
 // (bind) frame so the skinning math matches the body exactly.
+const _acc = new THREE.Matrix4(), _S = new THREE.Matrix4();
 function skinToBody(garmentMesh, bodySkinned) {
   const gGeo = garmentMesh.geometry.clone();
   const gPos = gGeo.attributes.position;
@@ -704,8 +791,14 @@ function skinToBody(garmentMesh, bodySkinned) {
   const hash = new Map();
   const keyOf = (x, y, z) =>
     `${Math.round(x / cell)},${Math.round(y / cell)},${Math.round(z / cell)}`;
+  // v4: match against where the body actually RENDERS (skinned), not raw
+  // geometry x node matrix — on the v2.5 rig those are different places and
+  // every garment vertex snapped to the feet
+  const skinV = V4 ? (bodySkinned.applyBoneTransforms ?? bodySkinned.boneTransform).bind(bodySkinned) : null;
   for (let i = 0; i < bPos.count; i++) {
-    v.fromBufferAttribute(bPos, i).applyMatrix4(bodySkinned.matrixWorld);
+    v.fromBufferAttribute(bPos, i);
+    if (skinV) skinV(i, v);
+    v.applyMatrix4(bodySkinned.matrixWorld);
     bWorld[i * 3] = v.x; bWorld[i * 3 + 1] = v.y; bWorld[i * 3 + 2] = v.z;
     const k = keyOf(v.x, v.y, v.z);
     let arr = hash.get(k);
@@ -743,6 +836,19 @@ function skinToBody(garmentMesh, bodySkinned) {
     } else { wt[i * 4] = 1; }
     // rebuild the vertex in the body's local frame
     v.applyMatrix4(inv);
+    if (V4 && n >= 0) {
+      // exact for ANY pose: undo the matched vertex's skin matrix
+      // S = bindInv * sum(w * boneMatrix) * bind, so that S * g lands on v
+      const bm = bodySkinned.skeleton.boneMatrices, e = _acc.elements;
+      e.fill(0);
+      for (let c = 0; c < 4; c++) {
+        const w = bWt.getComponent(n, c); if (!w) continue;
+        const o = bIdx.getComponent(n, c) * 16;
+        for (let k = 0; k < 16; k++) e[k] += bm[o + k] * w;
+      }
+      _S.copy(bodySkinned.bindMatrixInverse).multiply(_acc).multiply(bodySkinned.bindMatrix).invert();
+      v.applyMatrix4(_S);
+    }
     gPos.setXYZ(i, v.x, v.y, v.z);
   }
   gGeo.setAttribute("skinIndex", new THREE.BufferAttribute(idx, 4));
@@ -783,6 +889,8 @@ function buildAnimApi(cfg) {
 
   let bodySkinned = null;
   rig.traverse(o => { if (o.isSkinnedMesh && !bodySkinned) bodySkinned = o; });
+  const bodySrcGeoA = bodySkinned?.geometry ?? null; // shared template geometry
+  let coversA = [];                                   // v4: hidden-triangle sets
 
   // Tripo rigs carry wild mesh-node transforms: a static Box3 measure is
   // off by orders of magnitude vs what the skinning pipeline renders.
@@ -790,7 +898,11 @@ function buildAnimApi(cfg) {
   // renderer-updated, so skeleton.update() must be forced per sample.
   const measure = (clipTime) => {
     mixer.setTime(clipTime);
-    fit.updateWorldMatrix(true, true);
+    // v4: updateMatrixWorld (not updateWorldMatrix) — only it refreshes an
+    // attached SkinnedMesh's bindMatrixInverse; with a stale one the v4 rig
+    // measures ~half a body too high and the character sinks waist-deep.
+    // v3 keeps the call its fit numbers were tuned against.
+    if (V4) fit.updateMatrixWorld(true); else fit.updateWorldMatrix(true, true);
     bodySkinned.skeleton.update();
     const box = new THREE.Box3();
     const pos = bodySkinned.geometry.attributes.position;
@@ -840,6 +952,7 @@ function buildAnimApi(cfg) {
     for (const c of [...(bodySkinned?.parent?.children ?? [])]) {
       if (c.userData.attachment) c.parent.remove(c);
     }
+    if (V4 && bodySkinned && bodySrcGeoA) { bodySkinned.geometry = bodySrcGeoA; coversA = []; }
     if (bodySkinned) {
       bodySkinned.material = new THREE.MeshLambertMaterial({
         map: getAnimSkinTex(cfg.skin) ?? bodySkinned.material.map ?? null });
@@ -880,6 +993,21 @@ function buildAnimApi(cfg) {
         group.add(wrap);
         wrap.updateWorldMatrix(true, true);
         bodySkinned.updateWorldMatrix(true, true);
+        if (V4) { group.updateMatrixWorld(true); bodySkinned.skeleton.update(); } // fresh bind inverse + bone matrices
+        if (V4 && cat !== "hair" && bodySrcGeoA?.index) {
+          const key = `${cat}/${id}`;
+          const gs = group.getWorldScale(new THREE.Vector3()).x || 1;
+          const keep = bodySkinned.geometry;
+          bodySkinned.geometry = bodySrcGeoA; // measure on the full body
+          AT.cover ??= {};
+          AT.cover[key] ??= coveredTris(bodySkinned, AT.skinMask, AT.face?.canvas.width ?? 0,
+                                        AT.face?.canvas.height ?? 0, wrap, COVER_R * gs * 1.3, true); // anim fit differs ~2 % from the static jig
+          bodySkinned.geometry = keep;
+          coversA.push(AT.cover[key]);
+          const g = geometryWithout(bodySrcGeoA, coversA);
+          if (bodySkinned.geometry !== bodySrcGeoA) bodySkinned.geometry.dispose();
+          bodySkinned.geometry = g;
+        }
         const skinned = [];
         wrap.traverse(o => {
           if (!o.isMesh) return;
