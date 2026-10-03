@@ -5,24 +5,29 @@
 // (?party=CODE). There is NO proximity check this pass — anyone with the code
 // is in, from anywhere.
 //
-// The vibe (chill / chaotic / sporty) is a LABEL ONLY: it picks the lobby
-// backdrop and nothing else. It does not filter the game catalog.
+// Inside, the party is a full-screen 2D room (hplobby.js): everyone walks
+// around the vibe's generated backdrop while the lobby fills up, and comes
+// back to it between games. The vibe (chill / chaotic / sporty) is a LABEL
+// ONLY: it picks that backdrop and nothing else.
+//
+// The host picks the next game from a picker overlay they can open and close
+// at will. Picking QUEUES the game ("up next") — it doesn't need the player
+// minimum to be met yet, so the host can set it up while people arrive. Games
+// can declare options (e.g. Today's Mission: quick start vs players choose);
+// those are set in the picker and travel with the launch. Start is a separate
+// tap, enabled once there are enough players.
 //
 // Public parties — announcing to the shared directory so strangers nearby can
-// browse and join — sit behind FLAGS.PUBLIC_PARTIES, which is OFF. With it
-// off nothing is announced and the "parties nearby" list is hidden; every
-// party is code-only.
-//
-// The host picks a game directly from the catalog (no spinner, no group vote
-// — both are out of scope). The chosen game runs on the shared HostGame kit.
-import { Room, directory } from "./net.js";
+// browse and join — sit behind FLAGS.PUBLIC_PARTIES, which is OFF.
+import { Room, directory, mulberry } from "./net.js";
 import { world3d } from "./world3d.js";
 import { beacon, sfx, buzz } from "./fx.js";
 import { rooms } from "./rooms.js";
 import { PARTY_CATALOG, gameById } from "./partycatalog.js";
 import { FLAGS, PARTY } from "./hpconfig.js";
-import { avatarHtml, esc, trash } from "./hpkit.js";
-import { shareText } from "./gamekit.js";
+import { esc, trash } from "./hpkit.js";
+import { makeBots, shareText } from "./gamekit.js";
+import { LobbyRoom } from "./hplobby.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -37,12 +42,24 @@ const LOBBY_BG = { chill: "lobbies/chill.png", chaotic: "lobbies/chaos.png", spo
 
 function makeCode() { let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 const inviteLink = code => `${location.origin}${location.pathname}?party=${code}`;
+const minFor = g => g?.minPlayers ?? MIN_PLAYERS;
+// a game's options with defaults filled in
+function defaultsFor(g) {
+  const o = {};
+  for (const opt of g?.options ?? []) o[opt.key] = opt.default ?? opt.choices?.[0]?.value;
+  return o;
+}
+function optionsLabel(g, options) {
+  return (g?.options ?? []).map(opt => opt.choices.find(c => c.value === options?.[opt.key])?.label).filter(Boolean).join(" · ");
+}
 
 export const party = {
   get me() { return rooms.me; },
-  current: null,      // { room, meta, launched, chat }
+  current: null,      // { room, meta, launched, chat, queue, lobby }
   nearby: [],
   form: { name: "", vibe: "chill", cap: PARTY.CAP_DEFAULT },
+  pickerOpen: false,
+  chatOpen: false,
   _view: null,
   _inited: false,
 
@@ -72,7 +89,7 @@ export const party = {
     const code = makeCode();
     const room = new Room(`party-${code}`, this.me);
     this.current = {
-      room, launched: false, chat: [],
+      room, launched: false, chat: [], queue: null, lobby: null,
       meta: { name, vibe, cap, code, hostId: this.me.id, hostName: this.me.handle },
     };
     this._wire(room);
@@ -93,7 +110,7 @@ export const party = {
     await rooms.leave(); await this.leave();
     const room = new Room(id, this.me);
     this.current = {
-      room, launched: false, chat: [],
+      room, launched: false, chat: [], queue: null, lobby: null,
       // with no directory entry (code join) we start with placeholders and let
       // the host's `meta` broadcast fill in the real name / vibe / cap
       meta: {
@@ -105,7 +122,7 @@ export const party = {
     this._wire(room);
     try { await room.join(); }
     catch (e) { this.current = null; this.err("couldn't join: " + e.message); return; }
-    this.current.room.send("hello", {});       // nudge the host to send meta
+    this.current.room.send("hello", {});       // nudge the host to send meta + queue
     sfx.ping();
     this.render();
   },
@@ -119,8 +136,10 @@ export const party = {
     const c = this.current;
     if (!c) return;
     directory.stopAnnouncing(c.room.id);
+    c.lobby?.destroy();
     c.room.leave();
     this.current = null;
+    this.pickerOpen = false; this.chatOpen = false;
     trash.flush("left the party");          // photos + entries die with the party
     this.render();
   },
@@ -148,18 +167,26 @@ export const party = {
         if (FLAGS.PUBLIC_PARTIES && !directory.announcing) this._announce();
         this._sendMeta();
         this._enforceCap();
-      } else if (directory.announcing) directory.stopAnnouncing();
+      } else {
+        if (directory.announcing) directory.stopAnnouncing();
+        this.pickerOpen = false;               // only the host has a picker
+      }
       this.render();
     };
     room.on("hello", () => { if (room.isHost) this._sendMeta(); });
     room.on("meta", m => {
       if (room.isHost) return;
       c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName };
+      c.queue = m.queue ?? null;
       this.render();
     });
+    // the host's "up next" changed
+    // only the host's word counts — a stray message from anyone else is ignored
+    room.on("queue", m => { if (m.from !== room.hostId) return; c.queue = m.queue ?? null; this._renderNext(); this._renderPicker(); });
     room.on("chat", m => {
       c.chat.push({ who: room.presence[m.from]?.handle ?? "someone", text: m.text });
       c.chat = c.chat.slice(-40);
+      c.lobby?.say(m.from, m.text);
       this.renderChat();
     });
     room.on("launch", m => this._onLaunch(m));
@@ -167,7 +194,7 @@ export const party = {
   },
   _sendMeta() {
     const c = this.current; if (!c?.room.isHost) return;
-    c.room.send("meta", { name: c.meta.name, vibe: c.meta.vibe, cap: c.meta.cap, hostName: this.me.handle });
+    c.room.send("meta", { name: c.meta.name, vibe: c.meta.vibe, cap: c.meta.cap, hostName: this.me.handle, queue: c.queue });
   },
   // host: anyone past the cap (by join order) is told to leave
   _enforceCap() {
@@ -175,16 +202,42 @@ export const party = {
     for (const m of c.room.members.slice(c.meta.cap)) c.room.send("full", { id: m.id, cap: c.meta.cap });
   },
 
-  // ---------------------------------------------------------------- game launch
+  // ---------------------------------------------------------------- queue + launch
   playerCount() { return (this.current?.room.members.length ?? 0) + BOTS_N; },
-  launch(gameId) {
+  // host: put a game up next. Allowed with any number of players — starting
+  // it is what needs the minimum, not choosing it.
+  queue(gameId, options = null) {
     const c = this.current;
-    if (!c || !c.room.isHost || c.launched) return;
+    if (!c || !c.room.isHost) return;
     const g = gameById(gameId);
-    if (!g) { this.err(`unknown game "${gameId}"`); return; }
+    if (!g) return;
+    const keep = c.queue?.game === gameId ? c.queue.options : null;
+    c.queue = { game: gameId, options: { ...defaultsFor(g), ...(keep ?? {}), ...(options ?? {}) } };
+    c.room.send("queue", { queue: c.queue });
+    sfx.pop();
+    this._renderNext(); this._renderPicker();
+  },
+  setOption(key, value) {
+    const c = this.current;
+    if (!c?.queue || !c.room.isHost) return;
+    this.queue(c.queue.game, { [key]: value });
+  },
+  clearQueue() {
+    const c = this.current;
+    if (!c || !c.room.isHost) return;
+    c.queue = null;
+    c.room.send("queue", { queue: null });
+    this._renderNext(); this._renderPicker();
+  },
+  launch() {
+    const c = this.current;
+    if (!c || !c.room.isHost || c.launched || !c.queue) return;
+    const g = gameById(c.queue.game);
+    if (!g) { this.err(`unknown game "${c.queue.game}"`); return; }
     const n = this.playerCount();
-    if (n < (g.minPlayers ?? MIN_PLAYERS)) { this.err(`${g.title} needs ${g.minPlayers ?? MIN_PLAYERS}+ players · ${n} here`); return; }
-    c.room.send("launch", { game: gameId, seed: (Date.now() % 1e9) | 0, at: Date.now() + 500 });
+    if (n < minFor(g)) { this.err(`${g.title} needs ${minFor(g)}+ players · ${n} here`); return; }
+    this.pickerOpen = false;
+    c.room.send("launch", { game: g.id, options: c.queue.options ?? {}, seed: (Date.now() % 1e9) | 0, at: Date.now() + 500 });
   },
   _onLaunch(m) {
     const c = this.current;
@@ -192,16 +245,20 @@ export const party = {
     const g = gameById(m.game);
     if (!g) { this.err(`unknown game "${m.game}"`); return; }
     c.launched = true;
+    this.pickerOpen = false;
     $("party-panel").hidden = true;
     const humans = c.room.members.map(x => ({ id: x.id, handle: x.handle, avatar: x.avatar }));
     const ctx = {
       room: c.room, me: this.me, humans, seed: m.seed, isHost: () => c.room.isHost, party: c.meta,
+      options: { ...defaultsFor(g), ...(m.options ?? {}) },
       onEnd: () => this._onGameEnd(c),
     };
     try { g.start(ctx); }
     catch (e) { console.warn("[party] game start", e); c.launched = false; $("party-panel").hidden = false; this.err(`${g.title} failed to start`); return; }
     if (c.room.isHost && FLAGS.PUBLIC_PARTIES) this._announce();
   },
+  // back to the lobby room between games; the queue survives so the host
+  // can run the same game again or pick the next one
   _onGameEnd(c) {
     if (this.current !== c) return;
     c.launched = false;
@@ -251,6 +308,11 @@ export const party = {
       p.innerHTML = c ? this._inHtml() : this._outHtml();
       p.classList.toggle("pt-lobby", !!c);
       this._bind();
+      if (c) {
+        // the walkable room lives as long as you're in this party
+        const bots = BOTS_N ? makeBots(BOTS_N, mulberry(7)).map(b => ({ id: b.id, handle: b.handle })) : [];
+        c.lobby = new LobbyRoom($("pt-floor"), c.room, this.me, { bots: c.room.isHost ? bots : [] });
+      }
     }
     if (c) { this._renderLobby(); this.renderChat(); }
     else this._renderList();
@@ -275,30 +337,30 @@ export const party = {
         ${FLAGS.PUBLIC_PARTIES ? "" : `<div class="pt-note">parties are invite-only this build — share the code or the link</div>`}
       </div>`;
   },
-  // the lobby: a room screen with the vibe's generated backdrop and everyone
-  // in it as a placeholder avatar
+  // the lobby: a full-screen room you walk around in, with the up-next bar
+  // underneath and the host's picker as an overlay on top
   _inHtml() {
-    return `<div class="pt-room" id="pt-room">
-        <div class="pt-room-head">
-          <div><b id="pt-title">party</b><div id="pt-sub" class="rp-sub"></div></div>
-          <button id="pt-leave" type="button">leave</button>
-        </div>
-        <div id="pt-avatars" class="pt-avatars"></div>
+    return `<div class="pt-top">
+        <div class="pt-top-main"><b id="pt-title">party</b><div id="pt-sub" class="rp-sub"></div></div>
+        <button id="pt-code-chip" type="button" class="pt-code-chip mono" title="share the invite"></button>
+        <button id="pt-hide" type="button" class="pt-icon" aria-label="Back to the map">&#8964;</button>
+        <button id="pt-leave" type="button" class="pt-leave">leave</button>
       </div>
-      <div class="pt-row pt-invite">
-        <code id="pt-codebig" class="mono"></code>
-        <button id="pt-share" type="button" class="pt-btn">share link</button>
+      <div class="pt-floor-wrap">
+        <div id="pt-floor"></div>
+        <div id="pt-chat-feed" class="pt-chat-float"></div>
       </div>
-      <div id="pt-sel" class="pt-sec"></div>
-      <div id="pt-err" class="pt-err"></div>
-      <div class="pt-sec">
-        <div id="pt-chat-feed"></div>
+      <div class="pt-bottom">
+        <div id="pt-next" class="pt-next"></div>
+        <div id="pt-err" class="pt-err"></div>
         <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="say something&hellip;" autocomplete="off"><button type="submit">&#8593;</button></form>
-      </div>`;
+      </div>
+      <div id="pt-picker" class="pt-picker" hidden></div>`;
   },
   _bind() {
     const p = $("party-panel");
     p.querySelector("#pt-close")?.addEventListener("click", () => this.togglePanel(false));
+    p.querySelector("#pt-hide")?.addEventListener("click", () => this.togglePanel(false));
     p.querySelector("#pt-leave")?.addEventListener("click", () => this.leave());
     p.querySelector("#pt-name")?.addEventListener("input", e => { this.form.name = e.target.value; });
     p.querySelectorAll("[data-vibe]").forEach(b => b.onclick = () => {
@@ -312,14 +374,14 @@ export const party = {
       this.create();
     });
     p.querySelector("#pt-code-form")?.addEventListener("submit", e => { e.preventDefault(); this.joinByCode($("pt-code").value); });
-    p.querySelector("#pt-share")?.addEventListener("click", () => {
+    p.querySelector("#pt-code-chip")?.addEventListener("click", () => {
       const c = this.current; if (!c) return;
       shareText(`join my party "${c.meta.name}" on Rando — code ${c.meta.code} · ${inviteLink(c.meta.code)}`);
     });
     p.querySelector("#pt-chat-form")?.addEventListener("submit", e => {
       e.preventDefault();
       const inp = $("pt-chat-input"), text = inp.value.trim().slice(0, 160);
-      if (text && this.current) { this.current.room.send("chat", { text }); inp.value = ""; }
+      if (text && this.current) { this.current.room.send("chat", { text }); inp.value = ""; inp.blur(); }
     });
   },
 
@@ -335,54 +397,86 @@ export const party = {
 
   _renderLobby() {
     const c = this.current;
-    const room = $("pt-room");
-    const bg = LOBBY_BG[c.meta.vibe] ?? LOBBY_BG.chill;
-    if (room && room.dataset.bg !== bg) { room.dataset.bg = bg; room.style.backgroundImage = `url(${bg})`; }
     const host = c.room.presence[c.room.hostId]?.handle ?? c.meta.hostName;
     $("pt-title").textContent = c.meta.name;
     $("pt-sub").textContent = `${c.meta.vibe} · ${host} is hosting · ${c.room.members.length}/${c.meta.cap}${BOTS_N ? ` (+${BOTS_N} bots)` : ""}`;
-    $("pt-codebig").textContent = c.meta.code;
-
-    const av = $("pt-avatars");
-    const sig = c.room.members.map(m => `${m.id}:${m.handle}`).join("|") + `|${c.room.hostId}`;
-    if (av.dataset.sig !== sig) {
-      av.dataset.sig = sig;
-      av.innerHTML = c.room.members.map(m => `<div class="pt-seat">
-        ${avatarHtml(m, { size: 56, ring: m.id === c.room.hostId ? "gold" : "" })}
-        <span class="pt-seat-name">${esc(m.handle)}${m.id === c.room.hostId ? " ★" : ""}</span>
-      </div>`).join("");
-    }
-    this._renderSel();
+    $("pt-code-chip").textContent = c.meta.code;
+    c.lobby?.setBackground(LOBBY_BG[c.meta.vibe] ?? LOBBY_BG.chill);
+    c.lobby?.sync();
+    this._renderNext();
+    this._renderPicker();
   },
 
-  // host: pick a game directly. (Random spin and group vote are out of scope.)
-  _renderSel() {
-    const c = this.current; const el = $("pt-sel"); if (!c || !el) return;
+  // the "up next" bar under the room
+  _renderNext() {
+    const c = this.current; const el = $("pt-next"); if (!c || !el) return;
     const isHost = c.room.isHost, host = c.room.presence[c.room.hostId]?.handle ?? "the host";
     const n = this.playerCount();
-    const sig = `${isHost ? 1 : 0}:${n}:${host}`;
+    const g = c.queue ? gameById(c.queue.game) : null;
+    const opts = g ? optionsLabel(g, c.queue.options) : "";
+    const need = g ? Math.max(0, minFor(g) - n) : 0;
+    const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}`;
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
-    if (!isHost) {
-      el.innerHTML = `<div class="pt-note">waiting for ${esc(host)} to pick a game · ${n} here</div>`;
-      return;
+    const card = g
+      ? `<div class="pt-next-card"><small>up next</small><b>${esc(g.title)}</b>${opts ? `<span>${esc(opts)}</span>` : ""}</div>`
+      : `<div class="pt-next-card empty"><small>up next</small><b>${isHost ? "no game picked yet" : `${esc(host)} hasn't picked a game`}</b></div>`;
+    if (isHost) {
+      el.innerHTML = card + `<div class="pt-next-btns">
+          <button type="button" class="pt-btn" id="pt-open-picker">${g ? "change" : "pick a game"}</button>
+          ${g ? `<button type="button" class="pt-btn pt-go" id="pt-start" ${need ? "disabled" : ""}>${need ? `needs ${need} more` : "start ▶"}</button>` : ""}
+        </div>`;
+      $("pt-open-picker").onclick = () => { this.pickerOpen = true; this._renderPicker(); };
+      const st = $("pt-start"); if (st) st.onclick = () => this.launch();
+    } else {
+      el.innerHTML = card + `<div class="pt-next-wait">${g ? (need ? `waiting for ${need} more` : `waiting for ${esc(host)} to start`) : "hang out — walk around"}</div>`;
     }
-    el.innerHTML = `<div class="rl-h">Pick a game</div>
-      <div class="pt-games">${PARTY_CATALOG.map(g => {
-        const min = g.minPlayers ?? MIN_PLAYERS;
-        const ok = n >= min;
-        return `<button type="button" class="pt-game" data-launch="${g.id}" ${ok ? "" : "disabled"}>
-          <b>${esc(g.title)}</b>
-          <span>${esc(g.blurb)}</span>
-          <small>${min}+ players · ${esc(g.length ?? "")}${ok ? "" : ` · needs ${min - n} more`}</small>
-        </button>`;
-      }).join("")}</div>`;
-    el.querySelectorAll("[data-launch]").forEach(b => b.onclick = () => this.launch(b.dataset.launch));
+  },
+
+  // host-only overlay: tap a game to queue it, set its options, close any time
+  _renderPicker() {
+    const c = this.current; const el = $("pt-picker"); if (!c || !el) return;
+    const open = this.pickerOpen && c.room.isHost && !c.launched;
+    el.hidden = !open;
+    if (!open) { el.dataset.sig = ""; return; }
+    const n = this.playerCount();
+    const sig = `${n}:${c.queue?.game ?? "-"}:${JSON.stringify(c.queue?.options ?? {})}`;
+    if (el.dataset.sig === sig) return;
+    el.dataset.sig = sig;
+    el.innerHTML = `<div class="pt-picker-sheet">
+        <div class="pt-picker-head"><b>pick the next game</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
+        <div class="pt-games">${PARTY_CATALOG.map(g => {
+          const on = c.queue?.game === g.id;
+          const need = Math.max(0, minFor(g) - n);
+          const opts = on ? (g.options ?? []).map(opt => `<div class="pt-opt"><span>${esc(opt.label)}</span><div class="pt-row">${opt.choices.map(ch =>
+            `<button type="button" class="pt-btn ${c.queue.options?.[opt.key] === ch.value ? "on" : ""}" data-opt="${esc(opt.key)}" data-val="${esc(ch.value)}" title="${esc(ch.hint ?? "")}">${esc(ch.label)}</button>`).join("")}</div>
+            ${opt.choices.find(ch => ch.value === c.queue.options?.[opt.key])?.hint ? `<small>${esc(opt.choices.find(ch => ch.value === c.queue.options?.[opt.key]).hint)}</small>` : ""}</div>`).join("") : "";
+          return `<div class="pt-game ${on ? "on" : ""}" data-queue="${g.id}" role="button" tabindex="0">
+            <b>${esc(g.title)}${on ? ' <em>✓ up next</em>' : ""}</b>
+            <span>${esc(g.blurb)}</span>
+            <small>${minFor(g)}+ players · ${esc(g.length ?? "")}${need ? ` · needs ${need} more to start` : ""}</small>
+            ${opts}
+          </div>`;
+        }).join("")}</div>
+        <div class="pt-picker-foot">
+          ${c.queue ? `<button type="button" class="pt-btn" id="pt-unqueue">clear</button>` : ""}
+          <button type="button" class="pt-btn pt-go" id="pt-picker-done">${c.queue ? "done" : "close"}</button>
+        </div>
+      </div>`;
+    const close = () => { this.pickerOpen = false; this._renderPicker(); };
+    $("pt-picker-x").onclick = close;
+    $("pt-picker-done").onclick = close;
+    el.onclick = e => { if (e.target === el) close(); };          // tap the dimmed backdrop to close
+    const un = $("pt-unqueue"); if (un) un.onclick = () => this.clearQueue();
+    el.querySelectorAll("[data-queue]").forEach(card => card.onclick = e => {
+      if (e.target.closest("[data-opt]")) return;
+      this.queue(card.dataset.queue);
+    });
+    el.querySelectorAll("[data-opt]").forEach(b => b.onclick = e => { e.stopPropagation(); this.setOption(b.dataset.opt, b.dataset.val); });
   },
 
   renderChat() {
     const c = this.current; const feed = $("pt-chat-feed"); if (!c || !feed) return;
-    feed.innerHTML = c.chat.map(l => `<div class="lc-msg"><b>${esc(l.who)}</b>${esc(l.text)}</div>`).join("");
-    feed.scrollTop = feed.scrollHeight;
+    feed.innerHTML = c.chat.slice(-4).map(l => `<div class="lc-msg"><b>${esc(l.who)}</b>${esc(l.text)}</div>`).join("");
   },
 };
