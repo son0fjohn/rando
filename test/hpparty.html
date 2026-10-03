@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>house party — party e2e</title>
+<!-- relative asset URLs in the app's CSS and JS (lobbies/…, games/…) are
+     relative to web/, so resolve them there -->
+<base href="/web/">
+<!-- the real party stack with only the network/3D/audio leaves swapped:
+     backend -> BroadcastChannel multiplayer, so tabs form a real party -->
+<script type="importmap">
+{ "imports": {
+  "/web/backend.js": "/test/stubs/backend_bc.js",
+  "/web/fx.js": "/test/stubs/fx.js",
+  "/web/avatar3.js": "/test/stubs/avatar3.js",
+  "/web/world3d.js": "/test/stubs/world3d.js",
+  "/web/rooms.js": "/test/stubs/rooms.js"
+} }
+</script>
+<!--INDEX_CSS-->
+<style> body { margin:0; background:#222; min-height:100vh; } </style>
+</head>
+<body>
+<div class="frame" style="position:relative;width:100vw;height:100vh;overflow:hidden">
+  <button id="party-btn" class="icon-btn party" type="button" title="House party">&#127968;</button>
+  <div id="party-panel" hidden></div>
+  <div id="game-layer" hidden>
+    <div id="game-hud"></div>
+    <div id="game-feed"></div>
+    <div id="game-panel" hidden></div>
+  </div>
+</div>
+<script type="module">
+  import { party } from "/web/party.js";
+  party.init();
+  window.party = party;
+  window.__ready = true;
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import { SECRET_DIARY } from "/web/hpgames/secretdiary.js";
 import { TODAYS_MISSION } from "/web/hpgames/mission.js";
 import { HUMILIATION_RITUAL } from "/web/hpgames/ritual.js";
 import { ART_GALLERY } from "/web/artgallery.js";
+import { DIARY } from "/web/hpconfig.js";
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -26,17 +27,17 @@ group("Secret Diary — you + 3 bots");
   const t = seatTable(SECRET_DIARY, 1, { ids: [ME] });
   adv(500);
   ok(bots(t.s).length === 3, "three bots take seats");
-  t.input(ME, "write", { text: "my secret" });
+  for (let pi = 0; pi < DIARY.PROMPTS; pi++) t.input(ME, "write", { pi, text: `my secret ${pi}` });
   let guard = 0;
-  while (t.s.phase === "write" && guard++ < 1000) adv(200);
-  ok(t.s.entries.length === 4, `bots write entries too (${t.s.entries.length} in the pool)`);
-  while (t.s.phase !== "match" && guard++ < 2000) adv(200);
+  while (t.s.phase === "write" && guard++ < 3000) adv(200);
+  ok(t.s.entries.length === 4 * DIARY.PROMPTS, `bots answer every prompt too (${t.s.entries.length} in the pool)`);
+  while (t.s.phase !== "match" && guard++ < 6000) adv(200);
   // match every entry to the right author, so the human score is checkable
-  const author = eid => Object.values(t.s.players).find(p => p.myEid === eid)?.id;
-  for (const e of t.s.entries.filter(e => e.eid !== t.s.players[ME].myEid)) t.input(ME, "guess", { eid: e.eid, who: author(e.eid) });
-  while (t.s.phase !== "end" && guard++ < 4000) adv(200);
+  const author = eid => Object.values(t.s.players).find(p => Object.values(p.mine).includes(eid))?.id;
+  for (const e of t.s.entries.filter(e => !Object.values(t.s.players[ME].mine).includes(e.eid))) t.input(ME, "guess", { eid: e.eid, who: author(e.eid) });
+  while (t.s.phase !== "end" && guard++ < 9000) adv(200);
   ok(t.s.phase === "end", "bots finish matching and the round ends");
-  ok(t.s.players[ME].score === 3, `your all-correct matching scores 3/3 (got ${t.s.players[ME].score})`);
+  ok(t.s.players[ME].score === 3 * DIARY.PROMPTS, `your all-correct matching scores ${3 * DIARY.PROMPTS} (got ${t.s.players[ME].score})`);
   ok(bots(t.s).every(b => Object.keys(b.guesses).length > 0), "every bot made guesses");
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");
@@ -53,18 +54,18 @@ group("Today's Mission — you + 3 bots");
   while (t.s.phase !== "end" && guard++ < 20000) {
     const cur = t.s.order[t.s.mi];
     if (t.s.phase === "do" && cur === ME && !t.s.missions[ME].claimed) t.input(ME, "claim");
-    // you vote yes on every bot's mission
-    if (t.s.phase === "vote" && cur !== ME && t.s.missions[cur].votes[ME] === undefined) t.input(ME, "vote", { ok: true, style: true });
+    // you rate every bot's mission a 9
+    if (t.s.phase === "vote" && cur !== ME && t.s.missions[cur].ratings[ME] === undefined) t.input(ME, "rate", { v: 9 });
     if (t.s.phase === "result") {
       if (cur === ME) myJudged = true;
-      else if (t.s.missions[cur].total > 0) botJudged++;
+      else if (t.s.missions[cur].n > 0) botJudged++;
     }
     adv(200);
   }
   ok(t.s.phase === "end", "all four missions play out");
-  ok(myJudged && t.s.missions[ME].total === 3, `the bots voted on your mission (${t.s.missions[ME].total}/3 votes)`);
-  ok(botJudged > 0, "bot missions get judged");
-  ok(Object.values(t.s.missions).filter(m => !m.skipped).every(m => m.claimed || m.total >= 0), "bot performers take their turns");
+  ok(myJudged && t.s.missions[ME].n === 3, `the bots rated your mission (${t.s.missions[ME].n}/3 ratings)`);
+  ok(t.s.missions[ME].pts > 0, `bot ratings turn into points (${t.s.missions[ME].pts})`);
+  ok(botJudged > 0, "bot missions get rated");
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
@@ -82,9 +83,7 @@ group("Humiliation Ritual — you + 3 bots");
     const r = t.s.rounds[t.s.ri];
     if (t.s.phase === "act") {
       if (r.performer === ME) {
-        // you're performing: accept the first guess that looks right
-        const hit = r.guesses.find(g => g.near);
-        if (hit && !r.won) t.input(ME, "accept", { gid: hit.gid });
+        // you're performing: hands off — bots' correct typed guesses win on their own
       } else if (guessedThisTurn !== t.s.ri) {
         // a bot is performing: you guess its answer once
         t.input(ME, "guess", { text: r.answer });
@@ -96,9 +95,9 @@ group("Humiliation Ritual — you + 3 bots");
   }
   ok(t.s.phase === "end", "all four turns play out");
   const botTurns = outcomes.filter(o => o.perf !== ME);
-  ok(botTurns.length === 3 && botTurns.every(o => o.won === ME), "a bot performer accepts your correct guess");
+  ok(botTurns.length === 3 && botTurns.every(o => o.won === ME), "your typed answer wins a bot's turn automatically");
   const mine = outcomes.find(o => o.perf === ME);
-  ok(mine && mine.won && mine.won !== ME, "bots guess on your turn and you can accept one");
+  ok(mine && mine.won && mine.won !== ME, "on your turn a bot's correct guess wins without you touching the phone");
   ok(t.s.players[ME].score > 0, `you scored (${t.s.players[ME].score})`);
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");
