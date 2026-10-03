@@ -6,9 +6,11 @@
 // Every game is offered to every party; the host picks.
 import { ART_GALLERY } from "./artgallery.js";
 import { SECRET_DIARY } from "./hpgames/secretdiary.js";
+import { TODAYS_MISSION } from "./hpgames/mission.js";
 
 export const PARTY_CATALOG = [
   SECRET_DIARY,
+  TODAYS_MISSION,
   ART_GALLERY,
 ];
 
