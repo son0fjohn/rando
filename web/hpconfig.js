@@ -27,6 +27,36 @@ export const PARTY = {
   NAME_MAX: 28,
 };
 
+// ---------------------------------------------------------------- game settings
+export const DIARY = {
+  PROMPTS: 5,                    // prompts answered before anything is revealed
+  WRITE_MS_PER_PROMPT: 60000,    // writing window = this x PROMPTS
+  MATCH_MS: 300000,              // matching window for the whole round
+};
+
+export const MISSION = {
+  // How missions reach players. The host picks per game in the lobby:
+  //   quick  — the game deals one mission card each, straight into play
+  //   choose — everyone is offered CHOICES cards and picks the one they'll do
+  MODES: ["quick", "choose"],
+  DEFAULT_MODE: "quick",
+  CHOICES: 3,
+  PICK_MS: 45000,
+  // the room rates each attempt on a 0..SCALE spectrum; points = average
+  // rating as a share of MAX_PTS
+  SCALE: 10,
+  MAX_PTS: 100,
+  // labels shown under the slider, low to high
+  LABELS: ["didn't even try", "half-hearted", "got it done", "nailed it", "legendary"],
+};
+
+export const RITUAL = {
+  // guesses are judged automatically by the answer matcher, so the performer
+  // never has to read a feed. For guesses shouted out loud, the performer
+  // gets one big "someone said it" button.
+  ACT_MS: 90000,
+};
+
 // ---------------------------------------------------------------- prompt pools
 // Shape: { text, spice: "mild" | "spicy" }
 // `{{player}}` is substituted with a random other player's handle at deal time.
