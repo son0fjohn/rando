@@ -5,8 +5,10 @@
 // The party's vibe is a LABEL ONLY this pass — it does not filter this list.
 // Every game is offered to every party; the host picks.
 import { ART_GALLERY } from "./artgallery.js";
+import { SECRET_DIARY } from "./hpgames/secretdiary.js";
 
 export const PARTY_CATALOG = [
+  SECRET_DIARY,
   ART_GALLERY,
 ];
 
