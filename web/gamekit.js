@@ -150,7 +150,9 @@ export const ui = {
   },
   // text prompt; onSubmit(text)
   prompt(placeholder, onSubmit, { maxlength = 80, submitLabel = "send" } = {}) {
-    const html = `<form class="gp-form"><input id="gp-in" maxlength="${maxlength}" placeholder="${placeholder}" autocomplete="off"><button type="submit">${submitLabel}</button></form>`;
+    // onsubmit="return false" until the real handler binds below: a fast tap
+    // in that window would otherwise do a native submit and reload the page
+    const html = `<form class="gp-form" onsubmit="return false"><input id="gp-in" maxlength="${maxlength}" placeholder="${placeholder}" autocomplete="off"><button type="submit">${submitLabel}</button></form>`;
     setTimeout(() => {
       const f = $("game-panel").querySelector(".gp-form");
       if (!f) return;

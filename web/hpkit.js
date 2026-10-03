@@ -65,8 +65,15 @@ export class Rounds {
   enter(s, name) {
     const p = this.phases[name];
     if (!p) return;
-    this.phases[s.phase]?.exit?.(s);
+    // Only run the exit hook of a phase this machine actually ENTERED. A
+    // game's initial state already names its first phase, so without this
+    // the bootstrap enter() would "leave" that phase before it began — which
+    // runs its exit hook on an empty round (in Secret Diary that wiped every
+    // answer slot; in Mission it auto-picked everyone's card). The marker
+    // lives in the state, so it survives a host handover.
+    if (s._rp && s._rp === s.phase) this.phases[s.phase]?.exit?.(s);
     s.phase = name;
+    s._rp = name;
     s.left = typeof p.ms === "function" ? p.ms(s) : p.ms;
     p.enter?.(s);
     this.onPhase(name, s);
