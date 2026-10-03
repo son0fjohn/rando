@@ -1577,7 +1577,12 @@
   .mh-site { display:flex; align-items:center; gap:9px; background:#fff; border:1px solid #d5d5da; border-radius:10px; padding:8px 10px; font-size:13px; }
   .mh-site.in { border-color:#ff2a4a; background:#fff4f5; }
   .mh-site.done { opacity:.55; background:#f0f4f0; border-color:#1c7a3c; }
-  .mh-bomb { width:26px; height:26px; flex:none; object-fit:contain; }
+  /* The generated icon is layered OVER a CSS sphere, so if
+     games/manhunt/bomb.png is missing the row still reads as a bomb rather
+     than showing a broken-image box. */
+  .mh-bomb { width:26px; height:26px; flex:none; border-radius:50%;
+    background-image:url(games/manhunt/bomb.png), radial-gradient(circle at 36% 32%,#5a6068,#1d2024 70%);
+    background-size:contain, contain; background-position:center; background-repeat:no-repeat; }
   .mh-site-main { flex:1; min-width:0; } .mh-site-main b { display:block; font-size:13px; }
   .mh-site-main small { color:#5b6b80; font-size:11px; }
   .mh-warn { background:#fff4d6; border:1px solid #e0c870; border-radius:10px; padding:8px 10px; font-size:12px; line-height:1.4; margin:6px 0; }

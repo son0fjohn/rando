@@ -318,8 +318,10 @@ export const MANHUNT_GAME = {
         const cls = x.defused ? "done" : inZone ? "in" : "";
         const pct = Math.round((x.progress ?? 0) * 100);
         const dist = myPos ? Math.round(presence.haversine(myPos.lat, myPos.lng, MANHUNT.SITES.find(y => y.id === x.id).lat, MANHUNT.SITES.find(y => y.id === x.id).lng)) : null;
+        // the bomb icon is a background-image, not an <img>, so a missing
+        // asset degrades to the CSS fallback instead of a broken-image box
         return `<div class="mh-site ${cls}">
-          <img class="mh-bomb" src="${ASSET}bomb.png" alt="">
+          <span class="mh-bomb" aria-hidden="true"></span>
           <span class="mh-site-main"><b>${esc(x.label)}</b>
             <small>${x.defused ? "defused" : inZone ? `defusing — stand still (${pct}%)` : dist === null ? "locating…" : `${dist} m away`}</small>
             ${x.defused ? "" : ui.bar(x.progress ?? 0, "plant")}</span>
@@ -386,6 +388,10 @@ export const MANHUNT_GAME = {
         `<span class="rm ${p.role === "hunter" ? "hunter" : ""} ${p.gone ? "out" : ""}">${esc(p.handle)}${p.tagged ? " ✕" : ""}${p.gone ? " (left)" : ""}</span>`).join("")}</div>`;
     }
 
+    // the state itself is part of what cleanup has to drop: HostGame parks the
+    // live game on window.__game for debugging, which would otherwise keep
+    // every entry, title and photo id alive after the party ended
+    trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
     game.start({ phase: "headstart", left: MANHUNT.HEADSTART_MS, players: {}, sites: [], radar: { cells: [], pings: [], at: 0 }, pending: null, winner: null, why: null, nH: 1 });
     startGeo();
     requestWake();

@@ -350,5 +350,23 @@ group("Shared kit");
   ok(cleaned === 2, "flushing twice does not re-run disposers");
 }
 
+// ===================================================================== cleanup
+group("Cleanup — nothing survives the party");
+{
+  // party.js flushes the bin when a game ends and when you leave the party.
+  // Everything a game wrote must be gone afterwards, including the state on
+  // HostGame's debug handle.
+  const t = seatTable(SECRET_DIARY, 3);
+  adv(500);
+  for (const c of t.clients) t.input(c.me.id, "write", { text: `secret of ${c.me.id}` });
+  adv(3000);
+  const host = t.host;
+  ok(host.game.s.entries.length === 3, "entries exist while the game is running");
+  ok(window.__game !== null, "the debug handle is live during play");
+  trash.flush("spec: party ended");
+  ok(host.game.s === null, "the game state is dropped on cleanup");
+  ok(window.__game === null, "the debug handle no longer pins the state");
+}
+
 log("head", `\n${pass} passed, ${fail} failed`);
 window.__done = { pass, fail };

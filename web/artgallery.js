@@ -49,8 +49,8 @@ const photos = new Map();
 
 export const ART_GALLERY = {
   id: "artgallery", title: "Art Gallery",
-  // NOTE: tagged for every vibe for this build so any party can run it; the
-  // vibe filter (partyGames) is real and narrows once more games land.
+  // The party's vibe is a label only this pass, so nothing filters on this;
+  // kept because it is still the right tagging if a filter ever returns.
   vibes: ["chill", "chaotic", "sporty"],
   blurb: "fill 3 frames with photos. title each other's. the room votes on the better title.",
   minPlayers: 3, maxPlayers: 12, length: "~8 min",
@@ -337,6 +337,10 @@ export const ART_GALLERY = {
       }
     }
 
+    // the state itself is part of what cleanup has to drop: HostGame parks the
+    // live game on window.__game for debugging, which would otherwise keep
+    // every entry, title and photo id alive after the party ended
+    trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
     game.start({ phase: "photos", left: PHOTO_MS, players: {}, pool: {}, dealt: [], frames: [], fi: 0, sub: null, why: null, dropped: 0 });
     const o = ctx.onEnd;
     ctx.onEnd = () => { game.stop(); room.off("agphoto", onPhoto); room.off("agneed", onNeed); ui.hide(); o(); };
