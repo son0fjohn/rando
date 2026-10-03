@@ -7,10 +7,12 @@
 import { ART_GALLERY } from "./artgallery.js";
 import { SECRET_DIARY } from "./hpgames/secretdiary.js";
 import { TODAYS_MISSION } from "./hpgames/mission.js";
+import { HUMILIATION_RITUAL } from "./hpgames/ritual.js";
 
 export const PARTY_CATALOG = [
   SECRET_DIARY,
   TODAYS_MISSION,
+  HUMILIATION_RITUAL,
   ART_GALLERY,
 ];
 
