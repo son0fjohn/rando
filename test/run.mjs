@@ -1,5 +1,5 @@
-// Serve the repo and run test/hptest.html in headless Chromium.
-//   node test/run.mjs            # pass/fail summary
+// Serve the repo and run the house-party specs in headless Chromium.
+//   node test/run.mjs            # both suites: humans-only, then you + 3 bots
 //   node test/run.mjs --verbose  # include console output from the page
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -34,18 +34,24 @@ const logs = [];
 page.on("console", m => { logs.push(`[${m.type()}] ${m.text()}`); });
 page.on("pageerror", e => { logs.push(`[pageerror] ${e.message}`); });
 
-await page.goto(`${base}/test/hptest.html`);
-await page.waitForFunction(() => window.__done, { timeout: 120000 }).catch(() => {});
-const text = await page.locator("#out").innerText();
-const done = await page.evaluate(() => window.__done ?? null);
-
-console.log(text);
-if (verbose || !done || done.fail) {
-  const noise = logs.filter(l => !/\[warning\]/.test(l));
-  if (noise.length) console.log("\n--- page console ---\n" + noise.slice(0, 40).join("\n"));
+// the bot suite needs ?bots=3 in the URL — that's what the games read
+const SUITES = ["/test/hptest.html", "/test/hpbots.html?bots=3"];
+let failed = 0, unfinished = 0;
+for (const url of SUITES) {
+  logs.length = 0;
+  await page.goto(`${base}${url}`);
+  await page.waitForFunction(() => window.__done, { timeout: 180000 }).catch(() => {});
+  const text = await page.locator("#out").innerText();
+  const done = await page.evaluate(() => window.__done ?? null);
+  console.log(`\n===== ${url} =====\n` + text);
+  if (verbose || !done || done.fail) {
+    const noise = logs.filter(l => !/\[warning\]/.test(l));
+    if (noise.length) console.log("\n--- page console ---\n" + noise.slice(0, 40).join("\n"));
+  }
+  if (!done) unfinished++; else failed += done.fail;
 }
 await browser.close();
 server.close();
 
-if (!done) { console.error("\nharness did not finish"); process.exit(2); }
-process.exit(done.fail ? 1 : 0);
+if (unfinished) { console.error("\na suite did not finish"); process.exit(2); }
+process.exit(failed ? 1 : 0);
