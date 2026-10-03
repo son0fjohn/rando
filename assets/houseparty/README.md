@@ -71,5 +71,5 @@ Model `gpt_image_2_5` (variant flare), `quality: high`, `resolution: 1k`.
 
 ## Credits
 
-899 before this run; four `high`/`1k` images generated. No retries, no 3D, no
-video.
+**6 credits** (899 → 893) for four `high`/`1k` images. No retries, no 3D,
+no video. The other 2 attempts per asset are unspent.
