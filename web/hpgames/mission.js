@@ -228,6 +228,10 @@ export const TODAYS_MISSION = {
       }
     }
 
+    // the state itself is part of what cleanup has to drop: HostGame parks the
+    // live game on window.__game for debugging, which would otherwise keep
+    // every entry, title and photo id alive after the party ended
+    trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
     game.start({ phase: "card", left: CARD_MS, players: {}, order: [], missions: {}, mi: 0 });
     const o = ctx.onEnd;
     ctx.onEnd = () => { game.stop(); ui.hide(); o(); };
