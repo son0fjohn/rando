@@ -19,6 +19,7 @@
 import { HostGame, makeBots, ui } from "./gamekit.js";
 import { sfx, buzz } from "./fx.js";
 import { CAPTION_POOL } from "./bots.js";
+import { trash, showResults, hostSkip, bindHostSkip } from "./hpkit.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -57,6 +58,8 @@ export const ART_GALLERY = {
   start(ctx) {
     ui.show(); ui.theme("chill");
     const room = ctx.room;
+    // every photo anyone shared dies when the party does (cleanup contract)
+    trash.add(() => { photos.clear(); mine.length = 0; });
     let lastHud = 0, mine = [], myTitles = {}, myVote = null, busy = false;
     const needAsked = {};
     const G = this;
@@ -327,11 +330,10 @@ export const ART_GALLERY = {
         }
       } else if (s.phase === "end") {
         if (!ui.once("end", () => {})) return;
-        const ranked = P.slice().sort((a, b) => b.score - a.score);
-        ui.stage("final scores", `<ol class="podium">${ranked.map(p => `<li><b>${esc(p.handle)}</b><span>${p.score} pts</span></li>`).join("")}</ol>
-          ${s.why ? `<p class="ab-sub">${esc(s.why)}</p>` : ""}${s.dropped ? `<p class="ab-sub">${s.dropped} piece${s.dropped === 1 ? "" : "s"} left in storage (frame cap ${MAX_FRAMES})</p>` : ""}
-          <p class="ab-sub">back to the party in a moment</p>${skipBtn()}`, "Art Gallery");
-        bindSkip();
+        const note = s.why || (s.dropped ? `${s.dropped} piece${s.dropped === 1 ? "" : "s"} left in storage (frame cap ${MAX_FRAMES})` : "");
+        showResults(P, { title: "Art Gallery", sub: "final scores", note },
+          `<p class="ab-sub">back to the party in a moment</p>${hostSkip(ctx)}`);
+        bindHostSkip(game);
       }
     }
 
@@ -360,6 +362,4 @@ async function shrink(file) {
   return out;
 }
 
-// party catalog: add games here; partyGames() narrows by the party's vibe
-export const PARTY_CATALOG = [ART_GALLERY];
-export function partyGames(vibe) { return PARTY_CATALOG.filter(g => g.vibes.includes(vibe)); }
+// The catalog lives in partycatalog.js — this module just exports the game.
