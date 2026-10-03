@@ -1,6 +1,7 @@
 // Serve the repo and run the house-party specs in headless Chromium.
 //   node test/run.mjs            # both suites: humans-only, then you + 3 bots
 //   node test/run.mjs --verbose  # include console output from the page
+//   node test/party_e2e.mjs [dir] # real-time, 3 phones through the real lobby + UI
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
