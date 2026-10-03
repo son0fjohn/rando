@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>house party — logic harness</title>
+<!-- The game modules import ./backend.js, ./fx.js and ./avatar3.js, which in
+     the real page pull in Supabase, the 3D world and WebAudio. Remap those
+     three resolved URLs to stubs; everything else is the real module. -->
+<script type="importmap">
+{ "imports": {
+  "/web/backend.js": "/test/stubs/backend.js",
+  "/web/fx.js": "/test/stubs/fx.js",
+  "/web/avatar3.js": "/test/stubs/avatar3.js"
+} }
+</script>
+<style>
+  body { font:13px/1.5 ui-monospace,Consolas,monospace; margin:0; padding:12px; background:#101216; color:#e8e8ec; }
+  #out { white-space:pre-wrap; }
+  .pass { color:#4ade80; } .fail { color:#f87171; font-weight:700; } .head { color:#ffd60a; margin-top:10px; display:block; }
+  #stage { position:fixed; left:-9999px; top:0; width:420px; }
+</style>
+</head>
+<body>
+<div id="out">running…</div>
+
+<!-- the real UI layer: renders run for real so a throwing render is caught -->
+<div id="stage">
+  <div id="game-layer" hidden>
+    <div id="game-hud"></div>
+    <div id="game-feed"></div>
+    <div id="game-panel" hidden></div>
+  </div>
+  <div id="party-panel" hidden></div>
+  <button id="party-btn" type="button"></button>
+</div>
+
+<script type="module" src="/test/specs.js"></script>
+</body>
+</html>
