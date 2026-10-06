@@ -17,14 +17,24 @@
 // those are set in the picker and travel with the launch. Start is a separate
 // tap, enabled once there are enough players.
 //
+// Party settings (host-only, in the picker; nobody has to touch them):
+//   * 18+ party — off by default. The host turns it on, confirming everyone
+//     here is an adult; it's what unlocks "unhinged" content.
+//   * Secret Diary max level — defaults to mild for public parties and spicy
+//     for private ones; unhinged only with 18+ on.
+// Settings, the party's public/private flag and the session's used-prompt set
+// ride on the host's `meta` broadcast, so whoever hosts the next game has
+// them. Prompts never repeat within a party session (ctx.session).
+//
 // Public parties — announcing to the shared directory so strangers nearby can
-// browse and join — sit behind FLAGS.PUBLIC_PARTIES, which is OFF.
+// browse and join — sit behind FLAGS.PUBLIC_PARTIES, which is OFF, so every
+// party is private this build.
 import { Room, directory, mulberry } from "./net.js";
 import { world3d } from "./world3d.js";
 import { beacon, sfx, buzz } from "./fx.js";
 import { rooms } from "./rooms.js";
 import { PARTY_CATALOG, gameById } from "./partycatalog.js";
-import { FLAGS, PARTY } from "./hpconfig.js";
+import { FLAGS, PARTY, DIARY } from "./hpconfig.js";
 import { esc, trash } from "./hpkit.js";
 import { makeBots, shareText } from "./gamekit.js";
 import { LobbyRoom } from "./hplobby.js";
@@ -49,6 +59,8 @@ function defaultsFor(g) {
   for (const opt of g?.options ?? []) o[opt.key] = opt.default ?? opt.choices?.[0]?.value;
   return o;
 }
+// per-party-session memory games share across games (e.g. used prompts)
+const newSession = () => ({ diaryUsed: new Set() });
 function optionsLabel(g, options) {
   return (g?.options ?? []).map(opt => opt.choices.find(c => c.value === options?.[opt.key])?.label).filter(Boolean).join(" · ");
 }
@@ -89,8 +101,12 @@ export const party = {
     const code = makeCode();
     const room = new Room(`party-${code}`, this.me);
     this.current = {
-      room, launched: false, chat: [], queue: null, lobby: null,
-      meta: { name, vibe, cap, code, hostId: this.me.id, hostName: this.me.handle },
+      room, launched: false, chat: [], queue: null, lobby: null, session: newSession(),
+      meta: {
+        name, vibe, cap, code, hostId: this.me.id, hostName: this.me.handle,
+        privacy: FLAGS.PUBLIC_PARTIES ? "public" : "private",
+        settings: { adult: false, diaryMax: null },
+      },
     };
     this._wire(room);
     try { await room.join(); }
@@ -110,13 +126,14 @@ export const party = {
     await rooms.leave(); await this.leave();
     const room = new Room(id, this.me);
     this.current = {
-      room, launched: false, chat: [], queue: null, lobby: null,
+      room, launched: false, chat: [], queue: null, lobby: null, session: newSession(),
       // with no directory entry (code join) we start with placeholders and let
       // the host's `meta` broadcast fill in the real name / vibe / cap
       meta: {
         name: ann?.name ?? meta?.name ?? "house party", vibe: ann?.vibe ?? meta?.vibe ?? "chill",
         cap: ann?.cap ?? meta?.cap ?? PARTY.CAP_MAX, code: id.slice(6),
         hostId: ann?.hostId ?? null, hostName: ann?.hostName ?? "the host",
+        privacy: ann?.privacy ?? "private", settings: { adult: false, diaryMax: null },
       },
     };
     this._wire(room);
@@ -176,8 +193,9 @@ export const party = {
     room.on("hello", () => { if (room.isHost) this._sendMeta(); });
     room.on("meta", m => {
       if (room.isHost) return;
-      c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName };
+      c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) } };
       c.queue = m.queue ?? null;
+      for (const id of m.diaryUsed ?? []) c.session.diaryUsed.add(id);
       this.render();
     });
     // the host's "up next" changed
@@ -194,7 +212,10 @@ export const party = {
   },
   _sendMeta() {
     const c = this.current; if (!c?.room.isHost) return;
-    c.room.send("meta", { name: c.meta.name, vibe: c.meta.vibe, cap: c.meta.cap, hostName: this.me.handle, queue: c.queue });
+    c.room.send("meta", {
+      name: c.meta.name, vibe: c.meta.vibe, cap: c.meta.cap, hostName: this.me.handle, queue: c.queue,
+      privacy: c.meta.privacy, settings: c.meta.settings, diaryUsed: [...c.session.diaryUsed],
+    });
   },
   // host: anyone past the cap (by join order) is told to leave
   _enforceCap() {
@@ -229,6 +250,16 @@ export const party = {
     c.room.send("queue", { queue: null });
     this._renderNext(); this._renderPicker();
   },
+  // host-only party settings. Turning 18+ on asks first.
+  setSetting(key, value) {
+    const c = this.current;
+    if (!c || !c.room.isHost) return;
+    if (key === "adult" && value && !window.confirm("Turn on 18+ content?\n\nOnly do this if everyone at this party is 18 or older. It unlocks the 'unhinged' prompts.")) return;
+    c.meta.settings = { ...c.meta.settings, [key]: value };
+    this._sendMeta();
+    sfx.pop();
+    this._renderNext(); this._renderPicker();
+  },
   launch() {
     const c = this.current;
     if (!c || !c.room.isHost || c.launched || !c.queue) return;
@@ -251,6 +282,7 @@ export const party = {
     const ctx = {
       room: c.room, me: this.me, humans, seed: m.seed, isHost: () => c.room.isHost, party: c.meta,
       options: { ...defaultsFor(g), ...(m.options ?? {}) },
+      session: c.session,
       onEnd: () => this._onGameEnd(c),
     };
     try { g.start(ctx); }
@@ -264,6 +296,7 @@ export const party = {
     c.launched = false;
     trash.flush("game ended");           // uploaded photos + entries go now
     $("party-panel").hidden = false;
+    if (c.room.isHost) this._sendMeta();  // shares the session's used prompts
     this.render();
     if (c.room.isHost && FLAGS.PUBLIC_PARTIES) this._announce();
   },
@@ -413,7 +446,7 @@ export const party = {
     const isHost = c.room.isHost, host = c.room.presence[c.room.hostId]?.handle ?? "the host";
     const n = this.playerCount();
     const g = c.queue ? gameById(c.queue.game) : null;
-    const opts = g ? optionsLabel(g, c.queue.options) : "";
+    const opts = g ? [optionsLabel(g, c.queue.options), g.describe?.(c.meta)].filter(Boolean).join(" · ") : "";
     const need = g ? Math.max(0, minFor(g) - n) : 0;
     const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}`;
     if (el.dataset.sig === sig) return;
@@ -440,9 +473,24 @@ export const party = {
     el.hidden = !open;
     if (!open) { el.dataset.sig = ""; return; }
     const n = this.playerCount();
-    const sig = `${n}:${c.queue?.game ?? "-"}:${JSON.stringify(c.queue?.options ?? {})}`;
+    const sig = `${n}:${c.queue?.game ?? "-"}:${JSON.stringify(c.queue?.options ?? {})}:${JSON.stringify(c.meta.settings)}`;
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
+    const st = c.meta.settings ?? {};
+    const dflt = DIARY.DEFAULT_MAX[c.meta.privacy === "public" ? "public" : "private"];
+    const effMax = (st.diaryMax === "unhinged" && !st.adult) ? "spicy" : (st.diaryMax || dflt);
+    const settingsHtml = `<div class="pt-settings">
+        <div class="rl-h">party settings <small>— optional, defaults are fine</small></div>
+        <div class="pt-opt"><span>18+ party</span><div class="pt-row">
+          <button type="button" class="pt-btn ${st.adult ? "" : "on"}" data-set="adult" data-val="0">off</button>
+          <button type="button" class="pt-btn ${st.adult ? "on" : ""}" data-set="adult" data-val="1">on — everyone's 18+</button></div>
+          <small>unlocks unhinged content</small></div>
+        <div class="pt-opt"><span>Secret Diary max level</span><div class="pt-row">${DIARY.LEVELS.map(l => {
+          const locked = l === "unhinged" && !st.adult;
+          return `<button type="button" class="pt-btn ${effMax === l ? "on" : ""}" data-set="diaryMax" data-val="${l}" ${locked ? "disabled" : ""}>${l}${l === dflt ? " (default)" : ""}</button>`;
+        }).join("")}</div>
+          <small>${st.adult ? "" : "unhinged needs 18+ on · "}levels still build up: rounds 1-2 mild, 3-4 up to spicy, then up to this</small></div>
+      </div>`;
     el.innerHTML = `<div class="pt-picker-sheet">
         <div class="pt-picker-head"><b>pick the next game</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
         <div class="pt-games">${PARTY_CATALOG.map(g => {
@@ -457,7 +505,7 @@ export const party = {
             <small>${minFor(g)}+ players · ${esc(g.length ?? "")}${need ? ` · needs ${need} more to start` : ""}</small>
             ${opts}
           </div>`;
-        }).join("")}</div>
+        }).join("")}${settingsHtml}</div>
         <div class="pt-picker-foot">
           ${c.queue ? `<button type="button" class="pt-btn" id="pt-unqueue">clear</button>` : ""}
           <button type="button" class="pt-btn pt-go" id="pt-picker-done">${c.queue ? "done" : "close"}</button>
@@ -473,6 +521,10 @@ export const party = {
       this.queue(card.dataset.queue);
     });
     el.querySelectorAll("[data-opt]").forEach(b => b.onclick = e => { e.stopPropagation(); this.setOption(b.dataset.opt, b.dataset.val); });
+    el.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
+      const k = b.dataset.set, v = b.dataset.val;
+      this.setSetting(k, k === "adult" ? v === "1" : v);
+    });
   },
 
   renderChat() {

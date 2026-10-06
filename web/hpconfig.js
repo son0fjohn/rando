@@ -29,11 +29,27 @@ export const PARTY = {
 
 // ---------------------------------------------------------------- game settings
 export const DIARY = {
-  PROMPTS: 5,                    // prompts answered before anything is revealed
-  WRITE_MS_PER_PROMPT: 60000,    // writing window = this x PROMPTS
-  MATCH_MS: 300000,              // matching window for the whole round
+  // The prompt pool is a separate, editable JSON file: web/data/diary_prompts.json
+  // ({ id, text, type: "written" | "yesno", level: "mild" | "spicy" | "unhinged" }).
+  POOL_URL: "data/diary_prompts.json",
+  ROUNDS: 6,                     // one prompt per round
+  LEVELS: ["mild", "spicy", "unhinged"],
+  // Default max level when the host never touches the setting. Unhinged is
+  // never a default and needs the party's 18+ setting on.
+  DEFAULT_MAX: { public: "mild", private: "spicy" },
+  // Escalation: the cap for round r is min(this, host max).
+  // Rounds 1-2 mild, 3-4 up to spicy, 5+ up to the host's max.
+  CURVE: [{ upTo: 2, cap: "mild" }, { upTo: 4, cap: "spicy" }, { upTo: Infinity, cap: "max" }],
+  // Inside a round's cap, how often to serve the cap level itself rather than
+  // something milder — so the curve is felt, but not every prompt is maxed.
+  CAP_BIAS: 0.6,
+  // Roughly 1 in 3 rounds is yes/no: one yes/no slot in each block of 3.
+  YESNO_EVERY: 3,
+  PREVIEW_MS: 5000,              // host sees the prompt first, with Skip
+  WRITE_MS: 90000,               // written: answer window
+  YESNO_MS: 20000,               // yes/no: tap window
+  GUESS_MS: 60000,               // matching / guessing window
 };
-
 export const MISSION = {
   // How missions reach players. The host picks per game in the lobby:
   //   quick  — the game deals one mission card each, straight into play
@@ -59,27 +75,7 @@ export const RITUAL = {
 
 // ---------------------------------------------------------------- prompt pools
 // Shape: { text, spice: "mild" | "spicy" }
-// `{{player}}` is substituted with a random other player's handle at deal time.
-
-/* ======================= DRAFT — NEEDS CURATION =======================
- * Secret Diary. One prompt per round, about tonight and the people here.
- * Aim: specific enough to be guessable from someone's phrasing, open enough
- * that everyone has an answer. Keep them about the room, not the internet.
- * ===================================================================== */
-export const DIARY_PROMPTS = [
-  { text: "Write the diary entry for tonight that you'd never read aloud.", spice: "mild" },
-  { text: "What's the most suspicious thing you've seen happen in this room tonight?", spice: "mild" },
-  { text: "Who here is having a completely different night than they're pretending to?", spice: "mild" },
-  { text: "Describe tonight as if you were writing a police report.", spice: "mild" },
-  { text: "What did you think was going to happen tonight that absolutely has not?", spice: "mild" },
-  { text: "Which person here would you call first in an actual emergency, and why?", spice: "mild" },
-  { text: "What's the unspoken rule everyone in this room is following right now?", spice: "mild" },
-  { text: "Write the group chat message you drafted tonight and deleted.", spice: "mild" },
-  { text: "What's something you noticed about {{player}} tonight that they don't know you noticed?", spice: "mild" },
-  { text: "If tonight had a title card, what would it say?", spice: "mild" },
-  { text: "What's the pettiest thought you've had in the last hour?", spice: "spicy" },
-  { text: "Who here are you quietly judging, and for what?", spice: "spicy" },
-];
+// (Secret Diary's pool is NOT here — it lives in web/data/diary_prompts.json.)
 
 /* ======================= DRAFT — NEEDS CURATION =======================
  * Today's Mission. Absurd task, done in the next couple of minutes, in view
@@ -124,23 +120,6 @@ export const RITUAL_PROMPTS = [
   { text: "A broken robot slowly powering down", answer: "robot", alt: ["broken robot", "robot shutting down"], spice: "mild" },
   { text: "Trying to fold a fitted bedsheet", answer: "folding a sheet", alt: ["fitted sheet", "laundry", "folding laundry"], spice: "mild" },
   { text: "Realising mid-wave that they weren't waving at you", answer: "awkward wave", alt: ["wrong wave", "waving at nobody"], spice: "spicy" },
-];
-
-/* ======================= DRAFT — bot filler (desk testing only) ===========
- * What ?bots=N writes in Secret Diary. Never shown in a real party unless
- * someone passes ?bots=, so curation here matters least.
- * ===================================================================== */
-export const DIARY_BOT_ENTRIES = [
-  "I have been nodding along to a conversation I lost ten minutes ago.",
-  "Someone moved my drink and I have been too polite to ask who.",
-  "I came for twenty minutes. That was two hours ago.",
-  "I am the only person here who knows what's in the punch.",
-  "I keep checking my phone so I look busy, there is nothing on it.",
-  "I told everyone I ate already. I did not eat already.",
-  "I have decided I like it here, which is annoying, I had plans to leave.",
-  "There is a photo of me from earlier tonight that must never surface.",
-  "I laughed at a joke I did not hear and will not be asking for it again.",
-  "I am quietly timing how long until someone suggests we go somewhere else.",
 ];
 
 // serve a pool, filtered by the spice flag
