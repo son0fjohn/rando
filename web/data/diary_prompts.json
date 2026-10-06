@@ -2,7 +2,7 @@
   "_readme": [
     "Secret Diary prompt pool. This file is the ONLY place prompts live — edit it directly.",
     "Each prompt: id (stable, never reuse or renumber — prompt logs reference it), text, type ('written' | 'yesno'), level ('mild' | 'spicy' | 'unhinged').",
-    "To add one: append it with the next unused id for its type-level, e.g. w-spicy-20. To retire one: delete it (its id stays dead).",
+    "To add one: append it to its group with the next unused number for its type-level (look at the last id in that group). To retire one: delete it — its id stays dead, never reuse it.",
     "'yesno' prompts are statements a player answers yes or no to about themselves."
   ],
   "prompts": [
@@ -151,6 +151,18 @@
       "level": "mild"
     },
     {
+      "id": "w-mild-25",
+      "text": "Who are the 3 worst people in the world",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-26",
+      "text": "What's your favorite word",
+      "type": "written",
+      "level": "mild"
+    },
+    {
       "id": "w-spicy-01",
       "text": "If I had to kiss someone here, who",
       "type": "written",
@@ -261,6 +273,12 @@
     {
       "id": "w-spicy-19",
       "text": "A memory I'd erase from my head",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-20",
+      "text": "What is the most disturbing thought you've had",
       "type": "written",
       "level": "spicy"
     },

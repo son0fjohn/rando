@@ -42,11 +42,11 @@ function waitPhase(t, phase, maxMs = 5 * 60 * 1000) {
 // ===================================================================== 1
 group("Secret Diary — the prompt pool");
 {
-  ok(POOL.length === 66, `the pool is exactly the 66 supplied prompts (got ${POOL.length})`);
+  ok(POOL.length === 69, `the pool is exactly the 69 supplied prompts (got ${POOL.length})`);
   ok(new Set(POOL.map(p => p.id)).size === POOL.length, "every prompt has a unique id");
   ok(POOL.every(p => ["written", "yesno"].includes(p.type) && DIARY.LEVELS.includes(p.level) && p.text), "every prompt has text, a valid type and a valid level");
   const by = (t, l) => POOL.filter(p => p.type === t && p.level === l).length;
-  ok(by("written", "mild") === 24 && by("written", "spicy") === 19 && by("written", "unhinged") === 5, "written: 24 mild, 19 spicy, 5 unhinged");
+  ok(by("written", "mild") === 26 && by("written", "spicy") === 20 && by("written", "unhinged") === 5, "written: 26 mild, 20 spicy, 5 unhinged");
   ok(by("yesno", "mild") === 1 && by("yesno", "spicy") === 12 && by("yesno", "unhinged") === 5, "yes/no: 1 mild, 12 spicy, 5 unhinged");
   ok(!("DIARY_PROMPTS" in CONFIG) && !("DIARY_BOT_ENTRIES" in CONFIG), "the old placeholder pool and its filler are gone from the config");
   const old = ["Write the diary entry for tonight", "police report", "group chat message you drafted", "title card", "pettiest thought", "quietly judging", "{{player}}"];
