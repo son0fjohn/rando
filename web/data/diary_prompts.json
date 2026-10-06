@@ -1,0 +1,406 @@
+{
+  "_readme": [
+    "Secret Diary prompt pool. This file is the ONLY place prompts live — edit it directly.",
+    "Each prompt: id (stable, never reuse or renumber — prompt logs reference it), text, type ('written' | 'yesno'), level ('mild' | 'spicy' | 'unhinged').",
+    "To add one: append it with the next unused id for its type-level, e.g. w-spicy-20. To retire one: delete it (its id stays dead).",
+    "'yesno' prompts are statements a player answers yes or no to about themselves."
+  ],
+  "prompts": [
+    {
+      "id": "w-mild-01",
+      "text": "My first impression of someone here",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-02",
+      "text": "The person here I'd want with me in a zombie apocalypse, and who I'd leave behind",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-03",
+      "text": "If I were stuck on an island for 30 years, who from here I'm bringing",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-04",
+      "text": "The person I noticed first tonight",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-05",
+      "text": "How many people here I could beat in a fight",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-06",
+      "text": "Who here I'd eat first in a survival situation",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-07",
+      "text": "How people in high school would have described me",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-08",
+      "text": "The weirdest thing I've searched this month",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-09",
+      "text": "An unpopular opinion I'd defend to the death",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-10",
+      "text": "Who here I'd trust to help me hide a body",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-11",
+      "text": "The worst thing I've done in school",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-12",
+      "text": "The weirdest thing I've talked to ChatGPT about",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-13",
+      "text": "My longest-running celebrity or internet crush",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-14",
+      "text": "My most embarrassing childhood crush",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-15",
+      "text": "The most cringe thing I've done",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-16",
+      "text": "Who here looks like they peaked in high school",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-17",
+      "text": "Who here would be a cult leader",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-18",
+      "text": "Who here would get scammed first",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-19",
+      "text": "Who here would snitch first",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-20",
+      "text": "Whose outfit here I'd swap with",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-21",
+      "text": "Who here I'd room with",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-22",
+      "text": "Who here has showered the least this month",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-23",
+      "text": "Who here is the biggest green flag",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-24",
+      "text": "Who here I'd most let date my sibling",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-spicy-01",
+      "text": "If I had to kiss someone here, who",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-02",
+      "text": "The most unethical thing I've done",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-03",
+      "text": "The most down bad thing I've done",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-04",
+      "text": "The most illegal thing I've done",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-05",
+      "text": "The craziest thing I've done drunk",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-06",
+      "text": "What I'm secretly into",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-07",
+      "text": "My biggest regret",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-08",
+      "text": "The most questionable person I've kissed",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-09",
+      "text": "The most delusional I've been about someone",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-10",
+      "text": "The last person I stalked on IG",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-11",
+      "text": "The worst reason someone rejected me or broke up with me",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-12",
+      "text": "Whose parents here I'd date",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-13",
+      "text": "Who here I'd bring home to meet my parents",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-14",
+      "text": "Who here I'd never bring home to meet my parents",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-15",
+      "text": "My biggest red flag",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-16",
+      "text": "Who here is the biggest red flag",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-17",
+      "text": "The most disappointing thing I've done to my parents",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-18",
+      "text": "Who here I'd least let date my sibling",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-spicy-19",
+      "text": "A memory I'd erase from my head",
+      "type": "written",
+      "level": "spicy"
+    },
+    {
+      "id": "w-unhinged-01",
+      "text": "The most toxic thing I've done in a relationship",
+      "type": "written",
+      "level": "unhinged"
+    },
+    {
+      "id": "w-unhinged-02",
+      "text": "The worst thing I've done out of jealousy",
+      "type": "written",
+      "level": "unhinged"
+    },
+    {
+      "id": "w-unhinged-03",
+      "text": "Who here looks like they have daddy issues",
+      "type": "written",
+      "level": "unhinged"
+    },
+    {
+      "id": "w-unhinged-04",
+      "text": "Who here looks like they have mommy issues",
+      "type": "written",
+      "level": "unhinged"
+    },
+    {
+      "id": "w-unhinged-05",
+      "text": "Who here has shot their shot with the most people",
+      "type": "written",
+      "level": "unhinged"
+    },
+    {
+      "id": "yn-mild-01",
+      "text": "I've gone over 3 days without showering",
+      "type": "yesno",
+      "level": "mild"
+    },
+    {
+      "id": "yn-spicy-01",
+      "text": "I've been on a date in the last month",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-02",
+      "text": "I've asked for someone's number right after meeting them",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-03",
+      "text": "I've been ghosted in the last month",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-04",
+      "text": "I've ghosted someone in the last month",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-05",
+      "text": "I've had a secret crush this month",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-06",
+      "text": "I've slid into someone's DMs this month",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-07",
+      "text": "I've looked at my ex's photos this year",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-08",
+      "text": "I've kissed someone I just met",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-09",
+      "text": "I've had a crush on someone in this room",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-10",
+      "text": "I've made out with someone in the last week",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-11",
+      "text": "I've drunk texted an ex",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-spicy-12",
+      "text": "I've gotten back with an ex",
+      "type": "yesno",
+      "level": "spicy"
+    },
+    {
+      "id": "yn-unhinged-01",
+      "text": "I've dated someone just because I was lonely",
+      "type": "yesno",
+      "level": "unhinged"
+    },
+    {
+      "id": "yn-unhinged-02",
+      "text": "I've cheated before",
+      "type": "yesno",
+      "level": "unhinged"
+    },
+    {
+      "id": "yn-unhinged-03",
+      "text": "I've lied about being single",
+      "type": "yesno",
+      "level": "unhinged"
+    },
+    {
+      "id": "yn-unhinged-04",
+      "text": "I've made a fake account to stalk someone",
+      "type": "yesno",
+      "level": "unhinged"
+    },
+    {
+      "id": "yn-unhinged-05",
+      "text": "I've been the side piece",
+      "type": "yesno",
+      "level": "unhinged"
+    }
+  ]
+}
