@@ -163,6 +163,24 @@
       "level": "mild"
     },
     {
+      "id": "w-mild-27",
+      "text": "What's your snap score",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-28",
+      "text": "What celebrity would you make the president",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-29",
+      "text": "Who is the most attractive athlete",
+      "type": "written",
+      "level": "mild"
+    },
+    {
       "id": "w-spicy-01",
       "text": "If I had to kiss someone here, who",
       "type": "written",
