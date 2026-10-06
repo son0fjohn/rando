@@ -7,6 +7,8 @@ import { TODAYS_MISSION } from "/web/hpgames/mission.js";
 import { HUMILIATION_RITUAL } from "/web/hpgames/ritual.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { DIARY } from "/web/hpconfig.js";
+import { diaryPool } from "/web/hpgames/secretdiary.js";
+await diaryPool();
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -27,18 +29,34 @@ group("Secret Diary — you + 3 bots");
   const t = seatTable(SECRET_DIARY, 1, { ids: [ME] });
   adv(500);
   ok(bots(t.s).length === 3, "three bots take seats");
-  for (let pi = 0; pi < DIARY.PROMPTS; pi++) t.input(ME, "write", { pi, text: `my secret ${pi}` });
-  let guard = 0;
-  while (t.s.phase === "write" && guard++ < 3000) adv(200);
-  ok(t.s.entries.length === 4 * DIARY.PROMPTS, `bots answer every prompt too (${t.s.entries.length} in the pool)`);
-  while (t.s.phase !== "match" && guard++ < 6000) adv(200);
-  // match every entry to the right author, so the human score is checkable
-  const author = eid => Object.values(t.s.players).find(p => Object.values(p.mine).includes(eid))?.id;
-  for (const e of t.s.entries.filter(e => !Object.values(t.s.players[ME].mine).includes(e.eid))) t.input(ME, "guess", { eid: e.eid, who: author(e.eid) });
-  while (t.s.phase !== "end" && guard++ < 9000) adv(200);
-  ok(t.s.phase === "end", "bots finish matching and the round ends");
-  ok(t.s.players[ME].score === 3 * DIARY.PROMPTS, `your all-correct matching scores ${3 * DIARY.PROMPTS} (got ${t.s.players[ME].score})`);
-  ok(bots(t.s).every(b => Object.keys(b.guesses).length > 0), "every bot made guesses");
+  let guard = 0, rounds = 0, written = 0, yesno = 0, myPoints = 0;
+  while (t.s.phase !== "end" && guard++ < 40000) {
+    if (t.s.phase === "answer" && t.s.players[ME].answer === null) {
+      t.input(ME, "answer", t.s.cur.type === "written" ? { text: `my answer ${t.s.round}` } : { yn: "yes" });
+    }
+    if (t.s.phase === "guess" && !t.s.players[ME].locked) {
+      rounds++;
+      if (t.s.cur.type === "written") {
+        written++;
+        ok(t.s.entries.length === 4, `round ${t.s.round}: the bots wrote answers too (${t.s.entries.length})`);
+        const author = eid => Object.values(t.s.players).find(p => p.myEid === eid)?.id;
+        for (const e of t.s.entries) if (e.eid !== t.s.players[ME].myEid) t.input(ME, "guess", { eid: e.eid, who: author(e.eid) });
+        myPoints += 3;
+      } else {
+        yesno++;
+        ok(t.s.countOf === 4, `round ${t.s.round}: the bots tapped yes/no too (${t.s.countOf} answered)`);
+        for (const q of Object.values(t.s.players)) if (q.id !== ME && q.answer === "yes") t.input(ME, "pickyes", { who: q.id, on: true });
+        myPoints += 3;
+      }
+      t.input(ME, "lock");
+      adv(400);
+      t.s.players[ME].locked = true;       // harness bookkeeping: don't re-enter this round
+    }
+    adv(200);
+  }
+  ok(t.s.phase === "end", "the bots keep the whole game moving");
+  ok(written >= 1 && yesno >= 1, `both round types came up (${written} written, ${yesno} yes/no)`);
+  ok(t.s.players[ME].score === myPoints, `reading every bot right scores ${myPoints} (got ${t.s.players[ME].score})`);
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));

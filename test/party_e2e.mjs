@@ -85,7 +85,7 @@ try {
   const B = await phone("bob", `&party=${code}`);
   ok(await until(B, () => document.querySelectorAll(".lr-av").length === 2, null, 20000), "a friend joins straight from the share link");
   ok(await until(A, () => document.querySelectorAll(".lr-av").length === 2), "the host sees them arrive in the room");
-  ok((await text(B, "#pt-title")) === "Saturday night", "the joiner gets the party name from the host");
+  ok(await until(B, () => document.getElementById("pt-title")?.textContent === "Saturday night"), "the joiner gets the party name from the host");
 
   // ------------------------------------------------------------------ queue with too few
   head("Lobby: host queues a game before the room is full");
@@ -192,43 +192,97 @@ try {
   ok(await until(A, () => !document.getElementById("party-panel").hidden, null, 15000), "back to the lobby");
 
   // ------------------------------------------------------------------ Secret Diary
-  head("Secret Diary — 5 prompts, then reveal, then match");
+  head("Party settings: 18+ gate and Secret Diary max level");
   await A.click("#pt-open-picker");
+  await A.locator(".pt-settings").scrollIntoViewIfNeeded();
+  ok(await A.locator('[data-set="diaryMax"][data-val="unhinged"]').isDisabled(), "unhinged is locked until the party is 18+");
+  ok(/default/.test(await text(A, '[data-set="diaryMax"].on')) && /spicy/.test(await text(A, '[data-set="diaryMax"].on')), "a private party defaults to spicy, marked (default)");
+  await shot(A, "10-settings");
+  let asked = null;
+  A.once("dialog", d => { asked = d.message(); d.accept(); });
+  await A.click('[data-set="adult"][data-val="1"]');
+  ok(/18 or older/.test(asked ?? ""), "turning on 18+ asks the host to confirm everyone's an adult");
+  ok(await until(A, () => !document.querySelector('[data-set="diaryMax"][data-val="unhinged"]')?.disabled), "unhinged unlocks");
+  await A.click('[data-set="diaryMax"][data-val="unhinged"]');
   await A.click('[data-queue="secretdiary"]');
   await A.click("#pt-picker-done");
+  ok(await until(B, () => /Secret Diary/.test(document.getElementById("pt-next")?.textContent) && /up to unhinged/.test(document.getElementById("pt-next")?.textContent)), "guests see the queued game and its level");
+
+  head("Secret Diary — host preview + skip, written and yes/no rounds, no taps needed");
   await A.click("#pt-start");
-  ok(await until(A, () => /prompt 1 of 5/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "writing starts at prompt 1 of 5");
-  await shot(A, "10-diary-write");
-  // cy starts typing and stops mid-thought while the other two finish all 5:
-  // their finishing must not wipe cy's half-written answer
-  await until(C, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
-  await sleep(100);
-  await C.fill("#gp-in", "half a thought");
-  for (const pg of [A, B, C]) {
-    if (pg === C) {
-      ok((await C.inputValue("#gp-in")) === "half a thought", "others finishing all 5 doesn't wipe what you're halfway through typing");
+  ok(await until(A, () => !!document.getElementById("sd-skip")), "the host gets the prompt first, with Skip");
+  ok(await until(B, () => /incoming/.test(document.querySelector(".sd-incoming")?.textContent ?? "")), "everyone else just sees 'next prompt incoming'");
+  await shot(A, "11-diary-host-preview");
+  const firstPrompt = await text(A, ".sd-prompt");
+  await A.click("#sd-skip");
+  ok(await until(A, t => (document.querySelector(".sd-prompt")?.textContent ?? "") !== t, firstPrompt), "Skip swaps in a different prompt");
+  await A.click("#sd-send");
+  const types = new Set();
+  const h2 = pg => stageTitle(pg);
+  // play 4 rounds with everyone answering through the UI. 4 rounds always
+  // contain 2+ written rounds, so a phone that kept last round's answer
+  // (showing "locked in" before you've answered) can't slip through.
+  // (up to 6, until both types have come up: skipping the only mild yes/no
+  // prompt in the preview legitimately pushes the first yes/no to round 4-6)
+  for (let r = 0; r < 6 && (r < 4 || types.size < 2); r++) {
+    if (r > 0) {
+      for (let i = 0; i < 14 && !(await A.locator("#sd-send").count()); i++) { await A.evaluate(() => document.getElementById("hp-skip")?.click()); await sleep(600); }
+      await A.evaluate(() => document.getElementById("sd-send")?.click());
     }
-    for (let k = 0; k < 5; k++) {
-      const ready = await until(pg, k => document.querySelector("#game-panel h2")?.textContent.includes(`prompt ${k + 1} `) && document.getElementById("gp-in") && !document.getElementById("gp-in").disabled, k, 8000);
-      if (process.env.E2E_DEBUG) console.log(`    ${pg.label} prompt ${k + 1}: ready=${ready} h2="${await stageTitle(pg)}" t=${Date.now() % 100000}`);
-      await sleep(80);
-      await pg.fill("#gp-in", `${pg.label} entry for prompt ${k + 1}`);
-      await pg.click("#game-panel .gp-form button");
+    const reached = await until(B, () => /write it|yes or no\?/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 12000);
+    ok(reached, `round ${r + 1} reaches everyone with a fresh answer box`);
+    if (!reached) { console.log(`    A="${await h2(A)}" B="${await h2(B)}"`); continue; }
+    ok(!/pts/.test(await text(B, "#game-hud")), "no score on screen mid-game");
+    const isYN = /yes or no/.test(await h2(B));
+    const first = !types.has(isYN ? "yesno" : "written");
+    types.add(isYN ? "yesno" : "written");
+    if (!isYN) {
+      if (first) {
+        // cy is mid-sentence while the others lock in: it must survive
+        await until(C, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
+        await sleep(80);
+        await C.fill("#gp-in", "half a thou");
+        await shot(B, "12-diary-write");
+      }
+      for (const pg of [A, B]) { await until(pg, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled); await sleep(60); await pg.fill("#gp-in", `${pg.label} answer ${r}`); await pg.click("#game-panel .gp-form button"); }
+      if (first) { await sleep(900); ok((await C.inputValue("#gp-in")) === "half a thou", "others locking in doesn't wipe what you're typing"); }
+      await until(C, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled); await sleep(60);
+      await C.fill("#gp-in", `cy answer ${r}`); await C.click("#game-panel .gp-form button");
+      ok(await until(B, () => /\d answers/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 10000), "once all 3 are in, every answer appears at once");
+      if (first) {
+        ok((await B.locator(".sd-entry").count()) === 3, "three unsigned answers");
+        await shot(B, "13-diary-reveal");
+        ok(await until(B, () => /who wrote which/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 25000), "matching opens on its own");
+        ok((await B.locator(".sd-who").first().locator("button").count()) === 2, "you match against the other writers only");
+        await B.locator(".sd-who button").first().click();
+        await sleep(400);
+        await shot(B, "14-diary-match");
+      }
+    } else {
+      if (first) await shot(B, "15-diary-yesno");
+      for (const [pg, yn] of [[A, "yes"], [B, "no"], [C, "yes"]]) await pg.click(`[data-yn="${yn}"]`);
+      ok(await until(B, () => /the count/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 10000), "everyone tapped: only the count is revealed");
+      if (first) {
+        ok(/nobody or almost nobody|everyone or almost everyone|\d of \d said yes/.test(await text(B, ".sd-count")), `count line: "${await text(B, ".sd-count")}"`);
+        await shot(B, "16-diary-count");
+        ok(await until(B, () => /who said yes/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 15000), "then everyone guesses who said yes");
+        await B.locator("[data-pick]").first().click();
+        await sleep(300);
+        await shot(B, "17-diary-who-said-yes");
+        await B.click("#sd-lock");
+        ok(await until(B, () => /locked in/.test(document.getElementById("game-panel")?.textContent ?? "")), "lock in");
+      }
     }
   }
-  ok(await until(B, () => /entries/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 15000), "nothing is revealed until all 5 are in — then everything at once");
-  ok((await B.locator(".sd-entry").count()) === 15, `all 15 entries appear unsigned (${await B.locator(".sd-entry").count()})`);
-  await shot(B, "11-diary-reveal");
-  await A.locator("#hp-skip").first().click();
-  ok(await until(B, () => /who wrote which/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "matching opens");
-  ok((await B.locator(".sd-tabs button").count()) === 5, "one page per prompt");
-  await B.locator(".sd-who button").first().click();
-  await sleep(400);
-  await shot(B, "12-diary-match");
-  await B.click("#sd-next");
-  ok(await until(B, () => document.querySelector(".sd-tabs button.cur")?.textContent === "2"), "'next prompt' moves to page 2");
-  ok(await skipUntil(A, A, t => /Secret Diary/.test(t), 10), "the diary reaches its results screen");
-  await shot(A, "13-diary-results");
+  ok(types.size === 2, `both round types came up (${[...types].join(" + ")})`);
+  for (let i = 0; i < 60 && !/Secret Diary/.test(await h2(A)); i++) {
+    if (await A.locator("#sd-send").count()) await A.evaluate(() => document.getElementById("sd-send")?.click());
+    else await A.evaluate(() => document.getElementById("hp-skip")?.click());
+    await sleep(600);
+  }
+  ok(/Secret Diary/.test(await h2(A)), "the diary reaches its results screen");
+  await shot(A, "18-diary-results");
+  ok(await A.evaluate(() => (window.__logRows ?? []).length) >= 2 && await A.evaluate(() => window.__logRows.some(r => r.skipped)), "the host's phone logged the prompts, including the skip");
 } catch (e) {
   fail++; console.log("  ✗ crashed: " + (e.stack || e).toString().split("\n").slice(0, 3).join(" | "));
 }
