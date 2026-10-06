@@ -59,7 +59,18 @@ class StubChannel {
   }
 }
 
+
+// the prompt logger inserts here. Rows land on window.__logRows; set
+// window.__logFail = true to simulate the table not existing yet.
+const from = () => ({
+  insert: async rows => {
+    if (window.__logFail) return { error: { message: "relation \"diary_prompt_log\" does not exist" } };
+    (window.__logRows ??= []).push(...rows);
+    return { error: null };
+  },
+});
 export const sb = {
+  from,
   channel: (name, cfg) => new StubChannel(name, cfg),
   removeChannel: ch => ch.close(),
 };

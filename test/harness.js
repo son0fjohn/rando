@@ -97,7 +97,7 @@ export class FakeRoom {
 // ---------------------------------------------------------------- table
 // Seat n players, start `gamedef` for each, and hand back handles. Everyone
 // runs the real game module; exactly one of them is the host.
-export function seatTable(gamedef, n, { seed = 42, ids = null, options = {} } = {}) {
+export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, party = null, session = null } = {}) {
   const bus = makeBus();
   const t0 = Date.now();
   const players = (ids ?? Array.from({ length: n }, (_, i) => `p${i + 1}`)).map((id, i) => ({
@@ -113,8 +113,9 @@ export function seatTable(gamedef, n, { seed = 42, ids = null, options = {} } = 
     const ctx = {
       room: c.room, me: c.me, humans, seed,
       isHost: () => c.room.isHost,
-      party: { name: "test party", vibe: "chill", cap: 12, code: "TEST" },
+      party: party ?? { name: "test party", vibe: "chill", cap: 12, code: "TEST", privacy: "private", settings: { adult: false, diaryMax: null } },
       options,
+      session: session ?? {},
       onEnd: () => { c.ended = true; },
     };
     gamedef.start(ctx);
