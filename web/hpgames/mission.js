@@ -55,7 +55,7 @@ export const TODAYS_MISSION = {
     ui.show(); ui.theme("chaos");
     const room = ctx.room;
     const MODE = MISSION.MODES.includes(ctx.options?.mode) ? ctx.options.mode : MISSION.DEFAULT_MODE;
-    let myRating = null, myDraft = Math.round(SCALE / 2), myPick = null, editing = false, lastHud = 0;
+    let myRating = null, myDraft = Math.round(SCALE / 2), myPick = null, editing = false, lastHud = 0, lastMission = null;
     trash.add(() => { myRating = null; myPick = null; });
 
     const cur = s => s.order?.[s.mi] ?? null;                 // whose mission
@@ -205,6 +205,11 @@ export const TODAYS_MISSION = {
 
     // ---- render ----
     function renderTM(s) {
+      // per-mission local state resets on every phone, keyed off the state
+      // (Rounds' onPhase only runs on the host — resetting there let a
+      // guest's rating from the last mission show up on this one)
+      const mk = `${s.phase === "vote" ? "v" : "x"}:${s.mi}`;
+      if (mk !== lastMission) { lastMission = mk; myRating = null; editing = false; myDraft = Math.round(SCALE / 2); }
       const now = performance.now(); if (now - lastHud < 150) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
