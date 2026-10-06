@@ -53,6 +53,10 @@ export function allDone(s, fn) { return active(s).every(fn); }
 //   { name, ms, done?(s), enter?(s), exit?(s), next?(s) -> phaseName }
 // Call hostStep(s, dt) from hostTick. Clients never run this — they render
 // whatever snapshot arrives, which is why a host handover is seamless.
+// NOTE: onPhase therefore fires on the HOST'S phone only. Never reset a
+// player's local UI state (their draft answer, "I already voted" flags) in
+// onPhase — guests would keep last round's. Reset it in render, keyed off
+// something in the state (round number, phase), which every phone sees.
 export class Rounds {
   constructor(phases, { onPhase = () => {} } = {}) {
     this.phases = Object.fromEntries(phases.map(p => [p.name, p]));

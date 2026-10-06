@@ -94,7 +94,7 @@ export const HUMILIATION_RITUAL = {
   start(ctx) {
     ui.show(); ui.theme("chaos");
     const room = ctx.room;
-    let lastHud = 0, heardOpen = false;
+    let lastHud = 0, heardOpen = false, lastTurn = null;
     trash.add(() => { heardOpen = false; });
 
     // ui.prompt locks its input after one submit — and it does so AFTER
@@ -214,6 +214,9 @@ export const HUMILIATION_RITUAL = {
 
     // ---- render ----
     function renderHR(s) {
+      // per-turn local state resets on every phone (onPhase is host-only)
+      const tk = `${s.ri}:${s.phase}`;
+      if (tk !== lastTurn) { lastTurn = tk; heardOpen = false; }
       const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
