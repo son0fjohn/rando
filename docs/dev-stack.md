@@ -47,9 +47,12 @@ it to the internet (it can run commands on the machine).
    default and leaves a 👍 when it finds nothing.
 4. `@codex fix it` on a finding starts a task that pushes a fix to the PR.
 5. Check it's live: on any open PR, Codex reacts 👀 within a minute or so of
-   the PR opening (or of an `@codex review` comment). No reaction means
-   automatic review is off, or the Codex GitHub app can't see this repo
-   (GitHub → Settings → Applications → Codex → Repository access).
+   a push (or of an `@codex review` comment). No reaction means automatic
+   review is off, or the Codex GitHub app can't post to this repo. Check
+   GitHub → Settings → Applications → **Installed GitHub Apps** → *ChatGPT
+   Codex Connector* → Configure → Repository access includes `rando`. (If
+   a private review inside the Codex app works but nothing appears on GitHub,
+   it's this app: Codex can read the repo but can't post to it.)
 
 A Codex review is not an approval — anything touching auth, the database or
 the 18+ / privacy rules still gets a human look.

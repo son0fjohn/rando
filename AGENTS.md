@@ -106,4 +106,6 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
 - Plain ES modules, no framework, no build. Match the file you're in.
 - Commit messages say what changed and why; one logical change per commit.
 - Work on a branch and open a PR; `main` deploys to production on merge.
-- Don't merge before Codex's review has landed (👍 or comments) and CI is green.
+- Don't merge before Codex's review of the **latest push** has landed (👍 or
+  comments) and CI is green. If Codex hasn't reacted to the latest push
+  within ~10 minutes, don't wait on it forever — ask a human whether to merge.
