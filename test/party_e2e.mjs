@@ -4,7 +4,7 @@
 // hplobby.js, game modules and the app's real CSS (injected from
 // web/index.html). Saves phone-sized screenshots for eyeballing the layout.
 //
-//   node test/party_e2e.mjs [screenshot-dir]
+//   node test/party_e2e.mjs [screenshot-dir] [--browser=webkit]
 //
 // Runs in real time (≈2 min): it's the one place the party flow is exercised
 // as a whole, so it trades speed for realism.
@@ -12,10 +12,10 @@ import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
-import { chromium } from "playwright";
+import { chromium, webkit, devices } from "playwright";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const SHOTS = process.argv[2] ?? null;
+const SHOTS = process.argv.slice(2).find(a => !a.startsWith("--")) ?? null;
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".png": "image/png", ".jpg": "image/jpeg", ".css": "text/css", ".json": "application/json" };
 
 // the app's real stylesheet, lifted out of index.html
@@ -35,9 +35,18 @@ await new Promise(r => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 if (SHOTS) await mkdir(SHOTS, { recursive: true });
 
+// --browser=webkit runs the same party on Safari's engine with Playwright's
+// iPhone profile (viewport, touch, Mobile Safari user agent). It's the closest
+// thing to iOS Safari that runs on Linux — CI runs both.
+const ENGINE = (process.argv.find(a => a.startsWith("--browser="))?.split("=")[1]) ?? "chromium";
 const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-const browser = await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, args: ["--no-sandbox"] });
-const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
+const browser = ENGINE === "webkit"
+  ? await webkit.launch()
+  : await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, args: ["--no-sandbox"] });
+const ctx = ENGINE === "webkit"
+  ? await browser.newContext({ ...devices["iPhone 15"] })
+  : await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
+console.log(`engine: ${ENGINE}${ENGINE === "webkit" ? " (iPhone 15 profile)" : ""}`);
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log("  ✓ " + m); } else { fail++; console.log("  ✗ " + m); } };
