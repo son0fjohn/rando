@@ -1,0 +1,54 @@
+# Runs the house-party test suites on every PR and on main.
+#   logic  — all five games + the bots suite, on a virtual clock (fast)
+#   party  — three "phones" play a whole party through the real UI, once on
+#            Chromium and once on WebKit with an iPhone profile (Safari's
+#            engine — the closest thing to iOS Safari that runs on Linux)
+# Screenshots from the party runs are uploaded as an artifact.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  logic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
+  party:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: node test/party_e2e.mjs shots --browser=${{ matrix.browser }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: party-screens-${{ matrix.browser }}
+          path: shots/
+          if-no-files-found: ignore
