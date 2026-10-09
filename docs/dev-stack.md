@@ -39,7 +39,9 @@ it to the internet (it can run commands on the machine).
 
 1. In Codex (chatgpt.com/codex) → settings → connect GitHub and give the
    Codex app access to `son0fjohn/rando`.
-2. Code review → this repo → turn on **Automatic review**. Without it, comment
+2. Code review → this repo → turn on **Automatic review**, trigger **every
+   push** (this repo's setting), so follow-up commits to a PR get reviewed
+   too, not just the first version. Without automatic review, comment
    `@codex review` on a PR to ask for one.
 3. Rules live in `AGENTS.md`. Codex only comments on serious (P0/P1) issues by
    default and leaves a 👍 when it finds nothing.
