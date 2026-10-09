@@ -44,6 +44,10 @@ it to the internet (it can run commands on the machine).
 3. Rules live in `AGENTS.md`. Codex only comments on serious (P0/P1) issues by
    default and leaves a 👍 when it finds nothing.
 4. `@codex fix it` on a finding starts a task that pushes a fix to the PR.
+5. Check it's live: on any open PR, Codex reacts 👀 within a minute or so of
+   the PR opening (or of an `@codex review` comment). No reaction means
+   automatic review is off, or the Codex GitHub app can't see this repo
+   (GitHub → Settings → Applications → Codex → Repository access).
 
 A Codex review is not an approval — anything touching auth, the database or
 the 18+ / privacy rules still gets a human look.
