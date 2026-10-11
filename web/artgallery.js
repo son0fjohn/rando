@@ -93,6 +93,33 @@ export const ART_GALLERY = {
         <div class="ag-dealer"><img class="ag-pose ag-idle" src="${ASSET}dealer_idle.png" alt=""><img class="ag-pose ag-unveil" src="${ASSET}dealer_unveil.png" alt=""></div>
         ${line ? `<div class="ag-bubble">${line}</div>` : ""}
       </div>`;
+    // The gallery steps (covered → vote → result) are a full-screen room
+    // instead of a card: the painting on the wall, the two titles as brass
+    // plaques beneath it, the dealer on the floor. On reveal the cloth comes
+    // off the painting, then off plaque I, then plaque II (CSS delays, ~2 s
+    // total). Voting = tapping a plaque, which gets a red "sold" dot. The
+    // result step reuses the same plaques, now showing authors and points.
+    const ROMAN = ["I", "II"];
+    const galleryRoom = (f, s, { covered = false, animate = false, mode = "vote", line = "", pill = "" } = {}) => {
+      const c = f.counts || [0, 0], pts = f.pts || [0, 0];
+      const top = mode === "result" && c[0] !== c[1] ? (c[0] > c[1] ? 0 : 1) : null;
+      const plaques = f.titles.map((t, i) => {
+        const body = `<span class="ag-pl-eye">Title ${ROMAN[i]}</span><span class="ag-pl-t">“${esc(t.text)}”</span>` + (mode === "result"
+          ? `<span class="ag-pl-by">— ${esc(s.players[t.by]?.handle ?? "?")}</span><span class="ag-pl-n">${c[i]} vote${c[i] === 1 ? "" : "s"} · <b data-count="${pts[i]}">+0</b></span>${top === i ? `<i class="ag-pl-win">winner</i>` : ""}`
+          : `<i class="ag-pl-dot"></i><i class="ag-pl-tag">your vote</i>`);
+        const cls = `ag-pl ${top === i ? "win" : ""} ${top !== null && top !== i ? "lose" : ""}`;
+        return mode === "vote"
+          ? `<button type="button" class="${cls}" data-v="${i}">${body}<img class="ag-pl-cloth" src="${ASSET}cloth.png" alt=""></button>`
+          : `<div class="${cls}">${body}<img class="ag-pl-cloth" src="${ASSET}cloth.png" alt=""></div>`;
+      }).join("");
+      return `<div class="ag-scene ag-room ${covered ? "covered" : "revealed unveil"} ${animate ? "ag-anim" : ""}">
+          ${framed(f.pid, s)}
+          <div class="ag-plaques">${plaques}</div>
+          <div class="ag-dealer"><img class="ag-pose ag-idle" src="${ASSET}dealer_idle.png" alt=""><img class="ag-pose ag-unveil" src="${ASSET}dealer_unveil.png" alt=""></div>
+          ${line ? `<div class="ag-bubble">“${esc(line)}”</div>` : ""}
+        </div><div class="ag-pill" id="ag-pill">${pill}</div>`;
+    };
+
     // reveal tween: the scene is built covered, then flipped on the next
     // frame so the CSS transitions (cloth off, dealer pose) actually run
     const revealed = new Set();
@@ -187,8 +214,11 @@ export const ART_GALLERY = {
       onEvent(m) {
         if (m.ev === "phase") { sfx.ping(); ui.toast("photos are in — now title them", "phase"); ui.resetKey(); }
         if (m.ev === "cover") { myVote = null; sfx.tick(); ui.resetKey(); }
-        if (m.ev === "reveal") { sfx.chime(); buzz(40); ui.resetKey(); }
-        if (m.ev === "result") { sfx.pop(); ui.resetKey(); }
+        // no resetKey here: the render keys already change per step, and on the
+        // host this event lands after the first render, so a reset would
+        // rebuild the room mid-unveil and cut the plaque reveal short
+        if (m.ev === "reveal") { sfx.chime(); buzz(40); }
+        if (m.ev === "result") { sfx.pop(); }
         if (m.ev === "finish") { sfx.win(); ui.resetKey(); }
       },
     }, { hz: 3 });
@@ -298,34 +328,44 @@ export const ART_GALLERY = {
         if (s.sub === "covered") {
           if (!ui.once(`c:${s.fi}`, () => {})) return;
           srcOf(f.pid, s);   // warm the cache (asks the room now if we're missing it)
-          ui.stage(`piece ${s.fi + 1} of ${s.frames.length}`, scene(f.pid, s, { covered: true, line: `“${DEALER.cover[s.fi % DEALER.cover.length]}”` }), "gallery");
+          ui.panel(galleryRoom(f, s, { covered: true, line: DEALER.cover[s.fi % DEALER.cover.length], pill: `piece <b>${s.fi + 1}</b> of ${s.frames.length}` }), "ag-full");
         } else if (s.sub === "reveal") {
           const writer = f.titles.some(t => t.by === ctx.me.id);
-          const voted = f.votes[ctx.me.id] ?? myVote;
-          const has = !!srcOf(f.pid, s);
+          // my own tap wins over a host snapshot that hasn't caught up yet
+          const voted = myVote ?? f.votes[ctx.me.id] ?? null;
+          const src = srcOf(f.pid, s);
           const eligible = active.filter(p => !f.titles.some(t => t.by === p.id)).length;
           const votesIn = Object.keys(f.votes).length;
-          if (!ui.once(`v:${s.fi}:${voted ?? "-"}:${writer ? 1 : 0}:${has ? 1 : 0}:${votesIn}`, () => {})) return;
-          const first = !revealed.has(s.fi);          // play the reveal tween once per frame
-          const titles = f.titles.map((t, i) => ({ value: i, label: `“${esc(t.text)}”` }));
-          const body = scene(f.pid, s, { covered: first, unveil: !first, animate: first, line: `“${DEALER.unveil[s.fi % DEALER.unveil.length]}”` })
-            + `<div class="ag-cards">` + (writer
-              ? `<div class="choices">${titles.map(t => `<div class="ag-tcard">${t.label}</div>`).join("")}</div>`
-              : ui.choices(titles, null, { picked: voted })) + `</div>`
-            + (writer ? `<p class="ab-sub">you wrote one of these — the room decides</p>` : "")
-            + `<p class="ab-sub">${votesIn}/${eligible} votes in</p>${skipBtn()}`;
-          ui.stage("which title wins?", body, `vote · ${ui.clock(s.left)}`);
-          if (first) playReveal(s.fi);
-          if (!writer) ui.bindChoices(v => { myVote = +v; game.input("vote", { idx: +v }); sfx.pop(); ui.resetKey(); });
-          bindSkip();
+          // Built once per piece: other people's votes, my own tap and a photo
+          // that lands late are all patched in place below, so none of them
+          // cut the unveil short.
+          if (ui.once(`v:${s.fi}:${writer ? 1 : 0}`, () => {})) {
+            const first = !revealed.has(s.fi);          // play the reveal tween once per frame
+            ui.panel(galleryRoom(f, s, { covered: first, animate: first, mode: writer ? "read" : "vote", line: DEALER.unveil[s.fi % DEALER.unveil.length] }) + skipBtn(), "ag-full");
+            if (first) playReveal(s.fi);
+            if (!writer) $("game-panel").querySelectorAll("[data-v]").forEach(b => b.onclick = () => {
+              myVote = +b.dataset.v; game.input("vote", { idx: myVote }); sfx.pop(); buzz(15); lastHud = 0; renderAG(s);
+            });
+            bindSkip();
+          }
+          const panel = $("game-panel");
+          const ph = panel.querySelector(".ag-room .ag-photo");
+          if (src && ph && !ph.querySelector("img")) ph.innerHTML = `<img src="${src}" alt="">`;
+          panel.querySelector(".ag-room")?.classList.toggle("picked", voted !== null);
+          panel.querySelectorAll(".ag-pl").forEach((el, i) => el.classList.toggle("on", voted === i));
+          const pill = writer ? `one of these is yours · <b>${votesIn}/${eligible}</b> votes in`
+            : voted === null ? `tap a title to vote · <b>${votesIn}/${eligible}</b> votes in`
+            : `<b>✓ voted</b> · ${votesIn}/${eligible} in · tap the other to switch`;
+          const pe = $("ag-pill"); if (pe && pe.innerHTML !== pill) pe.innerHTML = pill;
         } else if (s.sub === "result") {
           const has = !!srcOf(f.pid, s);
           if (!ui.once(`r:${s.fi}:${has ? 1 : 0}`, () => {})) return;
-          const c = f.counts || [0, 0], pts = f.pts || [0, 0];
+          const c = f.counts || [0, 0];
           const top = c[0] === c[1] ? null : (c[0] > c[1] ? 0 : 1);
-          const rows = f.titles.map((t, i) => `<div class="rev-row ${top === i ? "win" : ""}"><span>“${esc(t.text)}” <small>— ${esc(s.players[t.by]?.handle ?? "?")}</small></span><b>${c[i]} vote${c[i] === 1 ? "" : "s"} · <span data-count="${pts[i]}">+0</span></b></div>`).join("");
-          const head = top === null ? "split decision" : `${esc(s.players[f.titles[top].by]?.handle ?? "?")} takes it`;
-          ui.stage(head, scene(f.pid, s, { unveil: true, line: `“${DEALER.result[s.fi % DEALER.result.length]}”` }) + `<div class="ag-result">${rows}</div><p class="ab-sub">photo by ${esc(owner)}</p>`, "result");
+          const line = top === null
+            ? "A split decision. The room cannot agree — how very modern."
+            : `${s.players[f.titles[top].by]?.handle ?? "?"} takes it. ${DEALER.result[s.fi % DEALER.result.length]}`;
+          ui.panel(galleryRoom(f, s, { mode: "result", line, pill: `photo by <b>${esc(owner)}</b>` }), "ag-full");
           countUp();
         }
       } else if (s.phase === "end") {

@@ -1467,6 +1467,48 @@
   @keyframes ag-in-r { from { transform:translateX(60%); opacity:0 } to { transform:none; opacity:1 } }
   @keyframes ag-pop { from { transform:scale(.7); opacity:0 } to { transform:none; opacity:1 } }
   @keyframes ag-win { 0% { transform:scale(1); background:transparent } 35% { transform:scale(1.06); background:#ffd60a } 100% { transform:scale(1.03); background:rgba(53,208,122,.18) } }
+  /* gallery steps: a full-screen room, no card. The room keeps the backdrop's
+     portrait shape (centred column on wide screens) so the painting and the
+     plaques always land on the wall, whatever the phone. */
+  #game-panel.ag-full { top:0; bottom:0; max-height:none; overflow:hidden; padding:0; background:#16120e; }
+  #game-layer:has(#game-panel.ag-full) #game-hud, #game-layer:has(#game-panel.ag-full) #game-feed { z-index:2; }
+  .ag-room.ag-scene { position:absolute; top:0; bottom:0; left:50%; transform:translateX(-50%); width:min(100%, 56.25vh); width:min(100%, 56.25dvh);
+    aspect-ratio:auto; margin:0; border-radius:0; background-position:center top; background-size:cover; }
+  .ag-room .ag-hang { left:27%; top:20%; width:46%; }
+  .ag-room .ag-bubble { left:42%; right:3%; width:auto; bottom:24%; font-size:13px; padding:9px 12px; }
+  .ag-pill { position:absolute; left:50%; top:66px; transform:translateX(-50%); z-index:3; max-width:92%; box-sizing:border-box; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    background:rgba(20,16,12,.74); color:#f3e7c9; font:700 12px -apple-system,"Segoe UI",Helvetica,sans-serif; letter-spacing:.03em; border-radius:999px; padding:6px 12px; pointer-events:none; }
+  .ag-pill b { color:#ffd60a; }
+  #game-panel.ag-full .ag-skip { position:absolute; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); margin:0; z-index:4; background:rgba(20,16,12,.74); color:#f3e7c9; border-color:transparent; }
+  /* the two titles: brass wall plaques under the painting */
+  .ag-plaques { position:absolute; left:5%; right:5%; top:44.5%; display:flex; gap:4%; align-items:flex-start; z-index:2; }
+  .ag-pl { position:relative; flex:1; min-width:0; box-sizing:border-box; font:inherit; color:#2a2620; text-align:center; cursor:pointer;
+    background:linear-gradient(#fbf6ea,#efe5cd); border:3px solid #b8902f; border-radius:3px; padding:9px 8px 11px;
+    box-shadow:0 1px 0 rgba(255,255,255,.55) inset, 0 8px 12px rgba(40,30,15,.35); transition:transform .2s, opacity .25s, filter .25s, box-shadow .25s; -webkit-tap-highlight-color:transparent; }
+  div.ag-pl { cursor:default; }
+  .ag-pl-eye { display:block; font:800 9px -apple-system,"Segoe UI",Helvetica,sans-serif; letter-spacing:.18em; text-transform:uppercase; color:#9a7d3a; margin-bottom:4px; }
+  .ag-pl-t { display:block; font-family:Georgia,"Times New Roman",serif; font-style:italic; font-size:14.5px; line-height:1.3; overflow-wrap:anywhere; }
+  .ag-pl-by { display:block; font:600 11px -apple-system,"Segoe UI",Helvetica,sans-serif; color:#7a6a4a; margin-top:5px; }
+  .ag-pl-n { display:block; font:800 11.5px -apple-system,"Segoe UI",Helvetica,sans-serif; margin-top:3px; } .ag-pl-n b { color:#1c7a3c; }
+  .ag-pl-dot { display:none; position:absolute; top:-9px; right:-9px; width:22px; height:22px; border-radius:50%; background:#d0192b; box-shadow:0 2px 4px rgba(0,0,0,.35), 0 0 0 2px #fff; animation:ag-pop .25s both; }
+  .ag-pl-tag, .ag-pl-win { display:none; position:absolute; left:50%; bottom:-24px; transform:translateX(-50%); white-space:nowrap; font:800 11px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal;
+    color:#fff; background:#d0192b; border-radius:999px; padding:2px 9px; }
+  .ag-pl-win { display:block; background:#b8902f; }
+  .ag-room.picked .ag-pl:not(.on) { opacity:.5; filter:saturate(.5); }
+  .ag-pl.on { transform:translateY(-3px); box-shadow:0 0 0 3px rgba(255,255,255,.4), 0 0 40px 10px rgba(255,236,170,.55), 0 10px 16px rgba(40,30,15,.4); }
+  .ag-pl.on .ag-pl-dot, .ag-pl.on .ag-pl-tag { display:block; }
+  .ag-pl.win { animation:ag-plwin .7s .2s both; box-shadow:0 0 40px 10px rgba(255,236,170,.6), 0 10px 16px rgba(40,30,15,.4); }
+  .ag-pl.lose { opacity:.6; filter:saturate(.6); }
+  @keyframes ag-plwin { 0% { transform:none } 45% { transform:scale(1.08) } 100% { transform:translateY(-3px) scale(1.03) } }
+  /* each plaque has its own cloth; the dealer pulls them off one by one right
+     after the painting's (plaque I at 0.9 s, plaque II at 1.35 s) */
+  .ag-pl-cloth { position:absolute; left:-8%; top:-14%; width:116%; height:128%; object-fit:fill; pointer-events:none; z-index:3; transform-origin:50% 0;
+    filter:drop-shadow(0 6px 6px rgba(0,0,0,.25)); transition:transform .6s cubic-bezier(.4,0,.2,1), opacity .6s ease; }
+  .ag-room.revealed .ag-pl-cloth { transform:translateY(-130%) rotate(-5deg); opacity:0; }
+  .ag-room.ag-anim .ag-pl:nth-child(1) .ag-pl-cloth { transition-delay:.9s; }
+  .ag-room.ag-anim .ag-pl:nth-child(2) .ag-pl-cloth { transition-delay:1.35s; }
+  .ag-room.covered .ag-pl > :not(.ag-pl-cloth) { visibility:hidden; }
+  .ag-room.ag-anim .ag-bubble { animation-delay:1.7s; }
 
   /* ===== house party: shared kit ===== */
   /* placeholder avatar — deterministic hue per player id, no generated art */
