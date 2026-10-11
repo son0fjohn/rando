@@ -127,7 +127,13 @@ export const ART_GALLERY = {
       const el = $("game-panel").querySelector(".ag-scene");
       if (!el) return;
       revealed.add(fi);
-      requestAnimationFrame(() => requestAnimationFrame(() => { el.classList.remove("covered"); el.classList.add("revealed", "unveil"); }));
+      // reading offsetWidth makes sure the covered look was computed first,
+      // so the cloths still transition off even if no frame was painted yet
+      const flip = () => { void el.offsetWidth; el.classList.remove("covered"); el.classList.add("revealed", "unveil"); };
+      requestAnimationFrame(() => requestAnimationFrame(flip));
+      // frames don't come in a tab that isn't drawing; a timer still runs, so
+      // the unveil can't get stuck under the cloth
+      setTimeout(flip, 150);
     }
     // numeric count-up tween for the points
     function countUp() {

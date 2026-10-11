@@ -49,8 +49,18 @@ const ctx = ENGINE === "webkit"
 console.log(`engine: ${ENGINE}${ENGINE === "webkit" ? " (iPhone 15 profile)" : ""}`);
 
 let pass = 0, fail = 0;
-const ok = (c, m) => { if (c) { pass++; console.log("  ✓ " + m); } else { fail++; console.log("  ✗ " + m); } };
-const head = m => console.log("\n" + m);
+// On GitHub Actions a failure is also written as an ::error annotation, so it
+// shows on the PR's checks (and through the API) without opening the log.
+const annotate = m => { if (process.env.GITHUB_ACTIONS) console.log(`::error title=party e2e (${ENGINE})::${m.replace(/\n/g, " ")}`); };
+let section = "start", lastCheck = "none yet";
+const ok = (c, m) => { lastCheck = m; if (c) { pass++; console.log("  ✓ " + m); } else { fail++; console.log("  ✗ " + m); annotate(`${section}: ${m}`); } };
+const head = m => { section = m; console.log("\n" + m); };
+// A stuck wait must fail the run with a reason, not sit until the CI job's
+// 20-minute limit kills it with no output.
+setTimeout(() => {
+  const m = `timed out after 17 min in "${section}" (last check: ${lastCheck})`;
+  console.log("  ✗ " + m); annotate(m); process.exit(1);
+}, 17 * 60_000).unref();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const errors = [];
 async function phone(name, qs = "") {
@@ -304,12 +314,20 @@ try {
     await sleep(500);
   }
   ok(await until(A, () => window.__game?.s?.phase === "title", null, 30000), "all 9 photos in, titling opens");
-  for (const pg of [A, B, C]) for (let k = 0; k < 4; k++) {
-    if (!/title this piece/.test(await stageTitle(pg))) break;
+  // wait for each phone to draw its title screen before deciding it has
+  // nothing to title — on a slow machine it may still show the photo step
+  const titleStep = () => /title this piece|titles locked|nothing to title/.test(document.querySelector("#game-panel h2")?.textContent ?? "") || !!document.querySelector(".ag-room");
+  for (const pg of [A, B, C]) for (let k = 0; k < 6; k++) {
+    await until(pg, titleStep);
+    const t = await stageTitle(pg);
+    if (!/title this piece/.test(t)) break;
     await until(pg, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
-    await pg.fill("#gp-in", `${pg.label} title ${k + 1}`); await pg.click("#game-panel .gp-form button"); await sleep(450);
+    await pg.fill("#gp-in", `${pg.label} title ${k + 1}`); await pg.click("#game-panel .gp-form button");
+    await until(pg, t => (document.querySelector("#game-panel h2")?.textContent ?? "") !== t, t, 5000);
   }
-  ok(await until(B, () => !!document.querySelector("#game-panel.ag-full .ag-room"), null, 30000), "the gallery is a full-screen room, no white card");
+  const inRoom = await until(B, () => !!document.querySelector("#game-panel.ag-full .ag-room"), null, 30000);
+  const where = inRoom ? "" : ` — host at ${await A.evaluate(() => `${window.__game?.s?.phase}/${window.__game?.s?.sub}`)}; screens: ${(await Promise.all([A, B, C].map(stageTitle))).join(" | ")}`;
+  ok(inRoom, "the gallery is a full-screen room, no white card" + where);
   ok(await B.locator("#game-panel .stage").count() === 0, "the vote step has no stage card");
   ok(await until(A, () => document.querySelectorAll(".ag-room.covered .ag-pl-cloth").length === 2), "both title plaques start under cloth");
   // screenshot first: a screenshot stalls animations in the other tabs, so
@@ -320,9 +338,10 @@ try {
   // mid-unveil, from the moment the room flips to revealed
   const seq = await A.evaluate(() => new Promise(res => {
     const op = () => [...document.querySelectorAll(".ag-pl-cloth")].map(c => +getComputedStyle(c).opacity);
+    const t0 = Date.now();
     const watch = () => {
       const room = document.querySelector(".ag-room");
-      if (!room || !room.classList.contains("revealed")) return setTimeout(watch, 20);
+      if (!room || !room.classList.contains("revealed")) return Date.now() - t0 > 15000 ? res({}) : setTimeout(watch, 20);
       const out = {}; [400, 1150, 2400].forEach(t => setTimeout(() => { out[t] = op(); }, t)); setTimeout(() => res(out), 2500);
     };
     watch();
@@ -357,9 +376,14 @@ try {
   const ws = await A.evaluate(() => [...document.querySelectorAll(".ag-pl")].map(p => Math.round(p.getBoundingClientRect().width)));
   ok(ws.length === 2 && Math.abs(ws[0] - ws[1]) <= 1, `the winning plaque settles back to the same size (${ws.join(" / ")} px wide)`);
   await shot(A, "21-gallery-result");
-  ok(await until(A, () => /Art Gallery/.test(document.querySelector(".hp-res-title")?.textContent ?? ""), null, 120000), "the gallery plays out to its results screen");
+  // the host skips each remaining vote rather than waiting out its 25 s timer;
+  // cover and result still run (~10 s a frame), so allow up to ~90 s
+  for (let i = 0; i < 120 && !/Art Gallery/.test(await A.evaluate(() => document.querySelector(".hp-res-title")?.textContent ?? "")); i++) {
+    await A.evaluate(() => document.getElementById("ag-skip")?.click()); await sleep(600);
+  }
+  ok(await until(A, () => /Art Gallery/.test(document.querySelector(".hp-res-title")?.textContent ?? ""), null, 30000), "the gallery plays out to its results screen");
 } catch (e) {
-  fail++; console.log("  ✗ crashed: " + (e.stack || e).toString().split("\n").slice(0, 3).join(" | "));
+  ok(false, "crashed: " + (e.stack || e).toString().split("\n").slice(0, 3).join(" | "));
 }
 
 ok(errors.length === 0, "no page errors" + (errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""));
