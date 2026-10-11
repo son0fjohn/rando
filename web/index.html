@@ -1481,8 +1481,9 @@
   .ag-pill b { color:#ffd60a; }
   #game-panel.ag-full .ag-skip { position:absolute; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); margin:0; z-index:4; background:rgba(20,16,12,.74); color:#f3e7c9; border-color:transparent; }
   /* the two titles: brass wall plaques under the painting */
-  .ag-plaques { position:absolute; left:5%; right:5%; top:44.5%; display:flex; gap:4%; align-items:flex-start; z-index:2; }
-  .ag-pl { position:relative; flex:1; min-width:0; box-sizing:border-box; font:inherit; color:#2a2620; text-align:center; cursor:pointer;
+  .ag-plaques { position:absolute; left:5%; right:5%; top:44.5%; display:flex; gap:4%; align-items:stretch; z-index:2; }
+  /* both plaques take the taller one's height; short titles sit centred */
+  .ag-pl { position:relative; flex:1 1 0; min-width:0; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; font:inherit; color:#2a2620; text-align:center; cursor:pointer;
     background:linear-gradient(#fbf6ea,#efe5cd); border:3px solid #b8902f; border-radius:3px; padding:9px 8px 11px;
     box-shadow:0 1px 0 rgba(255,255,255,.55) inset, 0 8px 12px rgba(40,30,15,.35); transition:transform .2s, opacity .25s, filter .25s, box-shadow .25s; -webkit-tap-highlight-color:transparent; }
   div.ag-pl { cursor:default; }
@@ -1495,11 +1496,11 @@
     color:#fff; background:#d0192b; border-radius:999px; padding:2px 9px; }
   .ag-pl-win { display:block; background:#b8902f; }
   .ag-room.picked .ag-pl:not(.on) { opacity:.5; filter:saturate(.5); }
-  .ag-pl.on { transform:translateY(-3px); box-shadow:0 0 0 3px rgba(255,255,255,.4), 0 0 40px 10px rgba(255,236,170,.55), 0 10px 16px rgba(40,30,15,.4); }
+  .ag-pl.on { transform:translateY(-3px); box-shadow:0 0 40px 10px rgba(255,236,170,.55), 0 10px 16px rgba(40,30,15,.4); }
   .ag-pl.on .ag-pl-dot, .ag-pl.on .ag-pl-tag { display:block; }
   .ag-pl.win { animation:ag-plwin .7s .2s both; box-shadow:0 0 40px 10px rgba(255,236,170,.6), 0 10px 16px rgba(40,30,15,.4); }
   .ag-pl.lose { opacity:.6; filter:saturate(.6); }
-  @keyframes ag-plwin { 0% { transform:none } 45% { transform:scale(1.08) } 100% { transform:translateY(-3px) scale(1.03) } }
+  @keyframes ag-plwin { 0% { transform:none } 45% { transform:scale(1.08) } 100% { transform:translateY(-3px) } }
   /* each plaque has its own cloth; the dealer pulls them off one by one right
      after the painting's (plaque I at 0.9 s, plaque II at 1.35 s) */
   .ag-pl-cloth { position:absolute; left:-8%; top:-14%; width:116%; height:128%; object-fit:fill; pointer-events:none; z-index:3; transform-origin:50% 0;

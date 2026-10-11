@@ -340,11 +340,22 @@ try {
     await voter.locator('.ag-pl[data-v="1"]').click();
     ok(await until(voter, () => document.querySelector('.ag-pl[data-v="1"]')?.classList.contains("on") && document.querySelector(".ag-room")?.classList.contains("picked")), "tapping a plaque marks it with the red dot");
     await shot(voter, "20-gallery-voted");
+    // a title that wraps must not make its plaque bigger than the other one
+    const hs = await voter.evaluate(() => {
+      const t = document.querySelector(".ag-pl .ag-pl-t"), was = t.textContent;
+      t.textContent = "“a much longer title that wraps onto three lines on a phone”";
+      const h = [...document.querySelectorAll(".ag-pl")].map(p => p.offsetHeight);
+      t.textContent = was;
+      return h;
+    });
+    ok(hs.length === 2 && hs[0] === hs[1], `both plaques are the same size, even when one title wraps (${hs.join(" / ")} px)`);
     ok(await until(A, () => Object.keys(window.__game?.s?.frames?.[window.__game.s.fi]?.votes ?? {}).length >= 1 || window.__game?.s?.sub === "result"), "the vote reaches the host");
   }
   ok(await until(A, () => document.querySelectorAll(".ag-room .ag-pl-n").length === 2, null, 20000), "the result shows authors and votes on the same plaques");
   ok(await A.locator(".ag-pl-by").count() === 2, "each plaque names its author once the votes are in");
   await sleep(900);
+  const ws = await A.evaluate(() => [...document.querySelectorAll(".ag-pl")].map(p => Math.round(p.getBoundingClientRect().width)));
+  ok(ws.length === 2 && Math.abs(ws[0] - ws[1]) <= 1, `the winning plaque settles back to the same size (${ws.join(" / ")} px wide)`);
   await shot(A, "21-gallery-result");
   ok(await until(A, () => /Art Gallery/.test(document.querySelector(".hp-res-title")?.textContent ?? ""), null, 120000), "the gallery plays out to its results screen");
 } catch (e) {
