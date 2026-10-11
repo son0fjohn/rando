@@ -49,8 +49,18 @@ const ctx = ENGINE === "webkit"
 console.log(`engine: ${ENGINE}${ENGINE === "webkit" ? " (iPhone 15 profile)" : ""}`);
 
 let pass = 0, fail = 0;
-const ok = (c, m) => { if (c) { pass++; console.log("  ✓ " + m); } else { fail++; console.log("  ✗ " + m); } };
-const head = m => console.log("\n" + m);
+// On GitHub Actions a failure is also written as an ::error annotation, so it
+// shows on the PR's checks (and through the API) without opening the log.
+const annotate = m => { if (process.env.GITHUB_ACTIONS) console.log(`::error title=party e2e (${ENGINE})::${m.replace(/\n/g, " ")}`); };
+let section = "start", lastCheck = "none yet";
+const ok = (c, m) => { lastCheck = m; if (c) { pass++; console.log("  ✓ " + m); } else { fail++; console.log("  ✗ " + m); annotate(`${section}: ${m}`); } };
+const head = m => { section = m; console.log("\n" + m); };
+// A stuck wait must fail the run with a reason, not sit until the CI job's
+// 20-minute limit kills it with no output.
+setTimeout(() => {
+  const m = `timed out after 17 min in "${section}" (last check: ${lastCheck})`;
+  console.log("  ✗ " + m); annotate(m); process.exit(1);
+}, 17 * 60_000).unref();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const errors = [];
 async function phone(name, qs = "") {
@@ -292,8 +302,88 @@ try {
   ok(/Secret Diary/.test(await h2(A)), "the diary reaches its results screen");
   await shot(A, "18-diary-results");
   ok(await A.evaluate(() => (window.__logRows ?? []).length) >= 2 && await A.evaluate(() => window.__logRows.some(r => r.skipped)), "the host's phone logged the prompts, including the skip");
+
+  head("Art Gallery — the dealer unveils the titles on wall plaques");
+  for (let i = 0; i < 20 && await A.locator("#party-panel").isHidden(); i++) { await A.evaluate(() => document.getElementById("hp-skip")?.click()); await sleep(600); }
+  ok(await until(A, () => !document.getElementById("party-panel").hidden, null, 15000), "back in the lobby");
+  await A.click("#pt-open-picker"); await A.click('[data-queue="artgallery"]'); await A.click("#pt-picker-done"); await A.click("#pt-start");
+  ok(await until(B, () => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "everyone fills 3 frames");
+  for (const [k, pg] of [A, B, C].entries()) for (let i = 0; i < 3; i++) {
+    await until(pg, () => !!document.getElementById("ag-file"));
+    await pg.setInputFiles("#ag-file", join(ROOT, `web/games/captions/c${(k * 3 + i) % 8}.jpg`));
+    await sleep(500);
+  }
+  ok(await until(A, () => window.__game?.s?.phase === "title", null, 30000), "all 9 photos in, titling opens");
+  // wait for each phone to draw its title screen before deciding it has
+  // nothing to title — on a slow machine it may still show the photo step
+  const titleStep = () => /title this piece|titles locked|nothing to title/.test(document.querySelector("#game-panel h2")?.textContent ?? "") || !!document.querySelector(".ag-room");
+  for (const pg of [A, B, C]) for (let k = 0; k < 6; k++) {
+    await until(pg, titleStep);
+    const t = await stageTitle(pg);
+    if (!/title this piece/.test(t)) break;
+    await until(pg, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
+    await pg.fill("#gp-in", `${pg.label} title ${k + 1}`); await pg.click("#game-panel .gp-form button");
+    await until(pg, t => (document.querySelector("#game-panel h2")?.textContent ?? "") !== t, t, 5000);
+  }
+  const inRoom = await until(B, () => !!document.querySelector("#game-panel.ag-full .ag-room"), null, 30000);
+  const where = inRoom ? "" : ` — host at ${await A.evaluate(() => `${window.__game?.s?.phase}/${window.__game?.s?.sub}`)}; screens: ${(await Promise.all([A, B, C].map(stageTitle))).join(" | ")}`;
+  ok(inRoom, "the gallery is a full-screen room, no white card" + where);
+  ok(await B.locator("#game-panel .stage").count() === 0, "the vote step has no stage card");
+  ok(await until(A, () => document.querySelectorAll(".ag-room.covered .ag-pl-cloth").length === 2), "both title plaques start under cloth");
+  // screenshot first: a screenshot stalls animations in the other tabs, so
+  // nothing else may run while the unveil is being timed (the cover lasts ~3 s)
+  await shot(B, "19-gallery-covered");
+  await A.bringToFront();   // after a screenshot the other tabs can stop drawing frames
+  // measured on the host's phone (A), where a late reset once rebuilt the room
+  // mid-unveil, from the moment the room flips to revealed
+  const seq = await A.evaluate(() => new Promise(res => {
+    const op = () => [...document.querySelectorAll(".ag-pl-cloth")].map(c => +getComputedStyle(c).opacity);
+    const t0 = Date.now();
+    const watch = () => {
+      const room = document.querySelector(".ag-room");
+      if (!room || !room.classList.contains("revealed")) return Date.now() - t0 > 15000 ? res({}) : setTimeout(watch, 20);
+      const out = {}; [400, 1150, 2400].forEach(t => setTimeout(() => { out[t] = op(); }, t)); setTimeout(() => res(out), 2500);
+    };
+    watch();
+  }));
+  ok(seq[400]?.every(o => o > 0.9), `the painting goes first: plaques still covered at 0.4 s (${JSON.stringify(seq[400])})`);
+  ok(seq[1150]?.[0] < 0.9 && seq[1150]?.[1] > 0.9, `then plaque I, then plaque II — one by one (${JSON.stringify(seq[1150])} at 1.15 s)`);
+  ok(seq[2400]?.every(o => o < 0.05), "both plaques unveiled within ~2.5 s");
+  // with 3 players each frame has 2 writers, so exactly one phone gets to vote
+  let voter = null;
+  for (let i = 0; i < 20 && !voter; i++) { for (const pg of [A, B, C]) if (await pg.locator(".ag-pl[data-v]").count() === 2) voter = pg; if (!voter) await sleep(250); }
+  ok(!!voter, "the non-writer's plaques are tappable");
+  if (voter) {
+    const writer = [A, B, C].find(pg => pg !== voter);
+    ok(await writer.locator(".ag-pl[data-v]").count() === 0 && /yours/.test(await text(writer, "#ag-pill")), "writers see the plaques but can't vote, and are told one is theirs");
+    await voter.locator('.ag-pl[data-v="1"]').click();
+    ok(await until(voter, () => document.querySelector('.ag-pl[data-v="1"]')?.classList.contains("on") && document.querySelector(".ag-room")?.classList.contains("picked")), "tapping a plaque marks it with the red dot");
+    await shot(voter, "20-gallery-voted");
+    // a title that wraps must not make its plaque bigger than the other one
+    const hs = await voter.evaluate(() => {
+      const t = document.querySelector(".ag-pl .ag-pl-t"), was = t.textContent;
+      t.textContent = "“a much longer title that wraps onto three lines on a phone”";
+      const h = [...document.querySelectorAll(".ag-pl")].map(p => p.offsetHeight);
+      t.textContent = was;
+      return h;
+    });
+    ok(hs.length === 2 && hs[0] === hs[1], `both plaques are the same size, even when one title wraps (${hs.join(" / ")} px)`);
+    ok(await until(A, () => Object.keys(window.__game?.s?.frames?.[window.__game.s.fi]?.votes ?? {}).length >= 1 || window.__game?.s?.sub === "result"), "the vote reaches the host");
+  }
+  ok(await until(A, () => document.querySelectorAll(".ag-room .ag-pl-n").length === 2, null, 20000), "the result shows authors and votes on the same plaques");
+  ok(await A.locator(".ag-pl-by").count() === 2, "each plaque names its author once the votes are in");
+  await sleep(900);
+  const ws = await A.evaluate(() => [...document.querySelectorAll(".ag-pl")].map(p => Math.round(p.getBoundingClientRect().width)));
+  ok(ws.length === 2 && Math.abs(ws[0] - ws[1]) <= 1, `the winning plaque settles back to the same size (${ws.join(" / ")} px wide)`);
+  await shot(A, "21-gallery-result");
+  // the host skips each remaining vote rather than waiting out its 25 s timer;
+  // cover and result still run (~10 s a frame), so allow up to ~90 s
+  for (let i = 0; i < 120 && !/Art Gallery/.test(await A.evaluate(() => document.querySelector(".hp-res-title")?.textContent ?? "")); i++) {
+    await A.evaluate(() => document.getElementById("ag-skip")?.click()); await sleep(600);
+  }
+  ok(await until(A, () => /Art Gallery/.test(document.querySelector(".hp-res-title")?.textContent ?? ""), null, 30000), "the gallery plays out to its results screen");
 } catch (e) {
-  fail++; console.log("  ✗ crashed: " + (e.stack || e).toString().split("\n").slice(0, 3).join(" | "));
+  ok(false, "crashed: " + (e.stack || e).toString().split("\n").slice(0, 3).join(" | "));
 }
 
 ok(errors.length === 0, "no page errors" + (errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""));
