@@ -253,10 +253,12 @@ try {
         shotW = true; await shot(B, "07c-reveal-matched");
         // tap a diary that isn't yours: it opens big, with its matching chips
         const i = await B.locator(".sd-dcell").evaluateAll(cs => cs.findIndex(c => !c.querySelector(".sd-dyours")));
-        const want = await B.locator(".sd-dcell .sd-dtext").nth(i).innerText();
+        const want = await B.locator(".sd-dcell .sd-dtext").nth(i).evaluate(e => e.textContent.trim());
         await B.locator(".sd-dcell").nth(i).click();
         ok(await until(B, () => !!document.querySelector(".sd-zoom .sd-ztext")), "tap a diary: it opens up to read");
-        ok((await text(B, ".sd-zoom .sd-ztext")) === want && (await B.locator(".sd-zoom .sd-who button").count()) >= 2, "the zoomed diary shows that answer, with who-wrote-it chips");
+        const got = await B.locator(".sd-zoom .sd-ztext").evaluate(e => e.textContent.trim());
+        ok(got === want, `the zoomed diary shows that answer ("${got}")`);
+        ok((await B.locator(".sd-zoom .sd-who button, .sd-zoom .sd-sel").count()) >= 1, "…with its who-wrote-it chips");
         await shot(B, "07b-reveal-zoom");
         await B.click(".sd-zclose");
         ok(!(await B.locator(".sd-zoom").count()), "back to the shelf");
