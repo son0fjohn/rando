@@ -123,9 +123,11 @@ export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, par
   }
   return {
     bus, clients,
-    get host() { return clients.find(c => c.room.isHost); },
+    // a dropped client's presence is frozen at the moment it left, so it
+    // would still think it's host — only clients still at the table count
+    get host() { return clients.find(c => !c.dropped && c.room.isHost); },
     // the host's state is the authoritative one
-    get s() { return clients.find(c => c.room.isHost)?.game?.s ?? null; },
+    get s() { return this.host?.game?.s ?? null; },
     byId(id) { return clients.find(c => c.me.id === id); },
     // what a given client last received / rendered from
     stateOf(id) { return this.byId(id)?.game?.s ?? null; },

@@ -1,7 +1,7 @@
 // House-party specs. Plays every game end to end on the fake bus + virtual
 // clock and asserts the rules the brief actually names.
 import { installClock, seatTable } from "/test/harness.js";
-import { SECRET_DIARY, diaryPool, maxLevelFor, capFor, countLine } from "/web/hpgames/secretdiary.js";
+import { SECRET_DIARY, diaryPool, maxLevelFor, capAt, yesnoTarget, countLine } from "/web/hpgames/secretdiary.js";
 import * as CONFIG from "/web/hpconfig.js";
 import { promptLog } from "/web/hplog.js";
 import { TODAYS_MISSION } from "/web/hpgames/mission.js";
@@ -25,7 +25,6 @@ const clock = installClock();
 // slices so game time and virtual time stay 1:1.
 const STEP = 200;
 const adv = ms => clock.advance(ms, STEP);
-const MATCH_DRAIN = 200000;      // Secret Diary's match window plus slack
 // run a game to completion: advance until everyone's onEnd fired, bounded
 function runOut(t, maxMs = 25 * 60 * 1000) {
   let spent = 0;
@@ -40,17 +39,125 @@ function waitPhase(t, phase, maxMs = 5 * 60 * 1000) {
 }
 
 // ===================================================================== 1
-group("Secret Diary — the prompt pool");
+// The exact list the brief supplied (type, level, text). The pool must be
+// this and nothing else.
+const SUPPLIED = [
+  ["written", "mild", "My first impression of someone here"],
+  ["written", "mild", "The person here I'd want with me in a zombie apocalypse, and who I'd leave behind"],
+  ["written", "mild", "If I were stuck on an island for 30 years, who from here I'm bringing"],
+  ["written", "mild", "The person I noticed first tonight"],
+  ["written", "mild", "How many people here I could beat in a fight"],
+  ["written", "mild", "Who here I'd eat first in a survival situation"],
+  ["written", "mild", "How people in high school would have described me"],
+  ["written", "mild", "The weirdest thing I've searched this month"],
+  ["written", "mild", "An unpopular opinion I'd defend to the death"],
+  ["written", "mild", "Who here I'd trust to help me hide a body"],
+  ["written", "mild", "The worst thing I've done in school"],
+  ["written", "mild", "The weirdest thing I've talked to ChatGPT about"],
+  ["written", "mild", "My longest-running celebrity or internet crush"],
+  ["written", "mild", "My most embarrassing childhood crush"],
+  ["written", "mild", "The most cringe thing I've done"],
+  ["written", "mild", "Who here looks like they peaked in high school"],
+  ["written", "mild", "Who here would be a cult leader"],
+  ["written", "mild", "Who here would get scammed first"],
+  ["written", "mild", "Who here would snitch first"],
+  ["written", "mild", "Whose outfit here I'd swap with"],
+  ["written", "mild", "Who here I'd room with"],
+  ["written", "mild", "Who here has showered the least this month"],
+  ["written", "mild", "Who here is the biggest green flag"],
+  ["written", "mild", "Who here I'd most let date my sibling"],
+  ["written", "mild", "My favorite word"],
+  ["written", "mild", "My Snapchat score"],
+  ["written", "mild", "The celebrity I'd make president"],
+  ["written", "mild", "The most attractive athlete"],
+  ["written", "spicy", "If I had to kiss someone here, who"],
+  ["written", "spicy", "The most unethical thing I've done"],
+  ["written", "spicy", "The most down bad thing I've done"],
+  ["written", "spicy", "The most illegal thing I've done"],
+  ["written", "spicy", "The craziest thing I've done drunk"],
+  ["written", "spicy", "What I'm secretly into"],
+  ["written", "spicy", "My biggest regret"],
+  ["written", "spicy", "The most questionable person I've kissed"],
+  ["written", "spicy", "The most delusional I've been about someone"],
+  ["written", "spicy", "The last person I stalked on IG"],
+  ["written", "spicy", "The worst reason someone rejected me or broke up with me"],
+  ["written", "spicy", "Whose parents here I'd date"],
+  ["written", "spicy", "Who here I'd bring home to meet my parents"],
+  ["written", "spicy", "Who here I'd never bring home to meet my parents"],
+  ["written", "spicy", "My biggest red flag"],
+  ["written", "spicy", "Who here is the biggest red flag"],
+  ["written", "spicy", "The most disappointing thing I've done to my parents"],
+  ["written", "spicy", "Who here I'd least let date my sibling"],
+  ["written", "spicy", "A memory I'd erase from my head"],
+  ["written", "spicy", "The 3 worst people in the world"],
+  ["written", "unhinged", "The most toxic thing I've done in a relationship"],
+  ["written", "unhinged", "The worst thing I've done out of jealousy"],
+  ["written", "unhinged", "Who here looks like they have daddy issues"],
+  ["written", "unhinged", "Who here looks like they have mommy issues"],
+  ["written", "unhinged", "Who here has shot their shot with the most people"],
+  ["written", "unhinged", "The most disturbing thought I've had"],
+  ["yesno", "mild", "I've gone over 3 days without showering"],
+  ["yesno", "spicy", "I've been on a date in the last month"],
+  ["yesno", "spicy", "I've asked for someone's number right after meeting them"],
+  ["yesno", "spicy", "I've been ghosted in the last month"],
+  ["yesno", "spicy", "I've ghosted someone in the last month"],
+  ["yesno", "spicy", "I've had a secret crush this month"],
+  ["yesno", "spicy", "I've slid into someone's DMs this month"],
+  ["yesno", "spicy", "I've looked at my ex's photos this year"],
+  ["yesno", "spicy", "I've kissed someone I just met"],
+  ["yesno", "spicy", "I've had a crush on someone in this room"],
+  ["yesno", "spicy", "I've made out with someone in the last week"],
+  ["yesno", "spicy", "I've drunk texted an ex"],
+  ["yesno", "spicy", "I've gotten back with an ex"],
+  ["yesno", "unhinged", "I've dated someone just because I was lonely"],
+  ["yesno", "unhinged", "I've cheated before"],
+  ["yesno", "unhinged", "I've lied about being single"],
+  ["yesno", "unhinged", "I've made a fake account to stalk someone"],
+  ["yesno", "unhinged", "I've been the side piece"],
+];
+
+// Secret Diary helpers
+const SD_IDS = t => t.clients.map(c => c.me.id);
+const lvRank = c => DIARY.LEVELS.indexOf(c.level);
+const escalates = b => b.every((c, i) => !i || lvRank(b[i - 1]) <= lvRank(c));
+const ynCount = b => b.filter(c => c.type === "yesno").length;
+// every listed player answers every question (skip(id, k) -> true leaves it blank)
+function answerAll(t, who, { skip = () => false, yes = id => id === "p1" || id === "p2" } = {}) {
+  for (const id of who) t.s.batch.forEach((c, k) => {
+    if (skip(id, k)) return;
+    t.input(id, "ans", c.type === "written" ? { k, text: `${id} wrote q${k}` } : { k, yn: yes(id) ? "yes" : "no" });
+  });
+}
+// advance until the reveal moves past question k (or the game ends)
+function pastQuestion(t, k, maxMs) {
+  let spent = 0;
+  while (t.s.phase === "reveal" && t.s.qi === k && spent < maxMs) { adv(STEP); spent += STEP; }
+  return !(t.s.phase === "reveal" && t.s.qi === k);
+}
+// everyone locks in on every question, with no guesses, until the end
+function lockThrough(t, who) {
+  let g = 0;
+  while (t.s.phase === "reveal" && g++ < 40) { const k = t.s.qi; who.forEach(id => t.input(id, "lock")); pastQuestion(t, k, 5000); }
+  return t.s.phase === "end";
+}
+
+group("Secret Diary — the prompt pool is exactly the supplied list");
 {
-  ok(POOL.length === 72, `the pool is exactly the 72 supplied prompts (got ${POOL.length})`);
+  ok(POOL.length === SUPPLIED.length && SUPPLIED.length === 72, `the pool is exactly the ${SUPPLIED.length} supplied prompts (got ${POOL.length})`);
+  const key = (t, l, x) => `${t}|${l}|${x}`;
+  const have = new Set(POOL.map(p => key(p.type, p.level, p.text)));
+  const want = new Set(SUPPLIED.map(s => key(...s)));
+  ok(SUPPLIED.every(s => have.has(key(...s))), "every supplied prompt is in the pool, with its type and level");
+  ok(POOL.every(p => want.has(key(p.type, p.level, p.text))), "nothing else is in the pool — every old/placeholder prompt is gone");
   ok(new Set(POOL.map(p => p.id)).size === POOL.length, "every prompt has a unique id");
-  ok(POOL.every(p => ["written", "yesno"].includes(p.type) && DIARY.LEVELS.includes(p.level) && p.text), "every prompt has text, a valid type and a valid level");
+  ok(POOL.every(p => p.id.startsWith(`${p.type === "written" ? "w" : "yn"}-${p.level}-`)), "every id names its type and level");
   const by = (t, l) => POOL.filter(p => p.type === t && p.level === l).length;
-  ok(by("written", "mild") === 29 && by("written", "spicy") === 20 && by("written", "unhinged") === 5, "written: 29 mild, 20 spicy, 5 unhinged");
+  ok(by("written", "mild") === 28 && by("written", "spicy") === 20 && by("written", "unhinged") === 6, "written: 28 mild, 20 spicy, 6 unhinged");
   ok(by("yesno", "mild") === 1 && by("yesno", "spicy") === 12 && by("yesno", "unhinged") === 5, "yes/no: 1 mild, 12 spicy, 5 unhinged");
+  const raw = await (await fetch("/web/data/diary_prompts.json")).json();
+  ok(Array.isArray(raw._retired) && raw._retired.every(id => !POOL.some(p => p.id === id)), `retired ids stay retired (${(raw._retired ?? []).join(", ")})`);
   ok(!("DIARY_PROMPTS" in CONFIG) && !("DIARY_BOT_ENTRIES" in CONFIG), "the old placeholder pool and its filler are gone from the config");
-  const old = ["Write the diary entry for tonight", "police report", "group chat message you drafted", "title card", "pettiest thought", "quietly judging", "{{player}}"];
-  ok(!POOL.some(p => old.some(o => p.text.includes(o))), "no old placeholder prompt survives in the pool");
+  ok(!("ROUNDS" in DIARY) && !("PREVIEW_MS" in DIARY), "the one-question-at-a-time settings are gone");
 }
 
 group("Secret Diary — levels, escalation, softened counts");
@@ -60,159 +167,280 @@ group("Secret Diary — levels, escalation, softened counts");
   ok(maxLevelFor({ privacy: "private", settings: { diaryMax: "unhinged", adult: false } }) === "spicy", "unhinged without 18+ falls back to spicy");
   ok(maxLevelFor({ privacy: "private", settings: { diaryMax: "unhinged", adult: true } }) === "unhinged", "unhinged with 18+ is allowed");
   ok(maxLevelFor({ privacy: "private", settings: { diaryMax: "mild" } }) === "mild", "the host can lower it");
-  ok(capFor(1, "unhinged") === "mild" && capFor(2, "unhinged") === "mild", "rounds 1-2: mild only");
-  ok(capFor(3, "unhinged") === "spicy" && capFor(4, "unhinged") === "spicy", "rounds 3-4: up to spicy");
-  ok(capFor(3, "mild") === "mild", "…but never above the host's max");
-  ok(capFor(5, "unhinged") === "unhinged" && capFor(9, "spicy") === "spicy", "round 5+: up to the host's max");
+  const caps = (n, max) => Array.from({ length: n }, (_, i) => capAt(i, n, max)).join(",");
+  ok(caps(5, "unhinged") === "mild,mild,spicy,spicy,unhinged", `a batch of 5 climbs: ${caps(5, "unhinged")}`);
+  ok(caps(8, "unhinged") === "mild,mild,mild,spicy,spicy,spicy,unhinged,unhinged", `a batch of 8 climbs: ${caps(8, "unhinged")}`);
+  ok(caps(3, "spicy") === "mild,spicy,spicy" && caps(5, "mild") === "mild,mild,mild,mild,mild", "…never above the host's max");
+  ok(yesnoTarget(3) === 1 && yesnoTarget(5) === 2 && yesnoTarget(6) === 2 && yesnoTarget(8) === 3, "about 1 in 3 is yes/no (3→1, 5→2, 8→3)");
   ok(countLine(3, 8) === "3 of 8 said yes", "a middling count is shown exactly");
   ok(countLine(0, 8) === countLine(1, 8) && /nobody or almost nobody/.test(countLine(0, 8)), "0 and 1 share 'nobody or almost nobody' — so the soft wording never pins it to 0");
   ok(countLine(8, 8) === countLine(7, 8) && /everyone or almost everyone/.test(countLine(8, 8)), "all and all-but-one share 'everyone or almost everyone'");
 }
 
-group("Secret Diary — a full game: written + yes/no, scoring, logging (4 players)");
+group("Secret Diary — the deal: host-only, swap, resize (4 players)");
 {
   window.__logRows = [];
   const t = seatTable(SECRET_DIARY, 4);
   adv(300);
-  ok(t.s.phase === "preview" && !!t.s.cur, "each round opens with the host's preview");
+  ok(t.s.phase === "deal", "the game opens on the host's deal");
+  ok(t.s.batch.length === DIARY.BATCH, `it deals a batch of ${DIARY.BATCH}`);
   ok(t.s.maxLevel === "spicy" && t.s.visibility === "private", "a private party defaults to spicy");
-  ok(t.s.totalRounds === DIARY.ROUNDS, `${DIARY.ROUNDS} rounds`);
-  ok(waitPhase(t, "answer", DIARY.PREVIEW_MS + 1000), `with no host action it goes to everyone after ~${DIARY.PREVIEW_MS / 1000}s`);
-  const ids = ["p1", "p2", "p3", "p4"], expect = { p1: 0, p2: 0, p3: 0, p4: 0 };
-  const seen = [];
-  let hudLeak = false;
-  for (let r = 1; r <= DIARY.ROUNDS; r++) {
-    if (r > 1) ok(waitPhase(t, "answer", DIARY.PREVIEW_MS + 1000), `round ${r} opens by itself`);
-    const cur = { ...t.s.cur, round: t.s.round };
-    seen.push(cur);
-    ok(DIARY.LEVELS.indexOf(cur.level) <= DIARY.LEVELS.indexOf(capFor(r, "spicy")), `round ${r}: ${cur.level} ${cur.type} is within the curve`);
-    if (cur.type === "written") {
-      ok(t.s.left <= DIARY.WRITE_MS && t.s.left > DIARY.WRITE_MS - 2000, `written gets ~${DIARY.WRITE_MS / 1000}s`);
-      ids.forEach(id => t.input(id, "answer", { text: `${id} round ${r}` }));
-      ok(waitPhase(t, "guess", 30000), "everyone answering moves to reveal, then matching");
-      ok(t.s.entries.length === 4 && t.s.entries.every(e => !("by" in e)), "four unattributed answers");
-      const author = eid => Object.values(t.s.players).find(p => p.myEid === eid)?.id;
-      for (const e of t.s.entries) if (e.eid !== t.s.players.p1.myEid) t.input("p1", "guess", { eid: e.eid, who: author(e.eid) });
-      // p2 credits p1 with everything: 1 right at most
-      for (const e of t.s.entries) if (e.eid !== t.s.players.p2.myEid) t.input("p2", "guess", { eid: e.eid, who: "p1" });
-      expect.p1 += 3; expect.p2 += 1;
+  ok(escalates(t.s.batch) && t.s.batch[0].level === "mild", `mild first, spicier later (${t.s.batch.map(c => c.level).join(",")})`);
+  ok(ynCount(t.s.batch) === 2, "2 of the 5 are yes/no");
+  ok(t.s.left > DIARY.DEAL_MS - 2000, `the host gets ~${DIARY.DEAL_MS / 1000}s before it sends by itself`);
+  const sig = () => t.s.batch.map(c => c.id).join(",");
+  const before = sig();
+  t.input("p2", "swap", { i: 0 }); t.input("p2", "size", { n: 8 }); t.input("p2", "send"); t.input("p2", "skip");
+  adv(600);
+  ok(t.s.phase === "deal" && sig() === before, "only the host can swap, resize or send");
+  const old = t.s.batch[3];
+  t.input("p1", "swap", { i: 3 });
+  adv(300);
+  const fresh = t.s.batch.find(c => !before.split(",").includes(c.id));
+  ok(t.s.batch.length === 5 && !t.s.batch.some(c => c.id === old.id) && !!fresh, "Swap replaces that one card");
+  ok(fresh?.type === old.type, `…with another ${old.type} card`);
+  ok(fresh?.level === old.level, `…at the same level when there's one left (${old.level} → ${fresh?.level})`);
+  ok(escalates(t.s.batch), "the batch still escalates");
+  ok(t.s.swapped.includes(old.id), "the swapped card is remembered");
+  const row = window.__logRows.find(r => r.prompt_id === old.id);
+  ok(row && row.skipped === true && row.answered === null, "swaps are logged as skipped");
+  for (let i = 0; i < 6; i++) { t.input("p1", "swap", { i: i % 5 }); adv(250); }
+  ok(!t.s.batch.some(c => t.s.swapped.includes(c.id)) && t.s.swapped.length === 7, "swapped cards never come back");
+  t.input("p1", "size", { n: 8 }); adv(300);
+  ok(t.s.batch.length === 8 && ynCount(t.s.batch) === 3 && escalates(t.s.batch), "8 questions: 3 yes/no, still escalating");
+  t.input("p1", "size", { n: 3 }); adv(300);
+  ok(t.s.batch.length === 3 && ynCount(t.s.batch) === 1 && escalates(t.s.batch), "3 questions: 1 yes/no");
+  t.input("p1", "size", { n: 1 }); adv(300);
+  ok(t.s.batch.length === 3, "never fewer than 3");
+  t.input("p1", "size", { n: 40 }); adv(300);
+  ok(t.s.batch.length === 8, "never more than 8");
+  t.input("p1", "size", { n: 5 }); adv(300);
+  ok(t.s.batch.length === 5 && ynCount(t.s.batch) === 2, "back to 5");
+  ok(new Set(t.s.batch.map(c => c.id)).size === 5 && !t.s.batch.some(c => t.s.swapped.includes(c.id)), "no duplicates, no swapped cards");
+  ok(t.s.phase === "deal", "nothing reaches the players until Send");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+
+group("Secret Diary — a full game: answer the batch, reveal one by one, scoring, logging (4 players)");
+{
+  window.__logRows = [];
+  const t = seatTable(SECRET_DIARY, 4);
+  adv(300);
+  const batch = t.s.batch.map(c => ({ ...c }));
+  t.input("p1", "send");
+  adv(400);
+  ok(t.s.phase === "answer", "Send hands everyone the whole batch at once");
+  ok(t.stateOf("p3").phase === "answer" && t.stateOf("p3").batch.length === 5, "a guest's phone has all 5 questions");
+  ok(t.s.left <= 5 * DIARY.ANSWER_MS_PER_Q && t.s.left > 5 * DIARY.ANSWER_MS_PER_Q - 2000, `the window is ~${5 * DIARY.ANSWER_MS_PER_Q / 60000} min for 5 questions`);
+  const W = batch.map((c, k) => k).filter(k => batch[k].type === "written");
+  const skipK = W[0];
+  answerAll(t, ["p1", "p2", "p3", "p4"], { skip: (id, k) => id === "p4" && k === skipK });
+  adv(600);
+  ok(t.s.phase === "answer", "answering doesn't close the window — Submit does");
+  ok(Object.keys(t.s.players.p2.answers).length === 5 && Object.keys(t.s.players.p4.answers).length === 4, "every answer is saved as it's given (p4 left one blank)");
+  t.input("p2", "ans", { k: W[1], text: "   " });
+  adv(300);
+  ok(t.s.players.p2.answers[W[1]] === undefined, "clearing a written answer un-answers it");
+  t.input("p2", "ans", { k: W[1], text: `p2 wrote q${W[1]}` });
+  ["p1", "p2", "p3"].forEach(id => t.input(id, "submit"));
+  adv(800);
+  ok(t.s.phase === "answer", "one player still going: still waiting");
+  t.input("p3", "ans", { k: 0, text: "changed my mind" });
+  adv(200);
+  t.input("p4", "submit");
+  ok(waitPhase(t, "reveal", 4000), "everyone submitted: the reveal starts");
+  ok(Object.values(t.s.players).every(p => !Object.keys(p.answers).length), "raw answers leave the state once the window closes");
+  ok(t.s.qi === 0, "it starts with the first question");
+
+  const expect = { p1: 0, p2: 0, p3: 0, p4: 0 };
+  const revealed = [];
+  let hudLeak = false, first = true;
+  while (t.s.phase === "reveal" && revealed.length < 10) {
+    const k = t.s.qi, c = t.s.batch[k], q = t.s.qs[k], key = t.s.keys[k];
+    revealed.push(k);
+    if (c.type === "written") {
+      ok(q.entries.length === (k === skipK ? 3 : 4), `q${k + 1} written: ${q.entries.length} answers (blanks are skipped)`);
+      ok(q.entries.every(e => Object.keys(e).sort().join() === "eid,text"), `q${k + 1}: answers are unsigned — just text`);
+      if (k === W[0]) ok(!q.entries.some(e => e.text === "changed my mind"), "an answer sent after Submit is ignored");
+      const own = id => Object.keys(key).find(e => key[e] === id);
+      for (const e of q.entries) if (e.eid !== own("p1")) t.input("p1", "guess", { eid: e.eid, who: key[e.eid] });
+      for (const e of q.entries) if (e.eid !== own("p2")) t.input("p2", "guess", { eid: e.eid, who: "p1" });
+      t.input("p3", "guess", { eid: own("p3"), who: "p1" });                // can't match your own
+      if (k === skipK) t.input("p3", "guess", { eid: own("p1"), who: "p4" }); // p4 didn't answer this one
+      adv(300);
+      ok(!t.s.players.p3.guesses[own("p3")] && (k !== skipK || !Object.keys(t.s.players.p3.guesses).length), `q${k + 1}: you can't match your own answer, or a player who didn't answer`);
+      expect.p1 += q.entries.length - 1; expect.p2 += 1;
     } else {
-      ok(t.s.left <= DIARY.YESNO_MS && t.s.left > DIARY.YESNO_MS - 2000, `yes/no gets ~${DIARY.YESNO_MS / 1000}s`);
-      t.input("p1", "answer", { yn: "yes" }); t.input("p2", "answer", { yn: "yes" }); t.input("p3", "answer", { yn: "no" }); t.input("p4", "answer", { yn: "no" });
-      ok(waitPhase(t, "guess", 15000), "everyone tapping moves to the count, then guessing");
-      ok(t.s.countLabel === "2 of 4 said yes", `only the count is revealed: "${t.s.countLabel}"`);
-      t.input("p1", "pickyes", { who: "p2", on: true }); t.input("p1", "lock");
-      t.input("p2", "lock");               // picked nobody: reads p1 wrong, p3 + p4 right
+      ok(q.countLabel === "2 of 4 said yes", `q${k + 1} yes/no: only the count — "${q.countLabel}"`);
+      ok(!q.entries.length, `q${k + 1}: no answers on show, just the number`);
+      t.input("p1", "pick", { who: "p2", on: true }); t.input("p1", "pick", { who: "p1", on: true });
+      t.input("p2", "pick", { who: "p3", on: true }); t.input("p2", "pick", { who: "p3", on: false });
+      adv(300);
+      ok(!t.s.players.p1.guesses.p1 && !t.s.players.p2.guesses.p3, `q${k + 1}: you can't pick yourself; un-picking works`);
       expect.p1 += 3; expect.p2 += 2;
     }
+    t.input("p1", "lock"); t.input("p2", "lock");
     adv(1000);
-    if (/pts/.test(document.getElementById("game-hud").innerHTML)) hudLeak = true;
-    let g = 0; while (t.s.phase === "guess" && g++ < 400) adv(STEP);   // p3, p4 never guess: the timer ends it
+    if (/pts|score/i.test(document.getElementById("game-hud").innerHTML)) hudLeak = true;
+    if (first) {
+      first = false;
+      const t0 = clock.now;
+      ok(pastQuestion(t, k, DIARY.GUESS_MS + 5000), `q${k + 1}: two players never lock in — the clock moves it on`);
+      ok(clock.now - t0 >= DIARY.GUESS_MS - 4000, `…after ~${DIARY.GUESS_MS / 1000}s`);
+    } else {
+      t.input("p3", "lock"); t.input("p4", "lock");
+      if (c.type === "yesno") { expect.p3 += 1; expect.p4 += 1; }   // locked with no picks: read the other "no" right
+      ok(pastQuestion(t, k, 3000), `q${k + 1}: everyone locked in — straight to the next one`);
+    }
+    ok(t.s.keys[k] === null && !t.s.qs[k].entries.length, `q${k + 1}: once scored, nothing in the state ties anyone to it`);
   }
+  ok(revealed.join() === "0,1,2,3,4", `all 5 questions revealed, in order (${revealed.join(",")})`);
+  ok(t.s.phase === "end", "after the last question, the results");
   ok(!hudLeak, "no score is shown during the game — only at the end");
-  ok(waitPhase(t, "end", 10000), "after the last round, the results");
-  ok(seen.filter(c => c.type === "yesno").length === 2, `roughly 1 in 3 rounds is yes/no (${seen.filter(c => c.type === "yesno").length} of ${DIARY.ROUNDS})`);
-  ok(new Set(seen.map(c => c.id)).size === seen.length, "no prompt repeats");
-  ok(ids.every(id => t.s.players[id].score === expect[id]), `scores: ${ids.map(id => `${id} ${t.s.players[id].score}/${expect[id]}`).join(", ")}`);
-  ok(Object.values(t.s.players).every(p => p.answer === null && !p.myEid), "answers are wiped from the state once each round is scored");
+  ok(SD_IDS(t).every(id => t.s.players[id].score === expect[id]), `scores: ${SD_IDS(t).map(id => `${id} ${t.s.players[id].score}/${expect[id]}`).join(", ")}`);
   adv(1500);
   const panel = document.getElementById("game-panel").innerHTML;
-  ok(!/p\d round \d/.test(panel) && !panel.includes("sd-entry") && !panel.includes("sd-count") && !/\d of \d said yes/.test(panel), "the results screen shows totals only — no answers, no counts");
+  ok(/p1 wins/.test(panel), "the results name the winner");
+  ok((panel.match(/hp-av/g) ?? []).length >= 4, "…with everyone's avatar");
+  ok(!/wrote q\d/.test(panel) && !panel.includes("sd-entry") && !panel.includes("sd-count") && !/\d of \d said yes/.test(panel), "the results screen shows totals only — no answers, no counts");
+  ok(t.s.keys.every(x => x === null) && t.s.qs.every(q => !q.entries.length), "no answers left in the state at the end");
 
   const rows = window.__logRows.filter(r => r.game_id === t.s.gameId);
-  ok(rows.length === DIARY.ROUNDS, `one log row per prompt shown (${rows.length})`);
+  ok(rows.length === 5 && rows.every(r => r.skipped === false), `one log row per question sent (${rows.length})`);
   const keys = ["prompt_id", "level", "type", "party_size", "bots", "visibility", "skipped", "round", "answered", "avg_submit_ms", "avg_answer_len", "game_id"];
   ok(rows.every(r => keys.every(k => k in r)), "each row has id, level, type, party size, public/private, skipped, avg submit time, avg answer length");
-  ok(rows.every(r => r.party_size === 4 && r.bots === 0 && r.visibility === "private" && r.skipped === false && r.answered === 4), "party size, visibility, skipped and answered are right");
+  ok(rows.every(r => r.party_size === 4 && r.bots === 0 && r.visibility === "private" && r.answered === (r.round - 1 === skipK ? 3 : 4)), "party size, visibility and answered are right");
+  ok(rows.map(r => r.round).join() === "1,2,3,4,5" && rows.every((r, i) => r.prompt_id === batch[i].id), "rows follow the batch order");
   ok(rows.every(r => typeof r.avg_submit_ms === "number" && r.avg_submit_ms >= 0), "average submit time is recorded");
   ok(rows.filter(r => r.type === "written").every(r => r.avg_answer_len > 0) && rows.filter(r => r.type === "yesno").every(r => r.avg_answer_len === null), "average answer length for written, none for yes/no");
-  ok(rows.every(r => !JSON.stringify(r).includes("round 1") && !("handle" in r) && !("user_id" in r)), "rows carry no answer text and no player identity");
+  ok(rows.every(r => !/wrote|changed/.test(JSON.stringify(r)) && !("handle" in r) && !("user_id" in r) && !/"p\d"/.test(JSON.stringify(r))), "rows carry no answer text and no player identity");
   ok(runOut(t), "the game closes out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 
-group("Secret Diary — host skip");
+group("Secret Diary — drop-safety, timers, a host who leaves, nobody tapping anything");
 {
-  window.__logRows = [];
-  const t = seatTable(SECRET_DIARY, 3);
-  adv(300);
-  const first = t.s.cur.id;
-  t.input("p2", "skipPrompt");
-  adv(300);
-  ok(t.s.cur.id === first, "only the host can skip");
-  adv(2500);
-  t.input("p1", "skipPrompt");
-  adv(300);
-  ok(t.s.cur.id !== first && t.s.phase === "preview", "the host's skip deals a different prompt, still in preview");
-  ok(t.s.left > DIARY.PREVIEW_MS - 600, "and the preview clock restarts");
-  ok(t.s.skipped.includes(first), "the skipped prompt is remembered");
-  const sk = window.__logRows.find(r => r.prompt_id === first);
-  ok(sk && sk.skipped === true && sk.answered === null, "skips are logged as skipped");
-  const shown = [];
-  let g = 0; while (t.s.phase !== "end" && g++ < 20000) { if (t.s.cur && !shown.includes(t.s.cur.id)) shown.push(t.s.cur.id); adv(STEP); }
-  ok(!shown.slice(1).includes(first), "a skipped prompt never comes back");
+  const t = seatTable(SECRET_DIARY, 4);
+  adv(300); t.input("p1", "send"); adv(400);
+  answerAll(t, ["p1", "p2", "p3"]);
+  answerAll(t, ["p4"], { skip: (id, k) => k > 1 });          // p4 answers 2 of 5…
+  adv(400);
+  t.drop("p4");                                               // …and closes the tab without submitting
+  ["p1", "p2", "p3"].forEach(id => t.input(id, "submit"));
+  ok(waitPhase(t, "reveal", 4000), "a player who drops mid-answer stops being waited on");
+  ok(t.s.qs[0].cands.includes("p4") && t.s.qs[1].cands.includes("p4"), "the answers they gave before leaving still count");
+  ok(t.s.qs.slice(2).every(q => !q.cands.includes("p4")), "and the ones they never got to are skipped");
+  ok(lockThrough(t, ["p1", "p2", "p3"]), "they don't block a single reveal");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
-
-group("Secret Diary — nobody taps anything, people drop, too few answers");
 {
-  window.__logRows = [];
   const t = seatTable(SECRET_DIARY, 3);
-  ok(runOut(t, 40 * 60 * 1000), "with zero taps from anyone the game still runs to the end");
-  const rows = window.__logRows.filter(r => r.game_id === t.s.gameId);
-  ok(rows.length === DIARY.ROUNDS && rows.every(r => r.answered === 0), "every round still happened (and was logged), with no answers");
-  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  adv(300); t.input("p1", "send"); adv(400);
+  const t0 = clock.now;
+  answerAll(t, ["p1", "p2"]);
+  ok(waitPhase(t, "reveal", 5 * DIARY.ANSWER_MS_PER_Q + 5000), "nobody presses Submit: the window closes on its own");
+  ok(clock.now - t0 >= 5 * DIARY.ANSWER_MS_PER_Q - 3000, `…after ~${5 * DIARY.ANSWER_MS_PER_Q / 60000} min`);
+  ok(t.s.qs.every(q => q.cands.join() === "p1,p2"), "and every answer given still counts");
+}
+{
+  const t = seatTable(SECRET_DIARY, 3);
+  adv(300); t.input("p1", "send"); adv(400);
+  answerAll(t, ["p1"]);
+  ["p1", "p2", "p3"].forEach(id => t.input(id, "submit"));
+  ok(waitPhase(t, "end", 4000), "only one person answered anything: nothing to guess, straight to the results");
+  ok(/not enough answers/.test(t.s.why ?? ""), `…and it says why ("${t.s.why}")`);
 }
 {
   const t = seatTable(SECRET_DIARY, 4);
-  ok(waitPhase(t, "answer", 8000), "into answering");
-  const type = t.s.cur.type;
-  ["p1", "p2", "p3"].forEach(id => t.input(id, "answer", type === "written" ? { text: `hi from ${id}` } : { yn: "no" }));
-  adv(1000);
-  ok(t.s.phase === "answer", "one player short: still waiting");
-  t.drop("p4");
-  adv(3000);
-  ok(t.s.phase === "reveal" || t.s.phase === "guess", "a player dropping mid-round stops being waited on");
+  adv(300); t.input("p1", "send"); adv(400);
+  answerAll(t, ["p1", "p2", "p3", "p4"]);
+  t.input("p1", "submit");
+  adv(400);
+  t.drop("p1");                                               // the host leaves
+  adv(600);
+  ok(t.host?.me.id === "p2", "the next player takes over as host");
+  ["p2", "p3", "p4"].forEach(id => t.input(id, "submit"));
+  ok(waitPhase(t, "reveal", 4000), "the new host carries on from the snapshot");
+  ok(t.s.qs[0].cands.includes("p1"), "the old host's answers still count");
+  ok(lockThrough(t, ["p2", "p3", "p4"]), "and plays every reveal through to the results");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 {
+  window.__logRows = [];
   const t = seatTable(SECRET_DIARY, 3);
-  ok(waitPhase(t, "answer", 8000), "into answering");
-  const r0 = t.s.round, type = t.s.cur.type;
-  t.input("p1", "answer", type === "written" ? { text: "lonely answer" } : { yn: "yes" });
-  ok(waitPhase(t, "preview", DIARY.WRITE_MS + 5000), "a round with only one answer is skipped past — nothing to guess");
-  ok(t.s.round === r0 + 1, "and the next round starts");
+  ok(runOut(t, 40 * 60 * 1000), "with zero taps from anyone the game still runs to the end (the deal sends itself)");
+  const rows = window.__logRows.filter(r => r.game_id === t.s.gameId);
+  ok(rows.length === 5 && rows.every(r => r.answered === 0), "every question was still sent (and logged), with no answers");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+
+group("Secret Diary — odd counts and a full room (5 and 12 players)");
+for (const n of [5, 12]) {
+  const t = seatTable(SECRET_DIARY, n);
+  adv(300); t.input("p1", "send"); adv(400);
+  const who = SD_IDS(t);
+  answerAll(t, who, { yes: id => +id.slice(1) % 2 === 0 });
+  who.forEach(id => t.input(id, "submit"));
+  ok(waitPhase(t, "reveal", 4000), `${n} players: everyone in, the reveal starts`);
+  const k = t.s.qi;
+  if (t.s.batch[k].type === "written") ok(t.s.qs[k].entries.length === n, `${n} unsigned answers`);
+  else ok(/said yes/.test(t.s.qs[k].countLabel), `the count: "${t.s.qs[k].countLabel}"`);
+  if (n === 12) {
+    while (t.s.phase === "reveal" && t.s.batch[t.s.qi].type !== "written") { who.forEach(id => t.input(id, "lock")); pastQuestion(t, t.s.qi, 5000); }
+    adv(600);
+    ok(!!document.querySelector("#game-panel .sd-sel"), "with 11 people to choose from, matching uses a dropdown instead of a wall of chips");
+  }
+  ok(lockThrough(t, who), `${n} players: all the way to the results`);
+  ok(Object.values(t.s.players).length === n, `${n} on the scoreboard`);
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 
 group("Secret Diary — content levels and the 18+ gate");
 {
   const pub = seatTable(SECRET_DIARY, 3, { party: { privacy: "public", settings: {} } });
-  const lv = [];
-  let g = 0; while (pub.s.phase !== "end" && g++ < 30000) { if (pub.s.cur && pub.s.phase === "answer" && lv[pub.s.round - 1] === undefined) lv[pub.s.round - 1] = pub.s.cur.level; adv(STEP); }
-  ok(pub.s.maxLevel === "mild" && lv.length === DIARY.ROUNDS && lv.every(l => l === "mild"), `a public party stays mild all game (${lv.join(",")})`);
-
+  adv(300);
+  ok(pub.s.maxLevel === "mild" && pub.s.batch.every(c => c.level === "mild"), `a public party deals mild only (${pub.s.batch.map(c => c.level).join(",")})`);
+  ok(ynCount(pub.s.batch) === 1, "…with the one mild yes/no in it (that's all there is at mild)");
   const noAdult = seatTable(SECRET_DIARY, 3, { party: { privacy: "private", settings: { diaryMax: "unhinged", adult: false } } });
   adv(300);
-  ok(noAdult.s.maxLevel === "spicy", "asking for unhinged without 18+ gets spicy");
+  ok(noAdult.s.maxLevel === "spicy" && !noAdult.s.batch.some(c => c.level === "unhinged"), "asking for unhinged without 18+ gets spicy");
   const adult = seatTable(SECRET_DIARY, 3, { party: { privacy: "private", settings: { diaryMax: "unhinged", adult: true } } });
-  const lv2 = [];
-  g = 0; while (adult.s.phase !== "end" && g++ < 30000) { if (adult.s.cur && adult.s.phase === "answer" && lv2[adult.s.round - 1] === undefined) lv2[adult.s.round - 1] = adult.s.cur.level; adv(STEP); }
+  adv(300);
+  const b = adult.s.batch, lv = b.map(c => c.level);
   ok(adult.s.maxLevel === "unhinged", "18+ on: unhinged is allowed");
-  ok(lv2.slice(0, 2).every(l => l === "mild") && lv2.slice(2, 4).every(l => l !== "unhinged"), `…but the curve still holds (${lv2.join(",")})`);
+  ok(escalates(b) && lv.filter(l => l === "mild").length >= 2 && lv.filter(l => l === "unhinged").length <= 1, `…but the batch still climbs (${lv.join(",")})`);
+  adult.input("p1", "size", { n: 8 }); adv(300);
+  const lv8 = adult.s.batch.map(c => c.level);
+  ok(escalates(adult.s.batch) && lv8.slice(0, 3).every(l => l === "mild") && lv8.filter(l => l === "unhinged").length <= 2, `8 questions climb too (${lv8.join(",")})`);
 }
 
-group("Secret Diary — no repeats across games in one party session");
+group("Secret Diary — no repeats in a party session, and running dry");
 {
   const session = {};
   const g1 = seatTable(SECRET_DIARY, 3, { session });
+  adv(300);
+  g1.input("p1", "swap", { i: 0 }); adv(300);
+  const a = [...g1.s.batch.map(c => c.id), ...g1.s.swapped];
   runOut(g1, 40 * 60 * 1000);
-  const a = [...session.diaryUsed];
+  ok(a.every(id => session.diaryUsed.has(id)), "the session remembers what was sent and swapped");
   const g2 = seatTable(SECRET_DIARY, 3, { session });
+  adv(300);
+  ok(!g2.s.batch.some(c => a.includes(c.id)), "the next game never deals any of them again");
   runOut(g2, 40 * 60 * 1000);
-  const b = g2.s.used;
-  ok(a.length === DIARY.ROUNDS && b.length === DIARY.ROUNDS, "two full games");
-  ok(!b.some(id => a.includes(id)), "the second game never repeats a prompt from the first");
+
+  const pubSession = {}, seen = [];
+  let last = null, games = 0;
+  for (; games < 9; games++) {
+    const g = seatTable(SECRET_DIARY, 3, { session: pubSession, party: { privacy: "public", settings: {} } });
+    adv(300);
+    seen.push(...g.s.batch.map(c => c.id));
+    last = g;
+    if (!g.s.batch.length) break;
+    runOut(g, 40 * 60 * 1000);
+  }
+  ok(new Set(seen).size === seen.length, `a public party works through all ${seen.length} mild prompts with no repeats`);
+  ok(seen.length === POOL.filter(p => p.level === "mild").length, "…every one of them");
+  ok(last.s.phase === "end" && /no questions left/.test(last.s.why ?? ""), `then says so instead of breaking ("${last.s.why}")`);
 }
 
 group("Secret Diary — logging survives a missing table");
@@ -548,12 +776,12 @@ group("Cleanup — nothing survives the party");
   // Everything a game wrote must be gone afterwards, including the state on
   // HostGame's debug handle.
   const t = seatTable(SECRET_DIARY, 3);
-  waitPhase(t, "answer", 8000);
-  const ty = t.s.cur.type;
-  for (const c of t.clients) t.input(c.me.id, "answer", ty === "written" ? { text: `secret of ${c.me.id}` } : { yn: "yes" });
+  adv(300); t.input("p1", "send");
+  waitPhase(t, "answer", 3000);
+  for (const c of t.clients) t.s.batch.forEach((q, k) => t.input(c.me.id, "ans", q.type === "written" ? { k, text: `secret of ${c.me.id}` } : { k, yn: "yes" }));
   adv(600);
   const host = t.host;
-  ok(Object.values(host.game.s.players).some(p => p.answer !== null) || (host.game.s.entries?.length ?? 0) > 0, "answers exist while the game is running");
+  ok(Object.values(host.game.s.players).some(p => Object.keys(p.answers).length), "answers exist while the game is running");
   ok(window.__game !== null, "the debug handle is live during play");
   trash.flush("spec: party ended");
   ok(host.game.s === null, "the game state is dropped on cleanup");

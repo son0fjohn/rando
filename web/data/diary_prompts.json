@@ -2,8 +2,16 @@
   "_readme": [
     "Secret Diary prompt pool. This file is the ONLY place prompts live — edit it directly.",
     "Each prompt: id (stable, never reuse or renumber — prompt logs reference it), text, type ('written' | 'yesno'), level ('mild' | 'spicy' | 'unhinged').",
-    "To add one: append it to its group with the next unused number for its type-level (look at the last id in that group). To retire one: delete it — its id stays dead, never reuse it.",
+    "To add one: append it to its group with the next unused number for its type-level (check _retired too). To retire one: delete it and add its id to _retired — a retired id is never reused.",
     "'yesno' prompts are statements a player answers yes or no to about themselves."
+  ],
+  "_retired": [
+    "w-mild-25",
+    "w-mild-26",
+    "w-mild-27",
+    "w-mild-28",
+    "w-mild-29",
+    "w-spicy-20"
   ],
   "prompts": [
     {
@@ -151,32 +159,26 @@
       "level": "mild"
     },
     {
-      "id": "w-mild-25",
-      "text": "Who are the 3 worst people in the world",
+      "id": "w-mild-30",
+      "text": "My favorite word",
       "type": "written",
       "level": "mild"
     },
     {
-      "id": "w-mild-26",
-      "text": "What's your favorite word",
+      "id": "w-mild-31",
+      "text": "My Snapchat score",
       "type": "written",
       "level": "mild"
     },
     {
-      "id": "w-mild-27",
-      "text": "What's your snap score",
+      "id": "w-mild-32",
+      "text": "The celebrity I'd make president",
       "type": "written",
       "level": "mild"
     },
     {
-      "id": "w-mild-28",
-      "text": "What celebrity would you make the president",
-      "type": "written",
-      "level": "mild"
-    },
-    {
-      "id": "w-mild-29",
-      "text": "Who is the most attractive athlete",
+      "id": "w-mild-33",
+      "text": "The most attractive athlete",
       "type": "written",
       "level": "mild"
     },
@@ -295,8 +297,8 @@
       "level": "spicy"
     },
     {
-      "id": "w-spicy-20",
-      "text": "What is the most disturbing thought you've had",
+      "id": "w-spicy-21",
+      "text": "The 3 worst people in the world",
       "type": "written",
       "level": "spicy"
     },
@@ -327,6 +329,12 @@
     {
       "id": "w-unhinged-05",
       "text": "Who here has shot their shot with the most people",
+      "type": "written",
+      "level": "unhinged"
+    },
+    {
+      "id": "w-unhinged-06",
+      "text": "The most disturbing thought I've had",
       "type": "written",
       "level": "unhinged"
     },
