@@ -2,15 +2,11 @@
   "_readme": [
     "Secret Diary prompt pool. This file is the ONLY place prompts live — edit it directly.",
     "Each prompt: id (stable, never reuse or renumber — prompt logs reference it), text, type ('written' | 'yesno'), level ('mild' | 'spicy' | 'unhinged').",
-    "To add one: append it to its group with the next unused number for its type-level (check _retired too). To reword one, edit its text and keep its id — it's still the same question. To retire one: delete it and add its id to _retired — a retired id is never reused.",
+    "To add one: append it to its group with the next unused number for its type-level (check _retired too). To reword one, edit its text and keep its id — it's still the same question. To retire one: delete it and add its id to _retired — a retired id is never reused. Moving one to another level is the one exception to keeping its id (ids name their level): retire the old id, add it under the new level.",
     "'yesno' prompts are statements a player answers yes or no to about themselves."
   ],
   "_retired": [
     "w-mild-25",
-    "w-mild-26",
-    "w-mild-27",
-    "w-mild-28",
-    "w-mild-29",
     "w-spicy-20",
     "w-spicy-21"
   ],
@@ -160,25 +156,25 @@
       "level": "mild"
     },
     {
-      "id": "w-mild-30",
+      "id": "w-mild-26",
       "text": "What's your favorite word?",
       "type": "written",
       "level": "mild"
     },
     {
-      "id": "w-mild-31",
+      "id": "w-mild-27",
       "text": "What's your snap score?",
       "type": "written",
       "level": "mild"
     },
     {
-      "id": "w-mild-32",
+      "id": "w-mild-28",
       "text": "What celebrity would you make the president?",
       "type": "written",
       "level": "mild"
     },
     {
-      "id": "w-mild-33",
+      "id": "w-mild-29",
       "text": "Who is the most attractive athlete?",
       "type": "written",
       "level": "mild"
