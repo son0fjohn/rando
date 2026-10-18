@@ -193,7 +193,7 @@ export const party = {
     room.on("hello", () => { if (room.isHost) this._sendMeta(); });
     room.on("meta", m => {
       if (room.isHost) return;
-      c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) } };
+      c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) }, playing: m.playing ?? null };
       c.queue = m.queue ?? null;
       for (const id of m.diaryUsed ?? []) c.session.diaryUsed.add(id);
       this.render();
@@ -215,6 +215,8 @@ export const party = {
     c.room.send("meta", {
       name: c.meta.name, vibe: c.meta.vibe, cap: c.meta.cap, hostName: this.me.handle, queue: c.queue,
       privacy: c.meta.privacy, settings: c.meta.settings, diaryUsed: [...c.session.diaryUsed],
+      // a game in progress: someone who joins now waits in the lobby for the next one
+      playing: c.launched ? c.playing ?? null : null,
     });
   },
   // host: anyone past the cap (by join order) is told to leave
@@ -276,6 +278,7 @@ export const party = {
     const g = gameById(m.game);
     if (!g) { this.err(`unknown game "${m.game}"`); return; }
     c.launched = true;
+    c.playing = g.title;
     this.pickerOpen = false;
     $("party-panel").hidden = true;
     const humans = c.room.members.map(x => ({ id: x.id, handle: x.handle, avatar: x.avatar }));
@@ -294,6 +297,7 @@ export const party = {
   _onGameEnd(c) {
     if (this.current !== c) return;
     c.launched = false;
+    c.playing = null;
     trash.flush("game ended");           // uploaded photos + entries go now
     $("party-panel").hidden = false;
     if (c.room.isHost) this._sendMeta();  // shares the session's used prompts
@@ -448,7 +452,8 @@ export const party = {
     const g = c.queue ? gameById(c.queue.game) : null;
     const opts = g ? [optionsLabel(g, c.queue.options), g.describe?.(c.meta)].filter(Boolean).join(" · ") : "";
     const need = g ? Math.max(0, minFor(g) - n) : 0;
-    const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}`;
+    const playing = !isHost && c.meta.playing;      // a game started before you got here
+    const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}:${playing || ""}`;
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     const card = g
@@ -462,7 +467,7 @@ export const party = {
       $("pt-open-picker").onclick = () => { this.pickerOpen = true; this._renderPicker(); };
       const st = $("pt-start"); if (st) st.onclick = () => this.launch();
     } else {
-      el.innerHTML = card + `<div class="pt-next-wait">${g ? (need ? `waiting for ${need} more` : `waiting for ${esc(host)} to start`) : "hang out — walk around"}</div>`;
+      el.innerHTML = card + `<div class="pt-next-wait" id="pt-wait">${playing ? `${esc(playing)} is on — you're in the next one` : g ? (need ? `waiting for ${need} more` : `waiting for ${esc(host)} to start`) : "hang out — walk around"}</div>`;
     }
   },
 
