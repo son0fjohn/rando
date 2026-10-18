@@ -30,7 +30,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 npm ci && npx playwright install chromium   # once
 npm run serve              # http://localhost:8743
 npm test                   # logic suites: all games + "you + 3 bots" (≈1 min)
-npm run test:e2e           # 3 phones play a whole party through the real UI (≈3 min)
+npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Diary, through the real UI (≈5 min)
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 ```
 
@@ -99,7 +99,7 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   people" over architecture. Don't ask for refactors, abstractions or extra
   test layers unless they fix a real bug.
 - If a change touches game flow but adds no test for it in `test/specs.js` (or
-  `test/party_e2e.mjs` for UI), say so once.
+  `test/party_e2e.mjs` / `test/diary_e2e.mjs` for UI), say so once.
 
 ## Conventions
 

@@ -227,81 +227,54 @@ try {
   await A.click("#pt-picker-done");
   ok(await until(B, () => /Secret Diary/.test(document.getElementById("pt-next")?.textContent) && /up to unhinged/.test(document.getElementById("pt-next")?.textContent)), "guests see the queued game and its level");
 
-  head("Secret Diary — host preview + skip, written and yes/no rounds, no taps needed");
+  head("Secret Diary — deal, answer the batch, reveal one by one (3 phones; diary_e2e.mjs plays it with 5)");
   await A.click("#pt-start");
-  ok(await until(A, () => !!document.getElementById("sd-skip")), "the host gets the prompt first, with Skip");
-  ok(await until(B, () => /incoming/.test(document.querySelector(".sd-incoming")?.textContent ?? "")), "everyone else just sees 'next prompt incoming'");
-  await shot(A, "11-diary-host-preview");
-  const firstPrompt = await text(A, ".sd-prompt");
-  await A.click("#sd-skip");
-  ok(await until(A, t => (document.querySelector(".sd-prompt")?.textContent ?? "") !== t, firstPrompt), "Skip swaps in a different prompt");
+  ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "the host is dealt a batch of 5, with Swap");
+  ok(await until(B, () => /is picking/.test(document.querySelector(".sd-incoming")?.textContent ?? "")), "everyone else waits while the host picks");
+  await shot(A, "11-diary-deal");
+  const firstCard = await text(A, ".sd-card .sd-ctext > div:last-child");
+  await A.locator("[data-swap]").first().click();
+  ok(await until(A, t => (document.querySelector(".sd-card .sd-ctext > div:last-child")?.textContent ?? "") !== t, firstCard), "Swap deals a different card");
   await A.click("#sd-send");
-  const types = new Set();
-  const h2 = pg => stageTitle(pg);
-  // play 4 rounds with everyone answering through the UI. 4 rounds always
-  // contain 2+ written rounds, so a phone that kept last round's answer
-  // (showing "locked in" before you've answered) can't slip through.
-  // (up to 6, until both types have come up: skipping the only mild yes/no
-  // prompt in the preview legitimately pushes the first yes/no to round 4-6)
-  for (let r = 0; r < 6 && (r < 4 || types.size < 2); r++) {
-    if (r > 0) {
-      for (let i = 0; i < 14 && !(await A.locator("#sd-send").count()); i++) { await A.evaluate(() => document.getElementById("hp-skip")?.click()); await sleep(600); }
-      await A.evaluate(() => document.getElementById("sd-send")?.click());
+  ok((await Promise.all([A, B, C].map(pg => until(pg, () => document.querySelectorAll(".sd-q").length === 5)))).every(Boolean), "everyone gets the whole batch at once");
+  const qTypes = await B.locator(".sd-q").evaluateAll(qs => qs.map(q => q.classList.contains("yesno") ? "yesno" : "written"));
+  const w0 = qTypes.indexOf("written");
+  // cy is mid-sentence while the others submit: it must survive
+  await C.locator(".sd-q").nth(w0).locator(".sd-in").fill("half a thou");
+  await shot(B, "12-diary-answer");
+  for (const pg of [A, B]) {
+    for (let k = 0; k < qTypes.length; k++) {
+      const q = pg.locator(".sd-q").nth(k);
+      if (qTypes[k] === "written") await q.locator(".sd-in").fill(`${pg.label} answer ${k + 1}`);
+      else await q.locator(`[data-yn="${pg === A ? "yes" : "no"}"]`).click();
     }
-    const reached = await until(B, () => /write it|yes or no\?/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 12000);
-    ok(reached, `round ${r + 1} reaches everyone with a fresh answer box`);
-    if (!reached) { console.log(`    A="${await h2(A)}" B="${await h2(B)}"`); continue; }
-    ok(!/pts/.test(await text(B, "#game-hud")), "no score on screen mid-game");
-    const isYN = /yes or no/.test(await h2(B));
-    const first = !types.has(isYN ? "yesno" : "written");
-    types.add(isYN ? "yesno" : "written");
-    if (!isYN) {
-      if (first) {
-        // cy is mid-sentence while the others lock in: it must survive
-        await until(C, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
-        await sleep(80);
-        await C.fill("#gp-in", "half a thou");
-        await shot(B, "12-diary-write");
-      }
-      for (const pg of [A, B]) { await until(pg, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled); await sleep(60); await pg.fill("#gp-in", `${pg.label} answer ${r}`); await pg.click("#game-panel .gp-form button"); }
-      if (first) { await sleep(900); ok((await C.inputValue("#gp-in")) === "half a thou", "others locking in doesn't wipe what you're typing"); }
-      await until(C, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled); await sleep(60);
-      await C.fill("#gp-in", `cy answer ${r}`); await C.click("#game-panel .gp-form button");
-      ok(await until(B, () => /\d answers/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 10000), "once all 3 are in, every answer appears at once");
-      if (first) {
-        ok((await B.locator(".sd-entry").count()) === 3, "three unsigned answers");
-        await shot(B, "13-diary-reveal");
-        ok(await until(B, () => /who wrote which/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 25000), "matching opens on its own");
-        ok((await B.locator(".sd-who").first().locator("button").count()) === 2, "you match against the other writers only");
-        await B.locator(".sd-who button").first().click();
-        await sleep(400);
-        await shot(B, "14-diary-match");
-      }
-    } else {
-      if (first) await shot(B, "15-diary-yesno");
-      for (const [pg, yn] of [[A, "yes"], [B, "no"], [C, "yes"]]) await pg.click(`[data-yn="${yn}"]`);
-      ok(await until(B, () => /the count/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 10000), "everyone tapped: only the count is revealed");
-      if (first) {
-        ok(/nobody or almost nobody|everyone or almost everyone|\d of \d said yes/.test(await text(B, ".sd-count")), `count line: "${await text(B, ".sd-count")}"`);
-        await shot(B, "16-diary-count");
-        ok(await until(B, () => /who said yes/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 15000), "then everyone guesses who said yes");
-        await B.locator("[data-pick]").first().click();
-        await sleep(300);
-        await shot(B, "17-diary-who-said-yes");
-        await B.click("#sd-lock");
-        ok(await until(B, () => /locked in/.test(document.getElementById("game-panel")?.textContent ?? "")), "lock in");
-      }
+    await pg.click("#sd-submit");
+  }
+  await sleep(900);
+  ok((await C.locator(".sd-q").nth(w0).locator(".sd-in").inputValue()) === "half a thou", "others submitting doesn't wipe what you're typing");
+  for (let k = 0; k < qTypes.length; k++) {
+    const q = C.locator(".sd-q").nth(k);
+    if (qTypes[k] === "written") await q.locator(".sd-in").fill(`cy answer ${k + 1}`);
+    else await q.locator('[data-yn="yes"]').click();
+  }
+  await C.click("#sd-submit");
+  ok(await until(B, () => /question 1 of 5/.test(document.querySelector(".sd-qcount")?.textContent ?? ""), null, 15000), "everyone submitted: question 1 of 5 is revealed");
+  ok(!/pts/.test(await text(B, "#game-hud")), "no score on screen mid-game");
+  const seenTypes = new Set();
+  for (let k = 0; k < 5; k++) {
+    ok(await until(B, k => new RegExp(`question ${k + 1} of 5`).test(document.querySelector(".sd-qcount")?.textContent ?? ""), k, 20000), `question ${k + 1}`);
+    const yn = (await B.locator(".sd-count").count()) > 0;
+    if (!seenTypes.has(yn)) {
+      seenTypes.add(yn);
+      if (yn) { ok(/nobody or almost nobody|everyone or almost everyone|\d of \d said yes/.test(await text(B, ".sd-count")), `only the count: "${await text(B, ".sd-count")}"`); await shot(B, "14-diary-yesno"); }
+      else { ok((await B.locator(".sd-entry").count()) === 3, "three unsigned answers"); ok((await B.locator(".sd-who").first().locator("button").count()) === 2, "you match against the other writers only"); await B.locator(".sd-who button").first().click(); await shot(B, "13-diary-written"); }
     }
+    for (const pg of [A, B, C]) await pg.click("#sd-lock").catch(() => {});
   }
-  ok(types.size === 2, `both round types came up (${[...types].join(" + ")})`);
-  for (let i = 0; i < 60 && !/Secret Diary/.test(await h2(A)); i++) {
-    if (await A.locator("#sd-send").count()) await A.evaluate(() => document.getElementById("sd-send")?.click());
-    else await A.evaluate(() => document.getElementById("hp-skip")?.click());
-    await sleep(600);
-  }
-  ok(/Secret Diary/.test(await h2(A)), "the diary reaches its results screen");
+  ok(seenTypes.size === 2, "both written and yes/no questions came up");
+  ok(await until(A, () => /Secret Diary/.test(document.querySelector(".hp-res-title")?.textContent ?? ""), null, 20000), "the diary reaches its results screen");
   await shot(A, "18-diary-results");
-  ok(await A.evaluate(() => (window.__logRows ?? []).length) >= 2 && await A.evaluate(() => window.__logRows.some(r => r.skipped)), "the host's phone logged the prompts, including the skip");
+  ok(await A.evaluate(() => (window.__logRows ?? []).length) >= 5 && await A.evaluate(() => window.__logRows.some(r => r.skipped)), "the host's phone logged the questions, including the swap");
 
   head("Art Gallery — the dealer unveils the titles on wall plaques");
   for (let i = 0; i < 20 && await A.locator("#party-panel").isHidden(); i++) { await A.evaluate(() => document.getElementById("hp-skip")?.click()); await sleep(600); }
