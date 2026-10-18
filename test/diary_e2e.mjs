@@ -64,9 +64,16 @@ async function phone(name, qs = "") {
   pg.label = name;
   return pg;
 }
-// screenshots stall the other pages' timers in one context; bring the page
-// forward so what's captured is what that phone would show
-const shot = async (pg, name) => { if (SHOTS) { await pg.bringToFront(); await sleep(150); await pg.screenshot({ path: join(SHOTS, `${name}.png`) }); } };
+// Screenshots need the page in front, and a page in the background gets its
+// timers throttled. The host's phone runs every clock in the game, so it
+// goes straight back to the front after each shot — otherwise a phase that
+// should end in a second can take many on a slow CI runner.
+const shot = async (pg, name) => {
+  if (!SHOTS) return;
+  await pg.bringToFront(); await sleep(150);
+  await pg.screenshot({ path: join(SHOTS, `${name}.png`) });
+  if (A && pg !== A) await A.bringToFront();
+};
 const text = (pg, sel) => pg.locator(sel).first().innerText().catch(() => "");
 const until = async (pg, fn, arg, ms = 15000) => pg.waitForFunction(fn, arg, { timeout: ms }).then(() => true).catch(() => false);
 const h2 = pg => text(pg, "#game-panel .stage h2, #game-panel .hp-res-title");
@@ -76,7 +83,14 @@ const fits = pg => pg.evaluate(() => {
   const w = document.documentElement.clientWidth;
   return [...document.querySelectorAll("#game-panel *")].every(e => { const r = e.getBoundingClientRect(); return r.width === 0 || (r.left >= -1 && r.right <= w + 1); });
 });
-const hostState = () => A.evaluate(() => { const s = window.__game?.s; return s ? { phase: s.phase, qi: s.qi, n: s.batch?.length, type: s.batch?.[s.qi]?.type } : null; });
+// the host's view, for assertions and for failure messages: phase, question,
+// and who's done / locked / gone
+const hostState = () => A.evaluate(() => {
+  const s = window.__game?.s;
+  if (!s) return null;
+  const who = Object.values(s.players ?? {}).map(p => `${p.handle}:${p.done ? "d" : ""}${p.locked ? "l" : ""}${p.gone ? "g" : ""}`).join(" ");
+  return { phase: s.phase, qi: s.qi, n: s.batch?.length, type: s.batch?.[s.qi]?.type, left: Math.round(s.left), who };
+});
 
 let A;
 try {
@@ -158,6 +172,9 @@ try {
   await answer(D, { only: [0, 1, 2], skipSubmit: true });
   ok(/3\/5/.test(await text(D, "#sd-mine")), "dee's progress shows 3/5");
   await sleep(1200);          // her answers are saved as she goes
+  // a phone that dies: leave the room the way a closing page does (some
+  // headless builds skip pagehide on close; on a real phone presence times out)
+  await D.evaluate(() => window.dispatchEvent(new Event("pagehide")));
   await D.close();
   ok((await E.locator(".sd-q").nth(firstW).locator(".sd-in").inputValue()) === "half a thou", "others submitting doesn't wipe what eve is typing");
   await E.locator(".sd-q").nth(firstW).locator(".sd-in").fill("");
@@ -172,11 +189,15 @@ try {
   // ------------------------------------------------------------------ reveal
   head("Reveal — one question at a time");
   const live = [A, B, C, E];
-  ok(await until(B, () => /question 1 of 5/.test(document.querySelector(".sd-qcount")?.textContent ?? ""), null, 15000), "dee dropped, everyone else submitted: question 1 opens");
+  await A.bringToFront();
+  const opened = await until(B, () => /question 1 of 5/.test(document.querySelector(".sd-qcount")?.textContent ?? ""), null, 30000);
+  ok(opened, "dee dropped, everyone else submitted: question 1 opens" + (opened ? "" : ` — host at ${JSON.stringify(await hostState())}`));
   let shotW = false, shotY = false;
   for (let k = 0; k < 5; k++) {
-    ok(await until(B, k => new RegExp(`question ${k + 1} of 5`).test(document.querySelector(".sd-qcount")?.textContent ?? ""), k, 20000), `question ${k + 1} of 5`);
+    const at = await until(B, k => new RegExp(`question ${k + 1} of 5`).test(document.querySelector(".sd-qcount")?.textContent ?? ""), k, 20000);
     const hs = await hostState();
+    ok(at, `question ${k + 1} of 5` + (at ? "" : ` — host at ${JSON.stringify(hs)}`));
+    if (!at) break;
     if (hs?.type === "written") {
       const n = await B.locator(".sd-entry").count();
       ok(n === (k <= 2 ? 5 : 4), `${n} unsigned answers${k <= 2 ? " (dee's still count)" : " (dee never got to this one)"}`);
