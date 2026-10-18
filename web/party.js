@@ -179,18 +179,22 @@ export const party = {
     const c = this.current;
     room.onPresence = () => {
       if (this.current !== c) return;
+      const here = new Set(room.members.map(m => m.id));
+      const arrived = [...here].filter(id => !c.here?.has(id));
+      c.here = here;
       if (room.isHost) {
         c.meta.hostId = this.me.id; c.meta.hostName = this.me.handle;
         if (FLAGS.PUBLIC_PARTIES && !directory.announcing) this._announce();
         this._sendMeta();
         this._enforceCap();
+        for (const id of arrived) this._resume(id);
       } else {
         if (directory.announcing) directory.stopAnnouncing();
         this.pickerOpen = false;               // only the host has a picker
       }
       this.render();
     };
-    room.on("hello", () => { if (room.isHost) this._sendMeta(); });
+    room.on("hello", m => { if (room.isHost) { this._sendMeta(); this._resume(m.from); } });
     room.on("meta", m => {
       if (room.isHost) return;
       c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) } };
@@ -270,12 +274,28 @@ export const party = {
     this.pickerOpen = false;
     c.room.send("launch", { game: g.id, options: c.queue.options ?? {}, seed: (Date.now() % 1e9) | 0, at: Date.now() + 500 });
   },
+  // host: put a member who's seated in the running game back into it. A phone
+  // whose page reloaded mid-game (iOS does this to backgrounded tabs) comes
+  // back with the same id, so presence counts it as here and every "is
+  // everyone done?" check waits on it — but it never saw the launch, so it
+  // can't submit and each phase would run its full timer. Called when a
+  // member arrives in presence and on their "hello" (either can be missed);
+  // a phone already running the game ignores the spare launch.
+  _resume(id) {
+    const c = this.current;
+    if (!c?.room.isHost || !c.launched || !c.launchMsg || id === this.me.id) return;
+    if (!c.ctx?.game?.seated(id)) return;
+    c.room.send("launch", { ...c.launchMsg, to: id });
+  },
   _onLaunch(m) {
     const c = this.current;
     if (!c || c.launched) return;
+    if (m.to && m.to !== this.me.id) return;     // a re-launch meant for one returning phone
     const g = gameById(m.game);
     if (!g) { this.err(`unknown game "${m.game}"`); return; }
     c.launched = true;
+    // every phone keeps it: whoever is host when a phone comes back re-sends it
+    c.launchMsg = { game: m.game, options: m.options ?? {}, seed: m.seed, at: m.at };
     this.pickerOpen = false;
     $("party-panel").hidden = true;
     const humans = c.room.members.map(x => ({ id: x.id, handle: x.handle, avatar: x.avatar }));
@@ -285,15 +305,16 @@ export const party = {
       session: c.session,
       onEnd: () => this._onGameEnd(c),
     };
+    c.ctx = ctx;                           // the game's HostGame hangs itself on ctx.game
     try { g.start(ctx); }
-    catch (e) { console.warn("[party] game start", e); c.launched = false; $("party-panel").hidden = false; this.err(`${g.title} failed to start`); return; }
+    catch (e) { console.warn("[party] game start", e); c.launched = false; c.launchMsg = null; c.ctx = null; $("party-panel").hidden = false; this.err(`${g.title} failed to start`); return; }
     if (c.room.isHost && FLAGS.PUBLIC_PARTIES) this._announce();
   },
   // back to the lobby room between games; the queue survives so the host
   // can run the same game again or pick the next one
   _onGameEnd(c) {
     if (this.current !== c) return;
-    c.launched = false;
+    c.launched = false; c.launchMsg = null; c.ctx = null;
     trash.flush("game ended");           // uploaded photos + entries go now
     $("party-panel").hidden = false;
     if (c.room.isHost) this._sendMeta();  // shares the session's used prompts

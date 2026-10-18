@@ -21,8 +21,11 @@ export class HostGame {
     this.rng = mulberry(ctx.seed ^ hashStr(ctx.room.id));
     this.lastSend = 0;
     this.lastT = performance.now();
+    ctx.game = this;   // lets the launcher ask who's seated (party.js re-launches a reloaded phone)
   }
   get hosting() { return this.room.isHost; }
+  // a human seat in this game? Works on any phone: guests hold the latest snapshot
+  seated(id) { const p = this.s?.players?.[id]; return !!p && !p.isBot; }
   start(initial) {
     this.running = true;
     this.s = initial;

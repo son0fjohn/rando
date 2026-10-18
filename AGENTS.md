@@ -57,6 +57,11 @@ keyboard, safe areas) see `docs/dev-stack.md` → device testing.
   get wiped.
 - **Drop-safety:** "is everyone done?" checks use `active(s)` (present
   players). A player who leaves must never stall a phase.
+- **Reloads:** a phone whose page reloads mid-game comes back with the same
+  id; the host re-sends it the launch (`party.js` `_resume`) and it starts the
+  game cold from the next snapshot. So a game's local UI state must be
+  rebuildable from the synced state (e.g. Art Gallery's own photos come from
+  `s.players[me].photos`).
 - **Cleanup:** anything a game keeps (photos, answers, caches) registers a
   disposer with `trash` so it dies when the game or party ends.
 - **Styling:** the page declares `color-scheme: dark`, so any `<button>` with

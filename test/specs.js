@@ -185,6 +185,41 @@ group("Secret Diary — nobody taps anything, people drop, too few answers");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 
+group("Secret Diary — a phone that reloads mid-game is put back in, not waited on");
+{
+  // iOS reloads a backgrounded tab: same id, back in presence, but the page
+  // never saw the launch. It must get the game back and be able to finish.
+  const t = seatTable(SECRET_DIARY, 3);
+  ok(waitPhase(t, "answer", 8000), "into answering");
+  ok(t.host.game.seated("p3") && !t.host.game.seated("stranger"), "the host knows who's seated in the game");
+  const type = t.s.cur.type, ans = id => t.input(id, "answer", type === "written" ? { text: `from ${id}` } : { yn: "yes" });
+  ans("p1"); ans("p2");
+  ok(t.rejoin("p3"), "p3's page reloads; the host re-launches the game for them");
+  adv(1000);
+  ok(t.stateOf("p3")?.phase === "answer" && t.stateOf("p3")?.round === t.s.round, "the reloaded phone renders the live round from the next snapshot");
+  ok(t.s.players.p3.gone === false && t.s.phase === "answer", "they're present again, and the round still waits for them");
+  ans("p3");
+  const left = t.s.left;
+  adv(3000);
+  ok(t.s.phase === "reveal" || t.s.phase === "guess", `their answer lands and the round moves on early (had ${Math.round(left / 1000)}s left)`);
+  ok(t.s.entries.length === 3 || t.s.countOf === 3, "all three answers count");
+
+  ok(waitPhase(t, "guess", 30000), "into guessing");
+  const r = t.s.round;
+  ["p1", "p2"].forEach(id => type === "written"
+    ? t.s.entries.filter(e => e.eid !== t.s.players[id].myEid).forEach(e => t.input(id, "guess", { eid: e.eid, who: id === "p1" ? "p2" : "p1" }))
+    : t.input(id, "lock"));
+  ok(t.rejoin("p3"), "p3 reloads again, mid-guess");
+  adv(1000);
+  ok(t.s.phase === "guess" && t.s.round === r, "still waiting on p3's guesses");
+  if (type === "written") t.s.entries.filter(e => e.eid !== t.s.players.p3.myEid).forEach(e => t.input("p3", "guess", { eid: e.eid, who: "p1" }));
+  else t.input("p3", "lock");
+  adv(3000);
+  ok(t.s.round === r + 1 || t.s.phase === "end", "p3 finishes guessing and the next round starts without waiting out the timer");
+  ok(runOut(t), "the game plays out");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+
 group("Secret Diary — content levels and the 18+ gate");
 {
   const pub = seatTable(SECRET_DIARY, 3, { party: { privacy: "public", settings: {} } });
@@ -504,6 +539,19 @@ group("Manhunt — win conditions");
   adv(500);
   ok(Object.values(t.s.players).filter(p => p.role === "hunter").length === 1, "4 players still yields a hunter");
   ok(Object.values(t.s.players).filter(p => p.role === "runner").length === 3, "and three runners");
+}
+
+// ===================================================================== rejoin
+group("Every game — a phone that reloads mid-game picks the game back up");
+for (const [g, n] of [[SECRET_DIARY, 3], [TODAYS_MISSION, 3], [HUMILIATION_RITUAL, 3], [ART_GALLERY, 3], [MANHUNT_GAME, 4]]) {
+  const t = seatTable(g, n);
+  adv(6000);
+  const phase = t.s.phase;
+  const ok1 = t.rejoin("p2");
+  adv(2000);
+  ok(ok1 && t.stateOf("p2")?.phase === t.s.phase && t.s.players.p2.gone === false, `${g.title}: re-launched, rendering the host's ${phase} phase, counted as present`);
+  ok(t.errors().length === 0, `${g.title}: no errors: ` + (t.errors()[0] ?? "none"));
+  ok(runOut(t, 40 * 60 * 1000), `${g.title}: plays out`);
 }
 
 // ===================================================================== kit

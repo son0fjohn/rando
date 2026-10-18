@@ -255,6 +255,14 @@ try {
     const isYN = /yes or no/.test(await h2(B));
     const first = !types.has(isYN ? "yesno" : "written");
     types.add(isYN ? "yesno" : "written");
+    if (r === 1) {
+      // bob's page reloads mid-round (iOS does this to a backgrounded tab).
+      // He comes back by the link, the host puts him back in the game, and
+      // the round below still ends the moment all 3 answer, not on its timer.
+      await B.reload();
+      ok(await until(B, () => !document.getElementById("game-layer").hidden && document.getElementById("party-panel").hidden
+        && /write it|yes or no\?/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 15000), "a phone that reloads mid-round is put straight back into the game");
+    }
     if (!isYN) {
       if (first) {
         // cy is mid-sentence while the others lock in: it must survive
