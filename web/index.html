@@ -1712,6 +1712,76 @@
   .sd-pop { opacity:0; animation:sd-pop .35s ease-out forwards; }
   @keyframes sd-pop { from { opacity:0; transform:translateY(6px) scale(.98); } to { opacity:1; transform:none; } }
   @media (prefers-reduced-motion: reduce) { .sd-pop { animation:none; opacity:1; } }
+  /* --- Secret Diary: diaries (web/diary3d.js draws them: live 3D, sprites or CSS) --- */
+  .stage.sd-writing { border-top:6px solid var(--dc); }
+  .sd-mydiary { display:flex; align-items:center; gap:10px; margin:0 0 6px; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#5b6b80; }
+  .sd-mydiary-vis { position:relative; width:84px; height:52px; flex:none; overflow:hidden; }
+  .sd-mydiary-vis img { width:100%; height:100%; object-fit:cover; }
+  .sd-writing .sd-q { border-left:4px solid var(--dc); background:repeating-linear-gradient(180deg, #fffef9 0 25px, #e8eef6 25px 26px); }
+  .sd-shelf-wrap { margin:4px 0 8px; }
+  .sd-shelf { position:relative; display:grid; grid-template-columns:repeat(var(--cols,3), 1fr); gap:10px 8px; }
+  .sd-shelf-gl { position:absolute; left:0; top:0; pointer-events:none; z-index:0; }
+  .sd-dcell { position:relative; z-index:1; aspect-ratio:5/6; max-height:156px; width:100%; padding:0; border:none; background:transparent; color:#1c1c1e; cursor:pointer;
+    border-bottom:7px solid #a77b4f; border-radius:0 0 3px 3px; box-shadow:0 5px 6px -4px rgba(60,35,10,.55); -webkit-tap-highlight-color:transparent; }
+  .sd-dvis { position:absolute; top:4%; left:50%; height:80%; aspect-ratio:1; transform:translateX(-50%); pointer-events:none; }
+  .sd-dvis img { position:absolute; left:0; top:0; width:100%; height:100%; }
+  .sd-dvis .sd-dlock { width:auto; height:auto; }
+  .sd-dtext { position:absolute; left:16%; right:17%; top:25%; height:33%; display:flex; align-items:center; justify-content:center; overflow:hidden;
+    font:italic 600 10px/1.2 "Segoe Print","Bradley Hand","Comic Sans MS",cursive; color:#2a2440; text-align:center; word-break:break-word; opacity:0; transition:opacity .35s .1s; pointer-events:none; }
+  .sd-dtext span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .sd-dcell.open .sd-dtext { opacity:1; }
+  .sd-dnum { position:absolute; left:2px; top:2px; z-index:2; min-width:20px; height:20px; border-radius:10px; padding:0 5px; box-sizing:border-box; background:var(--dc); color:#fff;
+    font:800 11px/20px system-ui,sans-serif; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.35); }
+  .sd-dyours { position:absolute; right:2px; top:3px; z-index:2; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#8a94a4; }
+  .sd-dcell:not(.open) { cursor:default; }
+  .sd-dcell.open:active { transform:scale(.97); }
+  .sd-hint { text-align:center; font-size:12px; color:#8a94a4; margin:6px 0 0; }
+  .sd-pager { display:flex; align-items:center; justify-content:center; gap:14px; margin:8px 0 0; font-size:13px; font-weight:700; color:#49566a; }
+  .sd-pager button { width:40px; height:34px; border-radius:10px; border:1px solid #c7c7cf; background:#fff; color:#1c1c1e; font-size:20px; line-height:1; cursor:pointer; }
+  .sd-pager button:disabled { opacity:.3; }
+  /* sprite / CSS diaries: the closed diary + lock, swapped for the open one */
+  .sd-dclosed, .sd-cdiary, .sd-dlock, .sd-clock { transition:opacity .2s; }
+  .sd-dopen, .sd-copen { opacity:0; }
+  .sd-dcell.open .sd-dclosed, .sd-dcell.open .sd-cdiary { opacity:0; }
+  .sd-dcell.open .sd-dopen, .sd-dcell.open .sd-copen { opacity:1; animation:sd-openpop .3s cubic-bezier(.3,1.6,.5,1); }
+  .sd-dcell.shake .sd-dlock, .sd-dcell.shake .sd-clock { animation:sd-shake .42s linear; }
+  .sd-dcell.click .sd-dlock, .sd-dcell.click .sd-clock { transform:scale(1.15); }
+  .sd-dcell.drop .sd-dlock, .sd-dcell.drop .sd-clock { transition:transform .58s cubic-bezier(.5,0,.9,.5), opacity .58s; transform:translateY(150%) rotate(-55deg); opacity:0; }
+  .sd-dcell.open .sd-dlock, .sd-dcell.open .sd-clock { opacity:0; }
+  @keyframes sd-shake { 0%,100% { rotate:0deg; } 15% { rotate:-14deg; } 35% { rotate:12deg; } 55% { rotate:-9deg; } 75% { rotate:5deg; } }
+  @keyframes sd-openpop { from { transform:scale(.7); } to { transform:none; } }
+  .sd-cdiary { position:absolute; left:26%; right:22%; top:8%; bottom:8%; border-radius:3px 7px 7px 3px; background:var(--dc);
+    box-shadow:inset 7px 0 0 rgba(0,0,0,.22), inset -3px 0 0 rgba(255,255,255,.18), 2px 3px 6px rgba(0,0,0,.3); }
+  .sd-cdiary::after { content:""; position:absolute; right:-7%; top:40%; width:20%; height:20%; border-radius:2px; background:var(--dc); filter:brightness(.8); }
+  .sd-clock { position:absolute; left:66%; top:42%; width:20%; height:22%; border-radius:3px; background:linear-gradient(#e2c45a, #a68323); box-shadow:0 1px 2px rgba(0,0,0,.4); transform-origin:50% 0; }
+  .sd-clock::before { content:""; position:absolute; left:18%; right:18%; bottom:92%; height:55%; border:3px solid #8f8f96; border-bottom:none; border-radius:999px 999px 0 0; }
+  .sd-copen { position:absolute; left:12%; right:13%; top:23%; bottom:29%; border-radius:3px; border-bottom:5px solid var(--dc);
+    background:linear-gradient(90deg, #f3ead6 0 48%, #d9ccb0 49% 51%, #f3ead6 52%); box-shadow:0 3px 5px rgba(0,0,0,.25); }
+  .sd-dlock { transform-origin:50% 10%; }
+  .sd-clock { transform-origin:50% 10%; }
+  /* matching under the shelf: sealed until the first unlock */
+  .sd-matchlist.sealed .sd-entry { color:transparent; text-shadow:0 0 7px rgba(28,28,30,.45); }
+  .sd-matchlist.sealed .sd-who, .sd-matchlist.sealed .sd-sel { opacity:.35; pointer-events:none; }
+  .sd-rowhead { display:flex; align-items:flex-start; gap:8px; flex:1 1 100%; }
+  .sd-rowhead .sd-entry { flex:1; min-width:0; margin:0; }
+  .sd-dsw { flex:none; width:20px; height:28px; margin-top:4px; border-radius:2px 4px 4px 2px; background:var(--dc); color:#fff; font:800 11px/28px system-ui,sans-serif; text-align:center;
+    box-shadow:inset 3px 0 0 rgba(0,0,0,.22); }
+  /* tap a diary: read it big */
+  .sd-zoom { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+    padding:20px 16px calc(20px + env(safe-area-inset-bottom)); background:rgba(12,12,16,.78); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); animation:sd-fade .18s ease-out; }
+  @keyframes sd-fade { from { opacity:0; } }
+  .sd-zcard { position:relative; width:min(360px, 100%); }
+  .sd-zvis { position:relative; width:100%; aspect-ratio:300/186; overflow:hidden; }
+  .sd-zvis img { width:100%; height:100%; object-fit:cover; }
+  .sd-zvis .sd-copen { left:9%; right:9%; top:6%; bottom:12%; opacity:1; }
+  .sd-ztext { position:absolute; left:15%; right:17%; top:11%; height:66%; display:flex; align-items:center; justify-content:center; overflow:auto; text-align:center;
+    font:italic 600 17px/1.3 "Segoe Print","Bradley Hand","Comic Sans MS",cursive; color:#2a2440; word-break:break-word; }
+  .sd-zcard .sd-dnum { left:4px; top:4px; }
+  .sd-zoom .sd-who { justify-content:center; max-width:360px; }
+  .sd-zoom .sd-sel { max-width:360px; }
+  .sd-zoom .sd-hint { color:#c7c7cf; }
+  .sd-zoom .pt-btn.sd-zclose { width:auto; margin:0; padding:10px 18px; border-radius:12px; background:#fff; color:#1c1c1e; border:none; }
+  @media (prefers-reduced-motion: reduce) { .sd-dcell.shake .sd-dlock, .sd-dcell.shake .sd-clock, .sd-dcell.open .sd-dopen, .sd-dcell.open .sd-copen, .sd-zoom { animation:none; } }
 
   /* ===== Today's Mission ===== */
   .tm-card { position:relative; border-radius:16px; overflow:hidden; background:#1b1430 center/cover no-repeat;

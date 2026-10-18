@@ -1,7 +1,7 @@
 // House-party specs. Plays every game end to end on the fake bus + virtual
 // clock and asserts the rules the brief actually names.
 import { installClock, seatTable } from "/test/harness.js";
-import { SECRET_DIARY, diaryPool, maxLevelFor, capAt, yesnoTarget, countLine } from "/web/hpgames/secretdiary.js";
+import { SECRET_DIARY, diaryPool, maxLevelFor, capAt, yesnoTarget, countLine, shelfPages } from "/web/hpgames/secretdiary.js";
 import * as CONFIG from "/web/hpconfig.js";
 import { promptLog } from "/web/hplog.js";
 import { TODAYS_MISSION } from "/web/hpgames/mission.js";
@@ -176,6 +176,49 @@ group("Secret Diary — levels, escalation, softened counts");
   ok(countLine(8, 8) === countLine(7, 8) && /everyone or almost everyone/.test(countLine(8, 8)), "all and all-but-one share 'everyone or almost everyone'");
 }
 
+group("Secret Diary — the shelf: 3 to 6 diaries at a time");
+{
+  const P = n => shelfPages(n).map(([a, b]) => b - a);
+  ok(P(3).join() === "3" && P(6).join() === "6", "up to 6 answers sit on one shelf");
+  ok(P(7).join() === "4,3" && P(9).join() === "5,4" && P(12).join() === "6,6" && P(13).join() === "5,4,4", "more than 6 are paged in even groups");
+  ok([...Array(28).keys()].slice(3).every(n => { const pg = shelfPages(n); return pg[0][0] === 0 && pg.at(-1)[1] === n && pg.every(([a, b], i) => b - a >= 3 && b - a <= 6 && (i === 0 || pg[i - 1][1] === a)); }),
+    "every page holds 3-6 diaries and the pages cover every answer once (3-30)");
+}
+
+group("Secret Diary — reveal colors never point at a writer");
+{
+  // 4 players with lobby colors 0-3: answers only ever wear the 8 colors nobody has
+  const lobby = { p1: 0, p2: 1, p3: 2, p4: 3 };
+  const t = seatTable(SECRET_DIARY, 4, { party: { name: "c", vibe: "chill", cap: 12, code: "TEST", privacy: "private", settings: { adult: false, diaryMax: null }, colors: lobby } });
+  adv(300); t.input("p1", "send"); adv(400);
+  answerAll(t, ["p1", "p2", "p3", "p4"]);
+  ["p1", "p2", "p3", "p4"].forEach(id => t.input(id, "submit"));
+  ok(waitPhase(t, "reveal", 4000), "into the reveal");
+  const W = t.s.batch.map((c, k) => k).filter(k => t.s.batch[k].type === "written");
+  ok(W.every(k => t.s.qs[k].colors.every(i => !Object.values(lobby).includes(i))), "small room: no answer wears anyone's lobby color");
+  ok(new Set(W.map(k => t.s.qs[k].colors.join())).size === W.length || W.length < 2, "each question gets its own color deal");
+  ok(runOut(t), "the game closes out");
+
+  // 12 players wearing all 12 colors: worn colors must come in, but never on their owner's answer
+  const ids = [...Array(12)].map((_, i) => `p${i + 1}`), all = Object.fromEntries(ids.map((id, i) => [id, i]));
+  const T = seatTable(SECRET_DIARY, 12, { party: { name: "c", vibe: "chill", cap: 12, code: "TEST", privacy: "private", settings: { adult: false, diaryMax: null }, colors: all } });
+  adv(300); T.input("p1", "send"); adv(400);
+  answerAll(T, ids);
+  ids.forEach(id => T.input(id, "submit"));
+  ok(waitPhase(T, "reveal", 4000), "12 players: into the reveal");
+  const Wk = T.s.batch.map((c, k) => k).filter(k => T.s.batch[k].type === "written");
+  // read the owner off the host's key before the question is scored
+  let clean = true;
+  for (const k of Wk) {
+    while (T.s.phase === "reveal" && T.s.qi < k) adv(DIARY.GUESS_MS_MAX + 1000);
+    if (T.s.qi !== k) { clean = false; break; }
+    const q = T.s.qs[k], key = T.s.keys[k];
+    if (new Set(q.colors).size !== 12 || q.entries.some((e, i) => all[key[e.eid]] === q.colors[i])) clean = false;
+  }
+  ok(Wk.length && clean, "full room: 12 different colors per question, none on its writer's own answer");
+  ok(runOut(T), "the game closes out");
+}
+
 group("Secret Diary — the deal: host-only, swap, resize (4 players)");
 {
   window.__logRows = [];
@@ -252,7 +295,7 @@ group("Secret Diary — a full game: answer the batch, reveal one by one, scorin
   ok(t.s.qi === 0, "it starts with the first question");
 
   const expect = { p1: 0, p2: 0, p3: 0, p4: 0 };
-  const revealed = [];
+  const revealed = [], colorsOf = {};
   let hudLeak = false, first = true;
   while (t.s.phase === "reveal" && revealed.length < 10) {
     const k = t.s.qi, c = t.s.batch[k], q = t.s.qs[k], key = t.s.keys[k];
@@ -261,6 +304,9 @@ group("Secret Diary — a full game: answer the batch, reveal one by one, scorin
       ok(q.entries.length === (k === skipK ? 3 : 4), `q${k + 1} written: ${q.entries.length} answers (blanks are skipped)`);
       ok(q.entries.every(e => Object.keys(e).sort().join() === "eid,text"), `q${k + 1}: answers are unsigned — just text`);
       if (k === W[0]) ok(!q.entries.some(e => e.text === "changed my mind"), "an answer sent after Submit is ignored");
+      ok(Array.isArray(q.colors) && q.colors.length === q.entries.length && new Set(q.colors).size === q.colors.length
+        && q.colors.every(i => Number.isInteger(i) && i >= 0 && i < DIARY.COLORS.length), `q${k + 1}: each diary gets its own palette color`);
+      q.entries.forEach((e, i) => (colorsOf[key[e.eid]] ??= []).push(q.colors[i]));
       const own = id => Object.keys(key).find(e => key[e] === id);
       for (const e of q.entries) if (e.eid !== own("p1")) t.input("p1", "guess", { eid: e.eid, who: key[e.eid] });
       for (const e of q.entries) if (e.eid !== own("p2")) t.input("p2", "guess", { eid: e.eid, who: "p1" });
@@ -291,9 +337,13 @@ group("Secret Diary — a full game: answer the batch, reveal one by one, scorin
       if (c.type === "yesno") { expect.p3 += 1; expect.p4 += 1; }   // locked with no picks: read the other "no" right
       ok(pastQuestion(t, k, 3000), `q${k + 1}: everyone locked in — straight to the next one`);
     }
-    ok(t.s.keys[k] === null && !t.s.qs[k].entries.length, `q${k + 1}: once scored, nothing in the state ties anyone to it`);
+    ok(t.s.keys[k] === null && !t.s.qs[k].entries.length && !t.s.qs[k].colors?.length, `q${k + 1}: once scored, nothing in the state ties anyone to it`);
   }
   ok(revealed.join() === "0,1,2,3,4", `all 5 questions revealed, in order (${revealed.join(",")})`);
+  // diary colors are dealt fresh for every question, so one color can't be
+  // followed through the batch (and it's never the writer's own lobby color)
+  const multi = Object.values(colorsOf).filter(cs => cs.length > 1), steady = multi.filter(cs => new Set(cs).size === 1).length;
+  ok(!multi.length || steady < multi.length, `colors are re-dealt per question — not every writer keeps one color (${steady}/${multi.length} did by chance)`);
   ok(t.s.phase === "end", "after the last question, the results");
   ok(!hudLeak, "no score is shown during the game — only at the end");
   ok(SD_IDS(t).every(id => t.s.players[id].score === expect[id]), `scores: ${SD_IDS(t).map(id => `${id} ${t.s.players[id].score}/${expect[id]}`).join(", ")}`);

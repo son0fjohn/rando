@@ -5,7 +5,12 @@
 // mid-answer and a sixth joins late (and waits for the next batch). Saves
 // phone-sized screenshots of each phase.
 //
-//   node test/diary_e2e.mjs [screenshot-dir] [--browser=webkit]
+//   node test/diary_e2e.mjs [screenshot-dir] [--browser=webkit] [--diary=3d|sprite|css] [--video]
+//
+// --diary pins how the diaries are drawn (default: whatever the phone picks).
+// --video (Chromium, needs a screenshot dir) screencasts bob's phone through
+// the first written reveal — the unlock — into <dir>/unlock/ as JPEG frames
+// plus an ffconcat list; with FFMPEG=/path/to/ffmpeg set it also writes unlock.mp4.
 //
 // Same stack as party_e2e.mjs: real party.js, net.js, game module and CSS;
 // only the network, 3D and audio leaves are stubbed.
@@ -39,9 +44,34 @@ const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const browser = ENGINE === "webkit"
   ? await webkit.launch()
   : await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, args: ["--no-sandbox"] });
+const DIARY_MODE = process.argv.find(a => a.startsWith("--diary="))?.split("=")[1] ?? null;
+const VIDEO = process.argv.includes("--video") && SHOTS && ENGINE === "chromium";
 const ctx = ENGINE === "webkit"
   ? await browser.newContext({ ...devices["iPhone 15"] })
   : await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
+// screencast one phone over CDP: frames land in memory until stop() writes them
+async function screencast(pg) {
+  const cdp = await pg.context().newCDPSession(pg), frames = [];
+  cdp.on("Page.screencastFrame", f => { frames.push({ t: f.metadata.timestamp, data: f.data }); cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {}); });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, everyNthFrame: 1 });
+  return async dir => {
+    await cdp.send("Page.stopScreencast").catch(() => {});
+    await mkdir(dir, { recursive: true });
+    const { writeFile } = await import("node:fs/promises");
+    let list = "ffconcat version 1.0\n";
+    for (let i = 0; i < frames.length; i++) {
+      const name = `f${String(i).padStart(4, "0")}.jpg`;
+      await writeFile(join(dir, name), Buffer.from(frames[i].data, "base64"));
+      list += `file ${name}\nduration ${Math.max(0.016, (frames[i + 1]?.t ?? frames[i].t + 0.5) - frames[i].t).toFixed(3)}\n`;
+    }
+    await writeFile(join(dir, "frames.ffconcat"), list);
+    if (process.env.FFMPEG) {
+      const { execFileSync } = await import("node:child_process");
+      execFileSync(process.env.FFMPEG, ["-y", "-loglevel", "error", "-f", "concat", "-i", join(dir, "frames.ffconcat"), "-vf", "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", join(dir, "..", "unlock.mp4")]);
+    }
+    return frames.length;
+  };
+}
 console.log(`engine: ${ENGINE}${ENGINE === "webkit" ? " (iPhone 15 profile)" : ""}`);
 
 let pass = 0, fail = 0;
@@ -59,7 +89,7 @@ async function phone(name, qs = "") {
   const pg = await ctx.newPage();
   pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
   pg.on("console", m => { if (m.type() === "error" && !/404|Failed to load resource/.test(m.text())) errors.push(`${name}: ${m.text()}`); });
-  await pg.goto(`${base}/test/hpparty.html?me=${name}${qs}`);
+  await pg.goto(`${base}/test/hpparty.html?me=${name}${qs}${DIARY_MODE ? `&diary=${DIARY_MODE}` : ""}`);
   await pg.waitForFunction(() => window.__ready);
   pg.label = name;
   return pg;
@@ -192,7 +222,7 @@ try {
   await A.bringToFront();
   const opened = await until(B, () => /question 1 of 5/.test(document.querySelector(".sd-qcount")?.textContent ?? ""), null, 30000);
   ok(opened, "dee dropped, everyone else submitted: question 1 opens" + (opened ? "" : ` — host at ${JSON.stringify(await hostState())}`));
-  let shotW = false, shotY = false;
+  let shotW = false, shotY = false, cast = VIDEO ? await screencast(B) : null;
   for (let k = 0; k < 5; k++) {
     const at = await until(B, k => new RegExp(`question ${k + 1} of 5`).test(document.querySelector(".sd-qcount")?.textContent ?? ""), k, 20000);
     const hs = await hostState();
@@ -201,7 +231,16 @@ try {
     if (hs?.type === "written") {
       const n = await B.locator(".sd-entry").count();
       ok(n === (k <= 2 ? 5 : 4), `${n} unsigned answers${k <= 2 ? " (dee's still count)" : " (dee never got to this one)"}`);
-      ok((await B.locator(".sd-entry.mine").count()) === 1 && !(await B.locator(".sd-entry.mine + .sd-who").count()), "your own answer is marked 'yours' and isn't matched");
+      ok((await B.locator(".sd-dcell").count()) === n && (await B.locator(".sd-dcell.open").count()) < n, `${n} closed, locked diaries on the shelf, one per answer`);
+      const dcs = await B.locator(".sd-dcell").evaluateAll(cs => cs.map(c => c.style.getPropertyValue("--dc")));
+      ok(new Set(dcs).size === n, "each diary its own color");
+      if (!shotW) { await sleep(1100); await shot(B, "07a-reveal-unlocking"); }
+      const unsealed = await Promise.all(live.map(pg => until(pg, () => !document.querySelector(".sd-matchlist.sealed"), null, 12000)));
+      ok(unsealed.every(Boolean), "the padlocks drop and the diaries open on every phone");
+      ok(await until(B, n => document.querySelectorAll(".sd-dcell.open").length === n, n), "every diary on the shelf is open, its answer on the page");
+      if (!shotW) { await B.evaluate(() => document.getElementById("game-panel").scrollTo(0, 0)); await sleep(400); await shot(B, "07-reveal-open"); }
+      if (cast) { await sleep(800); console.log(`  · screencast: ${await cast(join(SHOTS, "unlock"))} frames of the unlock`); cast = null; }
+      ok((await B.locator(".sd-match.mine").count()) === 1 && !(await B.locator(".sd-match.mine .sd-who").count()), "your own answer is marked 'yours' and isn't matched");
       const texts = await B.locator(".sd-entry").allInnerTexts();
       ok(!texts.some(t => /^(alice|bob|cy|dee|eve)$/.test(t)), "no names on the answers");
       for (const pg of live) {
@@ -210,7 +249,18 @@ try {
         for (let i = 0; i < m; i++) await rows.nth(i).locator(".sd-who button").nth(i % 3).click();
       }
       ok(/\d+\/\d+/.test(await text(B, "#sd-matched")) && (await text(B, "#sd-matched")).split("/")[0] === (await text(B, "#sd-matched")).split("/")[1], `bob matched them all (${await text(B, "#sd-matched")})`);
-      if (!shotW) { shotW = true; ok(await fits(B), "the written reveal fits the phone"); await shot(B, "07-reveal-written"); }
+      if (!shotW) {
+        shotW = true; await shot(B, "07c-reveal-matched");
+        // tap a diary that isn't yours: it opens big, with its matching chips
+        const i = await B.locator(".sd-dcell").evaluateAll(cs => cs.findIndex(c => !c.querySelector(".sd-dyours")));
+        const want = await B.locator(".sd-dcell .sd-dtext").nth(i).innerText();
+        await B.locator(".sd-dcell").nth(i).click();
+        ok(await until(B, () => !!document.querySelector(".sd-zoom .sd-ztext")), "tap a diary: it opens up to read");
+        ok((await text(B, ".sd-zoom .sd-ztext")) === want && (await B.locator(".sd-zoom .sd-who button").count()) >= 2, "the zoomed diary shows that answer, with who-wrote-it chips");
+        await shot(B, "07b-reveal-zoom");
+        await B.click(".sd-zclose");
+        ok(!(await B.locator(".sd-zoom").count()), "back to the shelf");
+      }
     } else {
       const line = await text(B, ".sd-count");
       ok(/^(nobody or almost nobody said yes|everyone or almost everyone said yes|\d of \d said yes)$/.test(line), `only the count: "${line}"`);

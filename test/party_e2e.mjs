@@ -281,7 +281,13 @@ try {
     if (!seenTypes.has(yn)) {
       seenTypes.add(yn);
       if (yn) { ok(/nobody or almost nobody|everyone or almost everyone|\d of \d said yes/.test(await text(B, ".sd-count")), `only the count: "${await text(B, ".sd-count")}"`); await shot(B, "14-diary-yesno"); }
-      else { ok((await B.locator(".sd-entry").count()) === 3, "three unsigned answers"); ok((await B.locator(".sd-who").first().locator("button").count()) === 2, "you match against the other writers only"); await B.locator(".sd-who button").first().click(); await shot(B, "13-diary-written"); }
+      else {
+        ok((await B.locator(".sd-dcell").count()) === 3, "three closed, locked diaries on the shelf");
+        ok(await until(B, () => !document.querySelector(".sd-matchlist.sealed") && document.querySelectorAll(".sd-dcell.open").length === 3, null, 10000), "they unlock, and the answers can be matched");
+        ok((await B.locator(".sd-entry").count()) === 3, "three unsigned answers");
+        ok((await B.locator(".sd-who").first().locator("button").count()) === 2, "you match against the other writers only");
+        await B.locator(".sd-who button").first().click(); await shot(B, "13-diary-written");
+      }
     }
     for (const pg of [A, B, C]) await pg.click("#sd-lock").catch(() => {});
   }

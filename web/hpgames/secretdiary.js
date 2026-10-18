@@ -106,6 +106,20 @@ export function countLine(yes, of) {
 // mild first, spicier later; stable, so equal levels keep their dealt order
 const byLevel = cards => cards.map((c, i) => [c, i]).sort((a, b) => (rank(a[0].level) - rank(b[0].level)) || (a[1] - b[1])).map(x => x[0]);
 
+// the 3D diaries load lazily: three.js and the models only when a diary is
+// about to be drawn, and a failure just means CSS diaries instead
+let diaryLibP = null;
+const diaryLib = () => diaryLibP ??= import("../diary3d.js").catch(e => { console.warn("[diary] 3D diaries unavailable", e); return null; });
+const diaryMode = () => diaryLib().then(m => m ? m.diaryMode() : { mode: "css", kit: null });
+const reportFps = fps => diaryLib().then(m => m?.reportFps(fps));
+const hashIdx = id => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % DIARY.COLORS.length; };
+// the reveal shelf shows up to 6 diaries; more are paged in even groups ([start, end) per page)
+export const shelfPages = n => {
+  const k = Math.max(1, Math.ceil(n / 6)), base = Math.floor(n / k), rem = n % k;
+  const at = p => p * base + Math.min(p, rem);
+  return Array.from({ length: k }, (_, p) => [at(p), at(p + 1)]);
+};
+
 const BOT_FILLER = ["no comment", "this one stays in the diary", "ask me again in an hour", "i plead the fifth", "too real, next", "honestly? everyone here"];
 
 export const SECRET_DIARY = {
@@ -131,9 +145,11 @@ export const SECRET_DIARY = {
     // drafts survive re-renders; they're reset per game, never in a Rounds
     // hook (those only run on the host)
     let L = null;
-    const freshLocal = gameId => ({ gameId, drafts: {}, yn: {}, submitted: false, flushed: false, timers: {}, qkey: null, guesses: {}, picks: {}, locked: false, popped: new Set() });
-    const local = s => { if (!L || L.gameId !== s.gameId) { if (L) Object.values(L.timers).forEach(clearTimeout); L = freshLocal(s.gameId); } return L; };
-    trash.add(() => { if (L) Object.values(L.timers).forEach(clearTimeout); L = null; });
+    const freshLocal = gameId => ({ gameId, drafts: {}, yn: {}, submitted: false, flushed: false, timers: {}, qkey: null, guesses: {}, picks: {}, locked: false, popped: new Set(), page: 0, opened: new Set(), shelf: null, shelfToken: null, fx: [] });
+    // the live diary shelf (a WebGL canvas) and its animation timers
+    const dropShelf = l => { if (!l) return; l.shelfToken = null; l.fx.forEach(clearTimeout); l.fx = []; try { l.shelf?.destroy(); } catch {} l.shelf = null; };
+    const local = s => { if (!L || L.gameId !== s.gameId) { if (L) { Object.values(L.timers).forEach(clearTimeout); dropShelf(L); } L = freshLocal(s.gameId); } return L; };
+    trash.add(() => { if (L) { Object.values(L.timers).forEach(clearTimeout); dropShelf(L); } L = null; });
     let lastHud = 0;
 
     const guessMs = s => {
@@ -317,6 +333,7 @@ export const SECRET_DIARY = {
         if (c.type === "written") {
           q.entries = A.map((p, i) => ({ eid: `q${k}e${i}`, text: p.answers[k] }));
           s.keys[k] = Object.fromEntries(A.map((p, i) => [`q${k}e${i}`, p.id]));
+          q.colors = dealColors(A);
           q.playable = q.entries.length >= 2;
         } else {
           q.countLabel = countLine(A.filter(p => p.answers[k] === "yes").length, A.length);
@@ -327,6 +344,27 @@ export const SECRET_DIARY = {
         s.qs.push(q);
       });
       for (const p of Object.values(s.players)) { p.answers = {}; p.at = {}; }
+    }
+
+    // Diary colors for one question's answers, in entry order. Dealt fresh
+    // for every question so no color can be followed through the batch, and
+    // never the writer's own lobby color. Colors nobody in the party wears go
+    // first, so up to ~6 players no answer wears ANYONE's color; only in big
+    // rooms do worn colors come in (still never on their owner's answer).
+    function dealColors(writers) {
+      const lobby = ctx.party?.colors ?? {}, worn = new Set(Object.values(lobby));
+      const all = DIARY.COLORS.map((_, i) => i);
+      for (let tries = 0; tries < 20; tries++) {
+        const order = [...shuffle(game.rng, all.filter(i => !worn.has(i))), ...shuffle(game.rng, all.filter(i => worn.has(i)))];
+        const out = [];
+        for (const p of writers) {
+          const i = order.find(c => !out.includes(c) && c !== lobby[p.id]);
+          if (i === undefined) break;
+          out.push(i);
+        }
+        if (out.length === writers.length) return out;
+      }
+      return shuffle(game.rng, all).slice(0, writers.length);     // unreachable with 12 colors
     }
 
     function score(s, k) {
@@ -344,7 +382,7 @@ export const SECRET_DIARY = {
       }
       // this question is done: nothing in the state ties anyone to it now
       s.keys[k] = null;
-      s.qs[k] = { ...s.qs[k], entries: [], cands: [], countLabel: null, scored: true };
+      s.qs[k] = { ...s.qs[k], entries: [], cands: [], colors: [], countLabel: null, scored: true };
     }
 
     // logging: one row per prompt sent or swapped. Aggregates use human
@@ -430,6 +468,7 @@ export const SECRET_DIARY = {
         ui.hud(`<div class="hq"><b>SECRET DIARY</b><span>${where}</span><span>${label}</span><span class="clk ${s.left < 8000 && s.phase !== "end" ? "urgent" : ""}">${ui.clock(s.left)}</span></div>`);
       }
 
+      if (s.phase !== "reveal" && l.shelf) dropShelf(l);
       if (s.phase === "deal") renderDeal(s, isHost);
       else if (s.phase === "answer") renderAnswer(s, l, me);
       else if (s.phase === "reveal") renderReveal(s, l, me);
@@ -500,12 +539,23 @@ export const SECRET_DIARY = {
           <div class="sd-prompt ${c.type}">${esc(c.text)}</div>${field}</div>`;
       }).join("");
       const n = s.batch.length;
-      ui.stage(`answer all ${n}`, `<p class="ab-sub">nobody will ever see your name next to an answer. yes/no stays secret — only the total is ever shown.</p>
+      const myHex = DIARY.COLORS[ctx.party?.colors?.[ctx.me.id] ?? hashIdx(ctx.me.id)];
+      ui.stage(`answer all ${n}`, `<div class="sd-mydiary" id="sd-mydiary" style="--dc:${myHex}"><div class="sd-mydiary-vis"></div><span>your diary</span></div>
+        <p class="ab-sub">nobody will ever see your name next to an answer. yes/no stays secret — only the total is ever shown.</p>
         <div class="sd-batch">${qs}</div>
         <div class="sd-foot" id="sd-foot"><div class="sd-prog"><b id="sd-mine">${answeredCount(s, l)}/${n}</b> answered · ${tl}</div>
           <button type="button" class="pt-btn pt-primary" id="sd-submit">submit</button>${hostSkip(ctx)}</div>`, "in secret");
       // the submit bar sits on the bottom edge of the screen while you scroll
       $("game-panel").classList.add("sd-answering");
+      // you write in your own diary: its cover color frames the page
+      const st = $("game-panel").querySelector(".stage");
+      st.classList.add("sd-writing"); st.style.setProperty("--dc", myHex);
+      diaryMode().then(({ kit }) => {
+        const v = $("game-panel").querySelector("#sd-mydiary .sd-mydiary-vis");
+        if (!v) return;
+        if (kit) { try { v.innerHTML = `<img alt="" src="${kit.snapshot("open", myHex, 200, 200)}">`; return; } catch (e) { console.warn("[diary]", e); } }
+        v.innerHTML = `<i class="sd-copen"></i>`;
+      });
       const prog = () => {
         const a = answeredCount(s, l);
         $("sd-mine").textContent = `${a}/${n}`;
@@ -544,6 +594,8 @@ export const SECRET_DIARY = {
       if (l.qkey !== qkey) { l.qkey = qkey; l.guesses = {}; l.picks = {}; l.locked = false; }
       const locked = l.locked || !!me?.locked || !me;
       if (!ui.once(`rv:${qkey}:${locked ? 1 : 0}`, () => {})) { const t = $("sd-tally"); if (t) t.textContent = tally(s, p => p.locked); return; }
+      dropShelf(l);
+      if (l.pageQ !== qkey) { l.pageQ = qkey; l.page = 0; l.opened = new Set(); }
       // animate the reveal only the first time each question is drawn
       const pop = !l.popped.has(qkey); l.popped.add(qkey);
       const myEid = Object.keys(key).find(e => key[e] === me?.id);
@@ -558,33 +610,127 @@ export const SECRET_DIARY = {
       if (c.type === "written") {
         const g = eid => l.guesses[eid] ?? me?.guesses?.[eid] ?? null;
         const todo = q.entries.filter(e => e.eid !== myEid);
+        const hexOf = i => DIARY.COLORS[q.colors?.[i] ?? i % DIARY.COLORS.length];
+        const pages = shelfPages(q.entries.length);
+        const pickUi = (e, cur, attr) => cands.length > CHIP_MAX
+          ? `<select class="sd-sel" ${attr}="${e.eid}" ${locked ? "disabled" : ""}><option value="">who wrote this?</option>${cands.map(p => `<option value="${esc(p.id)}" ${cur === p.id ? "selected" : ""}>${esc(p.handle)}</option>`).join("")}</select>`
+          : `<div class="sd-who">${cands.map(p => `<button type="button" class="${cur === p.id ? "on" : ""}" ${attr}="${e.eid}" data-who="${esc(p.id)}" ${locked ? "disabled" : ""}>${esc(p.handle)}</button>`).join("")}</div>`;
+        // matching list: one row per diary, keyed by its color and number
         const rows = q.entries.map((e, i) => {
-          const anim = pop ? ` sd-pop" style="animation-delay:${300 + i * 140}ms` : "";
-          if (e.eid === myEid) return `<div class="sd-match"><div class="sd-entry mine${anim}">${esc(e.text)}<span class="sd-mine">yours</span></div></div>`;
-          const cur = g(e.eid);
-          const pickUi = cands.length > CHIP_MAX
-            ? `<select class="sd-sel" data-eid="${e.eid}" ${locked ? "disabled" : ""}><option value="">who wrote this?</option>${cands.map(p => `<option value="${esc(p.id)}" ${cur === p.id ? "selected" : ""}>${esc(p.handle)}</option>`).join("")}</select>`
-            : `<div class="sd-who">${cands.map(p => `<button type="button" class="${cur === p.id ? "on" : ""}" data-eid="${e.eid}" data-who="${esc(p.id)}" ${locked ? "disabled" : ""}>${esc(p.handle)}</button>`).join("")}</div>`;
-          return `<div class="sd-match"><div class="sd-entry${anim}">${esc(e.text)}</div>${pickUi}</div>`;
+          const sw = `<span class="sd-dsw" style="--dc:${hexOf(i)}">${i + 1}</span>`;
+          if (e.eid === myEid) return `<div class="sd-match mine"><div class="sd-rowhead">${sw}<div class="sd-entry mine">${esc(e.text)}<span class="sd-mine">yours</span></div></div></div>`;
+          return `<div class="sd-match"><div class="sd-rowhead">${sw}<div class="sd-entry">${esc(e.text)}</div></div>${pickUi(e, g(e.eid), "data-eid")}</div>`;
         }).join("");
-        ui.stage(`${q.entries.length} answers — who wrote which?`, head + rows
-          + `<div class="sd-prog"><b id="sd-matched">${todo.filter(e => g(e.eid)).length}/${todo.length}</b> matched</div>${foot}${hostSkip(ctx)}`, "unsigned · shuffled");
-        const used = () => { const u = new Set(todo.map(e => g(e.eid)).filter(Boolean)); $("game-panel").querySelectorAll("[data-who]").forEach(b => b.classList.toggle("used", !b.classList.contains("on") && u.has(b.dataset.who))); };
+        const pager = pages.length > 1 ? `<div class="sd-pager"><button type="button" id="sd-prev" aria-label="previous diaries">‹</button><span id="sd-pg"></span><button type="button" id="sd-next" aria-label="more diaries">›</button></div>` : "";
+        ui.stage(`${q.entries.length} diaries — who wrote which?`, head
+          + `<div class="sd-shelf-wrap"><div class="sd-shelf" id="sd-shelf"></div>${pager}<p class="sd-hint">tap a diary to read it</p></div>`
+          + `<div class="sd-matchlist ${l.opened.size ? "" : "sealed"}" id="sd-list">${rows}</div>`
+          + `<div class="sd-prog"><b id="sd-matched">${todo.filter(e => g(e.eid)).length}/${todo.length}</b> matched</div>${foot}${hostSkip(ctx)}`, "unsigned · shuffled · random colors");
+        const panel = $("game-panel");
+        const used = () => { const u = new Set(todo.map(e => g(e.eid)).filter(Boolean)); panel.querySelectorAll("[data-who]").forEach(b => b.classList.toggle("used", !b.classList.contains("on") && u.has(b.dataset.who))); };
         const prog = () => { const m = $("sd-matched"); if (m) m.textContent = `${todo.filter(e => g(e.eid)).length}/${todo.length}`; };
+        const setGuess = (eid, who) => {
+          l.guesses[eid] = who;
+          game.input("guess", { eid, who }); sfx.tick();
+          panel.querySelectorAll(`[data-eid="${eid}"][data-who], [data-zeid="${eid}"][data-who]`).forEach(x => x.classList.toggle("on", x.dataset.who === who));
+          panel.querySelectorAll(`select[data-eid="${eid}"], select[data-zeid="${eid}"]`).forEach(x => { x.value = who; });
+          used(); prog();
+        };
         used();
         if (!locked) {
-          $("game-panel").querySelectorAll("[data-who]").forEach(b => b.onclick = () => {
-            l.guesses[b.dataset.eid] = b.dataset.who;
-            game.input("guess", { eid: b.dataset.eid, who: b.dataset.who }); sfx.tick();
-            b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
-            used(); prog();
-          });
-          $("game-panel").querySelectorAll(".sd-sel").forEach(sel => sel.onchange = () => {
-            if (!sel.value) return;
-            l.guesses[sel.dataset.eid] = sel.value;
-            game.input("guess", { eid: sel.dataset.eid, who: sel.value }); sfx.tick(); prog();
-          });
+          panel.querySelectorAll("[data-eid][data-who]").forEach(b => b.onclick = () => setGuess(b.dataset.eid, b.dataset.who));
+          panel.querySelectorAll("select.sd-sel[data-eid]").forEach(sel => sel.onchange = () => { if (sel.value) setGuess(sel.dataset.eid, sel.value); });
         }
+        // ---- the shelf: 3-6 locked diaries at a time, each unlocked once
+        const showPage = pg => {
+          dropShelf(l);
+          const token = {}; l.shelfToken = token; l.page = pg;
+          const [a, b] = pages[pg];
+          const shelf = $("sd-shelf"); if (!shelf) return;
+          const count = b - a, cols = count <= 3 ? count : Math.ceil(count / 2);
+          shelf.style.setProperty("--cols", cols);
+          shelf.innerHTML = q.entries.slice(a, b).map((e, j) => {
+            const i = a + j;
+            return `<button type="button" class="sd-dcell" data-i="${i}" style="--dc:${hexOf(i)}" aria-label="diary ${i + 1}">
+              <div class="sd-dvis"></div><div class="sd-dtext"><span>${esc(e.text)}</span></div><span class="sd-dnum">${i + 1}</span>${e.eid === myEid ? `<span class="sd-dyours">yours</span>` : ""}</button>`;
+          }).join("");
+          const pgEl = $("sd-pg"); if (pgEl) pgEl.textContent = `${pg + 1} / ${pages.length}`;
+          const pv = $("sd-prev"), nx = $("sd-next");
+          if (pv) { pv.disabled = pg === 0; pv.onclick = () => showPage(pg - 1); }
+          if (nx) { nx.disabled = pg === pages.length - 1; nx.onclick = () => showPage(pg + 1); }
+          const cells = [...shelf.querySelectorAll(".sd-dcell")].map(el => ({ el, hex: el.style.getPropertyValue("--dc").trim() }));
+          cells.forEach(c => c.el.onclick = () => zoom(+c.el.dataset.i));
+          const already = l.opened.has(pg);
+          const finish = () => {
+            if (l.shelfToken !== token) return;
+            cells.forEach(c => c.el.classList.add("open"));
+            l.opened.add(pg);
+            $("sd-list")?.classList.remove("sealed");
+          };
+          diaryMode().then(({ mode, kit }) => {
+            if (l.shelfToken !== token || !shelf.isConnected) return;
+            if (mode === "3d") {
+              try { l.shelf = kit.shelf(shelf, cells); }
+              catch (e) { console.warn("[diary] live shelf failed, using sprites", e); mode = "sprite"; }
+            }
+            shelf.dataset.mode = mode;
+            if (mode === "3d") {
+              if (already) { l.shelf.setOpen(); finish(); return; }
+              l.fx.push(setTimeout(() => l.shelf?.unlock((i, st) => {
+                if (st === "click") sfx.tick();
+                if (st === "open") { cells[i]?.el.classList.add("open"); buzz(8); }
+              }).then(() => { reportFps(l.shelf?.fps()); finish(); }), 700));
+              // never leave the list sealed if animation frames stall (tab in the background)
+              l.fx.push(setTimeout(finish, 700 + cells.length * 300 + 2500));
+              return;
+            }
+            // sprite / css: same beat, drawn with images or CSS and animated in CSS
+            cells.forEach(c => {
+              const v = c.el.querySelector(".sd-dvis");
+              if (mode === "sprite") {
+                const sz = kit.lockSpot(120, 120);
+                v.innerHTML = `<img class="sd-dclosed" alt="" src="${kit.snapshot("closed", c.hex, 120, 120)}"><img class="sd-dopen" alt="" src="${kit.snapshot("open", c.hex, 120, 120)}">`
+                  + `<img class="sd-dlock" alt="" src="${kit.snapshot("lock", null, 60, 60)}" style="left:${sz.x}%;top:${sz.y}%;width:${sz.w}%">`;
+              } else v.innerHTML = `<i class="sd-cdiary"></i><i class="sd-copen"></i><i class="sd-clock"></i>`;
+            });
+            if (already) { finish(); return; }
+            const U = { STAGGER: 300, SHAKE: 420, CLICK: 520, OPEN: 1150 };
+            cells.forEach((c, i) => {
+              const d = 700 + i * U.STAGGER;
+              l.fx.push(setTimeout(() => c.el.classList.add("shake"), d));
+              l.fx.push(setTimeout(() => { c.el.classList.add("click"); sfx.tick(); }, d + U.SHAKE));
+              l.fx.push(setTimeout(() => c.el.classList.add("drop"), d + U.CLICK));
+              l.fx.push(setTimeout(() => { c.el.classList.add("open"); buzz(8); }, d + U.OPEN));
+            });
+            l.fx.push(setTimeout(finish, 700 + (cells.length - 1) * U.STAGGER + 1400));
+          });
+        };
+        // ---- tap a diary: read it big, and match it right there
+        const zoom = i => {
+          const e = q.entries[i]; if (!e) return;
+          const cell = panel.querySelector(`.sd-dcell[data-i="${i}"]`);
+          if (cell && !cell.classList.contains("open")) return;          // still locked
+          panel.querySelector(".sd-zoom")?.remove();
+          const hex = hexOf(i), mine = e.eid === myEid;
+          const z = document.createElement("div");
+          z.className = "sd-zoom";
+          z.innerHTML = `<div class="sd-zcard" style="--dc:${hex}"><div class="sd-zvis"></div><div class="sd-ztext">${esc(e.text)}</div><span class="sd-dnum">${i + 1}</span></div>
+            ${mine ? `<p class="sd-hint">this one's yours</p>` : pickUi(e, g(e.eid), "data-zeid")}
+            <button type="button" class="pt-btn sd-zclose">back to the shelf</button>`;
+          panel.querySelector(".stage").appendChild(z);
+          diaryMode().then(({ kit }) => {
+            const v = z.querySelector(".sd-zvis"); if (!v) return;
+            v.innerHTML = kit ? `<img alt="" src="${kit.snapshot("open", hex, 300, 300)}">` : `<i class="sd-copen"></i>`;
+          });
+          z.querySelector(".sd-zclose").onclick = () => z.remove();
+          z.onclick = ev => { if (ev.target === z) z.remove(); };
+          if (!locked && !mine) {
+            z.querySelectorAll("[data-zeid][data-who]").forEach(b => b.onclick = () => setGuess(b.dataset.zeid, b.dataset.who));
+            z.querySelectorAll("select[data-zeid]").forEach(sel => sel.onchange = () => { if (sel.value) setGuess(sel.dataset.zeid, sel.value); });
+          }
+        };
+        if (!pop && !l.opened.size) l.opened.add(0);          // redrawn after locking in: no second unlock
+        showPage(Math.min(l.page, pages.length - 1));
       } else {
         const picked = id => (id in l.picks) ? l.picks[id] : !!me?.guesses?.[id];
         ui.stage("who said yes?", head + `<div class="sd-count${pop ? " sd-pop" : ""}"${pop ? ' style="animation-delay:500ms"' : ""}>${esc(q.countLabel ?? "")}</div>
