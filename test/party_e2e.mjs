@@ -132,6 +132,20 @@ try {
   ok(await until(C, () => document.querySelectorAll(".lr-av").length === 3, null, 20000), "a third friend joins by typing the code");
   ok(await until(A, () => /start/.test(document.getElementById("pt-start")?.textContent) && !document.getElementById("pt-start")?.disabled), "with 3 players, start unlocks");
 
+  // ------------------------------------------------------------------ diary colors
+  head("Lobby: everyone gets their own diary color");
+  const myColor = pg => pg.evaluate(() => document.querySelector("#pt-diary .pt-sw.on")?.dataset.sw ?? null);
+  ok(await until(C, () => !!document.querySelector("#pt-diary .pt-sw.on")), "a diary color is waiting for you when you join");
+  const cols = await Promise.all([A, B, C].map(myColor));
+  ok(cols.every(x => x !== null) && new Set(cols).size === 3, `three players, three different colors (${cols.join(", ")})`);
+  ok(await until(A, cs => cs.every(c => document.querySelector(`#pt-diary [data-sw="${c}"]`)?.disabled), cols.filter((_, i) => i !== 0)), "other people's colors are greyed out in your picker");
+  const free = await B.evaluate(() => [...document.querySelectorAll("#pt-diary .pt-sw:not(.on):not(:disabled)")].map(b => b.dataset.sw)[0]);
+  await B.click(`#pt-diary [data-sw="${free}"]`);
+  ok(await until(B, f => document.querySelector("#pt-diary .pt-sw.on")?.dataset.sw === f, free), "a guest picks another color from the swatches");
+  ok(await until(C, f => document.querySelector(`#pt-diary [data-sw="${f}"]`)?.disabled, free), "…and it's taken for everyone else");
+  ok(await until(C, o => !document.querySelector(`#pt-diary [data-sw="${o}"]`)?.disabled, cols[1]), "…while their old one frees up");
+  await shot(B, "03b-lobby-diary-color");
+
   // ------------------------------------------------------------------ walk + chat
   head("Lobby: walking around and talking");
   const aliceOnB = () => B.locator('.lr-av[data-id="u-alice"]').evaluate(e => ({ l: e.style.left, t: e.style.top }));

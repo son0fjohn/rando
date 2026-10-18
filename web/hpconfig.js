@@ -53,6 +53,13 @@ export const DIARY = {
   GUESS_MS: 60000,               // each question's matching / guessing window
   GUESS_MS_PER_EXTRA: 5000,      // + this per written answer beyond 6 (big rooms)
   GUESS_MS_MAX: 90000,
+  // Diary colors. Everyone at a party gets their own (unique, picked in the
+  // lobby); in a reveal the diaries get fresh random colors per question so a
+  // color never points at a person. One model, tinted in code.
+  COLORS: ["#c0392b", "#e67e22", "#d4ac0d", "#7cb342", "#1e8449", "#16a085",
+           "#3498db", "#2c3e9e", "#8e44ad", "#e84393", "#8d5a3b", "#5d6d7e"],
+  COLOR_NAMES: ["red", "orange", "mustard", "lime", "green", "teal",
+                "sky", "navy", "violet", "pink", "brown", "slate"],
 };
 export const MISSION = {
   // How missions reach players. The host picks per game in the lobby:
