@@ -73,12 +73,15 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
 
 ### Privacy and hidden information
 - Secret Diary must never show who wrote an answer, who said yes, or which
-  guesses were right — on any screen, including results. No running scores
-  during the game. Yes/no counts go through `countLine()` (softened at 0–1
-  and all/all-but-one).
-- Secret Diary reveal colors must not point at a writer: they are dealt fresh
-  per question (`dealColors()`), never in the writer's own lobby color, and
-  stay a list aligned with the unsigned entries — never keyed by player.
+  guesses were right — on any screen, including results. The points screen
+  after each question shows per-player point totals only (`s.pts`), never
+  per-guess results. Yes/no counts go through `countLine()` (softened at 0–1
+  and all/all-but-one), and when a count is softened the YES/NO stamps are
+  never sent (`q.stamps = null`): exact stamps would give the number away.
+- Secret Diary colors never point at a player: nobody picks one, the writing
+  diary's color is random on each phone and never sent, and reveal colors are
+  dealt fresh per question (`dealColors()`, no two alike), stored as a list
+  aligned with the unsigned diaries — never keyed by player.
 - Manhunt must never send a coordinate off the phone. Only grid cells leave
   the device, and per-player cells stay out of the synced state.
 - The prompt log (`diary_prompt_log`) must never contain user ids, handles or

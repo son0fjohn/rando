@@ -266,7 +266,14 @@ try {
     const yn = (await B.locator(".sd-count").count()) > 0;
     if (!seenTypes.has(yn)) {
       seenTypes.add(yn);
-      if (yn) { ok(/nobody or almost nobody|everyone or almost everyone|\d of \d said yes/.test(await text(B, ".sd-count")), `only the count: "${await text(B, ".sd-count")}"`); await shot(B, "14-diary-yesno"); }
+      if (yn) {
+        ok((await B.locator(".sd-dcell").count()) === 3, "yes/no gets the diaries too: three locked, one per answer");
+        ok(await until(B, () => !document.querySelector(".sd-count.sealed") && document.querySelectorAll(".sd-dcell.open").length === 3, null, 10000), "they unlock, then the count appears");
+        ok(/nobody or almost nobody|everyone or almost everyone|\d of \d said yes/.test(await text(B, ".sd-count")), `only the count: "${await text(B, ".sd-count")}"`);
+        // 2 of 3 said yes here: softened, so the stamps stay blurred
+        ok((await B.locator(".sd-dcell .sd-stamp.blur").count()) === 3, "a softened count keeps every stamp blurred");
+        await shot(B, "14-diary-yesno");
+      }
       else {
         ok((await B.locator(".sd-dcell").count()) === 3, "three closed, locked diaries on the shelf");
         ok(await until(B, () => !document.querySelector(".sd-matchlist.sealed") && document.querySelectorAll(".sd-dcell.open").length === 3, null, 10000), "they unlock, and the answers can be matched");
@@ -276,6 +283,13 @@ try {
       }
     }
     for (const pg of [A, B, C]) await pg.click("#sd-lock").catch(() => {});
+    // after every question: the points screen
+    ok(await until(B, () => document.querySelectorAll(".sd-pts .sd-pt-row").length === 3, null, 20000), `after question ${k + 1}: points for all three`);
+    if (k === 0) {
+      ok(!(await B.locator("#sd-next").count()) && (await A.locator("#sd-next").count()) === 1, "only the host gets 'next question'");
+      await sleep(1600); await shot(B, "15-diary-points");
+      await A.click("#sd-next");
+    }
   }
   ok(seenTypes.size === 2, "both written and yes/no questions came up");
   ok(await until(A, () => /Secret Diary/.test(document.querySelector(".hp-res-title")?.textContent ?? ""), null, 20000), "the diary reaches its results screen");
