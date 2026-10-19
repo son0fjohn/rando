@@ -163,6 +163,10 @@ try {
   await A.locator('[data-size]').first().click();
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "− back to 5");
   ok(await fits(A), "the deal screen fits the phone");
+  // what really left the deck: the 5 sent, and the one swapped out (a card the
+  // − button dropped was never sent, so it may come back later)
+  const sent = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
+  const swappedOut = before.filter(t => !afterSwap.includes(t));
   await A.click("#sd-send");
 
   // ------------------------------------------------------------------ answer
@@ -293,7 +297,7 @@ try {
   await A.click("#pt-start");
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "a fresh deal");
   const second = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
-  ok(!second.some(t => afterSwap.includes(t) || before.includes(t)), "no card from the first game (sent or swapped) comes back");
+  ok(!second.some(t => sent.includes(t) || swappedOut.includes(t)), "no card from the first game (sent or swapped) comes back");
   await A.click("#sd-send");
   ok(await until(F, () => document.querySelectorAll(".sd-q").length === 5, null, 15000), "fay gets the batch this time");
   ok(errors.length === 0, "no page errors: " + (errors[0] ?? "none"));
