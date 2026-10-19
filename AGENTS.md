@@ -15,8 +15,12 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   is `web/config.js`; the anon key there is meant to be public.
 - **Multiplayer:** Supabase Realtime broadcast + presence (`web/net.js`). No
   database tables for game state: rooms, games and chat die with the room.
-- **House party:** `web/party.js` (party + lobby), `web/hplobby.js` (walkable
-  2D room), `web/hpkit.js` (round machine, results screen, cleanup),
+- **House party:** `web/party.js` (party + lobby), `web/hplobby.js` (the
+  top-down room: tap-to-walk with pathfinding, depth sorting, the TV),
+  `web/roomdefs.js` (each vibe room's floor, furniture and TV, in backdrop
+  pixels), `web/charsprite.js` (players' own 3D characters flattened to pixel
+  sprites, cached per look), `web/profilecard.js` (tap someone: 3D card, wave,
+  report, block), `web/hpkit.js` (round machine, results screen, cleanup),
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots),
   `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors), `web/data/diary_prompts.json`
@@ -36,6 +40,8 @@ npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Dia
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
+node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
+node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> picker, profile card (FFMPEG=... for an mp4)
 ```
 
 The test pages swap the network, 3D and audio modules for stubs in
@@ -86,6 +92,9 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   the device, and per-player cells stay out of the synced state.
 - The prompt log (`diary_prompt_log`) must never contain user ids, handles or
   answer text.
+- Friendships only ever come from a verified in-person meetup (server-side).
+  There is no client "add friend" action; the profile card only shows status.
+- Reports (`reports`) are insert-only from clients and carry no message text.
 
 ### Safety and content
 - Today's Mission prompts may only embarrass the player who drew them —

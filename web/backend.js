@@ -120,7 +120,18 @@ async function refreshStatus() {
   // demo build: identity for rooms/quests (avatar fills in when it loads)
   rooms.me = { id: session.user.id, handle: profile ? profile.handle : "rando", avatar: rooms.me?.avatar ?? avatar.mine };
   if (!rooms._inited) { rooms._inited = true; rooms.init(); }
-  if (!party._inited) { party._inited = true; party.init(); }
+  if (!party._inited) {
+    party._inited = true;
+    // party rooms ask the server-side truth: friends come only from verified
+    // meetups; reports go to an insert-only table (migrations/012_reports)
+    party.hooks.isFriend = id => friends.list.some(f => f.friend_id === id);
+    party.hooks.report = async (id, reason, ctx) => {
+      const { error } = await sb.from("reports").insert({ reported: id, reason, context: ctx ?? {} });
+      if (error) console.warn("[rando] report failed", error.message);
+      return !error;
+    };
+    party.init();
+  }
 }
 
 // ===================== nickname =====================

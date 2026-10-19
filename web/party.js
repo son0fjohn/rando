@@ -38,6 +38,7 @@ import { FLAGS, PARTY, DIARY } from "./hpconfig.js";
 import { esc, trash } from "./hpkit.js";
 import { makeBots, shareText } from "./gamekit.js";
 import { LobbyRoom } from "./hplobby.js";
+import { openCard, close as closeCard } from "./profilecard.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -49,6 +50,12 @@ const PARTY_COLOR = 0xff8c42;
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));   // dev: bots count toward the minimum
 // vibe -> generated lobby backdrop (web/lobbies/)
 const LOBBY_BG = { chill: "lobbies/chill.png", chaotic: "lobbies/chaos.png", sporty: "lobbies/sporty.png" };
+
+// people you've blocked: hidden in party rooms and their chat dropped, on
+// this phone only (localStorage), across parties
+const BLOCK_KEY = "rando-blocked";
+function loadBlocked() { try { return new Set(JSON.parse(localStorage.getItem(BLOCK_KEY) ?? "[]")); } catch { return new Set(); } }
+function saveBlocked(set) { try { localStorage.setItem(BLOCK_KEY, JSON.stringify([...set].slice(-200))); } catch {} }
 
 function makeCode() { let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 const inviteLink = code => `${location.origin}${location.pathname}?party=${code}`;
@@ -72,6 +79,10 @@ export const party = {
   form: { name: "", vibe: "chill", cap: PARTY.CAP_DEFAULT },
   pickerOpen: false,
   chatOpen: false,
+  blocked: loadBlocked(),
+  // backend.js fills these in (kept out of this module so tests run offline):
+  //   isFriend(id) -> bool · report(id, reason) -> Promise<bool>
+  hooks: { isFriend: null, report: null },
   _view: null,
   _inited: false,
 
@@ -154,6 +165,7 @@ export const party = {
     if (!c) return;
     directory.stopAnnouncing(c.room.id);
     c.lobby?.destroy();
+    closeCard($("party-panel"), true);
     c.room.leave();
     this.current = null;
     this.pickerOpen = false; this.chatOpen = false;
@@ -202,12 +214,19 @@ export const party = {
     // only the host's word counts — a stray message from anyone else is ignored
     room.on("queue", m => { if (m.from !== room.hostId) return; c.queue = m.queue ?? null; this._renderNext(); this._renderPicker(); });
     room.on("chat", m => {
-      c.chat.push({ who: room.presence[m.from]?.handle ?? "someone", text: m.text });
+      if (this.blocked.has(m.from)) return;
+      c.chat.push({ from: m.from, who: room.presence[m.from]?.handle ?? "someone", text: m.text });
       c.chat = c.chat.slice(-40);
       c.lobby?.say(m.from, m.text);
       this.renderChat();
     });
     room.on("launch", m => this._onLaunch(m));
+    // someone waved (from their profile card of you, or anyone's)
+    room.on("wave", m => {
+      if (this.blocked.has(m.from)) return;
+      c.lobby?.wave(m.from);
+      if (m.to === this.me.id) { sfx.ping(); buzz(30); c.lobby?.say(m.from, `👋 hi ${this.me.handle}!`); }
+    });
     room.on("full", m => { if (m.id === this.me.id) { this.leave(); this.err(`that party is full (cap ${m.cap})`); } });
   },
   _sendMeta() {
@@ -347,8 +366,12 @@ export const party = {
       this._bind();
       if (c) {
         // the walkable room lives as long as you're in this party
-        const bots = BOTS_N ? makeBots(BOTS_N, mulberry(7)).map(b => ({ id: b.id, handle: b.handle })) : [];
-        c.lobby = new LobbyRoom($("pt-floor"), c.room, this.me, { bots: c.room.isHost ? bots : [] });
+        const bots = BOTS_N ? makeBots(BOTS_N, mulberry(7)).map(b => ({ id: b.id, handle: b.handle, avatar: b.avatar })) : [];
+        c.lobby = new LobbyRoom($("pt-floor"), c.room, this.me, {
+          bots: c.room.isHost ? bots : [], vibe: c.meta.vibe,
+          onTV: () => this._onTV(), onPerson: id => this.openProfile(id),
+        });
+        c.lobby.hide(this.blocked);
       }
     }
     if (c) { this._renderLobby(); this.renderChat(); }
@@ -439,6 +462,7 @@ export const party = {
     $("pt-sub").textContent = `${c.meta.vibe} · ${host} is hosting · ${c.room.members.length}/${c.meta.cap}${BOTS_N ? ` (+${BOTS_N} bots)` : ""}`;
     $("pt-code-chip").textContent = c.meta.code;
     c.lobby?.setBackground(LOBBY_BG[c.meta.vibe] ?? LOBBY_BG.chill);
+    c.lobby?.setVibe(c.meta.vibe);
     c.lobby?.sync();
     this._renderNext();
     this._renderPicker();
@@ -532,8 +556,37 @@ export const party = {
     });
   },
 
+  // walked up to the TV: the host gets the game picker
+  _onTV() {
+    const c = this.current; if (!c || c.launched) return;
+    if (c.room.isHost) { this.pickerOpen = true; sfx.open(); this._renderPicker(); return; }
+    const host = c.room.presence[c.room.hostId]?.handle ?? "the host";
+    c.lobby?.say(this.me.id, `${host} picks the games`);
+  },
+
+  // tapped someone in the room
+  openProfile(id) {
+    const c = this.current; if (!c) return;
+    const m = c.room.members.find(x => x.id === id);
+    const bot = !m && /^bot-/.test(id) ? c.lobby?.bots.find(b => b.id === id) : null;
+    const person = m ?? bot; if (!person) return;
+    sfx.pop();
+    openCard($("party-panel"), { id, handle: person.handle, avatar: person.avatar ?? {}, status: person.status ?? "", badges: person.badges ?? [] }, {
+      me: this.me, isHost: id === c.room.hostId,
+      friend: !!this.hooks.isFriend?.(id), blocked: this.blocked.has(id),
+      onWave: () => { c.room.send("wave", { to: id }); c.lobby?.wave(this.me.id); sfx.ping(); },
+      onBlock: () => {
+        const now = !this.blocked.has(id);
+        if (now) this.blocked.add(id); else this.blocked.delete(id);
+        saveBlocked(this.blocked); c.lobby?.hide(this.blocked); this.renderChat();
+        return now;
+      },
+      onReport: reason => this.hooks.report ? this.hooks.report(id, reason, { party: c.meta.code }) : false,
+    });
+  },
+
   renderChat() {
     const c = this.current; const feed = $("pt-chat-feed"); if (!c || !feed) return;
-    feed.innerHTML = c.chat.slice(-4).map(l => `<div class="lc-msg"><b>${esc(l.who)}</b>${esc(l.text)}</div>`).join("");
+    feed.innerHTML = c.chat.filter(l => !this.blocked.has(l.from)).slice(-4).map(l => `<div class="lc-msg"><b>${esc(l.who)}</b>${esc(l.text)}</div>`).join("");
   },
 };

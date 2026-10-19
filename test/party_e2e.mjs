@@ -99,7 +99,7 @@ try {
   const code = await text(A, "#pt-code-chip");
   ok((await text(A, "#pt-title")) === "Saturday night", "the party has the name the host gave it");
   ok(await A.locator("#party-panel.pt-lobby").isVisible(), "the lobby is a full-screen room");
-  ok((await A.locator("#pt-floor").evaluate(e => getComputedStyle(e).backgroundImage)).includes("lobbies/chaos.png"), "the chaotic vibe picks the chaotic backdrop");
+  ok(await until(A, () => getComputedStyle(document.querySelector("#pt-floor .lr-stage")).backgroundImage.includes("lobbies/chaos.png")), "the chaotic vibe picks the chaotic backdrop");
 
   const B = await phone("bob", `&party=${code}`);
   ok(await until(B, () => document.querySelectorAll(".lr-av").length === 2, null, 20000), "a friend joins straight from the share link");
@@ -134,14 +134,17 @@ try {
 
   // ------------------------------------------------------------------ walk + chat
   head("Lobby: walking around and talking");
-  const aliceOnB = () => B.locator('.lr-av[data-id="u-alice"]').evaluate(e => ({ l: e.style.left, t: e.style.top }));
-  const before = await aliceOnB();
-  const fb = await A.locator("#pt-floor").boundingBox();
-  await A.mouse.click(fb.x + fb.width * 0.8, fb.y + fb.height * 0.75);
-  await sleep(500);
-  const after = await aliceOnB();
-  ok(before.l !== after.l || before.t !== after.t, `a tap walks you, and the others see it (${before.l},${before.t} -> ${after.l},${after.t})`);
-  ok(Math.abs(parseFloat(after.l) - 80) < 1.5, "you walk to where you tapped");
+  // the room is the backdrop at its own aspect; positions are backdrop pixels
+  const standing = (pg, id) => pg.evaluate(id => window.party.current.lobby.where(id), id);
+  const before = await standing(B, "u-alice");
+  const sb = await A.locator("#pt-floor .lr-stage").boundingBox();
+  const target = [380, 1150];                         // open floor near the front of the bar
+  await A.mouse.click(sb.x + sb.width * target[0] / 752, sb.y + sb.height * target[1] / 1344);
+  ok(await until(B, () => window.party.current.lobby.where("u-alice")?.walking), "a tap walks you, and the others see you walking");
+  await sleep(6000);
+  const onA = await standing(A, "u-alice"), onB = await standing(B, "u-alice");
+  ok(Math.hypot(onA.x - target[0], onA.y - target[1]) < 40, `you walk to where you tapped (${Math.round(before.x)},${Math.round(before.y)} -> ${Math.round(onA.x)},${Math.round(onA.y)})`);
+  ok(Math.hypot(onA.x - onB.x, onA.y - onB.y) < 2, "everyone sees you end up in the same spot");
   await B.fill("#pt-chat-input", "who's ready??");
   await B.press("#pt-chat-input", "Enter");
   ok(await until(A, () => { const b = document.querySelector('.lr-av[data-id="u-bob"] .lr-bubble'); return b && !b.hidden && /ready/.test(b.textContent); }), "chat shows as a speech bubble over the speaker");

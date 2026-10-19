@@ -10,6 +10,8 @@ import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { MANHUNT, DIARY, MISSION } from "/web/hpconfig.js";
 import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
+import { findPath, walkable } from "/web/hplobby.js";
+import { ROOMS } from "/web/roomdefs.js";
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -855,6 +857,29 @@ group("Shared kit");
 }
 
 // ===================================================================== cleanup
+group("Party room — every room's spots are reachable, and paths go around the furniture");
+{
+  const inBlock = (R, x, y) => R.block.some(([x0, y0, x1, y1]) => x > x0 && x < x1 && y > y0 && y < y1);
+  for (const [vibe, R] of Object.entries(ROOMS)) {
+    ok(walkable(vibe, ...R.door), `${vibe}: the door spot is on the floor`);
+    ok(walkable(vibe, ...R.tv.at), `${vibe}: the spot in front of the TV is on the floor`);
+    // corner to corner, through the furniture: every sampled point stays off it
+    const from = R.door, to = [R.walk.x0 + 30, R.walk.y1 - 30];
+    const path = findPath(vibe, from, to);
+    let clear = true, at = from;
+    for (const p of path) {
+      for (let i = 0; i <= 20; i++) { const x = at[0] + (p[0] - at[0]) * i / 20, y = at[1] + (p[1] - at[1]) * i / 20; if (inBlock(R, x, y)) clear = false; }
+      at = p;
+    }
+    ok(path.length > 0 && clear, `${vibe}: door to the far corner walks around every table and prop (${path.length} legs)`);
+    const tvPath = findPath(vibe, to, R.tv.at), end = tvPath.at(-1);
+    ok(Math.hypot(end[0] - R.tv.at[0], end[1] - R.tv.at[1]) < 1, `${vibe}: you can always walk to the TV`);
+  }
+  const R = ROOMS.chill, [bx0, by0, bx1, by1] = R.block[5];
+  const end = findPath("chill", R.door, [(bx0 + bx1) / 2, (by0 + by1) / 2]).at(-1);
+  ok(!inBlock(R, ...end), "tapping on a table walks you to the nearest free spot next to it");
+}
+
 group("Cleanup — nothing survives the party");
 {
   // party.js flushes the bin when a game ends and when you leave the party.

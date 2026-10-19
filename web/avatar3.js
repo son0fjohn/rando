@@ -533,6 +533,8 @@ function buildHumanApi(cfg) {
   let owned = [];
   const disposeOwned = () => { for (const r of owned) r.dispose?.(); owned = []; };
 
+  // settles once this build's attachments have loaded (or failed)
+  let ready = Promise.resolve();
   const rebuild = () => {
     const myEpoch = ++epoch;
     disposeOwned();
@@ -547,6 +549,7 @@ function buildHumanApi(cfg) {
           map: getSkinTex(cfg.skin) ?? o.material.map ?? null });
         o.frustumCulled = false;
         o.castShadow = true;
+        o.userData.part = "body";
         owned.push(o.material); // map is the shared tone cache — material only
       }
     });
@@ -559,7 +562,7 @@ function buildHumanApi(cfg) {
       wrap.scale.setScalar(T.fitScale);
       wrap.position.copy(T.fitOffset);
       wrap.add(fp);
-      fp.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      fp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.part = "face"; } });
       group.add(wrap);
     }
     // attachments — async-load then attach if this build is still current
@@ -568,7 +571,7 @@ function buildHumanApi(cfg) {
     if (cfg.top !== "none") want.push(["top", cfg.top]);
     if (cfg.bottom !== "none") want.push(["bottom", cfg.bottom]);
     if (cfg.shoes !== "none") want.push(["shoes", cfg.shoes]);
-    for (const [cat, id] of want) {
+    ready = Promise.all(want.map(([cat, id]) =>
       loadPiece(cat, id).then(scene => {
         if (disposed || myEpoch !== epoch) return;
         const wrap = attachWrapper(scene, `${cat}/${id}`);
@@ -577,16 +580,16 @@ function buildHumanApi(cfg) {
           if (tex) wrap.traverse(o => { if (o.isMesh) { o.material.map = tex; o.material.needsUpdate = true; } });
         }
         wrap.traverse(o => {
-          if (o.isMesh) { o.castShadow = true; owned.push(o.material); }
+          if (o.isMesh) { o.castShadow = true; o.userData.part = cat; owned.push(o.material); }
         });
         group.add(wrap);
-      }).catch(() => {});
-    }
+      }).catch(() => {}))).then(() => {});
   };
   rebuild();
 
   return {
     group,
+    get ready() { return ready; },
     get config() { return { ...cfg }; },
     setConfig(next) {
       cfg = normalizeAvatar3({ ...cfg, ...next });
@@ -762,8 +765,8 @@ function buildAnimApi(cfg) {
     const box = new THREE.Box3();
     const pos = bodySkinned.geometry.attributes.position;
     const v = new THREE.Vector3();
-    // r160 names it boneTransform; later releases applyBoneTransforms
-    const skinV = (bodySkinned.applyBoneTransforms ?? bodySkinned.boneTransform)
+    // r151+ names it applyBoneTransform (boneTransform is a warning alias)
+    const skinV = (bodySkinned.applyBoneTransform ?? bodySkinned.boneTransform)
       .bind(bodySkinned);
     for (let i = 0; i < pos.count; i += 2) {
       v.fromBufferAttribute(pos, i);
@@ -799,6 +802,7 @@ function buildAnimApi(cfg) {
   // still leaves fringes brushing the eye line
   const headLift = animFaceY - staticFaceY + 0.3;
 
+  let ready = Promise.resolve();
   const rebuild = () => {
     const myEpoch = ++epoch;
     disposeOwned();
@@ -812,6 +816,7 @@ function buildAnimApi(cfg) {
         map: getAnimSkinTex(cfg.skin) ?? bodySkinned.material.map ?? null });
       bodySkinned.frustumCulled = false;
       bodySkinned.castShadow = true;
+      bodySkinned.userData.part = "body";
       owned.push(bodySkinned.material);
     }
     // face decal rides the fit frame (rest-pose aligned; head motion in the
@@ -821,7 +826,7 @@ function buildAnimApi(cfg) {
       const wrap = new THREE.Group();
       wrap.userData.attachment = true;
       wrap.add(fp);
-      fp.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      fp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.part = "face"; } });
       fit.add(wrap);
     }
     const want = [];
@@ -829,7 +834,7 @@ function buildAnimApi(cfg) {
     if (cfg.top !== "none") want.push(["top", cfg.top]);
     if (cfg.bottom !== "none") want.push(["bottom", cfg.bottom]);
     if (cfg.shoes !== "none") want.push(["shoes", cfg.shoes]);
-    for (const [cat, id] of want) {
+    ready = Promise.all(want.map(([cat, id]) =>
       loadPiece(cat, id).then(scene => {
         if (disposed || myEpoch !== epoch) return;
         const wrap = attachWrapper(scene, `${cat}/${id}`);
@@ -862,14 +867,14 @@ function buildAnimApi(cfg) {
           // carry big mesh-node transforms; a plain sibling would miss
           // them). Copy the body's local matrix verbatim.
           sm.userData.attachment = true;
+          sm.userData.part = cat;
           sm.matrixAutoUpdate = false;
           sm.matrix.copy(bodySkinned.matrix);
           bodySkinned.parent.add(sm);
           sm.bind(bodySkinned.skeleton, bodySkinned.bindMatrix);
         }
         group.remove(wrap); // static wrap was only a positioning jig
-      }).catch(() => {});
-    }
+      }).catch(() => {}))).then(() => {});
   };
   rebuild();
 
@@ -877,6 +882,18 @@ function buildAnimApi(cfg) {
   let lastT = null;
   return {
     group,
+    get ready() { return ready; },
+    // sprite baking: pose the rig at a clip time without the crossfade
+    pose(clip, t) {
+      const a = clip === "walk" ? walk : idle;
+      if (!a) return false;
+      mixer.stopAllAction();
+      a.reset().play();
+      a.time = t % a.getClip().duration;
+      mixer.update(0);
+      return true;
+    },
+    clipLength(clip) { return (clip === "walk" ? walk : idle)?.getClip().duration ?? 0; },
     get config() { return { ...cfg }; },
     setConfig(next) {
       cfg = normalizeAvatar3({ ...cfg, ...next });
