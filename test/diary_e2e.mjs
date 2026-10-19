@@ -9,8 +9,10 @@
 //
 // --diary pins how the diaries are drawn (default: whatever the phone picks).
 // --video (Chromium, needs a screenshot dir) screencasts bob's phone through
-// the first written reveal — the unlock — into <dir>/unlock/ as JPEG frames
-// plus an ffconcat list; with FFMPEG=/path/to/ffmpeg set it also writes unlock.mp4.
+// one full written question and one full yes/no question, from the unlock to
+// the points screen, into <dir>/written/ and <dir>/yesno/ as JPEG frames plus
+// an ffconcat list; with FFMPEG=/path/to/ffmpeg set it also writes
+// written.mp4 and yesno.mp4.
 //
 // Same stack as party_e2e.mjs: real party.js, net.js, game module and CSS;
 // only the network, 3D and audio leaves are stubbed.
@@ -67,7 +69,7 @@ async function screencast(pg) {
     await writeFile(join(dir, "frames.ffconcat"), list);
     if (process.env.FFMPEG) {
       const { execFileSync } = await import("node:child_process");
-      execFileSync(process.env.FFMPEG, ["-y", "-loglevel", "error", "-f", "concat", "-i", join(dir, "frames.ffconcat"), "-vf", "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", join(dir, "..", "unlock.mp4")]);
+      execFileSync(process.env.FFMPEG, ["-y", "-loglevel", "error", "-f", "concat", "-i", join(dir, "frames.ffconcat"), "-vf", "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", `${dir}.mp4`]);
     }
     return frames.length;
   };
@@ -163,6 +165,10 @@ try {
   await A.locator('[data-size]').first().click();
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "− back to 5");
   ok(await fits(A), "the deal screen fits the phone");
+  // what really left the deck: the 5 sent, and the one swapped out (a card the
+  // − button dropped was never sent, so it may come back later)
+  const sent = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
+  const swappedOut = before.filter(t => !afterSwap.includes(t));
   await A.click("#sd-send");
 
   // ------------------------------------------------------------------ answer
@@ -179,7 +185,9 @@ try {
   await shot(F, "04-late-joiner");
 
   const types = await B.locator(".sd-q").evaluateAll(qs => qs.map(q => q.classList.contains("yesno") ? "yesno" : "written"));
-  const yesBy = { alice: [1], bob: [], cy: [1], dee: [], eve: [0, 1] };     // which yes/no (by order) each says yes to
+  // which yes/no (by order) each says yes to: the first lands on an exact count
+  // (real YES / NO stamps), the second on a softened one (blurred stamps)
+  const yesBy = { alice: [0], bob: [], cy: [], dee: [], eve: [0, 1] };
   async function answer(pg, { only = null, skipSubmit = false } = {}) {
     let yn = 0;
     for (let k = 0; k < types.length; k++) {
@@ -222,12 +230,15 @@ try {
   await A.bringToFront();
   const opened = await until(B, () => /question 1 of 5/.test(document.querySelector(".sd-qcount")?.textContent ?? ""), null, 30000);
   ok(opened, "dee dropped, everyone else submitted: question 1 opens" + (opened ? "" : ` — host at ${JSON.stringify(await hostState())}`));
-  let shotW = false, shotY = false, cast = VIDEO ? await screencast(B) : null;
+  let shotW = false, shotY = false, shotP = false;
+  const recorded = new Set();
   for (let k = 0; k < 5; k++) {
     const at = await until(B, k => new RegExp(`question ${k + 1} of 5`).test(document.querySelector(".sd-qcount")?.textContent ?? ""), k, 20000);
     const hs = await hostState();
     ok(at, `question ${k + 1} of 5` + (at ? "" : ` — host at ${JSON.stringify(hs)}`));
     if (!at) break;
+    // record the first question of each type, unlock to points screen
+    const cast = VIDEO && hs?.type && !recorded.has(hs.type) ? (recorded.add(hs.type), await screencast(B)) : null;
     if (hs?.type === "written") {
       const n = await B.locator(".sd-entry").count();
       ok(n === (k <= 2 ? 5 : 4), `${n} unsigned answers${k <= 2 ? " (dee's still count)" : " (dee never got to this one)"}`);
@@ -239,7 +250,6 @@ try {
       ok(unsealed.every(Boolean), "the padlocks drop and the diaries open on every phone");
       ok(await until(B, n => document.querySelectorAll(".sd-dcell.open").length === n, n), "every diary on the shelf is open, its answer on the page");
       if (!shotW) { await B.evaluate(() => document.getElementById("game-panel").scrollTo(0, 0)); await sleep(400); await shot(B, "07-reveal-open"); }
-      if (cast) { await sleep(800); console.log(`  · screencast: ${await cast(join(SHOTS, "unlock"))} frames of the unlock`); cast = null; }
       ok((await B.locator(".sd-match.mine").count()) === 1 && !(await B.locator(".sd-match.mine .sd-who").count()), "your own answer is marked 'yours' and isn't matched");
       const texts = await B.locator(".sd-entry").allInnerTexts();
       ok(!texts.some(t => /^(alice|bob|cy|dee|eve)$/.test(t)), "no names on the answers");
@@ -264,15 +274,35 @@ try {
         ok(!(await B.locator(".sd-zoom").count()), "back to the shelf");
       }
     } else {
+      // yes/no: a locked diary per player who answered, each opening on a stamp
+      const n = await B.locator(".sd-dcell").count();
+      ok(n >= 4 && n <= 5 && (await B.locator(".sd-dcell.open").count()) < n, `${n} closed, locked diaries — one per player who answered`);
+      const dcs = await B.locator(".sd-dcell").evaluateAll(cs => cs.map(c => c.style.getPropertyValue("--dc")));
+      ok(new Set(dcs).size === n, "each diary its own color");
+      ok(!!(await B.locator(".sd-count.sealed").count()), "the count waits for the diaries to open");
+      if (!shotY) { await sleep(1100); await shot(B, "08a-yesno-unlocking"); }
+      const unsealed = await Promise.all(live.map(pg => until(pg, () => !document.querySelector(".sd-count.sealed"), null, 12000)));
+      ok(unsealed.every(Boolean) && await until(B, n => document.querySelectorAll(".sd-dcell.open").length === n, n), "the diaries open on every phone, then the count appears");
       const line = await text(B, ".sd-count");
       ok(/^(nobody or almost nobody said yes|everyone or almost everyone said yes|\d of \d said yes)$/.test(line), `only the count: "${line}"`);
-      ok(!(await B.locator(".sd-entry").count()), "no answers on show for yes/no");
+      const stamps = await B.locator(".sd-dcell .sd-stamp").evaluateAll(es => es.map(e => e.classList.contains("blur") ? "blur" : e.textContent));
+      const soft = /almost/.test(line);
+      ok(stamps.length === n && (soft ? stamps.every(x => x === "blur") : stamps.filter(x => x === "YES").length === +line.split(" ")[0] && stamps.every(x => x === "YES" || x === "NO")),
+        soft ? "a softened count: every stamp stays blurred" : `the stamps match the count (${stamps.join(" ")})`);
+      ok(!(await B.locator(".sd-entry, .sd-dyours").count()), "nothing ties a stamp to anyone");
       for (const pg of live) await pg.locator("[data-pick]").first().click();
-      if (!shotY) { shotY = true; ok(await fits(B), "the yes/no reveal fits the phone"); await shot(B, "08-reveal-yesno"); }
+      if (!shotY) { shotY = true; await B.evaluate(() => document.getElementById("game-panel").scrollTo(0, 0)); await sleep(300); await shot(B, "08-reveal-yesno"); }
     }
-    ok(!/pts|score/i.test(await text(B, "#game-hud")), "no score on screen mid-game");
+    ok(!/pts|score|points/i.test(await text(B, "#game-hud")) && !(await B.locator(".sd-pts").count()), "no score while guessing");
     for (const pg of live) await pg.click("#sd-lock");
-    ok(/locked in/.test(await text(C, "#game-panel")), "lock in");
+    // the points screen: everyone (dee too), points on this question, running totals
+    const pts = await until(B, () => document.querySelectorAll(".sd-pts .sd-pt-row").length === 5, null, 20000);
+    ok(pts, `after question ${k + 1}: the points screen, all five players`);
+    const ptxt = await text(B, ".sd-pts");
+    ok(/\+\d/.test(ptxt) && !/answer \d|said yes|YES|NO\b/.test(ptxt), "points and totals only — no answers, no stamps, no right or wrong");
+    if (!shotP) { shotP = true; await sleep(1700); await shot(B, "10-points"); }
+    if (cast) { await sleep(3200); console.log(`  · screencast: ${await cast(join(SHOTS, hs.type))} frames of a ${hs.type} question, unlock to points`); }
+    if (k === 1) { ok((await A.locator("#sd-next").count()) === 1 && !(await B.locator("#sd-next").count()), "the host taps 'next question'"); await A.click("#sd-next"); }
   }
 
   // ------------------------------------------------------------------ results
@@ -293,7 +323,7 @@ try {
   await A.click("#pt-start");
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "a fresh deal");
   const second = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
-  ok(!second.some(t => afterSwap.includes(t) || before.includes(t)), "no card from the first game (sent or swapped) comes back");
+  ok(!second.some(t => sent.includes(t) || swappedOut.includes(t)), "no card from the first game (sent or swapped) comes back");
   await A.click("#sd-send");
   ok(await until(F, () => document.querySelectorAll(".sd-q").length === 5, null, 15000), "fay gets the batch this time");
   ok(errors.length === 0, "no page errors: " + (errors[0] ?? "none"));
