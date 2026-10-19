@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>diary3d — model check</title>
+<!-- Dev page: the three Secret Diary models, tinted, as stills and on a live
+     shelf with the unlock beat. node test/diary3d_shots.mjs screenshots it. -->
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<!--INDEX_CSS-->
+<style>
+  body { display:block; height:auto; overflow:auto; margin:0; padding:12px; background:#1c1c1e; color:#eee; font:13px/1.4 system-ui,sans-serif; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 14px; }
+  .row img { width:120px; height:120px; background:#2c2c2e; border-radius:8px; }
+  .stage { background:#f5f5f7; color:#1c1c1e; border-radius:16px; padding:12px; width:340px; box-sizing:border-box; }
+  #info { white-space:pre-wrap; word-break:break-all; font-family:ui-monospace,monospace; }
+  .row img { flex:none; }
+</style>
+</head>
+<body>
+<div id="info">loading…</div>
+<div class="row" id="stills"></div>
+<div class="stage"><div class="sd-shelf-wrap"><div class="sd-shelf" id="sd-shelf"></div></div></div>
+<button id="go" type="button">unlock again</button>
+<script type="module">
+import { diaryKit, UNLOCK } from "/web/diary3d.js";
+import { DIARY } from "/web/hpconfig.js";
+const info = document.getElementById("info");
+const kit = await diaryKit();
+if (!kit) { info.textContent = "no kit (WebGL or models failed)"; window.__ready = { ok: false }; throw 0; }
+const stills = document.getElementById("stills");
+for (const [kind, hex] of [["closed", DIARY.COLORS[0]], ["closed", DIARY.COLORS[6]], ["open", DIARY.COLORS[0]], ["open", DIARY.COLORS[8]], ["lock", null]]) {
+  const im = new Image(); im.src = kit.snapshot(kind, hex, 120, 120); im.title = `${kind} ${hex}`; stills.appendChild(im);
+}
+const sp = kit.lockSpot(120, 120);
+const shelf = document.getElementById("sd-shelf");
+const N = +(new URLSearchParams(location.search).get("n") ?? 6);
+shelf.style.setProperty("--cols", N <= 3 ? N : Math.ceil(N / 2));
+shelf.innerHTML = DIARY.COLORS.slice(0, N).map((hex, i) => `<button type="button" class="sd-dcell" style="--dc:${hex}"><div class="sd-dvis"></div><div class="sd-dtext">answer number ${i + 1}, written on the page</div><span class="sd-dnum">${i + 1}</span></button>`).join("");
+const cells = [...shelf.querySelectorAll(".sd-dcell")].map(el => ({ el, hex: el.style.getPropertyValue("--dc").trim() }));
+let sh = null;
+const run = async () => {
+  sh?.destroy();
+  cells.forEach(c => c.el.classList.remove("open"));
+  sh = kit.shelf(shelf, cells);
+  await new Promise(r => setTimeout(r, 400));
+  await sh.unlock((i, st) => { if (st === "open") cells[i].el.classList.add("open"); });
+  return sh.fps();
+};
+document.getElementById("go").onclick = run;
+const bench = kit.benchmark();
+const fps = await run();
+info.textContent = `triangles ${JSON.stringify(kit.tris)}\nbenchmark ${bench.toFixed(1)} ms/frame (6 diaries)\nunlock fps ${fps?.toFixed(0)}\nlockSpot ${JSON.stringify(sp)}`;
+window.__ready = { ok: true, tris: kit.tris, bench, fps };
+</script>
+</body>
+</html>

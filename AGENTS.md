@@ -19,8 +19,10 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   2D room), `web/hpkit.js` (round machine, results screen, cleanup),
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots),
   `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/hpconfig.js`
-  (flags, prompt pools, Manhunt geo), `web/data/diary_prompts.json` (Secret
-  Diary's prompt pool).
+  (flags, prompt pools, Manhunt geo, diary colors), `web/data/diary_prompts.json`
+  (Secret Diary's prompt pool), `web/diary3d.js` + `web/models/diary/` (Secret
+  Diary's tinted 3D diaries, with sprite and CSS fallbacks; see
+  `docs/diary_assets.md`).
 - **Migrations:** `supabase/migrations/`, applied by hand with
   `scripts/apply_migration.py` (needs `SUPABASE_ACCESS_TOKEN` in `.env`).
 
@@ -30,8 +32,10 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 npm ci && npx playwright install chromium   # once
 npm run serve              # http://localhost:8743
 npm test                   # logic suites: all games + "you + 3 bots" (≈1 min)
-npm run test:e2e           # 3 phones play a whole party through the real UI (≈3 min)
+npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Diary, through the real UI (≈5 min)
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
+node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
+node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
 ```
 
 The test pages swap the network, 3D and audio modules for stubs in
@@ -72,6 +76,9 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   guesses were right — on any screen, including results. No running scores
   during the game. Yes/no counts go through `countLine()` (softened at 0–1
   and all/all-but-one).
+- Secret Diary reveal colors must not point at a writer: they are dealt fresh
+  per question (`dealColors()`), never in the writer's own lobby color, and
+  stay a list aligned with the unsigned entries — never keyed by player.
 - Manhunt must never send a coordinate off the phone. Only grid cells leave
   the device, and per-player cells stay out of the synced state.
 - The prompt log (`diary_prompt_log`) must never contain user ids, handles or
@@ -99,7 +106,7 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   people" over architecture. Don't ask for refactors, abstractions or extra
   test layers unless they fix a real bug.
 - If a change touches game flow but adds no test for it in `test/specs.js` (or
-  `test/party_e2e.mjs` for UI), say so once.
+  `test/party_e2e.mjs` / `test/diary_e2e.mjs` for UI), say so once.
 
 ## Conventions
 

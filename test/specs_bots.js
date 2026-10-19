@@ -29,33 +29,32 @@ group("Secret Diary — you + 3 bots");
   const t = seatTable(SECRET_DIARY, 1, { ids: [ME] });
   adv(500);
   ok(bots(t.s).length === 3, "three bots take seats");
-  let guard = 0, rounds = 0, written = 0, yesno = 0, myPoints = 0;
+  ok(t.s.phase === "deal", "you're the host, so you get the deal");
+  t.input(ME, "send");
+  adv(400);
+  t.s.batch.forEach((c, k) => t.input(ME, "ans", c.type === "written" ? { k, text: `my answer ${k}` } : { k, yn: "yes" }));
+  t.input(ME, "submit");
+  let guard = 0, written = 0, yesno = 0, myPoints = 0, lastQ = -1;
   while (t.s.phase !== "end" && guard++ < 40000) {
-    if (t.s.phase === "answer" && t.s.players[ME].answer === null) {
-      t.input(ME, "answer", t.s.cur.type === "written" ? { text: `my answer ${t.s.round}` } : { yn: "yes" });
-    }
-    if (t.s.phase === "guess" && !t.s.players[ME].locked) {
-      rounds++;
-      if (t.s.cur.type === "written") {
+    if (t.s.phase === "reveal" && t.s.qi !== lastQ) {
+      lastQ = t.s.qi;
+      const q = t.s.qs[t.s.qi], key = t.s.keys[t.s.qi];
+      if (t.s.batch[t.s.qi].type === "written") {
         written++;
-        ok(t.s.entries.length === 4, `round ${t.s.round}: the bots wrote answers too (${t.s.entries.length})`);
-        const author = eid => Object.values(t.s.players).find(p => p.myEid === eid)?.id;
-        for (const e of t.s.entries) if (e.eid !== t.s.players[ME].myEid) t.input(ME, "guess", { eid: e.eid, who: author(e.eid) });
-        myPoints += 3;
+        ok(q.entries.length === 4, `q${t.s.qi + 1}: the bots wrote answers too (${q.entries.length})`);
+        for (const e of q.entries) if (key[e.eid] !== ME) t.input(ME, "guess", { eid: e.eid, who: key[e.eid] });
       } else {
         yesno++;
-        ok(t.s.countOf === 4, `round ${t.s.round}: the bots tapped yes/no too (${t.s.countOf} answered)`);
-        for (const q of Object.values(t.s.players)) if (q.id !== ME && q.answer === "yes") t.input(ME, "pickyes", { who: q.id, on: true });
-        myPoints += 3;
+        ok(q.countOf === 4, `q${t.s.qi + 1}: the bots tapped yes/no too (${q.countOf} answered)`);
+        for (const [id, yes] of Object.entries(key)) if (id !== ME && yes) t.input(ME, "pick", { who: id, on: true });
       }
+      myPoints += 3;
       t.input(ME, "lock");
-      adv(400);
-      t.s.players[ME].locked = true;       // harness bookkeeping: don't re-enter this round
     }
     adv(200);
   }
   ok(t.s.phase === "end", "the bots keep the whole game moving");
-  ok(written >= 1 && yesno >= 1, `both round types came up (${written} written, ${yesno} yes/no)`);
+  ok(written === 3 && yesno === 2, `all 5 questions revealed (${written} written, ${yesno} yes/no)`);
   ok(t.s.players[ME].score === myPoints, `reading every bot right scores ${myPoints} (got ${t.s.players[ME].score})`);
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");

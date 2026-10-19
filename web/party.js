@@ -105,7 +105,7 @@ export const party = {
       meta: {
         name, vibe, cap, code, hostId: this.me.id, hostName: this.me.handle,
         privacy: FLAGS.PUBLIC_PARTIES ? "public" : "private",
-        settings: { adult: false, diaryMax: null },
+        settings: { adult: false, diaryMax: null }, colors: {},
       },
     };
     this._wire(room);
@@ -133,7 +133,7 @@ export const party = {
         name: ann?.name ?? meta?.name ?? "house party", vibe: ann?.vibe ?? meta?.vibe ?? "chill",
         cap: ann?.cap ?? meta?.cap ?? PARTY.CAP_MAX, code: id.slice(6),
         hostId: ann?.hostId ?? null, hostName: ann?.hostName ?? "the host",
-        privacy: ann?.privacy ?? "private", settings: { adult: false, diaryMax: null },
+        privacy: ann?.privacy ?? "private", settings: { adult: false, diaryMax: null }, colors: {},
       },
     };
     this._wire(room);
@@ -181,6 +181,7 @@ export const party = {
       if (this.current !== c) return;
       if (room.isHost) {
         c.meta.hostId = this.me.id; c.meta.hostName = this.me.handle;
+        this._assignColors();
         if (FLAGS.PUBLIC_PARTIES && !directory.announcing) this._announce();
         this._sendMeta();
         this._enforceCap();
@@ -193,7 +194,7 @@ export const party = {
     room.on("hello", () => { if (room.isHost) this._sendMeta(); });
     room.on("meta", m => {
       if (room.isHost) return;
-      c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) } };
+      c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) }, playing: m.playing ?? null, colors: m.colors ?? c.meta.colors ?? {} };
       c.queue = m.queue ?? null;
       for (const id of m.diaryUsed ?? []) c.session.diaryUsed.add(id);
       this.render();
@@ -208,6 +209,8 @@ export const party = {
       this.renderChat();
     });
     room.on("launch", m => this._onLaunch(m));
+    // someone picked a different diary color; the host keeps them unique
+    room.on("color", m => { if (room.isHost && this._setColor(m.from, m.idx)) { this._sendMeta(); this._renderDiary(); } });
     room.on("full", m => { if (m.id === this.me.id) { this.leave(); this.err(`that party is full (cap ${m.cap})`); } });
   },
   _sendMeta() {
@@ -215,7 +218,43 @@ export const party = {
     c.room.send("meta", {
       name: c.meta.name, vibe: c.meta.vibe, cap: c.meta.cap, hostName: this.me.handle, queue: c.queue,
       privacy: c.meta.privacy, settings: c.meta.settings, diaryUsed: [...c.session.diaryUsed],
+      // a game in progress: someone who joins now waits in the lobby for the next one
+      playing: c.launched ? c.playing ?? null : null,
+      colors: c.meta.colors,
     });
+  },
+  // host: every member gets a diary color nobody else here has. A new
+  // arrival starts from a color picked by their id (so first parties aren't
+  // all red) and takes the next free one. Colors of people who left free up.
+  _assignColors() {
+    const c = this.current; if (!c) return;
+    const ids = c.room.members.map(m => m.id);
+    const cur = c.meta.colors ?? {};
+    const out = {};
+    for (const id of ids) if (Number.isInteger(cur[id])) out[id] = cur[id];
+    const taken = new Set(Object.values(out));
+    const n = DIARY.COLORS.length;
+    for (const id of ids) {
+      if (id in out) continue;
+      let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      for (let k = 0; k < n; k++) { const i = (h + k) % n; if (!taken.has(i)) { out[id] = i; taken.add(i); break; } }
+    }
+    c.meta.colors = out;
+  },
+  _setColor(id, idx) {
+    const c = this.current;
+    idx = +idx;
+    if (!c || !Number.isInteger(idx) || idx < 0 || idx >= DIARY.COLORS.length) return false;
+    if (!c.room.presence[id]) return false;
+    if (Object.entries(c.meta.colors ?? {}).some(([k, v]) => v === idx && k !== id)) return false;
+    c.meta.colors = { ...c.meta.colors, [id]: idx };
+    return true;
+  },
+  pickColor(idx) {
+    const c = this.current; if (!c) return;
+    if (c.room.isHost) { if (this._setColor(this.me.id, idx)) { this._sendMeta(); this._renderDiary(); } }
+    else c.room.send("color", { idx });
+    sfx.pop();
   },
   // host: anyone past the cap (by join order) is told to leave
   _enforceCap() {
@@ -276,6 +315,7 @@ export const party = {
     const g = gameById(m.game);
     if (!g) { this.err(`unknown game "${m.game}"`); return; }
     c.launched = true;
+    c.playing = g.title;
     this.pickerOpen = false;
     $("party-panel").hidden = true;
     const humans = c.room.members.map(x => ({ id: x.id, handle: x.handle, avatar: x.avatar }));
@@ -294,6 +334,7 @@ export const party = {
   _onGameEnd(c) {
     if (this.current !== c) return;
     c.launched = false;
+    c.playing = null;
     trash.flush("game ended");           // uploaded photos + entries go now
     $("party-panel").hidden = false;
     if (c.room.isHost) this._sendMeta();  // shares the session's used prompts
@@ -386,6 +427,7 @@ export const party = {
       <div class="pt-bottom">
         <div id="pt-next" class="pt-next"></div>
         <div id="pt-err" class="pt-err"></div>
+        <div id="pt-diary" class="pt-diary"></div>
         <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="say something&hellip;" autocomplete="off"><button type="submit">&#8593;</button></form>
       </div>
       <div id="pt-picker" class="pt-picker" hidden></div>`;
@@ -438,6 +480,20 @@ export const party = {
     c.lobby?.sync();
     this._renderNext();
     this._renderPicker();
+    this._renderDiary();
+  },
+  // your diary color: a row of swatches, yours ringed, other people's dimmed
+  _renderDiary() {
+    const c = this.current; const el = $("pt-diary"); if (!c || !el) return;
+    const colors = c.meta.colors ?? {};
+    const mine = colors[this.me.id];
+    const taken = new Set(Object.entries(colors).filter(([k]) => k !== this.me.id).map(([, v]) => v));
+    const sig = `${mine}:${[...taken].sort().join(",")}`;
+    if (el.dataset.sig === sig) return;
+    el.dataset.sig = sig;
+    el.innerHTML = `<span>your diary</span><div class="pt-swatches">${DIARY.COLORS.map((hex, i) =>
+      `<button type="button" class="pt-sw ${i === mine ? "on" : ""}" style="--sw:${hex}" data-sw="${i}" ${taken.has(i) ? "disabled" : ""} aria-label="${DIARY.COLOR_NAMES[i]} diary${taken.has(i) ? " (taken)" : ""}"></button>`).join("")}</div>`;
+    el.querySelectorAll("[data-sw]").forEach(b => b.onclick = () => this.pickColor(+b.dataset.sw));
   },
 
   // the "up next" bar under the room
@@ -448,7 +504,8 @@ export const party = {
     const g = c.queue ? gameById(c.queue.game) : null;
     const opts = g ? [optionsLabel(g, c.queue.options), g.describe?.(c.meta)].filter(Boolean).join(" · ") : "";
     const need = g ? Math.max(0, minFor(g) - n) : 0;
-    const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}`;
+    const playing = !isHost && c.meta.playing;      // a game started before you got here
+    const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}:${playing || ""}`;
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     const card = g
@@ -462,7 +519,7 @@ export const party = {
       $("pt-open-picker").onclick = () => { this.pickerOpen = true; this._renderPicker(); };
       const st = $("pt-start"); if (st) st.onclick = () => this.launch();
     } else {
-      el.innerHTML = card + `<div class="pt-next-wait">${g ? (need ? `waiting for ${need} more` : `waiting for ${esc(host)} to start`) : "hang out — walk around"}</div>`;
+      el.innerHTML = card + `<div class="pt-next-wait" id="pt-wait">${playing ? `${esc(playing)} is on — you're in the next one` : g ? (need ? `waiting for ${need} more` : `waiting for ${esc(host)} to start`) : "hang out — walk around"}</div>`;
     }
   },
 

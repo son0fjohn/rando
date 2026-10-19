@@ -32,23 +32,34 @@ export const DIARY = {
   // The prompt pool is a separate, editable JSON file: web/data/diary_prompts.json
   // ({ id, text, type: "written" | "yesno", level: "mild" | "spicy" | "unhinged" }).
   POOL_URL: "data/diary_prompts.json",
-  ROUNDS: 6,                     // one prompt per round
   LEVELS: ["mild", "spicy", "unhinged"],
   // Default max level when the host never touches the setting. Unhinged is
   // never a default and needs the party's 18+ setting on.
   DEFAULT_MAX: { public: "mild", private: "spicy" },
-  // Escalation: the cap for round r is min(this, host max).
-  // Rounds 1-2 mild, 3-4 up to spicy, 5+ up to the host's max.
-  CURVE: [{ upTo: 2, cap: "mild" }, { upTo: 4, cap: "spicy" }, { upTo: Infinity, cap: "max" }],
-  // Inside a round's cap, how often to serve the cap level itself rather than
-  // something milder — so the curve is felt, but not every prompt is maxed.
+  // A game is one batch: the host deals BATCH questions (BATCH_MIN..BATCH_MAX),
+  // everyone answers them all at once, then they're revealed one at a time.
+  BATCH: 5, BATCH_MIN: 3, BATCH_MAX: 8,
+  // Escalation inside a batch: the cap for a card at position i of n is set
+  // by how far through the batch it is, never above the host's max. Cards
+  // are then sorted mild -> spicy -> unhinged so the reveal escalates.
+  CURVE: [{ upTo: 0.4, cap: "mild" }, { upTo: 0.8, cap: "spicy" }, { upTo: Infinity, cap: "max" }],
+  // Inside a card's cap, how often to serve the cap level itself rather than
+  // something milder — so the curve is felt, but not every card is maxed.
   CAP_BIAS: 0.6,
-  // Roughly 1 in 3 rounds is yes/no: one yes/no slot in each block of 3.
-  YESNO_EVERY: 3,
-  PREVIEW_MS: 5000,              // host sees the prompt first, with Skip
-  WRITE_MS: 90000,               // written: answer window
-  YESNO_MS: 20000,               // yes/no: tap window
-  GUESS_MS: 60000,               // matching / guessing window
+  // About 1 card in 3 is yes/no, when there are yes/no prompts left at the level.
+  YESNO_SHARE: 1 / 3,
+  DEAL_MS: 90000,                // host's deal screen; sends by itself after this
+  ANSWER_MS_PER_Q: 36000,        // answer window: 36 s per question (5 -> 3 min)
+  GUESS_MS: 60000,               // each question's matching / guessing window
+  GUESS_MS_PER_EXTRA: 5000,      // + this per written answer beyond 6 (big rooms)
+  GUESS_MS_MAX: 90000,
+  // Diary colors. Everyone at a party gets their own (unique, picked in the
+  // lobby); in a reveal the diaries get fresh random colors per question so a
+  // color never points at a person. One model, tinted in code.
+  COLORS: ["#c0392b", "#e67e22", "#d4ac0d", "#7cb342", "#1e8449", "#16a085",
+           "#3498db", "#2c3e9e", "#8e44ad", "#e84393", "#8d5a3b", "#5d6d7e"],
+  COLOR_NAMES: ["red", "orange", "mustard", "lime", "green", "teal",
+                "sky", "navy", "violet", "pink", "brown", "slate"],
 };
 export const MISSION = {
   // How missions reach players. The host picks per game in the lobby:
