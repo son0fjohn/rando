@@ -142,7 +142,12 @@ try {
   await A.mouse.click(sb.x + sb.width * target[0] / 752, sb.y + sb.height * target[1] / 1344);
   ok(await until(B, () => window.party.current.lobby.where("u-alice")?.walking), "a tap walks you, and the others see you walking");
   await sleep(6000);
-  const onA = await standing(A, "u-alice"), onB = await standing(B, "u-alice");
+  // a background tab may not draw frames at all (WebKit); look at bob's
+  // phone the way bob would, in front
+  await B.bringToFront(); await sleep(400);
+  const onB = await standing(B, "u-alice");
+  await A.bringToFront();
+  const onA = await standing(A, "u-alice");
   ok(Math.hypot(onA.x - target[0], onA.y - target[1]) < 40, `you walk to where you tapped (${Math.round(before.x)},${Math.round(before.y)} -> ${Math.round(onA.x)},${Math.round(onA.y)})`);
   ok(Math.hypot(onA.x - onB.x, onA.y - onB.y) < 2, "everyone sees you end up in the same spot");
   await B.fill("#pt-chat-input", "who's ready??");

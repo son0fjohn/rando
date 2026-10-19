@@ -403,7 +403,9 @@ export class LobbyRoom {
     if (this._raf) return;
     let last = performance.now();
     const step = now => {
-      const dt = Math.min(0.1, (now - last) / 1000); last = now;
+      // a tab that wasn't drawing (app in the background, phone locked)
+      // catches up in one step instead of 0.1 s a frame
+      const dt = Math.min(10, (now - last) / 1000); last = now;
       let moving = false;
       for (const [id, p] of this.people) {
         if (!p.path.length) { if (p.walking) { p.walking = false; p.el.classList.remove("walking"); } continue; }
