@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>party room sprites — check</title>
+<!-- Dev page: three test characters with different cosmetics, rendered by
+     web/charsprite.js (real avatar3 models, flattened), every facing and
+     walk frame, plus the silhouette fallback. node test/charsprite_shots.mjs
+     screenshots it. -->
+<base href="/web/">
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<style>
+  body { margin:0; padding:16px; background:#141838; color:#f2f4ff; font:14px/1.4 system-ui,sans-serif; }
+  h2 { font-size:15px; margin:14px 0 6px; }
+  .chars { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-end; }
+  .who { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .who small { color:#9aa3d9; max-width:200px; text-align:center; }
+  .spr { image-rendering:pixelated; background-repeat:no-repeat; }
+  .sheet { image-rendering:pixelated; background:#1e2452; }
+  #info { white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; color:#9aa3d9; }
+</style>
+</head>
+<body>
+<div id="info">loading…</div>
+<h2>down · left · right (flipped) · up — 4×</h2>
+<div class="chars" id="big"></div>
+<h2>full sheets: stand + 4 walk frames, per facing (3×)</h2>
+<div class="chars" id="sheets"></div>
+<h2>reference: the same 3D models, lit and textured (front · side · back)</h2>
+<div class="chars" id="ref"></div>
+<h2>fallback pixel figures (if 3D can't render): down · left · up</h2>
+<div class="chars" id="fb"></div>
+<script type="module">
+import { spriteFor, silhouetteFor, SPRITE } from "/web/charsprite.js";
+const { W, H, COLS } = SPRITE;
+const CHARS = [
+  { name: "mina", cfg: { skin: "1", hair: "f2", hairColor: "red", face: "f2", iris: "blue", top: "hoodie-maroon", bottom: "skirt-pleated-black", shoes: "clog-pink" } },
+  { name: "jun", cfg: { skin: "3", hair: "m2", hairColor: "black", face: "f4", iris: "brown", top: "tee-white-graphic", bottom: "cargo-khaki", shoes: "sneaker-white-lowtop" } },
+  { name: "sol", cfg: { skin: "5", hair: "f4", hairColor: "yellow", face: "f6", iris: "green", top: "tee-baggy-black", bottom: "jeans-baggy-blue", shoes: "boot-work-tan" } },
+];
+const label = c => Object.entries(c.cfg).map(([k, v]) => `${k} ${v}`).join(" · ");
+const frame = (url, row, col, s) => `<div class="spr" style="width:${W * s}px;height:${H * s}px;background-image:url(${url});background-size:${W * COLS * s}px ${H * 3 * s}px;background-position:${-col * W * s}px ${-row * H * s}px"></div>`;
+const info = document.getElementById("info");
+const t0 = performance.now();
+const out = [];
+for (const c of CHARS) {
+  const t = performance.now();
+  const sh = await spriteFor(c.cfg);
+  out.push({ ...c, sh, ms: Math.round(performance.now() - t) });
+  info.textContent = out.map(o => `${o.name}: ${o.sh.fallback ? "FALLBACK" : "3d"}${o.sh.anim ? " + walk rig" : ""} · ${o.ms} ms`).join("\n");
+}
+document.getElementById("big").innerHTML = out.map(o => `<div class="who"><div class="chars">${frame(o.sh.url, 0, 0, 4)}${frame(o.sh.url, 1, 0, 4)}<div style="transform:scaleX(-1)">${frame(o.sh.url, 1, 0, 4)}</div>${frame(o.sh.url, 2, 0, 4)}</div><b>${o.name}</b><small>${label(o)}</small></div>`).join("");
+document.getElementById("sheets").innerHTML = out.map(o => `<div class="who"><img class="sheet" src="${o.sh.url}" width="${W * COLS * 3}" height="${H * 3 * 3}"><b>${o.name}</b></div>`).join("");
+document.getElementById("fb").innerHTML = CHARS.map(c => { const u = silhouetteFor(c.cfg).url; return `<div class="who"><div class="chars">${frame(u, 0, 0, 4)}${frame(u, 1, 0, 4)}${frame(u, 2, 0, 4)}</div><b>${c.name}</b></div>`; }).join("");
+// reference renders of the same configs, to check the sprites read as them
+{
+  const THREE = await import("three");
+  const A = await import("/web/avatar3.js");
+  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  r.setSize(120, 210); r.outputColorSpace = THREE.SRGBColorSpace;
+  const sc = new THREE.Scene();
+  sc.add(new THREE.AmbientLight(0xffffff, 1.6));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.6); dl.position.set(10, 20, 30); sc.add(dl);
+  const cam = new THREE.OrthographicCamera(-4.6, 4.6, 16.2, -0.4, 1, 200); cam.position.set(0, 0, 60);
+  const html = [];
+  for (const c of CHARS) {
+    const ch = await A.makeHumanCharacter(c.cfg); await ch.ready;
+    sc.add(ch.group);
+    const imgs = [0, Math.PI / 2, Math.PI].map(y => { ch.group.rotation.y = y; r.render(sc, cam); return `<img src="${r.domElement.toDataURL()}" width="120" height="210">`; });
+    sc.remove(ch.group); ch.dispose();
+    html.push(`<div class="who"><div class="chars">${imgs.join("")}</div><b>${c.name}</b></div>`);
+  }
+  document.getElementById("ref").innerHTML = html.join("");
+}
+info.textContent += `\ntotal ${Math.round(performance.now() - t0)} ms`;
+window.__done = true;
+</script>
+</body>
+</html>
