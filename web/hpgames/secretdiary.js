@@ -14,22 +14,30 @@
 //             a question someone left blank is skipped for them, and every
 //             answer they did give counts (each is saved as it's given, so a
 //             player who drops or runs out of time keeps what they wrote).
-//   reveal  — one question at a time, in batch order:
-//             written — every answer at once, unattributed, shuffled; everyone
-//                       privately matches answers to players. A point per
-//                       correct match.
-//             yes/no  — only the count ("3 of 8 said yes", softened at the
-//                       edges by countLine); everyone privately picks who they
-//                       think said yes. A point per person read right (picked
-//                       and said yes, or left out and said no), so picking
-//                       everyone isn't a free win.
+//   reveal  — one question at a time, in batch order: one locked diary per
+//             player who answered, shuffled, unlocked one by one.
+//             written — the diaries open on the answers; everyone privately
+//                       matches answers to players. A point per correct match.
+//             yes/no  — the diaries open on YES / NO stamps and the count
+//                       ("3 of 8 said yes", softened at the edges by
+//                       countLine, which also blurs the stamps); everyone
+//                       privately picks who they think said yes. A point per
+//                       person read right (picked and said yes, or left out
+//                       and said no), so picking everyone isn't a free win.
 //             Ends when everyone's locked in or after GUESS_MS.
-//   end     — total scores, avatars, the winner. Nothing else.
+//   points  — after each question: everyone's points on it and the running
+//             totals. Numbers only.
+//   end     — total scores, avatars, the winner. The host can deal a new
+//             batch from here.
 //
-// Nothing about any individual is ever revealed: not who wrote what, not who
-// said yes, not which guesses were right. Scores stay hidden until the final
-// screen, because a running score would let you subtract your way to which
-// guess landed.
+// Diary colors are the deduction: when the batch is sent every player is
+// dealt a color, unique in the room, kept for the writing diary and every
+// reveal in the batch (s.colorOf). Follow a color from question to question
+// and you can work out whose it is. Nothing on any screen ever pairs a color
+// with a name, and the next batch reshuffles them.
+//
+// Nothing else about any individual is revealed: not who wrote what, not who
+// said yes, not which guesses were right.
 //
 // Cards are dealt on an escalation curve by position (first ~40% mild, then
 // up to spicy, then up to the host's max) and sorted mild -> spicy ->
@@ -56,6 +64,21 @@ const params = new URLSearchParams(location.search);
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
 const ANSWER_MAX = 140;
 const END_MS = 22000;
+// one 10x10 path per diary shape (DIARY.SHAPES)
+const SHAPE_PATHS = {
+  circle: "M5 1a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z",
+  star: "M5 .6l1.3 2.9 3.1.3-2.4 2 .8 3.1L5 7.3 2.2 8.9 3 5.8.6 3.8l3.1-.3Z",
+  square: "M1.5 1.5h7v7h-7Z",
+  triangle: "M5 1 9.2 8.6H.8Z",
+  diamond: "M5 .6 9.4 5 5 9.4.6 5Z",
+  plus: "M3.6 1h2.8v2.6H9v2.8H6.4V9H3.6V6.4H1V3.6h2.6Z",
+  heart: "M5 9 1.3 5.2A2.3 2.3 0 0 1 5 2.4a2.3 2.3 0 0 1 3.7 2.8Z",
+  flower: "M5 .8a2 2 0 0 1 2 2 2 2 0 1 1 0 4.4 2 2 0 1 1-4 0 2 2 0 1 1 0-4.4 2 2 0 0 1 2-2Z",
+  bolt: "M6 .5 1.8 5.6h2.9L3.8 9.5 8.2 4.2H5.3Z",
+  moon: "M6.5 1a4.2 4.2 0 1 0 2.6 7A3.4 3.4 0 0 1 6.5 1Z",
+  ring: "M5 .8a4.2 4.2 0 1 1 0 8.4A4.2 4.2 0 0 1 5 .8Zm0 2.2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z",
+  cross: "M2 .6 5 3.6 8 .6 9.4 2 6.4 5l3 3L8 9.4l-3-3-3 3L.6 8l3-3-3-3Z",
+};
 const LV = DIARY.LEVELS;
 const rank = l => LV.indexOf(l);
 // written answers above this many candidates get a dropdown instead of chips
@@ -169,6 +192,8 @@ export const SECRET_DIARY = {
           s.startedAt = Date.now();
           for (const c of s.batch) if (!s.used.includes(c.id)) s.used.push(c.id);
           for (const p of Object.values(s.players)) { p.answers = {}; p.at = {}; p.done = false; }
+          // this batch's diary colors: one per player, no two alike
+          s.colorOf = dealColors(Object.keys(s.players));
         },
         done: s => active(s).every(p => p.done),
         // collect HERE, not in an exit hook: Rounds evaluates next() before
@@ -335,8 +360,9 @@ export const SECRET_DIARY = {
       s.qs = []; s.keys = [];
       s.batch.forEach((c, k) => {
         const A = shuffle(game.rng, Object.values(s.players).filter(p => p.answers[k] !== undefined));
-        // one diary per answer, each a fresh random color (see dealColors)
-        const q = { cands: A.map(p => p.id).sort(), entries: [], countLabel: null, countOf: A.length, playable: false, colors: dealColors(A.length) };
+        // one diary per answer, in its writer's color for this batch (the
+        // list is aligned with the shuffled diaries, never keyed by player)
+        const q = { cands: A.map(p => p.id).sort(), entries: [], countLabel: null, countOf: A.length, playable: false, colors: A.map(p => colorIdx(s, p.id)) };
         if (c.type === "written") {
           q.entries = A.map((p, i) => ({ eid: `q${k}e${i}`, text: p.answers[k] }));
           s.keys[k] = Object.fromEntries(A.map((p, i) => [`q${k}e${i}`, p.id]));
@@ -344,12 +370,11 @@ export const SECRET_DIARY = {
         } else {
           const yes = A.filter(p => p.answers[k] === "yes").length;
           q.countLabel = countLine(yes, A.length);
-          // the diaries open on YES / NO stamps, shuffled apart from who
-          // answered. When the count is softened, the stamps would give the
-          // exact number away, so they're never sent: everyone sees blurred
-          // stamps and the soft wording.
+          // each diary opens on its writer's YES / NO stamp. When the count is
+          // softened, the stamps would give the exact number away, so they're
+          // never sent: everyone sees blurred stamps and the soft wording.
           q.soft = yes <= 1 || yes >= A.length - 1;          // exactly when countLine softens
-          q.stamps = q.soft ? null : shuffle(game.rng, A.map(p => p.answers[k]));
+          q.stamps = q.soft ? null : A.map(p => p.answers[k]);
           s.keys[k] = Object.fromEntries(A.map(p => [p.id, p.answers[k] === "yes"]));
           q.playable = A.length >= 2;
         }
@@ -359,10 +384,14 @@ export const SECRET_DIARY = {
       for (const p of Object.values(s.players)) { p.answers = {}; p.at = {}; }
     }
 
-    // Diary colors for one question's n diaries: a fresh random deal every
-    // question, no two alike, never tied to a player (nobody picks a color,
-    // and the writing-phase color is random on each phone and never sent)
-    const dealColors = n => shuffle(game.rng, DIARY.COLORS.map((_, i) => i)).slice(0, n);
+    // A batch's diary colors: a random palette index per player, no two alike
+    // (the palette is as big as the party cap; desk-test bots past it wrap).
+    // Nobody picks one, and nothing on screen pairs a color with a name.
+    const dealColors = ids => {
+      const deck = shuffle(game.rng, DIARY.COLORS.map((_, i) => i));
+      return Object.fromEntries(shuffle(game.rng, ids).map((id, i) => [id, deck[i % deck.length]]));
+    };
+    const colorIdx = (s, id) => s.colorOf?.[id] ?? 0;
 
     function score(s, k) {
       const key = s.keys[k], c = s.batch[k];
@@ -435,6 +464,8 @@ export const SECRET_DIARY = {
     const levelPill = l => `<span class="sd-level ${l}">${l}</span>`;
     const typePill = t => `<span class="sd-type">${t === "yesno" ? "yes or no" : "written"}</span>`;
     const pills = c => `<div class="sd-pills">${typePill(c.type)}${levelPill(c.level)}</div>`;
+    // the shape that goes with a diary color (colorblind-safe second cue)
+    const shape = c => { const n = DIARY.SHAPES[c] ?? DIARY.SHAPES[0]; return `<svg class="sd-sym" viewBox="0 0 10 10" aria-label="${n}" role="img"><path fill-rule="evenodd" d="${SHAPE_PATHS[n]}"/></svg>`; };
     const stamp = (v, cls = "") => v ? `<span class="sd-stamp ${v === "yes" ? "yes" : "no"} ${cls}">${v === "yes" ? "YES" : "NO"}</span>` : `<span class="sd-stamp blur ${cls}">?</span>`;
     const answeredCount = (s, l) => s.batch.filter((c, k) => c.type === "written" ? !!(l.drafts[k] ?? "").trim() : !!l.yn[k]).length;
 
@@ -484,8 +515,12 @@ export const SECRET_DIARY = {
         showResults(P, {
           title: "Secret Diary", sub,
           note: s.why || "who wrote what, who said yes, and which guesses landed all stay secret — just the totals",
-        }, `<p class="ab-sub">back to the party in a moment</p>${hostSkip(ctx)}`);
+        }, ctx.isHost()
+          ? `<button type="button" class="pt-btn pt-primary" id="sd-again">deal a new batch ▶</button><p class="ab-sub">new colors, new questions · or back to the party in a moment</p>${hostSkip(ctx, "back to the party")}`
+          : `<p class="ab-sub">back to the party in a moment</p>`);
         bindHostSkip(game);
+        const again = $("sd-again");
+        if (again) again.onclick = () => { again.disabled = true; sfx.pop(); ctx.again?.(); game.input("skip"); };
       }
     }
 
@@ -587,8 +622,9 @@ export const SECRET_DIARY = {
       }).join("");
       const n = s.batch.length;
       // your diary: a random color on this phone only (never sent, never picked)
-      const myHex = DIARY.COLORS[l.myColor];
-      ui.stage(`answer all ${n}`, `<div class="sd-mydiary" id="sd-mydiary" style="--dc:${myHex}"><div class="sd-mydiary-vis"></div><span>your diary</span></div>
+      // your diary is in your color for this batch (only you see it next to "your")
+      const myC = s.colorOf?.[ctx.me.id] ?? l.myColor, myHex = DIARY.COLORS[myC];
+      ui.stage(`answer all ${n}`, `<div class="sd-mydiary" id="sd-mydiary" style="--dc:${myHex}"><div class="sd-mydiary-vis"></div><span>your diary ${shape(myC)}</span><small>your color all batch · only you know it's yours</small></div>
         <p class="ab-sub">nobody will ever see your name next to an answer. yes/no stays secret — only the total is ever shown.</p>
         <div class="sd-batch">${qs}</div>
         <div class="sd-foot" id="sd-foot"><div class="sd-prog"><b id="sd-mine">${answeredCount(s, l)}/${n}</b> answered · ${tl}</div>
@@ -677,7 +713,7 @@ export const SECRET_DIARY = {
         cellInner = i => `<div class="sd-dtext"><span>${esc(q.entries[i].text)}</span></div>${q.entries[i].eid === myEid ? `<span class="sd-dyours">yours</span>` : ""}`;
         // matching list: one row per diary, keyed by its color and number
         const rows = q.entries.map((e, i) => {
-          const sw = `<span class="sd-dsw" style="--dc:${hexOf(i)}">${i + 1}</span>`;
+          const sw = `<span class="sd-dsw" style="--dc:${hexOf(i)}">${shape(q.colors?.[i])}</span>`;
           if (e.eid === myEid) return `<div class="sd-match mine"><div class="sd-rowhead">${sw}<div class="sd-entry mine">${esc(e.text)}<span class="sd-mine">yours</span></div></div></div>`;
           return `<div class="sd-match"><div class="sd-rowhead">${sw}<div class="sd-entry">${esc(e.text)}</div></div>${pickUi(e, g(e.eid), "data-eid")}</div>`;
         }).join("");
@@ -685,7 +721,7 @@ export const SECRET_DIARY = {
         ui.stage(`${n} diaries — who wrote which?`, head
           + `<div class="sd-shelf-wrap"><div class="sd-shelf" id="sd-shelf"></div>${pager}<p class="sd-hint">tap a diary to read it</p></div>`
           + `<div class="sd-matchlist ${l.opened.size ? "" : "sealed"}" id="sd-list">${rows}</div>`
-          + `<div class="sd-prog"><b id="sd-matched">${todo.filter(e => g(e.eid)).length}/${todo.length}</b> matched</div>${foot}${hostSkip(ctx)}`, "unsigned · shuffled · random colors");
+          + `<div class="sd-prog"><b id="sd-matched">${todo.filter(e => g(e.eid)).length}/${todo.length}</b> matched</div>${foot}${hostSkip(ctx)}`, "unsigned · shuffled · same colors all batch");
         const P = panel();
         const used = () => { const u = new Set(todo.map(e => g(e.eid)).filter(Boolean)); P.querySelectorAll("[data-who]").forEach(b => b.classList.toggle("used", !b.classList.contains("on") && u.has(b.dataset.who))); };
         const prog = () => { const m = $("sd-matched"); if (m) m.textContent = `${todo.filter(e => g(e.eid)).length}/${todo.length}`; };
@@ -716,7 +752,7 @@ export const SECRET_DIARY = {
           + (q.soft ? `<p class="ab-sub sd-softnote ${sealed}">too close to all-or-nothing to show the stamps — just the rough count</p>` : "")
           + `<div class="sd-picks ${sealed}"><p class="ab-sub">tap everyone you think said yes. a point for every person you read right — yes or no.</p>
             <div class="sd-who sd-yn-pick">${cands.map(p => `<button type="button" class="${picked(p.id) ? "on" : ""}" data-pick="${esc(p.id)}" ${locked ? "disabled" : ""}>${esc(p.handle)}</button>`).join("")}</div></div>`
-          + `${foot}${hostSkip(ctx)}`, "unsigned · shuffled · random colors");
+          + `${foot}${hostSkip(ctx)}`, "unsigned · shuffled · same colors all batch");
         if (!locked) panel().querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
           const id = b.dataset.pick, on = !picked(id);
           l.picks[id] = on; b.classList.toggle("on", on);
@@ -737,7 +773,7 @@ export const SECRET_DIARY = {
         shelf.innerHTML = Array.from({ length: b - a }, (_, j) => {
           const i = a + j;
           return `<button type="button" class="sd-dcell ${already ? "open" : ""}" data-i="${i}" style="--dc:${hexOf(i)}" aria-label="diary ${i + 1}">
-            <div class="sd-dvis"></div>${cellInner(i)}<span class="sd-dnum">${i + 1}</span></button>`;
+            <div class="sd-dvis"></div>${cellInner(i)}<span class="sd-dnum" style="--dc:${hexOf(i)}">${shape(q.colors?.[i])}</span></button>`;
         }).join("");
         const pgEl = $("sd-pg"); if (pgEl) pgEl.textContent = `${pg + 1} / ${pages.length}`;
         const pv = $("sd-prev"), nx = $("sd-next");
@@ -800,7 +836,7 @@ export const SECRET_DIARY = {
         const hex = hexOf(i), mine = e.eid === myEid;
         const z = document.createElement("div");
         z.className = "sd-zoom";
-        z.innerHTML = `<div class="sd-zcard" style="--dc:${hex}"><div class="sd-zvis"></div><div class="sd-ztext">${esc(e.text)}</div><span class="sd-dnum">${i + 1}</span></div>
+        z.innerHTML = `<div class="sd-zcard" style="--dc:${hex}"><div class="sd-zvis"></div><div class="sd-ztext">${esc(e.text)}</div><span class="sd-dnum" style="--dc:${hex}">${shape(q.colors?.[i])}</span></div>
           ${mine ? `<p class="sd-hint">this one's yours</p>` : pickUi(e, g(e.eid), "data-zeid")}
           <button type="button" class="pt-btn sd-zclose">back to the shelf</button>`;
         P.querySelector(".stage").appendChild(z);

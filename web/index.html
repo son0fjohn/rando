@@ -1723,8 +1723,16 @@
     font:italic 600 10px/1.2 "Segoe Print","Bradley Hand","Comic Sans MS",cursive; color:#2a2440; text-align:center; word-break:break-word; opacity:0; transition:opacity .35s .1s; pointer-events:none; }
   .sd-dtext span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
   .sd-dcell.open .sd-dtext { opacity:1; }
-  .sd-dnum { position:absolute; left:2px; top:2px; z-index:2; min-width:20px; height:20px; border-radius:10px; padding:0 5px; box-sizing:border-box; background:var(--dc); color:#fff;
-    font:800 11px/20px system-ui,sans-serif; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.35); }
+  .sd-dnum { position:absolute; left:2px; top:2px; z-index:2; width:24px; height:24px; border-radius:50%; box-sizing:border-box; background:#1c1c1e;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.35); }
+  /* each diary color has its own shape, drawn in that color with a white edge:
+     a second cue for colorblind players, readable on every color */
+  .sd-sym { width:16px; height:16px; display:inline-block; vertical-align:-3px; overflow:visible; }
+  .sd-sym path { fill:var(--dc); stroke:#fff; stroke-width:1.1px; paint-order:stroke; stroke-linejoin:round; }
+  .sd-dnum .sd-sym { width:15px; height:15px; }
+  .sd-mydiary { flex-wrap:wrap; }
+  .sd-mydiary .sd-sym { margin-left:4px; }
+  .sd-mydiary small { flex-basis:100%; font-size:11px; font-weight:600; letter-spacing:0; text-transform:none; color:#8a94a4; }
   .sd-dyours { position:absolute; right:2px; top:3px; z-index:2; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#8a94a4; }
   .sd-dcell:not(.open) { cursor:default; }
   .sd-dcell.open:active { transform:scale(.97); }
@@ -1788,8 +1796,9 @@
   .sd-matchlist.sealed .sd-who, .sd-matchlist.sealed .sd-sel { opacity:.35; pointer-events:none; }
   .sd-rowhead { display:flex; align-items:flex-start; gap:8px; flex:1 1 100%; }
   .sd-rowhead .sd-entry { flex:1; min-width:0; margin:0; }
-  .sd-dsw { flex:none; width:20px; height:28px; margin-top:4px; border-radius:2px 4px 4px 2px; background:var(--dc); color:#fff; font:800 11px/28px system-ui,sans-serif; text-align:center;
-    box-shadow:inset 3px 0 0 rgba(0,0,0,.22); }
+  .sd-dsw { flex:none; width:24px; height:30px; margin-top:4px; border-radius:2px 4px 4px 2px; background:#1c1c1e; display:flex; align-items:center; justify-content:center;
+    box-shadow:inset 4px 0 0 var(--dc); }
+  .sd-dsw .sd-sym { width:14px; height:14px; margin-left:3px; }
   /* tap a diary: read it big */
   .sd-zoom { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
     padding:20px 16px calc(20px + env(safe-area-inset-bottom)); background:rgba(12,12,16,.78); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); animation:sd-fade .18s ease-out; }

@@ -306,6 +306,9 @@ export const party = {
       options: { ...defaultsFor(g), ...(m.options ?? {}) },
       session: c.session,
       onEnd: () => this._onGameEnd(c),
+      // host, from a game's results: run it again straight away (a new batch,
+      // and anyone who joined meanwhile is in)
+      again: () => { c.again = true; },
     };
     try { g.start(ctx); }
     catch (e) { console.warn("[party] game start", e); c.launched = false; $("party-panel").hidden = false; this.err(`${g.title} failed to start`); return; }
@@ -321,6 +324,7 @@ export const party = {
     $("party-panel").hidden = false;
     if (c.room.isHost) this._sendMeta();  // shares the session's used prompts
     this.render();
+    if (c.again) { c.again = false; if (c.room.isHost) setTimeout(() => { if (this.current === c && !c.launched) this.launch(); }, 400); }
     if (c.room.isHost && FLAGS.PUBLIC_PARTIES) this._announce();
   },
 

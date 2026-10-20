@@ -196,7 +196,7 @@ group("Secret Diary — the shelf: 3 to 6 diaries at a time");
     "every page holds 3-6 diaries and the pages cover every answer once (3-30)");
 }
 
-group("Secret Diary — diary colors: random, re-dealt every question, never two alike");
+group("Secret Diary — diary colors: one per player for the whole batch, never two alike, reshuffled next batch");
 for (const n of [4, 12]) {
   const t = seatTable(SECRET_DIARY, n);
   adv(300); t.input("p1", "send"); adv(400);
@@ -211,9 +211,27 @@ for (const n of [4, 12]) {
     return Array.isArray(q.colors) && q.colors.length === m && new Set(q.colors).size === m && q.colors.every(i => Number.isInteger(i) && i >= 0 && i < DIARY.COLORS.length);
   });
   ok(fine, `${n} players: every question — written and yes/no — gives each diary its own palette color`);
-  ok(Q.length < 2 || new Set(Q.map(({ q }) => q.colors.join())).size > 1, `${n} players: colors are re-dealt per question`);
-  ok(Q.every(({ q }) => !Object.keys(q).some(k => /color/i.test(k) && k !== "colors")) && !("colors" in (t.s.players.p1 ?? {})), "colors live only as a list beside the unsigned diaries — nothing keyed by player");
+  const col = t.s.colorOf ?? {};
+  ok(who.every(id => Number.isInteger(col[id])) && new Set(who.map(id => col[id])).size === n, `${n} players: everyone is dealt a batch color, no two alike`);
+  // every diary is in its writer's batch color, on every question
+  const steady = Q.every(({ q, k, type }) => type === "written"
+    ? q.entries.every((e, i) => q.colors[i] === col[t.s.keys[k][e.eid]])
+    : q.colors.every(c => Object.keys(t.s.keys[k]).some(id => col[id] === c)));
+  ok(steady, `${n} players: a diary keeps its writer's color on every question of the batch`);
+  ok(Q.every(({ q }) => !Object.keys(q).some(k => /color/i.test(k) && k !== "colors")) && !("colors" in (t.s.players.p1 ?? {})), "each question's colors are a list beside the unsigned diaries — nothing per question is keyed by player");
   ok(lockThrough(t, who), `${n} players: the game closes out`);
+}
+{
+  // the next batch reshuffles: deal two batches with the same seat and compare
+  const deal = seed => { const t = seatTable(SECRET_DIARY, 12, { seed }); adv(300); t.input("p1", "send"); adv(400); const c = { ...t.s.colorOf }; trash.flush("spec"); return c; };
+  const a = deal(11), b = deal(12);
+  ok(Object.keys(a).some(id => a[id] !== b[id]), "a new batch deals the colors again (12 players: different from the last batch)");
+  ok(DIARY.COLORS.length >= 12 && DIARY.SHAPES.length === DIARY.COLORS.length && new Set(DIARY.COLORS).size === DIARY.COLORS.length, "12 distinct colors, each with its own shape, for up to 12 players");
+  // colorblind: the palette spans light to dark, not just hues
+  const lin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const lum = h => { const [r, g, b] = [1, 3, 5].map(i => lin(parseInt(h.slice(i, i + 2), 16) / 255)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const L = DIARY.COLORS.map(lum).sort((x, y) => x - y);
+  ok(L[0] < 0.05 && L.at(-1) > 0.8 && L.filter(x => x < 0.08).length >= 3 && L.filter(x => x > 0.5).length >= 3, `brightness varies too (relative luminance ${L.map(x => x.toFixed(2)).join(" ")})`);
 }
 
 group("Secret Diary — yes/no stamps: blurred when the count is softened");
@@ -336,7 +354,8 @@ group("Secret Diary — a full game: answer the batch, reveal one by one, scorin
       ok(!q.entries.length, `q${k + 1}: no answers on show, just the number`);
       ok(!q.soft && Array.isArray(q.stamps) && q.stamps.length === 4 && q.stamps.filter(x => x === "yes").length === 2 && q.stamps.every(x => x === "yes" || x === "no"),
         `q${k + 1}: four diaries open on stamps, 2 YES and 2 NO, in a list that names nobody`);
-      ok(q.colors.length === 4 && new Set(q.colors).size === 4, `q${k + 1}: yes/no diaries get their own random colors too`);
+      ok(q.colors.length === 4 && new Set(q.colors).size === 4, `q${k + 1}: yes/no diaries are in their writers' colors too`);
+      ok(q.stamps.every((v, i) => Object.keys(key).some(id => t.s.colorOf[id] === q.colors[i] && (key[id] ? "yes" : "no") === v)), `q${k + 1}: each diary's stamp is its writer's answer`);
       t.input("p1", "pick", { who: "p2", on: true }); t.input("p1", "pick", { who: "p1", on: true });
       t.input("p2", "pick", { who: "p3", on: true }); t.input("p2", "pick", { who: "p3", on: false });
       adv(300);
@@ -372,10 +391,9 @@ group("Secret Diary — a full game: answer the batch, reveal one by one, scorin
     Object.assign(prev, expect);
   }
   ok(revealed.join() === "0,1,2,3,4", `all 5 questions revealed, in order (${revealed.join(",")})`);
-  // diary colors are dealt fresh for every question, so one color can't be
-  // followed through the batch (and it's never the writer's own lobby color)
-  const multi = Object.values(colorsOf).filter(cs => cs.length > 1), steady = multi.filter(cs => new Set(cs).size === 1).length;
-  ok(!multi.length || steady < multi.length, `colors are re-dealt per question — not every writer keeps one color (${steady}/${multi.length} did by chance)`);
+  // a writer keeps one color through the batch — that's the deduction
+  const multi = Object.values(colorsOf).filter(cs => cs.length > 1);
+  ok(multi.length > 0 && multi.every(cs => new Set(cs).size === 1), `every writer keeps one color through the batch (${multi.length} tracked)`);
   ok(t.s.phase === "end", "after the last question, the results");
   ok(!hudLeak, "no score while guessing — points only on the screen after each question");
   ok(SD_IDS(t).every(id => t.s.players[id].score === expect[id]), `scores: ${SD_IDS(t).map(id => `${id} ${t.s.players[id].score}/${expect[id]}`).join(", ")}`);

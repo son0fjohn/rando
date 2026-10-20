@@ -5,14 +5,16 @@
 // mid-answer and a sixth joins late (and waits for the next batch). Saves
 // phone-sized screenshots of each phase.
 //
-//   node test/diary_e2e.mjs [screenshot-dir] [--browser=webkit] [--diary=3d|sprite|css] [--video]
+//   node test/diary_e2e.mjs [screenshot-dir] [--browser=webkit] [--diary=3d|sprite|css] [--video|--video=batch]
 //
 // --diary pins how the diaries are drawn (default: whatever the phone picks).
 // --video (Chromium, needs a screenshot dir) screencasts bob's phone through
 // one full written question and one full yes/no question, from the unlock to
 // the points screen, into <dir>/written/ and <dir>/yesno/ as JPEG frames plus
 // an ffconcat list; with FFMPEG=/path/to/ffmpeg set it also writes
-// written.mp4 and yesno.mp4.
+// written.mp4 and yesno.mp4. --video=batch instead records the host's phone
+// through the whole batch, from the deal to the results, into <dir>/batch/
+// (batch.mp4).
 //
 // Same stack as party_e2e.mjs: real party.js, net.js, game module and CSS;
 // only the network, 3D and audio leaves are stubbed.
@@ -48,6 +50,9 @@ const browser = ENGINE === "webkit"
   : await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, args: ["--no-sandbox"] });
 const DIARY_MODE = process.argv.find(a => a.startsWith("--diary="))?.split("=")[1] ?? null;
 const VIDEO = process.argv.includes("--video") && SHOTS && ENGINE === "chromium";
+const BATCH_VIDEO = process.argv.includes("--video=batch") && SHOTS && ENGINE === "chromium";
+// when recording the batch, hold each beat long enough to watch (no-op otherwise)
+const pace = ms => BATCH_VIDEO ? new Promise(r => setTimeout(r, ms)) : null;
 const ctx = ENGINE === "webkit"
   ? await browser.newContext({ ...devices["iPhone 15"] })
   : await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
@@ -142,6 +147,7 @@ try {
   await A.click('[data-queue="secretdiary"]');
   await A.click("#pt-picker-done");
   ok(await until(E, () => /Secret Diary/.test(document.getElementById("pt-next")?.textContent ?? "") && /up to spicy/.test(document.getElementById("pt-next")?.textContent ?? "")), "everyone sees Secret Diary up next, up to spicy (private default)");
+  const batchCast = BATCH_VIDEO ? await screencast(A) : null;
   await A.click("#pt-start");
 
   // ------------------------------------------------------------------ deal
@@ -155,14 +161,18 @@ try {
   ok((await A.locator(".sd-card.yesno").count()) === 2, "2 of the 5 are yes/no");
   await shot(A, "01-deal-host");
   await shot(B, "02-deal-guest");
+  await A.bringToFront(); await pace(2500);
   const before = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
   await A.locator("[data-swap]").nth(2).click();
+  await pace(1800);
   ok(await until(A, b => { const now = [...document.querySelectorAll(".sd-card .sd-ctext > div:last-child")].map(e => e.textContent); return now.length === 5 && now.some(t => !b.includes(t)); }, before), "Swap replaces one card");
   const afterSwap = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
   ok(afterSwap.filter(t => !before.includes(t)).length === 1 && before.filter(t => !afterSwap.includes(t)).length === 1, "…just that one");
   await A.locator('[data-size]').last().click();
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 6), "+ makes it 6");
+  await pace(1500);
   await A.locator('[data-size]').first().click();
+  await pace(1500);
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "− back to 5");
   ok(await fits(A), "the deal screen fits the phone");
   // what really left the deck: the 5 sent, and the one swapped out (a card the
@@ -177,6 +187,11 @@ try {
   ok((await all(players, pg => until(pg, () => document.querySelectorAll(".sd-q").length === 5))).every(Boolean), "all 5 phones show all 5 questions on one screen");
   ok(/0\/5/.test(await text(B, "#sd-mine")), `progress starts at "${await text(B, ".sd-prog")}"`);
   ok(await fits(B), "the answer screen fits the phone");
+  // your diary is in your color for the whole batch; nobody else's shows
+  const myColor = {};
+  for (const pg of players) myColor[pg.label] = await pg.locator("#sd-mydiary").evaluate(e => e.style.getPropertyValue("--dc").trim());
+  ok(new Set(Object.values(myColor)).size === 5 && Object.values(myColor).every(c => /^#[0-9a-f]{6}$/i.test(c)), "each phone's diary has its own batch color, no two alike");
+  ok(!(await B.locator(".sd-q [style*='--dc']").count()) && (await B.locator(".sd-sym").count()) === 1, "you only see your own color and shape");
   await shot(B, "03-answer-empty");
   // a sixth phone turns up now: they wait for the next batch
   const F = await phone("fay", `&party=${code}`);
@@ -193,8 +208,9 @@ try {
     for (let k = 0; k < types.length; k++) {
       if (only && !only.includes(k)) { if (types[k] === "yesno") yn++; continue; }
       const q = pg.locator(".sd-q").nth(k);
-      if (types[k] === "written") await q.locator(".sd-in").fill(`${pg.label} answer ${k + 1}`);
-      else await q.locator(`[data-yn="${(yesBy[pg.label] ?? []).includes(yn++) ? "yes" : "no"}"]`).click();
+      // the recorded host types for real, so the answering reads on video
+      if (types[k] === "written") { if (BATCH_VIDEO && pg === A) { await q.locator(".sd-in").scrollIntoViewIfNeeded(); await q.locator(".sd-in").pressSequentially(`${pg.label} answer ${k + 1}`, { delay: 60 }); } else await q.locator(".sd-in").fill(`${pg.label} answer ${k + 1}`); }
+      else { await q.locator(`[data-yn="${(yesBy[pg.label] ?? []).includes(yn++) ? "yes" : "no"}"]`).click(); if (BATCH_VIDEO && pg === A) await pace(900); }
     }
     await pg.locator(".sd-in").first().blur().catch(() => {});
     if (!skipSubmit) await pg.click("#sd-submit");
@@ -243,8 +259,11 @@ try {
       const n = await B.locator(".sd-entry").count();
       ok(n === (k <= 2 ? 5 : 4), `${n} unsigned answers${k <= 2 ? " (dee's still count)" : " (dee never got to this one)"}`);
       ok((await B.locator(".sd-dcell").count()) === n && (await B.locator(".sd-dcell.open").count()) < n, `${n} closed, locked diaries on the shelf, one per answer`);
-      const dcs = await B.locator(".sd-dcell").evaluateAll(cs => cs.map(c => c.style.getPropertyValue("--dc")));
+      const dcs = await B.locator(".sd-dcell").evaluateAll(cs => cs.map(c => c.style.getPropertyValue("--dc").trim()));
       ok(new Set(dcs).size === n, "each diary its own color");
+      ok(dcs.every(c => Object.values(myColor).includes(c)), "every diary is in one of this batch's player colors");
+      const mineAt = await B.locator(".sd-dcell").evaluateAll(cs => cs.findIndex(c => c.querySelector(".sd-dyours")));
+      ok(mineAt >= 0 && dcs[mineAt] === myColor.bob, "bob's own diary is in bob's color, same as when he wrote it");
       if (!shotW) { await sleep(1100); await shot(B, "07a-reveal-unlocking"); }
       const unsealed = await Promise.all(live.map(pg => until(pg, () => !document.querySelector(".sd-matchlist.sealed"), null, 12000)));
       ok(unsealed.every(Boolean), "the padlocks drop and the diaries open on every phone");
@@ -277,8 +296,9 @@ try {
       // yes/no: a locked diary per player who answered, each opening on a stamp
       const n = await B.locator(".sd-dcell").count();
       ok(n >= 4 && n <= 5 && (await B.locator(".sd-dcell.open").count()) < n, `${n} closed, locked diaries — one per player who answered`);
-      const dcs = await B.locator(".sd-dcell").evaluateAll(cs => cs.map(c => c.style.getPropertyValue("--dc")));
+      const dcs = await B.locator(".sd-dcell").evaluateAll(cs => cs.map(c => c.style.getPropertyValue("--dc").trim()));
       ok(new Set(dcs).size === n, "each diary its own color");
+      ok(dcs.every(c => Object.values(myColor).includes(c)), "yes/no diaries are in the same batch colors");
       ok(!!(await B.locator(".sd-count.sealed").count()), "the count waits for the diaries to open");
       if (!shotY) { await sleep(1100); await shot(B, "08a-yesno-unlocking"); }
       const unsealed = await Promise.all(live.map(pg => until(pg, () => !document.querySelector(".sd-count.sealed"), null, 12000)));
@@ -299,6 +319,7 @@ try {
     const pts = await until(B, () => document.querySelectorAll(".sd-pts .sd-pt-row").length === 5, null, 20000);
     ok(pts, `after question ${k + 1}: the points screen, all five players`);
     const ptxt = await text(B, ".sd-pts");
+    ok(!(await B.locator(".sd-pts [style*='--dc'], .sd-pts .sd-sym").count()), "no diary color or shape anywhere near a name");
     ok(/\+\d/.test(ptxt) && !/answer \d|said yes|YES|NO\b/.test(ptxt), "points and totals only — no answers, no stamps, no right or wrong");
     if (!shotP) { shotP = true; await sleep(1700); await shot(B, "10-points"); }
     if (cast) { await sleep(3200); console.log(`  · screencast: ${await cast(join(SHOTS, hs.type))} frames of a ${hs.type} question, unlock to points`); }
@@ -314,18 +335,21 @@ try {
   ok(/left/.test(res), "dee is marked as having left");
   ok(!/answer \d|half a thou|\d of \d said yes|almost (nobody|everyone)/i.test(res), "totals only — no answers, no counts, no who-said-what");
   ok(await fits(B), "the results card fits the phone");
+  ok(!(await B.locator(".hp-results [style*='--dc'], .hp-results .sd-sym").count()), "no diary colors on the results");
+  if (batchCast) { await A.bringToFront(); await sleep(3000); console.log(`  · screencast: ${await batchCast(join(SHOTS, "batch"))} frames of the whole batch, deal to results`); }
+  ok((await A.locator("#sd-again").count()) === 1 && !(await B.locator("#sd-again").count()), "the host can deal a new batch from here");
   await shot(B, "09-results");
 
   // ------------------------------------------------------------------ next batch
-  head("Next batch — the late joiner is in");
-  ok(await until(A, () => !document.getElementById("party-panel").hidden, null, 40000), "back to the lobby");
+  head("Next batch — the host deals again, and the late joiner is in");
+  await A.click("#sd-again");
+  ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5, null, 20000), "'deal a new batch': straight to a fresh deal");
   ok(await until(F, () => !/you're in the next one/.test(document.getElementById("pt-wait")?.textContent ?? ""), null, 10000), "fay's 'next one' notice clears");
-  await A.click("#pt-start");
-  ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "a fresh deal");
   const second = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
   ok(!second.some(t => sent.includes(t) || swappedOut.includes(t)), "no card from the first game (sent or swapped) comes back");
   await A.click("#sd-send");
   ok(await until(F, () => document.querySelectorAll(".sd-q").length === 5, null, 15000), "fay gets the batch this time");
+  ok(/^#[0-9a-f]{6}$/i.test(await F.locator("#sd-mydiary").evaluate(e => e.style.getPropertyValue("--dc").trim())), "…with a diary color of her own");
   ok(errors.length === 0, "no page errors: " + (errors[0] ?? "none"));
 } catch (e) {
   ok(false, `crashed: ${e.message.split("\n")[0]}`);

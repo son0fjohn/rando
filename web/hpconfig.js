@@ -54,12 +54,19 @@ export const DIARY = {
   GUESS_MS_PER_EXTRA: 5000,      // + this per written answer beyond 6 (big rooms)
   GUESS_MS_MAX: 90000,
   POINTS_MS: 6000,               // the points screen after each question (the host can skip it)
-  // Diary colors: random, never picked. Your writing diary gets one at random;
-  // in a reveal every diary gets a fresh random color per question (no two
-  // alike on screen), so a color never points at a person. One model, tinted
-  // in code.
-  COLORS: ["#c0392b", "#e67e22", "#d4ac0d", "#7cb342", "#1e8449", "#16a085",
-           "#3498db", "#2c3e9e", "#8e44ad", "#e84393", "#8d5a3b", "#5d6d7e"],
+  // Diary colors: one per player for a whole batch. When the host sends the
+  // batch, every player is dealt a color (no two alike in the room) and keeps
+  // it for the writing diary and every reveal in that batch, so you can track
+  // a color from question to question and work out whose it is. Nobody picks
+  // one, nothing ever shows which color is whose, and the next batch
+  // reshuffles them. 12 colors (the party cap) that differ in brightness as
+  // well as hue, each with its own shape on the diary for colorblind players.
+  // One model, tinted in code.
+  COLORS: ["#e63946", "#ffd23f", "#1d3a8a", "#8ecae6", "#2a9d8f", "#a7e163",
+           "#6a1b9a", "#ff8fab", "#f77f00", "#5c3a21", "#f4f1e8", "#2b2d42"],
+  // shape per color, same order (see .sd-sym in index.html)
+  SHAPES: ["circle", "star", "square", "triangle", "diamond", "plus",
+           "heart", "flower", "bolt", "moon", "ring", "cross"],
 };
 export const MISSION = {
   // How missions reach players. The host picks per game in the lobby:
