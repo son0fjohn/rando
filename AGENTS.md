@@ -84,10 +84,12 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   per-guess results. Yes/no counts go through `countLine()` (softened at 0–1
   and all/all-but-one), and when a count is softened the YES/NO stamps are
   never sent (`q.stamps = null`): exact stamps would give the number away.
-- Secret Diary colors never point at a player: nobody picks one, the writing
-  diary's color is random on each phone and never sent, and reveal colors are
-  dealt fresh per question (`dealColors()`, no two alike), stored as a list
-  aligned with the unsigned diaries — never keyed by player.
+- Secret Diary colors are a deduction mechanic, not a label: each batch every
+  player is dealt one color (`s.colorOf`, no two alike, reshuffled next batch)
+  and keeps it for the writing diary and every reveal of that batch. Nobody
+  picks one, and no screen ever pairs a color (or its shape) with a name:
+  no color by names, avatars, name tags, results or the host's deal screen.
+  Per question, colors stay a list aligned with the unsigned diaries.
 - Manhunt must never send a coordinate off the phone. Only grid cells leave
   the device, and per-player cells stay out of the synced state.
 - The prompt log (`diary_prompt_log`) must never contain user ids, handles or
