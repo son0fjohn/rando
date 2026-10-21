@@ -1943,14 +1943,10 @@
   <div class="frame">
     <div id="bubble-layer"></div>
 
+    <!-- top-right: friends + the match chat, when there's something to show -->
     <div id="side-actions">
-      <button id="open-toggle" class="icon-btn" type="button" hidden title="Go open">&#128065;</button>
       <button id="friends-btn" class="icon-btn" type="button" hidden title="Friends">&#128101;</button>
-      <button id="match-btn" class="icon-btn" type="button" hidden title="Match me">&#127922;</button>
       <button id="chat-pill" class="icon-btn" type="button" hidden title="Chat">&#128172;</button>
-      <button id="recenter" class="icon-btn" type="button" hidden aria-label="Recenter on your character" title="Recenter">&#9678;</button>
-      <button id="rooms-btn" class="icon-btn rooms" type="button" title="Rooms &amp; quests">&#127922;</button>
-      <button id="party-btn" class="icon-btn party" type="button" title="House party">&#127968;</button>
     </div>
 
     <div id="zone-chip">
@@ -1961,9 +1957,29 @@
       <div class="zone-sub" style="opacity:.65">roads &copy; OpenStreetMap contributors</div>
     </div>
 
-    <button id="outfit-btn" type="button" hidden>Style</button>
-    <div id="outfit-sheet" hidden>
-      <p class="os-title">CUSTOMIZE YOUR RANDO <span class="os-note">mix anything &middot; colors, parts, extras</span></p>
+    <!-- the bottom bar: explore / host a party / style. Pull it down to
+         refresh nearby parties and people. -->
+    <div id="navbar" hidden>
+      <div id="nav-refresh" aria-hidden="true"><i></i></div>
+      <button id="nav-explore" class="nav-btn" type="button" aria-pressed="true">
+        <span class="nav-ico" aria-hidden="true"></span><span class="nav-lbl">hidden</span></button>
+      <button id="nav-host" class="nav-host" type="button" aria-label="Host a party">
+        <span class="nav-house" aria-hidden="true"></span><span class="nav-lbl">host</span></button>
+      <button id="nav-style" class="nav-btn" type="button">
+        <span class="nav-ico" aria-hidden="true"></span><span class="nav-lbl">style</span></button>
+    </div>
+    <button id="nav-backtome" class="y-btn small" type="button" hidden>&#9678; back to me</button>
+    <div id="npc-dlg"></div>
+    <div id="party-card" hidden></div>
+
+    <!-- style: your character, big, with the cosmetic slots under it -->
+    <div id="style-screen" hidden>
+      <div class="ss-top">
+        <button id="style-close" class="y-btn small dim" type="button" aria-label="Back to the map">&#9664; map</button>
+        <b>style</b>
+        <span id="style-mute"></span>
+      </div>
+      <div id="style-view"><small>drag to spin · pinch to zoom</small></div>
       <div id="outfit-tabs"></div>
       <div id="outfit-grid"></div>
     </div>
@@ -1997,7 +2013,8 @@
       <div class="hc-title">Welcome to Itaewon</div>
       <div class="hc-line">&#127747; Glowing venue names are the meet-up spots</div>
       <div class="hc-line">&#128172; Tap someone with a blue name to say hi</div>
-      <div class="hc-line">&#128065; Go open (the eye) so people can find you</div>
+      <div class="hc-line">&#128065; Tap the eye (bottom left) so people can find you</div>
+      <div class="hc-line">&#127968; Host a party from the big button</div>
       <button id="hint-got" type="button">Got it</button>
     </div>
 

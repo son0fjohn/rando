@@ -7,10 +7,11 @@
 
 // ---------------------------------------------------------------- flags
 export const FLAGS = {
-  // Public parties (a browsable directory of nearby parties) are OFF for this
-  // pass. With this false, parties are code/link only and nothing is
-  // announced to the shared directory.
-  PUBLIC_PARTIES: false,
+  // Public parties: the host can pick "public" when throwing a party; it's
+  // then listed nearby and shown on the map as a neon house in its ZONE
+  // (never the host's spot). Invite-only stays the default. false hides the
+  // choice: every party is code/link only and nothing is announced.
+  PUBLIC_PARTIES: true,
   // Spicy prompts are OFF by default. Flipping this to true serves the spicy
   // entries alongside the mild ones in every pool.
   SPICY: false,

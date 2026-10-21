@@ -5,6 +5,7 @@ import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { world3d, CHAR_H } from "./world3d.js";
 import { staticize, matteify } from "./avatar3.js";
+import { isMuted } from "./retro.js";
 
 // ---------------------------------------------------------------- audio
 let ctx = null;
@@ -18,6 +19,7 @@ function ac() {
   window.addEventListener(ev, () => { try { ac(); } catch {} }, { once: true, passive: true }));
 
 function tone(freq, dur, { type = "sine", gain = 0.18, attack = 0.005, release = 0.08, slide = null, at = 0 } = {}) {
+  if (isMuted()) return;
   const c = ac();
   const o = c.createOscillator(), g = c.createGain();
   o.type = type;
@@ -32,6 +34,7 @@ function tone(freq, dur, { type = "sine", gain = 0.18, attack = 0.005, release =
   o.start(t0); o.stop(t0 + dur + 0.02);
 }
 function noise(dur, { gain = 0.12, lp = 1200, lpEnd = 200, at = 0 } = {}) {
+  if (isMuted()) return;
   const c = ac();
   const n = Math.floor(c.sampleRate * dur);
   const buf = c.createBuffer(1, n, c.sampleRate);
@@ -61,6 +64,11 @@ export const sfx = {
   whistle() { try { tone(2100, 0.35, { type: "triangle", gain: 0.14, slide: 2300 }); tone(2300, 0.3, { type: "triangle", gain: 0.14, at: 0.4, slide: 1900 }); } catch {} },
   chime() { try { [1568, 2093, 2637].forEach((f, i) => tone(f, 0.6, { at: i * 0.09, gain: 0.08, release: 0.4 })); } catch {} },
   pop() { try { tone(700, 0.05, { gain: 0.12, slide: 1400 }); } catch {} },
+  // the retro UI set: dialog text blip, menu cursor, confirm, back
+  blip() { try { tone(1180 + Math.random() * 120, 0.035, { type: "square", gain: 0.035, attack: 0.002, release: 0.02 }); } catch {} },
+  cursor() { try { tone(1320, 0.04, { type: "square", gain: 0.05 }); } catch {} },
+  confirm() { try { tone(988, 0.06, { type: "square", gain: 0.06 }); tone(1480, 0.1, { type: "square", gain: 0.06, at: 0.06 }); } catch {} },
+  back() { try { tone(740, 0.06, { type: "square", gain: 0.05 }); tone(494, 0.09, { type: "square", gain: 0.05, at: 0.05 }); } catch {} },
   stamp() { try { noise(0.12, { gain: 0.25, lp: 1500, lpEnd: 400 }); tone(180, 0.12, { gain: 0.2, slide: 90 }); } catch {} },
 };
 export function buzz(pattern = 60) { try { navigator.vibrate?.(pattern); } catch {} }

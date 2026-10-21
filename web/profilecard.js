@@ -11,7 +11,7 @@
 //   * Block     — hides them and their chat from you, on this phone
 // Close: tap outside, swipe down, or the grip.
 import { esc } from "./hpkit.js";
-import { spriteFor, silhouetteFor } from "./charsprite.js";
+import { mountCharView } from "./charview.js";
 
 const REASONS = ["harassment", "hateful", "sexual", "spam", "something else"];
 
@@ -63,7 +63,8 @@ export function openCard(host, person, { me, isHost = false, friend = false, blo
     if (!ok) wrap.querySelectorAll("[data-reason]").forEach(x => { x.disabled = false; });
   });
 
-  show3d(wrap.querySelector("#y-card-3d"), person.avatar);
+  const view = mountCharView(wrap.querySelector("#y-card-3d"), person.avatar ?? {});
+  wrap._dispose = () => view.dispose();
 }
 
 export function close(host, now = false) {
@@ -73,49 +74,4 @@ export function close(host, now = false) {
   if (now) { wrap.remove(); return; }
   wrap.querySelector(".y-card")?.classList.add("closing");
   setTimeout(() => wrap.remove(), 160);
-}
-
-// their real character, lit softly, drag to rotate; the sprite if 3D fails
-async function show3d(box, avatar) {
-  const wrap = box.closest(".y-card-wrap");
-  const sprite = sh => { if (box.isConnected && !box.querySelector("canvas")) { box.querySelector(".y-card-spr")?.remove(); box.insertAdjacentHTML("afterbegin", `<div class="y-card-spr" style="background-image:url(${sh.url})"></div>`); } };
-  sprite(silhouetteFor(avatar));
-  spriteFor(avatar).then(sprite);
-  try {
-    const THREE = await import("https://esm.sh/three@0.160.0");
-    const A = await import("./avatar3.js");
-    if (!A.makeHumanCharacter || !box.isConnected) return;
-    const ch = await A.makeHumanCharacter(avatar ?? {});
-    await ch.ready;
-    if (!box.isConnected) { ch.dispose?.(); return; }
-    const w = box.clientWidth, h = box.clientHeight;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.setSize(w, h);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x3a3f7a, 1.9));
-    const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(6, 14, 18); scene.add(key);
-    const rim = new THREE.DirectionalLight(0x4de8c8, 1.2); rim.position.set(-10, 8, -12); scene.add(rim);
-    const cam = new THREE.PerspectiveCamera(30, w / h, 1, 200);
-    cam.position.set(0, 9, 34); cam.lookAt(0, 7.2, 0);
-    scene.add(ch.group);
-    box.querySelector(".y-card-spr")?.remove();
-    box.prepend(renderer.domElement);
-    let yaw = 0.35, vel = 0, dragging = false, lastX = 0, raf = 0, idle = 0;
-    box.addEventListener("pointerdown", e => { dragging = true; lastX = e.clientX; box.setPointerCapture?.(e.pointerId); });
-    box.addEventListener("pointermove", e => { if (!dragging) return; const dx = e.clientX - lastX; lastX = e.clientX; vel = dx * 0.012; yaw += vel; idle = 0; });
-    const up = () => { dragging = false; };
-    box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
-    const tick = () => {
-      if (!box.isConnected) { dispose(); return; }
-      if (!dragging) { vel *= 0.92; yaw += vel; if (++idle > 90) yaw += 0.006; }
-      ch.group.rotation.y = yaw;
-      renderer.render(scene, cam);
-      raf = requestAnimationFrame(tick);
-    };
-    const dispose = () => { cancelAnimationFrame(raf); ch.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); };
-    if (wrap) wrap._dispose = dispose;
-    tick();
-  } catch (e) { console.warn("[card] 3D preview unavailable", e); }
 }
