@@ -117,13 +117,14 @@
 .lr-front { position: absolute; pointer-events: none; background-repeat: no-repeat; image-rendering: pixelated; }
 .lr-av { position: absolute; left: 0; top: 0; width: var(--sw); height: var(--sh); pointer-events: none; will-change: transform; }
 .lr-av .lr-spr { position: absolute; inset: 0; pointer-events: auto; cursor: pointer; image-rendering: pixelated; background-repeat: no-repeat;
-  background-size: calc(var(--sw) * 5) calc(var(--sh) * 3); background-position: 0 calc(var(--sh) * var(--row) * -1);
+  background-size: calc(var(--sw) * 3) calc(var(--sh) * 3); background-position: 0 calc(var(--sh) * var(--row) * -1);
   animation: lr-breathe 1.6s steps(1) infinite; }
 .lr-av.flip .lr-spr { transform: scaleX(-1); }
-.lr-av.walking .lr-spr { animation: lr-walk .5s steps(4) infinite; }
+.lr-av.walking .lr-spr { animation: lr-walk .56s step-end infinite; }
 .lr-av.walking.nowalk .lr-spr { animation: lr-bob .3s steps(2) infinite; background-position-x: 0; }
 .lr-av.flip.walking.nowalk .lr-spr { animation-name: lr-bob-flip; }
-@keyframes lr-walk { from { background-position-x: calc(var(--sw) * -1); } to { background-position-x: calc(var(--sw) * -5); } }
+/* classic RPG walk: step A, idle, step B, idle (sheet columns 1, 0, 2, 0) */
+@keyframes lr-walk { 0% { background-position-x: calc(var(--sw) * -1); } 25% { background-position-x: 0; } 50% { background-position-x: calc(var(--sw) * -2); } 75% { background-position-x: 0; } }
 @keyframes lr-breathe { 0%, 60% { translate: 0 0; } 61%, 100% { translate: 0 var(--px); } }
 @keyframes lr-bob { 50% { translate: 0 calc(var(--px) * -2); } }
 @keyframes lr-bob-flip { 50% { translate: 0 calc(var(--px) * -2); } }
@@ -214,8 +215,8 @@
 .y-in-wipe { animation: y-wipe var(--y-slow) steps(6) both; }
 @keyframes y-wipe { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
 .y-in-pop { animation: y-pop var(--y-med) var(--y-pop) both; }
-.cv-spr { position: absolute; left: 50%; top: 50%; width: 128px; height: 160px; transform: translate(-50%, -50%); image-rendering: pixelated;
-  background-repeat: no-repeat; background-position: 0 0; background-size: 500% 300%; }
+.cv-spr { position: absolute; left: 50%; top: 50%; width: 100px; height: 150px; transform: translate(-50%, -50%); image-rendering: pixelated;
+  background-repeat: no-repeat; background-position: 0 0; background-size: 300% 300%; }
 .y-card-3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 /* ===================================================================== */
@@ -445,7 +446,7 @@
 .lr-light { position: absolute; inset: 0; background-size: 100% 100%; image-rendering: pixelated; mix-blend-mode: screen; pointer-events: none; animation: lr-flicker 5s steps(1) infinite; }
 @keyframes lr-flicker { 0%, 46%, 50%, 100% { opacity: 1; } 47%, 49% { opacity: .82; } }
 .lr-furn { position: absolute; background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
-.lr-furn.lr-tv { pointer-events: auto; cursor: pointer; }
+.lr-furn.lr-tv { pointer-events: auto; cursor: pointer; border: none; padding: 0; background-color: transparent; border-radius: 0; }
 .lr-lamp::before { content: ""; position: absolute; left: 50%; top: 4%; width: 300%; height: 60%; transform: translate(-50%, -30%); border-radius: 50%; pointer-events: none;
   background: radial-gradient(rgba(255,214,140,.45), transparent 65%); animation: lr-glow 3s ease-in-out infinite; }
 @keyframes lr-glow { 50% { opacity: .7; } }

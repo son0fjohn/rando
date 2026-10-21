@@ -155,7 +155,7 @@ for (const n of ["mina", "jae", "sol"]) {
 }
 // everyone wanders off the door spot: a tap on the floor, in room pixels
 const walkTo = (pg, x, y) => pg.evaluate(([x, y]) => {
-  const st = document.querySelector(".lr-stage"), r = st.getBoundingClientRect(), s = r.width / window.party.current.lobby.R.w;
+  const st = document.querySelector(".lr-stage"), r = st.getBoundingClientRect(), s = r.width / (window.party?.current?.lobby.R.w ?? 704);
   st.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: r.left + x * s, clientY: r.top + y * s, pointerId: 1 }));
 }, [x, y]);
 await walkTo(guests[0], 250, 640); await walkTo(guests[1], 520, 760); await walkTo(guests[2], 380, 980);
