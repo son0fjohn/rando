@@ -57,12 +57,12 @@ import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
 import { DIARY } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, pick, shuffle, showResults, hostSkip, bindHostSkip, trash, tally, avatarHtml } from "./../hpkit.js";
+import { ANSWER_MAX, spreadHtml, paintSpreads, fitAll, bindSpread, fitPreview, textOf } from "../diarypage.js";
 import { promptLog } from "./../hplog.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
-const ANSWER_MAX = 140;
 const END_MS = 22000;
 // one 10x10 path per diary shape (DIARY.SHAPES)
 const SHAPE_PATHS = {
@@ -612,51 +612,52 @@ export const SECRET_DIARY = {
         bindHostSkip(game);
         return;
       }
+      const n = s.batch.length;
+      // you write in your own diary, in your color for this batch (only you
+      // see it next to "your"): each question is the open diary, big, and the
+      // answer is written straight onto its pages
+      const myC = s.colorOf?.[ctx.me.id] ?? l.myColor, myHex = DIARY.COLORS[myC];
       const qs = s.batch.map((c, k) => {
         const field = c.type === "written"
-          ? `<input class="sd-in" data-k="${k}" maxlength="${ANSWER_MAX}" placeholder="a few words…" autocomplete="off" autocapitalize="sentences" enterkeyhint="next" value="${esc(l.drafts[k] ?? "")}">`
-          : `<div class="sd-ynpage" data-k="${k}"><div class="sd-stamp-slot" id="sd-slot-${k}">${l.yn[k] ? stamp(l.yn[k]) : `<span class="sd-stamp-hint">stamp your answer</span>`}</div>
-              <div class="sd-yn small" data-k="${k}"><button type="button" class="yes ${l.yn[k] === "yes" ? "on" : ""}" data-yn="yes" data-k="${k}">yes</button><button type="button" class="no ${l.yn[k] === "no" ? "on" : ""}" data-yn="no" data-k="${k}">no</button></div></div>`;
+          ? spreadHtml({ hex: myHex, text: l.drafts[k] ?? "", edit: { k, placeholder: "write it here…", label: `answer ${k + 1}` } })
+            + `<div class="sd-chars" id="sd-chars-${k}"><span>${(l.drafts[k] ?? "").length}</span>/${ANSWER_MAX}</div>`
+          : `<div class="sd-spread yn" style="--dc:${myHex}" data-k="${k}"><div class="sd-sp-vis"><i class="sd-sp-book"></i></div>
+              <div class="sd-sp-stamp" id="sd-slot-${k}">${l.yn[k] ? stamp(l.yn[k]) : `<span class="sd-stamp-hint">stamp your answer</span>`}</div></div>
+              <div class="sd-yn small" data-k="${k}"><button type="button" class="yes ${l.yn[k] === "yes" ? "on" : ""}" data-yn="yes" data-k="${k}">yes</button><button type="button" class="no ${l.yn[k] === "no" ? "on" : ""}" data-yn="no" data-k="${k}">no</button></div>`;
         return `<div class="sd-q ${c.type}" data-q="${k}"><div class="sd-qhead"><span class="sd-qn">${k + 1}</span>${pills(c)}</div>
           <div class="sd-prompt ${c.type}">${esc(c.text)}</div>${field}</div>`;
       }).join("");
-      const n = s.batch.length;
-      // your diary: a random color on this phone only (never sent, never picked)
-      // your diary is in your color for this batch (only you see it next to "your")
-      const myC = s.colorOf?.[ctx.me.id] ?? l.myColor, myHex = DIARY.COLORS[myC];
-      ui.stage(`answer all ${n}`, `<div class="sd-mydiary" id="sd-mydiary" style="--dc:${myHex}"><div class="sd-mydiary-vis"></div><span>your diary ${shape(myC)}</span><small>your color all batch · only you know it's yours</small></div>
+      ui.stage(`answer all ${n}`, `<div class="sd-mydiary" id="sd-mydiary" style="--dc:${myHex}"><span>your diary ${shape(myC)}</span><small>your color all batch · only you know it's yours</small></div>
         <p class="ab-sub">nobody will ever see your name next to an answer. yes/no stays secret — only the total is ever shown.</p>
         <div class="sd-batch">${qs}</div>
         <div class="sd-foot" id="sd-foot"><div class="sd-prog"><b id="sd-mine">${answeredCount(s, l)}/${n}</b> answered · ${tl}</div>
           <button type="button" class="pt-btn pt-primary" id="sd-submit">submit</button>${hostSkip(ctx)}</div>`, "in secret");
       // the submit bar sits on the bottom edge of the screen while you scroll
       $("game-panel").classList.add("sd-answering");
-      // you write in your own diary: its cover color frames the page
       const st = $("game-panel").querySelector(".stage");
       st.classList.add("sd-writing"); st.style.setProperty("--dc", myHex);
-      diaryMode().then(({ kit }) => {
-        const v = $("game-panel").querySelector("#sd-mydiary .sd-mydiary-vis");
-        if (!v) return;
-        if (kit) { try { v.innerHTML = `<img alt="" src="${kit.snapshot("open", myHex, 200, 200)}">`; return; } catch (e) { console.warn("[diary]", e); } }
-        v.innerHTML = `<i class="sd-copen"></i>`;
-      });
+      const batchEl = st.querySelector(".sd-batch");
+      fitAll(batchEl);
+      diaryMode().then(({ kit }) => { if (batchEl.isConnected) { paintSpreads(batchEl, kit); fitAll(batchEl); } });
       const prog = () => {
         const a = answeredCount(s, l);
         $("sd-mine").textContent = `${a}/${n}`;
         $("sd-submit").textContent = a === n || !a ? "submit" : `submit · ${n - a} left blank`;
       };
       prog();
-      const ins = [...$("game-panel").querySelectorAll(".sd-in")];
-      ins.forEach((el, j) => {
-        const k = +el.dataset.k;
-        el.oninput = () => { l.drafts[k] = el.value; prog(); sendDraft(l, k); };
-        el.onchange = () => { l.drafts[k] = el.value; sendDraft(l, k, true); };
-        el.onkeydown = e => {
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          const nx = ins[j + 1];
-          if (nx) nx.focus(); else el.blur();
-        };
+      const flows = [...st.querySelectorAll(".sd-sp-flow.sd-in")];
+      flows.forEach((el, j) => {
+        const k = +el.dataset.k, sp = el.closest(".sd-spread");
+        const chars = $(`sd-chars-${k}`);
+        bindSpread(sp, {
+          onText: t => {
+            l.drafts[k] = t; prog(); sendDraft(l, k);
+            chars.firstElementChild.textContent = String(t.length);
+            chars.classList.toggle("near", t.length >= ANSWER_MAX - 15);
+          },
+          onEnter: () => { const nx = flows[j + 1]; if (nx) nx.focus(); else el.blur(); },
+        });
+        el.addEventListener("blur", () => { l.drafts[k] = textOf(el); sendDraft(l, k, true); });
       });
       $("game-panel").querySelectorAll("[data-yn]").forEach(b => b.onclick = () => {
         const k = +b.dataset.k;
@@ -710,7 +711,7 @@ export const SECRET_DIARY = {
         const todo = q.entries.filter(e => e.eid !== myEid);
         n = q.entries.length; pages = shelfPages(n);
         cols = count => count <= 3 ? count : Math.ceil(count / 2);
-        cellInner = i => `<div class="sd-dtext"><span>${esc(q.entries[i].text)}</span></div>${q.entries[i].eid === myEid ? `<span class="sd-dyours">yours</span>` : ""}`;
+        cellInner = i => `<div class="sd-dtext">${esc(q.entries[i].text)}</div>${q.entries[i].eid === myEid ? `<span class="sd-dyours">yours</span>` : ""}`;
         // matching list: one row per diary, keyed by its color and number
         const rows = q.entries.map((e, i) => {
           const sw = `<span class="sd-dsw" style="--dc:${hexOf(i)}">${shape(q.colors?.[i])}</span>`;
@@ -780,6 +781,9 @@ export const SECRET_DIARY = {
         if (pv) { pv.disabled = pg === 0; pv.onclick = () => showPage(pg - 1); }
         if (nx) { nx.disabled = pg === pages.length - 1; nx.onclick = () => showPage(pg + 1); }
         const cells = [...shelf.querySelectorAll(".sd-dcell")].map(el => ({ el, hex: el.style.getPropertyValue("--dc").trim() }));
+        // each little diary's preview shrinks to its page, or fades to "…"
+        const fitCells = () => shelf.querySelectorAll(".sd-dtext").forEach(t => fitPreview(t));
+        fitCells(); document.fonts?.ready?.then(fitCells);
         if (onTap) cells.forEach(c => c.el.onclick = () => onTap(+c.el.dataset.i));
         const finish = () => {
           if (l.shelfToken !== token) return;
@@ -836,14 +840,16 @@ export const SECRET_DIARY = {
         const hex = hexOf(i), mine = e.eid === myEid;
         const z = document.createElement("div");
         z.className = "sd-zoom";
-        z.innerHTML = `<div class="sd-zcard" style="--dc:${hex}"><div class="sd-zvis"></div><div class="sd-ztext">${esc(e.text)}</div><span class="sd-dnum" style="--dc:${hex}">${shape(q.colors?.[i])}</span></div>
+        z.innerHTML = `<div class="sd-zcard" style="--dc:${hex}">${spreadHtml({ hex, text: e.text })}<span class="sd-dnum" style="--dc:${hex}">${shape(q.colors?.[i])}</span></div>
           ${mine ? `<p class="sd-hint">this one's yours</p>` : pickUi(e, g(e.eid), "data-zeid")}
           <button type="button" class="pt-btn sd-zclose">back to the shelf</button>`;
         P.querySelector(".stage").appendChild(z);
-        diaryMode().then(({ kit }) => {
-          const v = z.querySelector(".sd-zvis"); if (!v) return;
-          v.innerHTML = kit ? `<img alt="" src="${kit.snapshot("open", hex, 300, 300)}">` : `<i class="sd-copen"></i>`;
-        });
+        // read it big: the open diary across the screen, the answer fitted to
+        // its pages (a page-turn arrow if it runs onto a second spread)
+        const sp = z.querySelector(".sd-spread");
+        bindSpread(sp);
+        fitAll(z);
+        diaryMode().then(({ kit }) => { if (z.isConnected) { paintSpreads(z, kit); fitAll(z); } });
         z.querySelector(".sd-zclose").onclick = () => z.remove();
         z.onclick = ev => { if (ev.target === z) z.remove(); };
         if (!locked && !mine) {

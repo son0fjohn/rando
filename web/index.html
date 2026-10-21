@@ -1708,9 +1708,14 @@
   /* --- Secret Diary: diaries (web/diary3d.js draws them: live 3D, sprites or CSS) --- */
   .stage.sd-writing { border-top:6px solid var(--dc); }
   .sd-mydiary { display:flex; align-items:center; gap:10px; margin:0 0 6px; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#5b6b80; }
-  .sd-mydiary-vis { position:relative; width:84px; height:52px; flex:none; overflow:hidden; }
-  .sd-mydiary-vis img { width:100%; height:100%; object-fit:cover; }
-  .sd-writing .sd-q { border-left:4px solid var(--dc); background:repeating-linear-gradient(180deg, #fffef9 0 25px, #e8eef6 25px 26px); }
+  .sd-writing .sd-q { border-left:4px solid var(--dc); padding:9px 0 10px; }
+  .sd-writing .sd-q > :not(.sd-spread) { margin-left:10px; margin-right:10px; }
+  .sd-writing .sd-q .sd-spread { width:100%; margin:6px 0 2px; }
+  .sd-writing .sd-q .sd-yn.small { margin-top:4px; }
+  /* the diaries take (nearly) the whole width while you write */
+  #game-panel.sd-answering { padding-left:4px; padding-right:4px; }
+  .stage.sd-writing { padding-left:8px; padding-right:8px; }
+  .stage.sd-writing .sd-foot { margin-left:-8px; margin-right:-8px; }
   .sd-shelf-wrap { margin:4px 0 8px; }
   .sd-shelf { position:relative; display:grid; grid-template-columns:repeat(var(--cols,3), 1fr); gap:10px 8px; }
   .sd-shelf-gl { position:absolute; left:0; top:0; pointer-events:none; z-index:0; }
@@ -1721,7 +1726,8 @@
   .sd-dvis .sd-dlock { width:auto; height:auto; }
   .sd-dtext { position:absolute; left:16%; right:17%; top:25%; height:33%; display:flex; align-items:center; justify-content:center; overflow:hidden;
     font:italic 600 10px/1.2 "Segoe Print","Bradley Hand","Comic Sans MS",cursive; color:#2a2440; text-align:center; word-break:break-word; opacity:0; transition:opacity .35s .1s; pointer-events:none; }
-  .sd-dtext span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .sd-dtext { align-items:safe center; overflow-wrap:anywhere; }
+  .sd-dtext.more { align-items:flex-start; -webkit-mask-image:linear-gradient(#000 62%, transparent 96%); mask-image:linear-gradient(#000 62%, transparent 96%); }
   .sd-dcell.open .sd-dtext { opacity:1; }
   .sd-dnum { position:absolute; left:2px; top:2px; z-index:2; width:24px; height:24px; border-radius:50%; box-sizing:border-box; background:#1c1c1e;
     display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.35); }
@@ -1803,13 +1809,44 @@
   .sd-zoom { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
     padding:20px 16px calc(20px + env(safe-area-inset-bottom)); background:rgba(12,12,16,.78); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); animation:sd-fade .18s ease-out; }
   @keyframes sd-fade { from { opacity:0; } }
-  .sd-zcard { position:relative; width:min(360px, 100%); }
-  .sd-zvis { position:relative; width:100%; aspect-ratio:300/186; overflow:hidden; }
-  .sd-zvis img { width:100%; height:100%; object-fit:cover; }
-  .sd-zvis .sd-copen { left:9%; right:9%; top:6%; bottom:12%; opacity:1; }
-  .sd-ztext { position:absolute; left:15%; right:17%; top:11%; height:66%; display:flex; align-items:center; justify-content:center; overflow:auto; text-align:center;
-    font:italic 600 17px/1.3 "Segoe Print","Bradley Hand","Comic Sans MS",cursive; color:#2a2440; word-break:break-word; }
+  .sd-zcard { position:relative; width:min(96vw, 620px); }
+  .sd-zcard .sd-spread { width:100%; margin:0; }
   .sd-zcard .sd-dnum { left:4px; top:4px; }
+  /* the open diary, big: answers are written on (and read off) its two pages.
+     The 3D still is cropped to the book (diary3d "spread", 600x380); the CSS
+     book below draws the same shape when 3D can't run. Text areas are % of it. */
+  .sd-spread { position:relative; width:calc(100% + 32px); margin:6px -16px 2px; aspect-ratio:600/380; -webkit-tap-highlight-color:transparent; }
+  .sd-sp-vis { position:absolute; inset:0; pointer-events:none; }
+  .sd-sp-vis img { position:absolute; inset:0; width:100%; height:100%; }
+  .sd-spread.has-img .sd-sp-book { display:none; }
+  .sd-sp-book { position:absolute; left:1%; right:1%; top:5%; bottom:4%; border-radius:4px 4px 8px 8px; background:var(--dc); box-shadow:inset 0 -6px 0 rgba(0,0,0,.18), 0 6px 14px rgba(0,0,0,.25); }
+  .sd-sp-book::before, .sd-sp-book::after { content:""; position:absolute; top:-1%; bottom:7%; background:linear-gradient(90deg, #e9e2cf, #f6f1e2 70%, #ddd4bd); box-shadow:inset 0 -5px 0 #cfc5ab; }
+  .sd-sp-book::before { left:6%; right:50.5%; border-radius:3px 1px 2px 4px; }
+  .sd-sp-book::after { left:49.5%; right:6%; border-radius:1px 3px 4px 2px; background:linear-gradient(270deg, #e9e2cf, #f6f1e2 70%, #ddd4bd); }
+  .sd-sp-text { position:absolute; left:10.5%; right:12.5%; top:9.5%; bottom:21.5%; overflow:hidden; }
+  .sd-sp-flow { height:100%; box-sizing:border-box; padding:2px 0 3px; column-count:2; column-gap:6.5%; column-fill:auto; text-align:left;
+    font:italic 600 18px/1.25 "Segoe Print","Bradley Hand","Comic Sans MS",cursive; color:#2a2440; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;
+    transition:transform .22s cubic-bezier(.3,.7,.3,1); outline:none; caret-color:#2a2440; -webkit-user-select:text; user-select:text; cursor:text; }
+  .sd-sp-flow:not(.sd-in) { cursor:default; }
+  .sd-sp-flow:empty::before { content:attr(data-ph); color:#9a8fae; }
+  .sd-sp-flow.sd-in { width:auto; border:none; border-radius:0; padding:0; background:transparent; }
+  .sd-sp-flow.sd-in:focus { outline:none; }
+  .sd-spread:focus-within { filter:drop-shadow(0 0 6px color-mix(in srgb, var(--dc) 60%, #fff)); }
+  .sd-sp-turn { position:absolute; bottom:2%; z-index:2; width:30px; height:30px; padding:0; border-radius:50%; border:2px solid #2a2440; background:#fffdf4;
+    color:#2a2440 !important; font-size:12px; line-height:1; cursor:pointer; box-shadow:0 2px 0 #2a2440; animation:sd-nudge 1.4s ease-in-out infinite; }
+  .sd-sp-turn.next { right:9%; } .sd-sp-turn.prev { left:9%; }
+  .sd-sp-turn:active { transform:translateY(2px); box-shadow:none; }
+  @keyframes sd-nudge { 50% { translate:2px 0; } }
+  .sd-sp-turn.prev { animation-direction:reverse; }
+  .sd-sp-pg { position:absolute; left:50%; bottom:3%; transform:translateX(-50%); font:700 11px/1 system-ui,sans-serif; color:#6b6080; background:#fffdf4cc; padding:2px 6px; border-radius:999px; }
+  .sd-spread.turned::after { content:""; position:absolute; left:50%; right:9%; top:6%; bottom:19%; transform-origin:0 50%; pointer-events:none;
+    background:linear-gradient(90deg, #d9cfb6, #fbf7ea 40%, #e8dfc8); border-radius:0 3px 3px 0; animation:sd-flip .26s ease-in forwards; }
+  @keyframes sd-flip { from { transform:scaleX(1); opacity:1; } to { transform:scaleX(0); opacity:.4; } }
+  .sd-spread.yn .sd-sp-stamp { position:absolute; left:52%; right:12.5%; top:9.5%; bottom:21.5%; display:flex; align-items:center; justify-content:center; }
+  .sd-spread.yn .sd-stamp { font-size:30px; padding:7px 16px 6px; border-width:4px; }
+  .sd-chars { text-align:right; font:700 12px/1 system-ui,sans-serif; color:#8a94a4; margin:2px 4px 0; font-variant-numeric:tabular-nums; }
+  .sd-chars.near { color:#b22a3a; }
+  @media (prefers-reduced-motion: reduce) { .sd-sp-turn, .sd-spread.turned::after { animation:none; } .sd-sp-flow { transition:none; } }
   .sd-zoom .sd-who { justify-content:center; max-width:360px; }
   .sd-zoom .sd-sel { max-width:360px; }
   .sd-zoom .sd-hint { color:#c7c7cf; }
