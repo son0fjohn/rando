@@ -10,7 +10,7 @@ import { spriteFor, silhouetteFor, SPRITE } from "./charsprite.js";
 import { PARTY } from "./hpconfig.js";
 
 // a player's room sprite, standing, facing you
-function face(avatar, scale = 2) {
+export function spriteFace(avatar, scale = 2) {
   const w = SPRITE.W * scale, h = SPRITE.H * scale;
   const el = document.createElement("i");
   el.className = "pb-face";
@@ -49,7 +49,7 @@ export function renderBoard(el, set, rows, { me, avatars = {} } = {}) {
     const li = document.createElement("li");
     li.className = `pb-row ${r.id === me ? "me" : ""} ${r.here ? "" : "gone"}`;
     li.innerHTML = `<span class="pb-rank">${i + 1}</span><span class="pb-av"></span><span class="pb-name">${esc(r.handle)}</span><b class="pb-pts">${shown[r.id] ?? r.total}</b>${r.last && fresh ? `<em class="pb-plus">+${r.last}</em>` : ""}`;
-    li.querySelector(".pb-av").appendChild(face(avatars[r.id] ?? r.avatar ?? {}, 1));
+    li.querySelector(".pb-av").appendChild(spriteFace(avatars[r.id] ?? r.avatar ?? {}, 1));
     ol.appendChild(li);
     const pts = li.querySelector(".pb-pts");
     if ((shown[r.id] ?? r.total) !== r.total) { li.classList.add("up"); tick(pts, shown[r.id] ?? 0, r.total); }
@@ -84,7 +84,7 @@ export function showPodium(host, set, rows, { me, avatars = {}, isHost = false, 
   host.appendChild(wrap);
   wrap.querySelectorAll("[data-id]").forEach(el => {
     const r = rows.find(x => x.id === el.dataset.id);
-    el.querySelector(".pp-sprite")?.appendChild(face(avatars[r?.id] ?? r?.avatar ?? {}, el.classList.contains("pp-step") ? 3 : 1));
+    el.querySelector(".pp-sprite")?.appendChild(spriteFace(avatars[r?.id] ?? r?.avatar ?? {}, el.classList.contains("pp-step") ? 3 : 1));
     if (r?.id === me) el.classList.add("me");
   });
   wrap.querySelector("#pp-again")?.addEventListener("click", () => onNewSet?.());

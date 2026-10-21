@@ -187,34 +187,41 @@ try {
   await shot(A, "07-mission-results");
   await A.locator("#hp-skip").first().click().catch(() => {});
   ok(await until(B, () => !document.getElementById("party-panel").hidden && document.querySelectorAll(".lr-av").length === 3, null, 15000), "everyone is back in the walkable lobby");
-  ok(/Today's Mission/.test(await text(B, "#pt-next")), "the queue survives, ready to run again or change");
+  ok(await until(B, () => /Today's Mission/.test(document.getElementById("pt-next")?.textContent ?? "")), "the queue survives, ready to run again or change");
+  ok(await until(B, () => /Game 2 of 3/.test(document.getElementById("pt-next")?.textContent ?? "") && /game 2 of 3/i.test(document.getElementById("pt-board")?.textContent ?? "")), "the party moves on to game 2 of 3, on the dialog and the room's board");
+  ok(await until(B, () => document.querySelectorAll("#pt-board .pb-row").length === 3 && [...document.querySelectorAll("#pt-board .pb-pts")].some(e => +e.textContent > 0)), "the room's high-score board has everyone, with party points");
+  await shot(B, "07b-room-board");
 
   // ------------------------------------------------------------------ Humiliation Ritual
-  head("Humiliation Ritual — the performer barely touches the phone");
+  head("Humiliation Ritual — charades: guesses feed the performer, who taps the right one");
   await A.click("#pt-open-picker");
   await A.click('[data-queue="ritual"]');
   await A.click("#pt-picker-done");
   await A.click("#pt-start");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");
   let performer = null;
-  for (let i = 0; i < 8 && !performer; i++) {
-    for (const pg of [A, B, C]) if (/act it out/.test(await stageTitle(pg))) { performer = pg; break; }
-    if (!performer) { await A.locator("#hp-skip").first().click().catch(() => {}); await sleep(900); }
+  for (let i = 0; i < 10 && !performer; i++) {
+    for (const pg of [A, B, C]) if (await pg.locator("#hr-feed").count()) { performer = pg; break; }
+    if (!performer) await sleep(900);
   }
-  ok(!!performer, "one phone becomes the performer");
+  ok(!!performer, "one phone becomes the performer, with the ACT IT OUT card");
   if (performer) {
-    const guesser = [A, B, C].find(pg => pg !== performer);
-    ok(!(await performer.locator(".hr-guess").count()), "the performer's screen has no guess feed to read");
-    ok(await performer.locator("#hr-heard").isVisible(), "just one big 'someone said it out loud' button");
+    const guessers = [A, B, C].filter(pg => pg !== performer);
+    const prompt = await text(performer, ".hr-prompt");
+    ok(/ACT IT OUT/.test(await text(performer, ".hr-kick")) && prompt.length > 1, `only the performer sees the prompt (${prompt})`);
+    ok((await Promise.all(guessers.map(pg => pg.locator(".hr-card").count()))).every(n => n === 0), "the guessers don't");
+    ok(/Guess what they're doing/.test(await stageTitle(guessers[0])), "the guessers see 'Guess what they're doing!' and a text box");
+    await guessers[0].fill("#gp-in", "a broken toaster");
+    await guessers[0].click("#game-panel .gp-form button");
+    await guessers[1].fill("#gp-in", prompt.toLowerCase());
+    await guessers[1].click("#game-panel .gp-form button");
+    ok(await until(performer, () => document.querySelectorAll("#hr-feed .hr-g").length === 2), "both guesses land in the performer's live feed");
+    ok(await performer.locator("#hr-feed .hr-g.match").count() === 1, "the right one is highlighted for the performer");
+    ok(!(await guessers[0].locator("#gp-in").isDisabled()), "you can keep guessing after one");
     await shot(performer, "08-ritual-performer");
-    await guesser.fill("#gp-in", "a broken toaster");
-    await guesser.click("#game-panel .gp-form button");
-    ok(await until(guesser, () => /toaster/.test(document.getElementById("hr-feed")?.textContent ?? "")), "typed guesses show in the guessers' feed");
-    ok(!(await guesser.locator("#gp-in").isDisabled()), "you can keep guessing after one");
-    await shot(guesser, "09-ritual-guesser");
-    await performer.click("#hr-heard");
-    await performer.locator("[data-heard]").first().click();
-    ok(await until(guesser, () => /got it/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "one tap by the performer credits an out-loud answer");
+    await shot(guessers[0], "09-ritual-guesser");
+    await performer.locator("#hr-feed .hr-g.match").click();
+    ok(await until(guessers[0], () => /got it/.test(document.querySelector("#game-panel h2")?.textContent ?? "") && !!document.querySelector(".hr-reveal")), "the performer's tap ends the turn; the answer is revealed big");
   }
   ok(await skipUntil(A, A, t => /Humiliation Ritual/.test(t), 25), "the ritual plays through to results");
   await A.locator("#hp-skip").first().click().catch(() => {});
@@ -306,9 +313,17 @@ try {
   await shot(A, "18-diary-results");
   ok(await A.evaluate(() => (window.__logRows ?? []).length) >= 5 && await A.evaluate(() => window.__logRows.some(r => r.skipped)), "the host's phone logged the questions, including the swap");
 
-  head("Art Gallery — the dealer unveils the titles on wall plaques");
+  head("After game 3: the party results podium, then a new set");
   for (let i = 0; i < 20 && await A.locator("#party-panel").isHidden(); i++) { await A.evaluate(() => document.getElementById("hp-skip")?.click()); await sleep(600); }
   ok(await until(A, () => !document.getElementById("party-panel").hidden, null, 15000), "back in the lobby");
+  ok((await Promise.all([A, B, C].map(pg => until(pg, () => document.querySelectorAll("#pp .pp-step:not(.empty)").length === 3)))).every(Boolean), "after 3 games everyone sees the podium, top 3 on it");
+  ok(await A.locator("#pp-again").isVisible() && await A.locator("#pp-end").isVisible() && !(await B.locator("#pp-again").count()), "only the host gets 'new set' / 'end the party'");
+  await sleep(1200);
+  await shot(B, "18b-podium");
+  await A.click("#pp-again");
+  ok((await Promise.all([A, B].map(pg => until(pg, () => !document.getElementById("pp") && /game 1 of 3/i.test(document.getElementById("pt-board")?.textContent ?? ""))))).every(Boolean), "a new set starts: game 1 of 3, the podium closes for everyone");
+
+  head("Art Gallery — the dealer unveils the titles on wall plaques");
   await A.click("#pt-open-picker"); await A.click('[data-queue="artgallery"]'); await A.click("#pt-picker-done"); await A.click("#pt-start");
   ok(await until(B, () => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "everyone fills 3 frames");
   for (const [k, pg] of [A, B, C].entries()) for (let i = 0; i < 3; i++) {

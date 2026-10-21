@@ -63,6 +63,7 @@ const CHANNEL_ART = {
   secretdiary: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M3 2h9v12H3z", "#ff5d8a")}${px("M4 3h7v10H4z", "#ffd3e0")}${px("M3 2h1v12H3z", "#b02a55")}${px("M10 7h3v3h-3z", "#ffc84d")}${px("M11 6h1v1h-1z", "#8a8fa8")}</svg>`,
   mission: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M2 2h12v12H2z", "#4de8c8")}${px("M4 4h8v8H4z", "#0b0d24")}${px("M6 6h4v4H6z", "#4de8c8")}${px("M7 7h2v2H7z", "#ff5d8a")}</svg>`,
   ritual: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M3 3h10v8H3z", "#f2f4ff")}${px("M5 5h2v2H5zM9 5h2v2H9z", "#0b0d24")}${px("M6 9h4v1H6z", "#ff4d5e")}${px("M5 11h6v2H5z", "#f2f4ff")}${px("M7 1h2v2H7z", "#ffc84d")}</svg>`,
+  sidequest: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M7 0h2v2H7zM6 2h4v2H6zM5 4h6v2H5z", "#6b3fd6")}${px("M7 2h1v1H7z", "#ffd23f")}${px("M3 6h10v1H3z", "#140c22")}${px("M5 9h6v5H5zM4 10h8v3H4z", "#b9a6ff")}${px("M6 10h2v1H6z", "#fff")}${px("M4 14h8v2H4z", "#6b3a1c")}</svg>`,
   artgallery: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M1 3h14v10H1z", "#ffc84d")}${px("M3 5h10v6H3z", "#4da6ff")}${px("M3 9h4v2H3zM7 8h3v3H7z", "#7dff5e")}${px("M11 6h1v1h-1z", "#fff")}</svg>`,
   manhunt: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M2 2h12v12H2z", "#0a3a24")}${px("M8 2h1v12H8zM2 8h12v1H2z", "#3ce68c")}${px("M10 4h2v2h-2z", "#ff4d5e")}${px("M5 10h1v1H5z", "#3ce68c")}</svg>`,
 };
@@ -426,14 +427,22 @@ export const party = {
       onEnd: () => { if (!c.room.isHost) return; sfx.back(); c.room.send("partyend", {}); setTimeout(() => this.leave(), 300); },
     });
     sfx.win?.();
-    // what I earned this party, from the server's ledger (incl. a host reward)
+    // what I earned this party, from the server's ledger. The host reward
+    // lands when the last player confirms game 3, which can trail the
+    // podium, so look again a couple of times and update if it grew.
     const coins = this.hooks.coins;
-    if (coins && c.set.session) setTimeout(async () => {
-      try {
-        const total = await coins.partyCoins({ session: c.set.session, set: c.set.no });
-        if (c._podium === key) showCoins($("pp-coins"), total, { note: total ? "" : "no coins this time (daily cap reached, or not in every game)" });
-      } catch (e) { console.warn("[party] coins", e?.message ?? e); }
-    }, 2600);
+    if (coins && c.set.session) {
+      let shown = -1;
+      const look = async () => {
+        try {
+          const total = await coins.partyCoins({ session: c.set.session, set: c.set.no });
+          if (c._podium !== key || total === shown) return;
+          showCoins($("pp-coins"), total, { note: total ? (shown >= 0 && c.room.isHost ? "incl. the host reward" : "") : "no coins this time (daily cap reached, or not in every game)" });
+          shown = total;
+        } catch (e) { console.warn("[party] coins", e?.message ?? e); }
+      };
+      for (const ms of [2600, 6000, 11000]) setTimeout(look, ms);
+    }
   },
 
   // ---------------------------------------------------------------- world beacons
