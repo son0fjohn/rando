@@ -20,7 +20,7 @@ const out = document.getElementById("out");
 let pass = 0, fail = 0;
 const log = (cls, msg) => { const s = document.createElement("span"); s.className = cls; s.textContent = (cls === "head" ? "" : cls === "pass" ? "  ✓ " : "  ✗ ") + msg + "\n"; out.appendChild(s); };
 const ok = (cond, msg) => { if (cond) { pass++; log("pass", msg); } else { fail++; log("fail", msg); } };
-const group = name => log("head", "\n" + name);
+const group = name => { log("head", "\n" + name); console.info(`[spec] ${name}`); };
 
 // the diary's prompt pool is fetched at import; have it before any clock tricks
 const POOL = await diaryPool();

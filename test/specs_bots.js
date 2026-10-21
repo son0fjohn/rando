@@ -15,7 +15,7 @@ const out = document.getElementById("out");
 let pass = 0, fail = 0;
 const log = (cls, msg) => { const s = document.createElement("span"); s.className = cls; s.textContent = (cls === "head" ? "" : cls === "pass" ? "  ✓ " : "  ✗ ") + msg + "\n"; out.appendChild(s); };
 const ok = (c, m) => { if (c) { pass++; log("pass", m); } else { fail++; log("fail", m); } };
-const group = n => log("head", "\n" + n);
+const group = n => { log("head", "\n" + n); console.info(`[spec] ${n}`); };
 
 const clock = installClock();
 const adv = ms => clock.advance(ms, 200);

@@ -32,7 +32,10 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage();
 const logs = [];
-page.on("console", m => { logs.push(`[${m.type()}] ${m.text()}`); });
+// each spec group announces itself on the console: echo those live, so a
+// suite that stalls shows where it was
+const t0 = Date.now();
+page.on("console", m => { logs.push(`[${m.type()}] ${m.text()}`); if (m.text().startsWith("[spec] ")) console.log(`  … ${((Date.now() - t0) / 1000).toFixed(1)}s ${m.text().slice(7)}`); });
 page.on("pageerror", e => { logs.push(`[pageerror] ${e.message}`); });
 
 // the bot suite needs ?bots=3 in the URL — that's what the games read
@@ -42,8 +45,10 @@ for (const url of SUITES) {
   logs.length = 0;
   await page.goto(`${base}${url}`);
   await page.waitForFunction(() => window.__done, { timeout: 180000 }).catch(() => {});
-  const text = await page.locator("#out").innerText();
-  const done = await page.evaluate(() => window.__done ?? null);
+  // a page whose main thread is stuck never answers: give up instead of
+  // waiting forever, and say where it was
+  const text = await page.locator("#out").innerText({ timeout: 20000 }).catch(() => "(the page stopped responding)");
+  const done = await page.evaluate(() => window.__done ?? null).catch(() => null);
   console.log(`\n===== ${url} =====\n` + text);
   if (verbose || !done || done.fail) {
     const noise = logs.filter(l => !/\[warning\]/.test(l));
