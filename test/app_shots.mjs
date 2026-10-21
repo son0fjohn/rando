@@ -108,8 +108,9 @@ if (bar) {
   for (let i = 0; i < 12; i++) { await A.mouse.move(box.x + 200 - i * 12, box.y + 400 + i * 22); await sleep(30); }
   await A.mouse.up(); await sleep(800);
   await shot(A, "03-map-explore", "hidden + exploring: pan freely (within ~1.5 km), 'back to me' appears");
-  await pullBar(A); await sleep(150);
-  await shot(A, "04-refresh", "pull the bar down: nearby parties and people reload (spinner)");
+  await pullBar(A); await sleep(60);
+  await A.screenshot({ path: join(OUT, "04-refresh.png"), timeout: 120000 });
+  shots.push("04-refresh.png — pull the bar down: nearby parties and people reload (spinner)");
   await tap(A, "#nav-backtome"); await sleep(1500);
 } else {
   await tap(A, "#open-toggle"); await sleep(2500);
@@ -144,7 +145,7 @@ await tap(A, "#nav-host", "#party-btn"); await sleep(900);
 if (await A.locator('[data-priv="public"]').count()) await A.click('[data-priv="public"]');
 await A.locator("#pt-name").fill("Tony's party");
 await shot(A, "07-host", "host a party: the create screen");
-await tap(A, "#pt-create"); await sleep(2500);
+await tap(A, "#pt-create"); await sleep(4000);
 await shot(A, "08-room", "the party room, just the host");
 const code = (await A.locator("#pt-code-chip").textContent()).trim();
 const guests = [];
@@ -152,7 +153,14 @@ for (const n of ["mina", "jae", "sol"]) {
   const g = await phone(n, `&party=${code}&light=1`);
   guests.push(g); await sleep(2500);
 }
-await A.bringToFront(); await sleep(5000);
+// everyone wanders off the door spot: a tap on the floor, in room pixels
+const walkTo = (pg, x, y) => pg.evaluate(([x, y]) => {
+  const st = document.querySelector(".lr-stage"), r = st.getBoundingClientRect(), s = r.width / window.party.current.lobby.R.w;
+  st.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: r.left + x * s, clientY: r.top + y * s, pointerId: 1 }));
+}, [x, y]);
+await walkTo(guests[0], 250, 640); await walkTo(guests[1], 520, 760); await walkTo(guests[2], 380, 980);
+await walkTo(A, 300, 820);
+await A.bringToFront(); await sleep(6000);
 await shot(A, "09-room-4", "the party room with 4 players");
 await A.evaluate(() => document.querySelector(".lr-tv")?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1 })));
 await sleep(4500);
@@ -162,7 +170,16 @@ await A.evaluate(() => document.getElementById("pt-picker-x")?.click());
 await sleep(500);
 // back to the map: a public party is a neon house over its area
 if (await A.locator("#pt-hide").count()) {
-  await A.click("#pt-hide"); await sleep(4000);
+  await A.click("#pt-hide"); await sleep(3000);
+  // bring the house to the middle of the screen (it's in your zone, not on you)
+  const at = await A.evaluate(() => { const b = document.querySelector(".pbeacon"); if (!b) return null; const m = b.style.transform.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/); return m ? [+m[1], +m[2]] : null; });
+  if (at) {
+    const fb = await A.locator(".frame canvas").first().boundingBox();
+    const dx = fb.width / 2 - at[0], dy = fb.height * 0.42 - at[1];
+    await A.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2); await A.mouse.down();
+    for (let i = 1; i <= 12; i++) { await A.mouse.move(fb.x + fb.width / 2 + dx * i / 12, fb.y + fb.height / 2 + dy * i / 12); await sleep(30); }
+    await A.mouse.up(); await sleep(1500);
+  }
   await shot(A, "11-beacon", "back on the map: the public party floats over its area (zone-snapped)");
   await A.evaluate(() => document.querySelector(".pbeacon")?.click());
   await sleep(1200);

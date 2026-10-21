@@ -1599,7 +1599,7 @@ const nav = {
     spin.classList.add("spinning"); sfx.cursor();
     const t0 = Date.now();
     try { await Promise.all([presence.refreshWorld(), party.refreshNearby?.()]); } catch (e) { console.warn("[rando] refresh", e); }
-    await new Promise(r => setTimeout(r, Math.max(0, 700 - (Date.now() - t0))));
+    await new Promise(r => setTimeout(r, Math.max(350, 900 - (Date.now() - t0))));   // long enough to see it spin
     spin.classList.remove("spinning"); spin.style.removeProperty("--pull");
     sfx.ping();
   },
@@ -1612,12 +1612,14 @@ document.getElementById("nav-host").addEventListener("click", () => {
 {
   let y0 = null, pulled = 0;
   // the bar sits at the bottom edge, so there's only ~a bar's height to pull
-  // through: 40px does it. Capture the pointer so a pull that runs off the
-  // screen's edge still ends here.
-  navbar.addEventListener("pointerdown", e => { y0 = e.clientY; pulled = 0; try { navbar.setPointerCapture(e.pointerId); } catch {} });
+  // through: 40px does it. Once it's clearly a pull (not a tap on a button),
+  // capture the pointer so a pull that runs off the screen still ends here.
+  let captured = false;
+  navbar.addEventListener("pointerdown", e => { y0 = e.clientY; pulled = 0; captured = false; });
   window.addEventListener("pointermove", e => {
     if (y0 === null) return;
     pulled = Math.max(0, e.clientY - y0);
+    if (pulled > 10 && !captured) { captured = true; try { navbar.setPointerCapture(e.pointerId); } catch {} }
     if (pulled > 6) document.getElementById("nav-refresh").style.setProperty("--pull", Math.min(1, pulled / 40).toFixed(2));
   });
   const end = () => {

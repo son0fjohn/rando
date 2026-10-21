@@ -158,7 +158,7 @@
 .lr-tv { position: absolute; pointer-events: auto; cursor: pointer; image-rendering: pixelated; background-size: 100% 100%; -webkit-tap-highlight-color: transparent; }
 .lr-tv::after { content: "GAMES"; position: absolute; left: 50%; bottom: calc(100% + 2px); transform: translateX(-50%); font: var(--fs-label)/16px var(--f-label);
   color: var(--y-ink-dark); background: var(--y-aqua); padding: 1px 5px; border: 2px solid var(--y-ink-dark); animation: y-blink 1.2s steps(2) infinite; }
-.lr-hint { top: auto !important; bottom: 14%; font: var(--fs-small)/20px var(--f-small); border-radius: 0; border: 2px solid var(--y-line); background: rgba(11, 13, 36, .82); z-index: 5000; }
+.lr-hint { top: 46% !important; font: var(--fs-small)/20px var(--f-small); border-radius: 0; border: 2px solid var(--y-line); background: rgba(11, 13, 36, .82); z-index: 5000; }
 .lr-tapmark { position: absolute; width: 14px; height: 6px; margin: -3px 0 0 -7px; border: 2px solid var(--y-aqua); pointer-events: none; animation: lr-tap .4s steps(3) forwards; }
 @keyframes lr-tap { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
 
@@ -251,11 +251,11 @@
   clip-path: polygon(50% 0, 100% 45%, 88% 45%, 88% 100%, 60% 100%, 60% 66%, 40% 66%, 40% 100%, 12% 100%, 12% 45%, 0 45%); }
 @keyframes nav-pulse { 50% { box-shadow: inset 0 -6px 0 rgba(0,0,0,.22), inset 0 4px 0 rgba(255,255,255,.55), 0 0 0 3px var(--y-pink), 0 0 34px 8px rgba(255,93,138,.7); } }
 /* pull-to-refresh spinner, above the bar */
-#nav-refresh { position: absolute; left: 50%; top: -14px; width: 28px; height: 28px; margin-left: -14px; opacity: calc(var(--pull, 0) * 1); pointer-events: none;
-  transform: translateY(calc(var(--pull, 0) * 22px)) rotate(calc(var(--pull, 0) * 270deg)); }
+#nav-refresh { position: absolute; left: 50%; top: -34px; z-index: 3; width: 28px; height: 28px; margin-left: -14px; opacity: calc(var(--pull, 0) * 1); pointer-events: none;
+  transform: translateY(calc(var(--pull, 0) * -8px)) rotate(calc(var(--pull, 0) * 270deg)); filter: drop-shadow(0 0 6px var(--y-aqua)); }
 #nav-refresh i { position: absolute; inset: 0; background: conic-gradient(var(--y-aqua) 0 25%, transparent 0 50%, var(--y-aqua) 0 75%, transparent 0); clip-path: var(--y-cut);
   -webkit-mask: radial-gradient(circle, transparent 5px, #000 6px); mask: radial-gradient(circle, transparent 5px, #000 6px); }
-#nav-refresh.spinning { opacity: 1; transform: translateY(22px); }
+#nav-refresh.spinning { opacity: 1; transform: translateY(-8px); }
 #nav-refresh.spinning i { animation: nav-spin .6s steps(8) infinite; }
 @keyframes nav-spin { to { transform: rotate(360deg); } }
 #nav-backtome { position: absolute; right: 12px; bottom: calc(132px + env(safe-area-inset-bottom)); z-index: 125; }
