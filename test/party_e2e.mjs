@@ -99,7 +99,8 @@ try {
   const code = await text(A, "#pt-code-chip");
   ok((await text(A, "#pt-title")) === "Saturday night", "the party has the name the host gave it");
   ok(await A.locator("#party-panel.pt-lobby").isVisible(), "the lobby is a full-screen room");
-  ok(await until(A, () => getComputedStyle(document.querySelector("#pt-floor .lr-stage")).backgroundImage.includes("lobbies/chaos.png")), "the chaotic vibe picks the chaotic backdrop");
+  ok(await until(A, () => document.querySelector("#pt-floor .lr-stage")?.dataset.vibe === "chaotic" && !!document.querySelector("#pt-floor .lr-window")), "the room is the drawn apartment, in the chaotic vibe's neon");
+  ok(await A.evaluate(() => [...document.querySelectorAll("#pt-floor .lr-furn")].map(f => f.dataset.slot).sort().join()) === "lamp,tv", "its standing furniture comes from named slots (the TV, the lamp)");
 
   const B = await phone("bob", `&party=${code}`);
   ok(await until(B, () => document.querySelectorAll(".lr-av").length === 2, null, 20000), "a friend joins straight from the share link");
@@ -118,7 +119,7 @@ try {
   await shot(A, "01-host-picker");
   await A.click("#pt-picker-x");
   ok(await A.locator("#pt-picker").isHidden(), "the host closes the picker");
-  ok(/needs 1 more/.test(await text(A, "#pt-start")), "start waits for the minimum: 'needs 1 more'");
+  ok(/needs 1 more/i.test(await text(A, "#pt-start")), "start waits for the minimum: 'needs 1 more'");
   ok(await until(B, () => /Today's Mission/.test(document.getElementById("pt-next")?.textContent) && /players choose/.test(document.getElementById("pt-next")?.textContent)), "guests see what's up next, options included");
   await A.click("#pt-open-picker");
   ok(await A.locator("#pt-picker").isVisible(), "the host can reopen it");
@@ -134,12 +135,13 @@ try {
 
   // ------------------------------------------------------------------ walk + chat
   head("Lobby: walking around and talking");
-  // the room is the backdrop at its own aspect; positions are backdrop pixels
+  // positions are room (backdrop) pixels: the apartment is 704x1200
   const standing = (pg, id) => pg.evaluate(id => window.party.current.lobby.where(id), id);
   const before = await standing(B, "u-alice");
   const sb = await A.locator("#pt-floor .lr-stage").boundingBox();
-  const target = [380, 1150];                         // open floor near the front of the bar
-  await A.mouse.click(sb.x + sb.width * target[0] / 752, sb.y + sb.height * target[1] / 1344);
+  const [RW, RH] = await A.evaluate(() => { const R = window.party.current.lobby.R; return [R.w, R.h]; });
+  const target = [520, 1000];                         // open floor near the front right
+  await A.mouse.click(sb.x + sb.width * target[0] / RW, sb.y + sb.height * target[1] / RH);
   ok(await until(B, () => window.party.current.lobby.where("u-alice")?.walking), "a tap walks you, and the others see you walking");
   await sleep(6000);
   // a background tab may not draw frames at all (WebKit); look at bob's
@@ -259,7 +261,7 @@ try {
     await pg.click("#sd-submit");
   }
   await sleep(900);
-  ok((await C.locator(".sd-q").nth(w0).locator(".sd-in").inputValue()) === "half a thou", "others submitting doesn't wipe what you're typing");
+  ok((await C.locator(".sd-q").nth(w0).locator(".sd-in").textContent()) === "half a thou", "others submitting doesn't wipe what you're typing");
   for (let k = 0; k < qTypes.length; k++) {
     const q = C.locator(".sd-q").nth(k);
     if (qTypes[k] === "written") await q.locator(".sd-in").fill(`cy answer ${k + 1}`);
