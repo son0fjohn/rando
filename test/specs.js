@@ -13,6 +13,7 @@ import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { MANHUNT, DIARY, MISSION, RITUAL, SIDEQUEST, LEADERBOARD } from "/web/hpconfig.js";
 import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
+import { ui } from "/web/gamekit.js";
 import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
 
@@ -833,6 +834,10 @@ group("Side Quest (4 players)");
   t.input(t.host.me.id, "sq-go");
   adv(2000);
   ok(t.s.turn?.quest.level === "unhinged", "an 18+ party can play unhinged quests only");
+  // this one doesn't play out: stop it, or it keeps running (and drawing
+  // into the shared game panel) under every spec after it
+  for (const c of t.clients) c.game?.stop();
+  ui.hide();
 }
 
 group("The party set: 3 games, places, standings");

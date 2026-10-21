@@ -360,12 +360,19 @@ try {
     const watch = () => {
       const room = document.querySelector(".ag-room");
       if (!room || !room.classList.contains("revealed")) return Date.now() - t0 > 15000 ? res({}) : setTimeout(watch, 20);
-      const out = {}; [400, 1150, 2400].forEach(t => setTimeout(() => { out[t] = op(); }, t)); setTimeout(() => res(out), 2500);
+      // fixed samples, plus when each plaque first starts to fade (a busy
+      // runner can push the whole unveil late; the order is what matters)
+      const out = { first: [null, null] };
+      [400, 2400].forEach(t => setTimeout(() => { out[t] = op(); }, t));
+      const t1 = Date.now();
+      const poll = () => { const o = op(); o.forEach((v, i) => { if (out.first[i] === null && v < 0.9) out.first[i] = Date.now() - t1; }); if (Date.now() - t1 < 2500) setTimeout(poll, 16); else res(out); };
+      poll();
     };
     watch();
   }));
   ok(seq[400]?.every(o => o > 0.9), `the painting goes first: plaques still covered at 0.4 s (${JSON.stringify(seq[400])})`);
-  ok(seq[1150]?.[0] < 0.9 && seq[1150]?.[1] > 0.9, `then plaque I, then plaque II — one by one (${JSON.stringify(seq[1150])} at 1.15 s)`);
+  const [f1, f2] = seq.first ?? [];
+  ok(f1 !== null && f2 !== null && f1 + 150 < f2, `then plaque I, then plaque II — one by one (they start to fade at ${f1} / ${f2} ms)`);
   ok(seq[2400]?.every(o => o < 0.05), "both plaques unveiled within ~2.5 s");
   // with 3 players each frame has 2 writers, so exactly one phone gets to vote
   let voter = null;

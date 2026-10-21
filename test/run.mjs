@@ -44,7 +44,7 @@ let failed = 0, unfinished = 0;
 for (const url of SUITES) {
   logs.length = 0;
   await page.goto(`${base}${url}`);
-  await page.waitForFunction(() => window.__done, { timeout: 180000 }).catch(() => {});
+  await page.waitForFunction(() => window.__done, null, { timeout: 180000 }).catch(() => {});
   // a page whose main thread is stuck never answers: give up instead of
   // waiting forever, and say where it was
   const text = await page.locator("#out").innerText({ timeout: 20000 }).catch(() => "(the page stopped responding)");

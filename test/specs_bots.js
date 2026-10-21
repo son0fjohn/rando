@@ -139,6 +139,8 @@ group("Side Quest — you + 3 bots");
   }
   ok(t.s.phase === "end" && turns.length === 4, `4 turns play out (${turns.map(x => `${x.who.slice(0, 5)}:${x.status}:${x.pts}`).join(" ")})`);
   ok(turns.every(x => x.status === "gaveup" ? x.pts === 0 && x.n === 0 : x.n >= 2), "bots vote on every finished quest; a give-up gets no vote");
+  let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
+  ok(t.allEnded(), "the game closes out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 
