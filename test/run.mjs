@@ -38,17 +38,42 @@ const t0 = Date.now();
 page.on("console", m => { logs.push(`[${m.type()}] ${m.text()}`); if (m.text().startsWith("[spec] ")) console.log(`  … ${((Date.now() - t0) / 1000).toFixed(1)}s ${m.text().slice(7)}`); });
 page.on("pageerror", e => { logs.push(`[pageerror] ${e.message}`); });
 
+const within = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timed out")), ms))]);
+// A page busy in a loop never answers Playwright (its own timeouts don't fire
+// either), but the debugger can still interrupt it: enabled up front, it can
+// pause the page and report the JavaScript stack it's stuck in.
+const cdp = await page.context().newCDPSession(page);
+await cdp.send("Debugger.enable");
+async function stuckAt() {
+  try {
+    const paused = new Promise(res => cdp.once("Debugger.paused", res));
+    await within(cdp.send("Debugger.pause"), 5000);
+    const ev = await within(paused, 10000);
+    return ev.callFrames.slice(0, 15).map(f => `  at ${f.functionName || "(anonymous)"} ${(f.url || "").replace(/^https?:\/\/[^/]+/, "")}:${f.location.lineNumber + 1}:${f.location.columnNumber + 1}`).join("\n");
+  } catch (e) { return `  (couldn't pause the page: ${e.message})`; }
+}
+
 // the bot suite needs ?bots=3 in the URL — that's what the games read
 const SUITES = ["/test/hptest.html", "/test/hpbots.html?bots=3"];
 let failed = 0, unfinished = 0;
 for (const url of SUITES) {
   logs.length = 0;
   await page.goto(`${base}${url}`);
-  await page.waitForFunction(() => window.__done, null, { timeout: 180000 }).catch(() => {});
-  // a page whose main thread is stuck never answers: give up instead of
-  // waiting forever, and say where it was
-  const text = await page.locator("#out").innerText({ timeout: 20000 }).catch(() => "(the page stopped responding)");
-  const done = await page.evaluate(() => window.__done ?? null).catch(() => null);
+  // poll rather than waitForFunction: the suite runs as one long synchronous
+  // stretch, and each check simply waits its turn behind it
+  let finished = false;
+  for (const end = Date.now() + 180000; !finished && Date.now() < end;) {
+    finished = !!(await within(page.evaluate(() => !!window.__done), 10000).catch(() => false));
+    if (!finished) await new Promise(r => setTimeout(r, 1000));
+  }
+  if (!finished) {
+    console.log(`\n===== ${url} =====\nthe suite did not finish in 3 minutes; the page is at:\n${await stuckAt()}`);
+    const noise = logs.filter(l => !/\[warning\]/.test(l) && !/^\[info\] \[spec\]/.test(l));
+    if (noise.length) console.log("\n--- page console ---\n" + noise.slice(-40).join("\n"));
+    process.exit(2);
+  }
+  const text = await page.locator("#out").innerText();
+  const done = await page.evaluate(() => window.__done ?? null);
   console.log(`\n===== ${url} =====\n` + text);
   if (verbose || !done || done.fail) {
     const noise = logs.filter(l => !/\[warning\]/.test(l));
