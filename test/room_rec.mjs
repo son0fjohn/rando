@@ -53,7 +53,7 @@ async function phone(name, qs = "") {
 }
 // tap the room at backdrop pixel (x, y)
 const tapRoom = (pg, x, y) => pg.evaluate(([x, y]) => {
-  const st = document.querySelector(".lr-stage"), r = st.getBoundingClientRect(), s = r.width / 752;
+  const st = document.querySelector(".lr-stage"), r = st.getBoundingClientRect(), s = r.width / window.party.current.lobby.R.w;
   const ev = (t) => new PointerEvent(t, { bubbles: true, clientX: r.left + x * s, clientY: r.top + y * s, pointerId: 1 });
   st.dispatchEvent(ev("pointerdown"));
 }, [x, y]);
@@ -98,7 +98,8 @@ try {
   await sleep(6000);                         // everyone's 3D sprites render (cached after)
   await A.screenshot({ path: join(OUT, "01-joined.png") });
   // everyone wanders: paths go around the tables
-  const spots = { chill: [[380, 690], [150, 880], [600, 880], [380, 1080], [380, 480]], chaotic: [[380, 600], [300, 1000], [420, 1200], [380, 800], [260, 520]], sporty: [[360, 700], [380, 980], [250, 1000], [560, 1000], [360, 1250]] }[VIBE];
+  // apartment spots (704x1200): on the rug, by the cushion, by the lamp, front, window
+  const spots = [[360, 760], [200, 640], [560, 560], [380, 1040], [420, 470]];
   await tapRoom(B, ...spots[0]); await sleep(300);
   await tapRoom(C, ...spots[1]); await sleep(300);
   await tapRoom(D, ...spots[2]); await sleep(300);

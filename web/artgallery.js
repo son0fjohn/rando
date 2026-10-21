@@ -389,7 +389,7 @@ export const ART_GALLERY = {
     trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
     game.start({ phase: "photos", left: PHOTO_MS, players: {}, pool: {}, dealt: [], frames: [], fi: 0, sub: null, why: null, dropped: 0 });
     const o = ctx.onEnd;
-    ctx.onEnd = () => { game.stop(); room.off("agphoto", onPhoto); room.off("agneed", onNeed); ui.hide(); o(); };
+    ctx.onEnd = r => { game.stop(); room.off("agphoto", onPhoto); room.off("agneed", onNeed); ui.hide(); o(r); };
   },
 };
 

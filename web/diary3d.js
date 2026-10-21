@@ -131,11 +131,20 @@ class Kit {
     r.setPixelRatio(dpr); r.setSize(w, h, false);
     const scene = this._scene();
     const d = this.diary(hex);
-    if (kind === "open") { d.closedPose.visible = false; d.openPose.visible = true; }
+    if (kind === "open" || kind === "spread") { d.closedPose.visible = false; d.openPose.visible = true; }
     if (kind === "closed") d.lockPose.visible = false;
     if (kind === "lock") { d.closedPose.children[0].visible = false; d.lockPose.position.set(0, 0, 0); d.lockPose.scale.setScalar(2); }
     scene.add(d.g);
-    const cam = new T.OrthographicCamera(-w / h / 2 * 1.15, w / h / 2 * 1.15, 0.575, -0.575, -10, 10);
+    let cam = new T.OrthographicCamera(-w / h / 2 * 1.15, w / h / 2 * 1.15, 0.575, -0.575, -10, 10);
+    if (kind === "spread") {
+      // the open diary cropped to the book, for text laid out on its pages
+      // (the writing screen and the zoomed reveal): the page areas sit at
+      // fixed percentages of this image, see .sd-spread in index.html
+      d.g.updateMatrixWorld(true);
+      const b = new T.Box3().setFromObject(d.openPose), m = 0.01;
+      cam = new T.OrthographicCamera(b.min.x - m, b.max.x + m, b.max.y + m, b.min.y - m, -10, 10);
+      r.setSize(w, Math.round(w * (b.max.y - b.min.y + 2 * m) / (b.max.x - b.min.x + 2 * m)), false);
+    }
     r.render(scene, cam);
     const url = r.domElement.toDataURL("image/png");
     d.mats.forEach(m => m.dispose());

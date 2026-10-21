@@ -191,7 +191,8 @@ try {
   const myColor = {};
   for (const pg of players) myColor[pg.label] = await pg.locator("#sd-mydiary").evaluate(e => e.style.getPropertyValue("--dc").trim());
   ok(new Set(Object.values(myColor)).size === 5 && Object.values(myColor).every(c => /^#[0-9a-f]{6}$/i.test(c)), "each phone's diary has its own batch color, no two alike");
-  ok(!(await B.locator(".sd-q [style*='--dc']").count()) && (await B.locator(".sd-sym").count()) === 1, "you only see your own color and shape");
+  const qColors = await B.locator(".sd-q [style*='--dc']").evaluateAll(els => els.map(e => e.style.getPropertyValue("--dc").trim()));
+  ok(qColors.length > 0 && qColors.every(c => c === myColor[B.label]) && (await B.locator(".sd-sym").count()) === 1, "you write in your own diary, and only see your own color and shape");
   await shot(B, "03-answer-empty");
   // a sixth phone turns up now: they wait for the next batch
   const F = await phone("fay", `&party=${code}`);
@@ -230,7 +231,7 @@ try {
   // headless builds skip pagehide on close; on a real phone presence times out)
   await D.evaluate(() => window.dispatchEvent(new Event("pagehide")));
   await D.close();
-  ok((await E.locator(".sd-q").nth(firstW).locator(".sd-in").inputValue()) === "half a thou", "others submitting doesn't wipe what eve is typing");
+  ok((await E.locator(".sd-q").nth(firstW).locator(".sd-in").textContent()) === "half a thou", "others submitting doesn't wipe what eve is typing");
   await E.locator(".sd-q").nth(firstW).locator(".sd-in").fill("");
   await answer(E, { skipSubmit: true });
   await shot(E, "06-answer-filled");
@@ -284,8 +285,8 @@ try {
         const i = await B.locator(".sd-dcell").evaluateAll(cs => cs.findIndex(c => !c.querySelector(".sd-dyours")));
         const want = await B.locator(".sd-dcell .sd-dtext").nth(i).evaluate(e => e.textContent.trim());
         await B.locator(".sd-dcell").nth(i).click();
-        ok(await until(B, () => !!document.querySelector(".sd-zoom .sd-ztext")), "tap a diary: it opens up to read");
-        const got = await B.locator(".sd-zoom .sd-ztext").evaluate(e => e.textContent.trim());
+        ok(await until(B, () => !!document.querySelector(".sd-zoom .sd-sp-flow")), "tap a diary: it opens up to read");
+        const got = await B.locator(".sd-zoom .sd-sp-flow").evaluate(e => e.textContent.trim());
         ok(got === want, `the zoomed diary shows that answer ("${got}")`);
         ok((await B.locator(".sd-zoom .sd-who button, .sd-zoom .sd-sel").count()) >= 1, "…with its who-wrote-it chips");
         await shot(B, "07b-reveal-zoom");

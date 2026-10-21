@@ -21,6 +21,15 @@ const args = process.argv.slice(2);
 const SHOTS = args.find(a => !a.startsWith("--"));
 if (!SHOTS) { console.error("usage: node test/ui_shots.mjs <dir> [--video] [--diary=…]"); process.exit(2); }
 const opt = k => args.find(a => a.startsWith(`--${k}=`))?.split("=")[1];
+// --long: everyone writes the longest answers (Korean and English) to show
+// how they fit the diary page, and the reveal zooms into one
+const LONG = args.includes("--long");
+const LONG_ANSWERS = [
+  "Honestly? I once pretended to be my own twin for an entire weekend just to get out of a group project and nobody noticed. Still proud, no regrets lol!!",
+  "솔직히 말하면 나는 지난 주말에 단체 과제를 피하려고 이틀 내내 내 쌍둥이인 척했는데 아무도 눈치채지 못했어 지금도 그게 내 인생 최고의 연기였다고 생각하고 후회는 전혀 없어 다음에도 또 할 거야 진짜로",
+  "probably the time I sang the whole karaoke song with the wrong lyrics on purpose and the entire bar joined in, then the manager gave us free fries for it",
+  "나는 아직도 공룡이 어딘가 살아있다고 믿어 진지하게 그리고 그걸 증명하려고 주말마다 산에 가서 발자국을 찾아다니는데 친구들은 다 나를 놀려 근데 언젠가 꼭 찾을 거야",
+].map(t => t.slice(0, 150));
 const VIDEO = args.includes("--video"), DIARY_MODE = opt("diary") ?? null, ENGINE = opt("browser") ?? "chromium";
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".png": "image/png", ".jpg": "image/jpeg", ".css": "text/css", ".json": "application/json", ".woff2": "font/woff2", ".glb": "model/gltf-binary", ".svg": "image/svg+xml" };
 
@@ -140,7 +149,7 @@ try {
     const n = await pg.locator(".sd-q").count();
     for (let k = 0; k < n; k++) {
       const q = pg.locator(".sd-q").nth(k);
-      if (await q.locator(".sd-in").count()) await q.locator(".sd-in").fill(["sneaking a nap at work", "pineapple on pizza is elite", "나는 아직도 공룡을 믿어", "honestly? karaoke"][j]);
+      if (await q.locator(".sd-in").count()) await q.locator(".sd-in").fill((LONG ? LONG_ANSWERS : ["sneaking a nap at work", "pineapple on pizza is elite", "나는 아직도 공룡을 믿어", "honestly? karaoke"])[j]);
       else await q.locator(`[data-yn="${j % 2 ? "no" : "yes"}"]`).click();
     }
     if (pg === B) { await sleep(400); await shot(B, "13-sd-answer-filled", "Secret Diary: answers filled in, YES/NO stamped"); }
@@ -153,6 +162,16 @@ try {
   await until(B, () => !document.querySelector(".sealed"), null, 15000);
   await sleep(500);
   await shot(B, `15-sd-reveal-${type}`, `Secret Diary: ${type} reveal, opened`);
+  const zoomShot = async () => {
+    const cell = B.locator(".sd-dcell.open").filter({ hasNot: B.locator(".sd-dyours") }).first();
+    if (!(await cell.count())) return;
+    await cell.click(); await sleep(1200);
+    await shot(B, "15b-sd-zoom", "Secret Diary: a diary read big (zoomed in)");
+    const nx = B.locator(".sd-zoom .sd-sp-turn.next:visible");
+    if (await nx.count()) { await nx.click(); await sleep(600); await shot(B, "15c-sd-zoom-page2", "Secret Diary: the same diary, page 2"); }
+    await B.locator(".sd-zclose").click().catch(() => {}); await sleep(300);
+  };
+  if (type === "written") await zoomShot();
   for (const pg of players) await pg.click("#sd-lock").catch(() => {});
   await until(B, () => !!document.querySelector(".sd-pts"), null, 20000);
   await sleep(1800);
@@ -170,6 +189,7 @@ try {
       await until(B, () => !document.querySelector(".sealed"), null, 15000);
       await sleep(500);
       await shot(B, `17-sd-reveal-${t}`, `Secret Diary: ${t} reveal, opened`);
+      if (t === "written") await zoomShot();
     }
     for (const pg of players) await pg.click("#sd-lock").catch(() => {});
     await until(B, () => !!document.querySelector(".sd-pts") || !!document.querySelector(".hp-res-title"), null, 20000);

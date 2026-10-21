@@ -4,17 +4,18 @@
 import { installClock, seatTable } from "/test/harness.js";
 import { SECRET_DIARY } from "/web/hpgames/secretdiary.js";
 import { TODAYS_MISSION } from "/web/hpgames/mission.js";
-import { HUMILIATION_RITUAL } from "/web/hpgames/ritual.js";
+import { HUMILIATION_RITUAL, ritualPool } from "/web/hpgames/ritual.js";
+import { SIDE_QUEST, questPool } from "/web/hpgames/sidequest.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { DIARY } from "/web/hpconfig.js";
 import { diaryPool } from "/web/hpgames/secretdiary.js";
-await diaryPool();
+await diaryPool(); await ritualPool(); await questPool();
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
 const log = (cls, msg) => { const s = document.createElement("span"); s.className = cls; s.textContent = (cls === "head" ? "" : cls === "pass" ? "  ✓ " : "  ✗ ") + msg + "\n"; out.appendChild(s); };
 const ok = (c, m) => { if (c) { pass++; log("pass", m); } else { fail++; log("fail", m); } };
-const group = n => log("head", "\n" + n);
+const group = n => { log("head", "\n" + n); console.info(`[spec] ${n}`); };
 
 const clock = installClock();
 const adv = ms => clock.advance(ms, 200);
@@ -93,29 +94,51 @@ group("Humiliation Ritual — you + 3 bots");
 {
   const t = seatTable(HUMILIATION_RITUAL, 1, { ids: [ME] });
   adv(500);
-  ok(t.s.order.length === 4, "you and the bots all take a turn performing");
+  ok(t.s.turns === 4, "4 turns: everyone performs once by default");
   let guard = 0, guessedThisTurn = -1;
   const outcomes = [];
   while (t.s.phase !== "end" && guard++ < 20000) {
-    const r = t.s.rounds[t.s.ri];
-    if (t.s.phase === "act") {
+    const r = t.s.turn;
+    if (t.s.phase === "act" && !r.won) {
       if (r.performer === ME) {
-        // you're performing: hands off — bots' correct typed guesses win on their own
-      } else if (guessedThisTurn !== t.s.ri) {
-        // a bot is performing: you guess its answer once
+        // you're performing: tap the first guess that's actually right
+        const g = r.guesses.find(g => g.hint === "match");
+        if (g) t.input(ME, "pick", { gid: g.gid });
+      } else if (guessedThisTurn !== t.s.ti) {
         t.input(ME, "guess", { text: r.answer });
-        guessedThisTurn = t.s.ri;
+        guessedThisTurn = t.s.ti;
       }
     }
-    if (t.s.phase === "result" && outcomes.length === t.s.ri) outcomes.push({ perf: r.performer, won: r.won?.by ?? null });
+    if (t.s.phase === "result" && outcomes.length === t.s.ti) outcomes.push({ perf: r.performer, won: r.won?.by ?? null });
     adv(200);
   }
-  ok(t.s.phase === "end", "all four turns play out");
-  const botTurns = outcomes.filter(o => o.perf !== ME);
-  ok(botTurns.length === 3 && botTurns.every(o => o.won === ME), "your typed answer wins a bot's turn automatically");
-  const mine = outcomes.find(o => o.perf === ME);
-  ok(mine && mine.won && mine.won !== ME, "on your turn a bot's correct guess wins without you touching the phone");
+  ok(t.s.phase === "end" && outcomes.length === 4, "all four turns play out");
+  const botTurns = outcomes.filter(o => o.perf !== ME), mine = outcomes.filter(o => o.perf === ME);
+  ok(botTurns.every(o => o.won), "a bot performer taps a right guess");
+  ok(mine.every(o => o.won && o.won !== ME), "on your turn you tap a bot's right guess");
   ok(t.s.players[ME].score > 0, `you scored (${t.s.players[ME].score})`);
+  let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
+  ok(t.allEnded(), "the game closes out");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+
+group("Side Quest — you + 3 bots");
+{
+  const t = seatTable(SIDE_QUEST, 1, { ids: [ME] });
+  adv(500);
+  ok(t.s.phase === "setup", "you host: the setup screen");
+  t.input(ME, "sq-go");
+  let guard = 0, voted = -1;
+  const turns = [];
+  while (t.s.phase !== "end" && guard++ < 40000) {
+    const q = t.s.turn;
+    if (t.s.phase === "do" && q.who === ME && !q.status) t.input(ME, "done");
+    if (t.s.phase === "vote" && q.who !== ME && voted !== t.s.ti) { t.input(ME, "rate", { v: 5 }); voted = t.s.ti; }
+    if (t.s.phase === "result" && turns.length === t.s.ti) turns.push({ who: q.who, status: q.status, n: q.n, pts: q.pts });
+    adv(200);
+  }
+  ok(t.s.phase === "end" && turns.length === 4, `4 turns play out (${turns.map(x => `${x.who.slice(0, 5)}:${x.status}:${x.pts}`).join(" ")})`);
+  ok(turns.every(x => x.status === "gaveup" ? x.pts === 0 && x.n === 0 : x.n >= 2), "bots vote on every finished quest; a give-up gets no vote");
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));

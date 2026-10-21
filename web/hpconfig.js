@@ -7,10 +7,11 @@
 
 // ---------------------------------------------------------------- flags
 export const FLAGS = {
-  // Public parties (a browsable directory of nearby parties) are OFF for this
-  // pass. With this false, parties are code/link only and nothing is
-  // announced to the shared directory.
-  PUBLIC_PARTIES: false,
+  // Public parties: the host can pick "public" when throwing a party; it's
+  // then listed nearby and shown on the map as a neon house in its ZONE
+  // (never the host's spot). Invite-only stays the default. false hides the
+  // choice: every party is code/link only and nothing is announced.
+  PUBLIC_PARTIES: true,
   // Spicy prompts are OFF by default. Flipping this to true serves the spicy
   // entries alongside the mild ones in every pool.
   SPICY: false,
@@ -25,6 +26,30 @@ export const PARTY = {
   CAP_MAX: 12,
   CAP_DEFAULT: 6,
   NAME_MAX: 28,
+  // a party is a SET of games: the host picks each one from the TV, everyone
+  // comes back to the room between them, and after the last the party
+  // results (podium) — then a new set, or the end of the party
+  GAMES_PER_SET: 3,
+};
+
+// The room leaderboard: each completed game turns into party points by
+// finishing place (ties share a place), so a 100-point game and a 6-point
+// game count the same. Everyone who finished gets at least the last value.
+export const LEADERBOARD = {
+  PLACE_POINTS: [100, 80, 65, 50, 40, 30, 25, 20],
+};
+
+// Coins: the earned currency (separate from future paid gems). These are the
+// numbers the SERVER uses (supabase/migrations/013_coins_shop.sql repeats
+// them; that copy is the one that counts — keep the two in step). The app
+// only uses these to label things.
+export const COINS = {
+  PLACE: [30, 20, 12],        // 1st, 2nd, 3rd in a completed game
+  FINISH: 5,                  // everyone else who finished it
+  HOST_SET: 50,               // the host, when a set of 3 completes...
+  HOST_MIN_PLAYERS: 4,        // ...with at least 4 players in all 3 games
+  DAILY_CAP: 300,             // most coins one player can earn per day (UTC)
+  HOST_DAILY_CAP: 3,          // most host rewards one player can get per day
 };
 
 // ---------------------------------------------------------------- game settings
@@ -85,11 +110,34 @@ export const MISSION = {
 };
 
 export const RITUAL = {
-  // guesses are judged automatically by the answer matcher, so the performer
-  // never has to read a feed. For guesses shouted out loud, the performer
-  // gets one big "someone said it" button.
-  ACT_MS: 90000,
+  // charades: the performer acts, everyone else types guesses, and the
+  // performer taps the right one in the live feed. Close guesses are only
+  // highlighted for the performer; the performer always decides.
+  POOL_URL: "data/ritual_prompts.json",
+  ACT_MS: 60000,
+  // a correct guess at second t of ACT_MS pays the guesser
+  // GUESS_PTS + GUESS_SPEED * (1 - t/ACT_MS) and the performer
+  // PERFORM_PTS + PERFORM_SPEED * (1 - t/ACT_MS). Nobody gets it: 0 for all.
+  GUESS_PTS: 100, GUESS_SPEED: 100,
+  PERFORM_PTS: 50, PERFORM_SPEED: 50,
 };
+
+// Side Quest: the wizard hands out a real-life dare, one player does it, the
+// room rates how hard they committed. Points = average stars x POINTS_PER_STAR.
+export const SIDEQUEST = {
+  POOL_URL: "data/side_quests.json",
+  DO_MS: 3 * 60 * 1000,        // the quest's timer
+  VOTE_MS: 30000,              // rating closes this long after Done at the latest
+  STARS: 5,
+  POINTS_PER_STAR: 20,         // 5 stars = 100
+  MAX_TURNS: 30,
+};
+
+// Who goes next (Side Quest, Humiliation Ritual): random but fair. Everyone
+// starts at weight START; each turn a player isn't picked their weight grows
+// by GROW, and the one picked drops to FLOOR — never 0, so nobody is ever
+// safe, but a repeat right away is rare.
+export const PICKER = { START: 1, GROW: 1, FLOOR: 0.25 };
 
 // ---------------------------------------------------------------- prompt pools
 // Shape: { text, spice: "mild" | "spicy" }
@@ -118,27 +166,7 @@ export const MISSION_PROMPTS = [
   { text: "Loudly apologise to an inanimate object for something you did to it.", spice: "spicy" },
 ];
 
-/* ======================= DRAFT — NEEDS CURATION =======================
- * Humiliation Ritual. Charades-style: one performer acts it out in public
- * while everyone else types guesses. Must be ACTABLE without props and
- * GUESSABLE in a word or two — the typed guess has to be able to match.
- * `answer` is what guesses are checked against; `alt` are accepted variants.
- * ===================================================================== */
-export const RITUAL_PROMPTS = [
-  { text: "A penguin realising it has lost its egg", answer: "penguin", alt: ["lost penguin", "sad penguin"], spice: "mild" },
-  { text: "Someone discovering their phone is at 1%", answer: "low battery", alt: ["phone dying", "1 percent", "battery"], spice: "mild" },
-  { text: "A vending machine eating your money", answer: "vending machine", alt: ["vending", "machine ate money"], spice: "mild" },
-  { text: "A cat knocking things off a table, one by one", answer: "cat", alt: ["cat knocking things", "annoying cat"], spice: "mild" },
-  { text: "Trying to look busy when your boss walks past", answer: "looking busy", alt: ["pretending to work", "boss walking by"], spice: "mild" },
-  { text: "An inflatable tube man outside a car dealership", answer: "tube man", alt: ["inflatable man", "air dancer", "wacky waving man"], spice: "mild" },
-  { text: "Waking up and immediately regretting last night", answer: "hangover", alt: ["regret", "hungover"], spice: "mild" },
-  { text: "A GPS telling you to make a U-turn, repeatedly", answer: "gps", alt: ["u turn", "navigation", "make a u-turn"], spice: "mild" },
-  { text: "Getting dragged by a dog that is much stronger than you", answer: "walking a dog", alt: ["dog walk", "strong dog", "dog pulling"], spice: "mild" },
-  { text: "Someone who has just walked into a glass door", answer: "glass door", alt: ["walked into glass", "sliding door"], spice: "mild" },
-  { text: "A broken robot slowly powering down", answer: "robot", alt: ["broken robot", "robot shutting down"], spice: "mild" },
-  { text: "Trying to fold a fitted bedsheet", answer: "folding a sheet", alt: ["fitted sheet", "laundry", "folding laundry"], spice: "mild" },
-  { text: "Realising mid-wave that they weren't waving at you", answer: "awkward wave", alt: ["wrong wave", "waving at nobody"], spice: "spicy" },
-];
+// (Humiliation Ritual's pool lives in web/data/ritual_prompts.json.)
 
 // serve a pool, filtered by the spice flag
 export function pool(list, { spicy = FLAGS.SPICY } = {}) {

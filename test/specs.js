@@ -5,11 +5,15 @@ import { SECRET_DIARY, diaryPool, maxLevelFor, capAt, yesnoTarget, countLine, sh
 import * as CONFIG from "/web/hpconfig.js";
 import { promptLog } from "/web/hplog.js";
 import { TODAYS_MISSION } from "/web/hpgames/mission.js";
-import { HUMILIATION_RITUAL, judge } from "/web/hpgames/ritual.js";
+import { HUMILIATION_RITUAL, judge, ritualPool, ritualPromptsFor, ritualPoints } from "/web/hpgames/ritual.js";
+import { SIDE_QUEST, questPool, questsFor, questPoints } from "/web/hpgames/sidequest.js";
+import { fairPick, chances } from "/web/fairpick.js";
+import { newSet, places, addGame, standings, fullParticipants } from "/web/partyset.js";
 import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
 import { ART_GALLERY } from "/web/artgallery.js";
-import { MANHUNT, DIARY, MISSION } from "/web/hpconfig.js";
+import { MANHUNT, DIARY, MISSION, RITUAL, SIDEQUEST, LEADERBOARD } from "/web/hpconfig.js";
 import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
+import { ui } from "/web/gamekit.js";
 import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
 
@@ -17,10 +21,12 @@ const out = document.getElementById("out");
 let pass = 0, fail = 0;
 const log = (cls, msg) => { const s = document.createElement("span"); s.className = cls; s.textContent = (cls === "head" ? "" : cls === "pass" ? "  ✓ " : "  ✗ ") + msg + "\n"; out.appendChild(s); };
 const ok = (cond, msg) => { if (cond) { pass++; log("pass", msg); } else { fail++; log("fail", msg); } };
-const group = name => log("head", "\n" + name);
+const group = name => { log("head", "\n" + name); console.info(`[spec] ${name}`); };
 
 // the diary's prompt pool is fetched at import; have it before any clock tricks
 const POOL = await diaryPool();
+const HR_POOL = await ritualPool();
+const SQ = await questPool();
 const clock = installClock();
 // HostGame caps dt at 0.25 s per tick, so advancing in slices bigger than that
 // makes game time run SLOWER than virtual time. Every advance here uses 200 ms
@@ -40,6 +46,12 @@ function waitPhase(t, phase, maxMs = 5 * 60 * 1000) {
   return t.s?.phase === phase;
 }
 
+// The suite runs in three page loads (run.mjs: ?part=1, 2, 3): each
+// is one long synchronous stretch, and Chromium only frees the DOM garbage
+// of all the panel rebuilds when the page yields — in one go the renderer
+// grew past 6 GB and CI's Chromium 131 ran out of memory. No ?part = all.
+const PART = new URLSearchParams(location.search).get("part");
+if (!PART || PART === "1") {
 // ===================================================================== 1
 // The exact list the brief supplied (type, level, text). The pool must be
 // this and nothing else.
@@ -561,6 +573,8 @@ group("Secret Diary — logging survives a missing table");
   ok(promptLog.queued() === 0 && window.__logRows.some(r => r.prompt_id === "w-mild-01"), "…and flushed on the next successful write");
 }
 
+}
+if (!PART || PART === "2") {
 // ===================================================================== 2
 group("Today's Mission — quick start, rated 0-10");
 {
@@ -644,68 +658,217 @@ group("Today's Mission — performer drops mid-mission");
 }
 
 // ===================================================================== 3
-group("Humiliation Ritual — the automatic judge");
+group("Humiliation Ritual — the prompt pool (draft)");
 {
-  const R = (answer, alt = []) => ({ answer, alt });
-  const penguin = R("penguin", ["lost penguin", "sad penguin"]);
-  ok(judge("penguin", penguin) === "correct", "exact answer");
-  ok(judge("a PENGUIN!", penguin) === "correct", "case, punctuation and filler words don't matter");
-  ok(judge("penguins", penguin) === "correct", "plurals");
-  ok(judge("penquin", penguin) === "correct", "a one-letter typo");
-  ok(judge("a penguin that lost its egg", penguin) === "correct", "the answer inside a longer guess");
-  ok(judge("a horse", penguin) === "wrong", "a different thing");
-  ok(judge("pen", penguin) === "wrong", "a fragment of the word is not enough");
-  const dog = R("walking a dog", ["dog walk", "strong dog", "dog pulling"]);
-  ok(judge("walking the dog", dog) === "correct", "different filler word");
-  ok(judge("dog walking", dog) === "correct", "word order and -ing");
-  ok(judge("a dog", dog) === "close", "half the answer is close, not correct");
-  const bat = R("low battery", ["phone dying", "1 percent", "battery"]);
-  ok(judge("battery", bat) === "correct", "an accepted alternate");
-  ok(judge("my phone is dying", bat) === "correct", "an alternate in a longer guess");
-  ok(judge("", bat) === "wrong" && judge("the", bat) === "wrong", "empty and filler-only guesses are wrong");
+  const SUPPLIED_HR = [["Peeing dog", "mild"], ["Ex-boyfriend", "mild"], ["Kid throwing a tantrum", "mild"], ["Constipated person", "mild"], ["Person with diarrhea", "mild"], ["Masochist", "spicy"], ["Sydney Sweeney", "mild"], ["Michael Jordan", "mild"], ["Jake Paul", "mild"], ["Mike Tyson", "mild"], ["IShowSpeed", "mild"], ["Alysa Liu", "mild"]];
+  const raw = await (await fetch("/web/data/ritual_prompts.json")).json();
+  ok(raw._draft === true, "the pool is marked as a draft");
+  ok(HR_POOL.length === SUPPLIED_HR.length && SUPPLIED_HR.every(([t, l]) => HR_POOL.some(p => p.text === t && p.level === l)), `exactly the ${SUPPLIED_HR.length} supplied prompts, with their levels`);
+  ok(new Set(HR_POOL.map(p => p.id)).size === HR_POOL.length && HR_POOL.every(p => p.id.startsWith(`hr-${p.level}-`)), "unique ids that name their level");
+  ok(!ritualPromptsFor(HR_POOL, { privacy: "public" }).some(p => p.level !== "mild"), "a public party only gets mild prompts");
+  ok(ritualPromptsFor(HR_POOL, { privacy: "private" }).some(p => p.text === "Masochist"), "a private party gets the spicy one too");
+}
+
+group("Humiliation Ritual — the close-guess hint (the performer still decides)");
+{
+  const R = answer => ({ answer, alt: [] });
+  ok(judge("peeing dog", R("Peeing dog")) === "match" && judge("a dog peeing", R("Peeing dog")) === "match", "the answer, in any order, looks right");
+  ok(judge("dog", R("Peeing dog")) === "close", "half of it is close");
+  ok(judge("sidney sweeny", R("Sydney Sweeney")) === "match", "typos still look right");
+  ok(judge("speed", R("IShowSpeed")) === "close" && judge("i show speed", R("IShowSpeed")) === "match", "part of a one-word name is close; the name with spaces looks right");
+  ok(judge("my ex", R("Ex-boyfriend")) === "close", "a hyphenated answer splits into words");
+  ok(judge("a horse", R("Peeing dog")) === "wrong" && judge("", R("Peeing dog")) === "wrong" && judge("the", R("Mike Tyson")) === "wrong", "unrelated, empty and filler-only guesses get no hint");
+  const p0 = ritualPoints(0), pEnd = ritualPoints(RITUAL.ACT_MS), pMid = ritualPoints(RITUAL.ACT_MS / 2);
+  ok(p0.guesser > p0.performer && pMid.guesser > pMid.performer, "the guesser always scores more than the performer");
+  ok(p0.guesser > pMid.guesser && pMid.guesser > pEnd.guesser && p0.performer > pEnd.performer, `faster = more (guesser ${p0.guesser} → ${pMid.guesser} → ${pEnd.guesser})`);
 }
 
 group("Humiliation Ritual (4 players)");
 {
   const t = seatTable(HUMILIATION_RITUAL, 4);
   adv(500);
-  ok(t.s.order.length === 4, "performers rotate through everyone");
-  const r0 = t.s.rounds[0], perf = r0.performer;
+  ok(t.s.turns === 4, "default: everyone performs once (4 turns)");
+  const r0 = t.s.turn, perf = r0.performer;
+  ok(!!perf && r0.prompt && HR_POOL.some(p => p.text === r0.prompt), "a performer is picked and dealt a prompt from the pool");
   ok(waitPhase(t, "act"), "prep rolls into acting");
-  const [g1, g2] = t.s.order.filter(x => x !== perf);
+  const [g1, g2] = Object.keys(t.s.players).filter(x => x !== perf);
   t.input(g1, "guess", { text: "completely wrong" });
+  t.input(g2, "guess", { text: r0.prompt });
+  t.input(perf, "guess", { text: "me me me" });
   adv(600);
-  ok(t.s.rounds[0].guesses[0].verdict === "wrong", "a wrong guess is judged wrong");
-  ok(t.s.phase === "act", "and the turn carries on");
-  t.input(perf, "guess", { text: r0.answer });
-  adv(300);
-  ok(t.s.rounds[0].guesses.length === 1, "the performer can't guess their own prompt");
-  t.input(g2, "guess", { text: r0.answer });
+  ok(t.s.turn.guesses.length === 2, "guesses reach the performer's feed; the performer can't guess");
+  ok(t.s.turn.guesses.find(g => g.by === g2).hint === "match" && t.s.turn.guesses.find(g => g.by === g1).hint === "wrong", "each guess carries its hint");
+  ok(t.s.phase === "act" && !t.s.turn.won, "a right guess does NOT end the turn by itself — the performer decides");
+  const right = t.s.turn.guesses.find(g => g.by === g2);
+  t.input(g1, "pick", { gid: right.gid });
+  adv(400);
+  ok(!t.s.turn.won, "a guesser can't call a guess right");
+  t.input(perf, "pick", { gid: right.gid });
   adv(2000);
-  ok(t.s.rounds[0].won?.by === g2 && t.s.rounds[0].won.how === "typed", "a correct typed guess wins on its own");
-  ok(t.s.phase === "result", "the turn ends without the performer touching their phone");
-  ok(t.s.players[g2].score === 100, `the guesser scores 100 (got ${t.s.players[g2].score})`);
-  ok(t.s.players[perf].score > 60, `the performer scores 60 + speed bonus (got ${t.s.players[perf].score})`);
+  ok(t.s.turn.won?.by === g2 && t.s.phase === "result", "the performer taps the right guess and the turn ends");
+  ok(t.s.players[g2].score > t.s.players[perf].score && t.s.players[perf].score > 0 && t.s.players[g1].score === 0, `the guesser scores more than the performer (${t.s.players[g2].score} vs ${t.s.players[perf].score}); nobody else scores`);
 
-  // out loud: only the performer can confirm, never naming themselves
-  ok(waitPhase(t, "act"), "next performer is up");
-  const r1 = t.s.rounds[t.s.ri], perf1 = r1.performer;
-  const other = t.s.order.find(x => x !== perf1);
-  t.input(other, "heard", { who: other });
-  adv(300);
-  ok(!t.s.rounds[t.s.ri].won, "a guesser can't confirm an out-loud answer (they don't know the prompt)");
-  t.input(perf1, "heard", { who: perf1 });
-  adv(300);
-  ok(!t.s.rounds[t.s.ri].won, "the performer can't credit themselves");
-  t.input(perf1, "heard", { who: other });
-  adv(2000);
-  ok(t.s.rounds[1].won?.by === other && t.s.rounds[1].won.how === "out loud", "the performer confirms who said it out loud");
-  ok(t.s.phase === "result", "and the turn ends");
-
-  ok(runOut(t), "all four turns play out and the game ends");
+  // nobody gets it: time runs out, nobody scores, the answer is shown
+  ok(waitPhase(t, "act"), "the next performer is up");
+  const before = Object.fromEntries(Object.values(t.s.players).map(p => [p.id, p.score]));
+  ok(waitPhase(t, "result", RITUAL.ACT_MS + 5000), "time runs out");
+  ok(!t.s.turn.won && Object.values(t.s.players).every(p => p.score === before[p.id]), "nobody scores when time runs out");
+  ok(runOut(t), "all turns play out and the game ends");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
+{
+  const t = seatTable(HUMILIATION_RITUAL, 3, { options: { rounds: "2" } });
+  adv(500);
+  ok(t.s.turns === 6, "the host can set everyone twice (3 players: 6 turns)");
+  ok(waitPhase(t, "act"), "into the act");
+  t.drop(t.s.turn.performer);
+  adv(4000);
+  ok(t.s.turn.skipped === true || t.s.phase !== "act", "a performer who leaves ends their turn, nobody waits");
+  ok(runOut(t), "and the game still finishes");
+}
 
+group("The fair picker");
+{
+  let rng = (seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647)(7);
+  const ids = ["a", "b", "c", "d", "e"];
+  let w = {}, last = null, repeats = 0;
+  const count = Object.fromEntries(ids.map(i => [i, 0]));
+  for (let k = 0; k < 5000; k++) {
+    const r = fairPick(w, ids, rng);
+    w = r.weights; count[r.id]++;
+    if (r.id === last) repeats++;
+    last = r.id;
+  }
+  ok(ids.every(i => Math.abs(count[i] / 5000 - 0.2) < 0.03), `everyone is picked about as often (${ids.map(i => count[i]).join(" / ")})`);
+  ok(repeats > 0 && repeats / 5000 < 0.06, `a repeat right away is rare but possible (${(repeats / 50).toFixed(1)}%)`);
+  ok(Object.values(w).every(x => x > 0), "nobody's chance is ever 0");
+  const c1 = chances({}, ids), r1 = fairPick({}, ids, () => 0.01), c2 = chances(r1.weights, ids);
+  ok(c2[r1.id] < c1[r1.id] && ids.filter(i => i !== r1.id).every(i => c2[i] > c1[i]), "picked: your chance drops; not picked: it rises");
+  let wait = {}, ce = [chances(wait, ids).e];
+  for (let k = 0; k < 3; k++) { wait = fairPick(wait, ids, () => 0).weights; ce.push(chances(wait, ids).e); }
+  ok(ce.every((c, i) => i === 0 || c > ce[i - 1]), "every turn you're skipped, your chance grows");
+}
+
+group("Side Quest — the quest pool");
+{
+  const ids = new Set(SQ.quests.map(q => q.id));
+  const by = (c, l) => SQ.quests.filter(q => q.category === c && q.level === l).length;
+  ok(SQ.quests.length === 47 && by("anywhere", "mild") === 7 && by("strangers", "mild") === 22 && by("strangers", "spicy") === 15 && by("unhinged", "unhinged") === 3, `47 quests: 7 anywhere, 22 + 15 strangers (mild/spicy), 3 unhinged (got ${SQ.quests.length})`);
+  ok(ids.size === SQ.quests.length && SQ.quests.every(q => q.id.startsWith(`sq-${q.category}-${q.level}-`)), "unique ids that name category and level");
+  ok(SQ.quests.some(q => q.text === "Crash out and throw a tantrum in COMPLETE SILENCE") && SQ.quests.some(q => q.text === "Take a selfie with a stranger and caption it \"hard launch 😝\""), "texts are exactly as supplied");
+  ok(!questsFor(SQ.quests, { settings: { adult: false } }).some(q => q.level === "unhinged"), "no unhinged quests without 18+");
+  ok(questsFor(SQ.quests, { settings: { adult: true } }).filter(q => q.level === "unhinged").length === 3, "18+ parties get them");
+  ok(questPoints(5) === 100 && questPoints(3.5) === 70 && questPoints(0) === 0, "points = average stars × 20");
+}
+
+group("Side Quest (4 players)");
+{
+  const t = seatTable(SIDE_QUEST, 4);
+  adv(500);
+  ok(t.s.phase === "setup", "opens on the host's setup");
+  const host = t.host.me.id, guest = Object.keys(t.s.players).find(x => x !== host);
+  t.input(guest, "sq-go"); t.input(guest, "sq-cat", { cat: "anywhere", on: false });
+  adv(400);
+  ok(t.s.phase === "setup" && !t.s.setup.off.length, "only the host can change the setup or start");
+  t.input(host, "sq-cat", { cat: "strangers", on: false });
+  adv(300);
+  const strangers = SQ.quests.filter(q => q.category === "strangers").length;
+  ok(t.s.setup.off.length === strangers, "the host can switch a whole category off");
+  const one = SQ.quests.find(q => q.category === "strangers");
+  t.input(host, "sq-q", { id: one.id, on: true });
+  t.input(host, "sq-q", { id: SQ.quests[0].id, on: false });
+  adv(300);
+  ok(!t.s.setup.off.includes(one.id) && t.s.setup.off.includes(SQ.quests[0].id), "…or single quests on and off");
+  t.input(host, "sq-turns", { n: 3 });
+  t.input(host, "sq-go");
+  adv(2000);
+  ok(t.s.phase === "wizard" && t.s.turns === 3, "start: the wizard appears; the host's 3 turns stick");
+  const q0 = t.s.turn.quest;
+  ok(q0.category === "anywhere" && q0.id !== SQ.quests[0].id || q0.id === one.id, "the quest comes from what's switched on");
+  ok(waitPhase(t, "do", 20000), "the ball reveals the quest, spins and lands; the timer starts");
+  ok(t.s.left > SIDEQUEST.DO_MS - 1500, "3 minutes on the clock");
+  const who = t.s.turn.who, voters = Object.keys(t.s.players).filter(x => x !== who);
+  t.input(voters[0], "done");
+  adv(400);
+  ok(!t.s.turn.status, "only the player on the quest can say they're done");
+  t.input(who, "done");
+  ok(waitPhase(t, "vote", 4000), "Done → the room rates it");
+  t.input(who, "rate", { v: 5 });
+  t.input(voters[0], "rate", { v: 5 }); t.input(voters[1], "rate", { v: 4 }); t.input(voters[1], "rate", { v: 3 });
+  adv(400);
+  ok(t.s.turn.votes[who] === undefined, "you can't rate your own quest");
+  ok(t.s.phase === "vote", "the vote waits for everyone");
+  t.input(voters[2], "rate", { v: 9 });
+  adv(300);
+  ok(t.s.turn.votes[voters[2]] === undefined, "votes are 1-5 stars");
+  t.input(voters[2], "rate", { v: 4 });
+  ok(waitPhase(t, "result", 3000), "everyone voted → the result");
+  ok(t.s.turn.avg === 4 && t.s.turn.pts === 80 && t.s.players[who].score === 80, `average 4 (5,3 changed from 4,4) → 80 points (got ${t.s.turn.pts})`);
+
+  // the next turn: someone gives up
+  ok(waitPhase(t, "do", 30000), "next turn: a new quest, a new pick");
+  ok(t.s.turn.quest.id !== q0.id, "a different quest");
+  const w2 = t.s.turn.who, before = t.s.players[w2].score;
+  t.input(w2, "giveup");
+  ok(waitPhase(t, "result", 4000), "give up → straight to the result, no vote");
+  ok(t.s.turn.pts === 0 && t.s.turn.n === 0 && t.s.players[w2].score === before, "give up = 0, nobody votes");
+  ok(runOut(t), "all 3 turns play out and the game ends");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+{
+  const t = seatTable(SIDE_QUEST, 5);
+  adv(500);
+  t.input(t.host.me.id, "sq-go");
+  adv(2000);
+  ok(t.s.turns === 5, "default length: everyone once (5 players, 5 turns)");
+  ok(waitPhase(t, "do", 20000), "into the quest");
+  const who = t.s.turn.who;
+  t.input(who, "done");
+  ok(waitPhase(t, "vote", 4000), "the vote opens");
+  const sk = t.s.left;
+  ok(sk <= SIDEQUEST.VOTE_MS && waitPhase(t, "result", SIDEQUEST.VOTE_MS + 2000), "the vote closes on its own ~30 s after Done");
+  ok(t.s.turn.n === 0 && t.s.turn.pts === 0, "no votes: no points");
+  ok(waitPhase(t, "do", 30000), "next turn");
+  t.drop(t.s.turn.who);
+  adv(3000);
+  ok(t.s.turn.skipped && t.s.phase !== "do", "the player on the quest leaves: the turn is skipped, nobody waits");
+  ok(runOut(t), "and the game still finishes");
+}
+{
+  const adult = { name: "x", privacy: "private", settings: { adult: true } };
+  const t = seatTable(SIDE_QUEST, 3, { party: adult });
+  adv(500);
+  for (const c of ["anywhere", "strangers"]) t.input(t.host.me.id, "sq-cat", { cat: c, on: false });
+  t.input(t.host.me.id, "sq-go");
+  adv(2000);
+  ok(t.s.turn?.quest.level === "unhinged", "an 18+ party can play unhinged quests only");
+  // this one doesn't play out: stop it, or it keeps running (and drawing
+  // into the shared game panel) under every spec after it
+  for (const c of t.clients) c.game?.stop();
+  ui.hide();
+}
+
+group("The party set: 3 games, places, standings");
+{
+  const R = (scores, completed = true) => ({ completed, players: Object.entries(scores).map(([id, score]) => ({ id, handle: id, score, gone: false, bot: id.startsWith("bot") })) });
+  let set = newSet(1, "sess");
+  ok(places(R({ a: 50, b: 50, c: 10, bot1: 99 })).map(p => `${p.id}${p.place}`).join() === "a1,b1,c3", "ties share a place; bots are left out");
+  set = addGame(set, "mission", R({ a: 300, b: 200, c: 100 }));
+  set = addGame(set, "ritual", R({ a: 0, b: 0, c: 0 }, false));
+  ok(set.games.length === 1, "a game that didn't complete doesn't count toward the 3");
+  set = addGame(set, "ritual", R({ a: 10, b: 900, c: 40 }));
+  set = addGame(set, "sidequest", R({ b: 5, c: 9 }));
+  ok(set.done && set.games.length === 3, "after 3 completed games the set is done");
+  ok(addGame(set, "mission", R({ a: 1 })).games.length === 3, "nothing is added after the set is done");
+  const rows = standings(set, [{ id: "a", handle: "a" }, { id: "b", handle: "b" }, { id: "c", handle: "c" }]);
+  const P = LEADERBOARD.PLACE_POINTS;
+  ok(rows[0].id === "b" && rows[0].total === P[1] + P[0] + P[1], `standings total the place points (b: ${rows[0].total})`);
+  ok(rows.find(r => r.id === "a").last === 0 && rows.find(r => r.id === "c").last === P[0], "`last` is what the latest game added");
+  ok(fullParticipants(set).join() === "b,c", "full participants: only those in all 3 games");
+}
+
+}
+if (!PART || PART === "3") {
 // ===================================================================== 4
 group("The Art Gallery (4 players)");
 {
@@ -916,5 +1079,6 @@ group("Cleanup — nothing survives the party");
   ok(window.__game === null, "the debug handle no longer pins the state");
 }
 
+}
 log("head", `\n${pass} passed, ${fail} failed`);
 window.__done = { pass, fail };

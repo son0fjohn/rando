@@ -1,5 +1,12 @@
-// Party room layouts, one per vibe backdrop (web/lobbies/*.png, 752x1344).
-// All numbers are backdrop pixels; hplobby.js scales them to the screen.
+// Party room layouts. All numbers are backdrop pixels; hplobby.js scales
+// them to the screen.
+//
+//   apartment   THE party room: the late-night apartment drawn in code
+//               (roomart.js), 176x300 art pixels = 704x1200 backdrop pixels
+//               (4 per art pixel). Every vibe uses it; the vibe tints its neon.
+//   chill / chaotic / sporty   the older generated backdrops
+//               (web/lobbies/*.png, 752x1344), kept for reference
+//
 //
 //   walk      the floor rectangle feet may stand in
 //   block     furniture footprints feet can't enter (pathfinding goes around)
@@ -9,9 +16,31 @@
 //   door      where people appear when they join
 //   tv        where the TV prop stands, and `at`, the spot you walk to
 //             before the game picker opens
+//   slots     (drawn rooms) named furniture spots, in ART pixels: x = the
+//             piece's centre, y = where it meets the floor; `item` is a
+//             roomart.js ITEMS id. Swap the item to restyle the room.
+//   w, h      the room's size in backdrop pixels (default ROOM_W x ROOM_H)
 export const ROOM_W = 752, ROOM_H = 1344;
 
 export const ROOMS = {
+  apartment: {
+    art: "apartment", w: 704, h: 1200,
+    walk: { x0: 48, y0: 400, x1: 656, y1: 1144 },
+    block: [
+      [0, 0, 704, 392],           // back wall, window
+      [92, 400, 228, 440],        // the TV on its stand
+      [584, 416, 648, 452],       // the floor lamp
+    ],
+    front: [],
+    slots: {
+      tv: { item: "crt", x: 40, y: 110 },
+      lamp: { item: "lamp", x: 154, y: 113 },
+      rug: { item: "rug", x: 92, y: 206 },
+      cushion: { item: "cushion", x: 64, y: 150 },
+    },
+    door: [352, 1100],
+    tv: { x: 160, y: 440, at: [160, 488] },
+  },
   chill: {
     walk: { x0: 40, y0: 300, x1: 715, y1: 1195 },
     block: [

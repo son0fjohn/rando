@@ -1,7 +1,10 @@
 // The party lobby: a top-down room everyone walks around in.
 //
-// The vibe's backdrop (web/lobbies/) is drawn at its own aspect, centered,
-// so every phone sees the same room and furniture lines up. Each player is a
+// The room is the late-night apartment drawn in code (roomart.js), layered:
+// background (walls, floor, rug, cushion) / the window's animated night city
+// / light spill / furniture in named slots (the TV, the lamp) / people /
+// foreground. It's drawn at a whole-number pixel scale, centered, so every
+// phone sees the same room and the pixels stay crisp; the vibe tints the neon. Each player is a
 // flat pixel sprite of their own 3D character (charsprite.js) with a pixel
 // name tag (the host gets a crown). Tap the floor and you walk there, around
 // the furniture; tap the TV to walk over and open the game picker; tap
@@ -21,6 +24,7 @@
 import { esc, avatarHue } from "./hpkit.js";
 import { ROOMS, ROOM_W, ROOM_H } from "./roomdefs.js";
 import { spriteFor, silhouetteFor, SPRITE } from "./charsprite.js";
+import { GEO, ITEMS, itemSprite, paintBackground, windowArt, paintLight, paintForeground } from "./roomart.js";
 
 const SPEED = 230;                     // backdrop px per second
 const CELL = 16;                       // pathfinding grid, backdrop px
@@ -35,10 +39,12 @@ const hash = id => avatarHue(id) * 7919 + String(id).length * 104729;
 // A coarse walkability grid per room, A* over it (8 directions, no corner
 // cutting), then string-pulled to straight segments.
 const grids = new Map();
+const dims = R => [R.w ?? ROOM_W, R.h ?? ROOM_H];
 function gridFor(vibe) {
   if (grids.has(vibe)) return grids.get(vibe);
-  const R = ROOMS[vibe] ?? ROOMS.chill;
-  const gw = Math.ceil(ROOM_W / CELL), gh = Math.ceil(ROOM_H / CELL);
+  const R = ROOMS[vibe] ?? ROOMS.apartment;
+  const [RW, RH] = dims(R);
+  const gw = Math.ceil(RW / CELL), gh = Math.ceil(RH / CELL);
   const open = new Uint8Array(gw * gh);
   for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
     const x = (gx + 0.5) * CELL, y = (gy + 0.5) * CELL;
@@ -143,9 +149,11 @@ export class LobbyRoom {
   // el: container to fill; room: net.js Room; me: { id, handle, avatar }
   // bots: local-only wanderers (the host's ?bots=N seats) — only this device sees them
   // onTV(): you walked to the TV · onPerson(id): you tapped someone
-  constructor(el, room, me, { bots = [], vibe = "chill", onTV = null, onPerson = null } = {}) {
+  // roomId: which room layout (default: the apartment); vibe tints it
+  constructor(el, room, me, { bots = [], vibe = "chill", roomId = "apartment", onTV = null, onPerson = null } = {}) {
     this.el = el; this.room = room; this.me = me;
-    this.bots = bots; this.vibe = ROOMS[vibe] ? vibe : "chill";
+    this.bots = bots; this.vibe = vibe;
+    this.roomId = ROOMS[roomId] ? roomId : "apartment";
     this.onTV = onTV; this.onPerson = onPerson;
     this.people = new Map();           // id -> { el, x, y, path, facing, walking, sheet, lastSeen }
     this.hiddenIds = new Set();
@@ -155,7 +163,7 @@ export class LobbyRoom {
     this.mount();
   }
 
-  get R() { return ROOMS[this.vibe]; }
+  get R() { return ROOMS[this.roomId]; }
 
   mount() {
     this.el.classList.add("lr-floor");
@@ -185,6 +193,7 @@ export class LobbyRoom {
     this.room.off("lpos", this._onPos);
     this._ro?.disconnect();
     for (const t of this._timers) { clearInterval(t); clearTimeout(t); }
+    clearInterval(this._artTimer);
     this._timers.clear();
     cancelAnimationFrame(this._raf); this._raf = null;
     this.el.classList.remove("lr-floor");
@@ -192,20 +201,22 @@ export class LobbyRoom {
     this.people.clear();
   }
 
-  // vibe change (the host's meta arrives after you join): new backdrop, same people
+  // vibe change (the host's meta arrives after you join): the room's neon
+  // changes (a backdrop room: the backdrop), same people
   setVibe(vibe) {
-    vibe = ROOMS[vibe] ? vibe : "chill";
     if (vibe === this.vibe && this.layer.querySelector(".lr-tv")) return;
     this.vibe = vibe;
+    if (!this.R.art && ROOMS[vibe]) this.roomId = vibe;
     this.buildScene();
     for (const [id, p] of this.people) {
-      [p.x, p.y] = nearestOpenSpot(this.vibe, p.x, p.y);
+      [p.x, p.y] = nearestOpenSpot(this.roomId, p.x, p.y);
       p.path = [];
       this.place(id);
     }
   }
-  // kept for party.js: the backdrop follows the vibe
+  // backdrop rooms only: the backdrop image (drawn rooms paint their own)
   setBackground(url) {
+    if (this.R.art) return;
     if (this.stage.dataset.bg === url) return;
     this.stage.dataset.bg = url;
     this.stage.style.backgroundImage = `url(${url})`;
@@ -213,7 +224,12 @@ export class LobbyRoom {
   }
 
   buildScene() {
-    this.layer.querySelectorAll(".lr-front, .lr-tv").forEach(n => n.remove());
+    this.layer.querySelectorAll(".lr-front, .lr-tv, .lr-furn, .lr-fg").forEach(n => n.remove());
+    this.stage.querySelectorAll(".lr-window, .lr-light").forEach(n => n.remove());
+    clearInterval(this._artTimer);
+    this.stage.classList.toggle("lr-art", !!this.R.art);
+    this.stage.dataset.vibe = this.vibe;
+    if (this.R.art) { this.buildArt(); return; }
     const R = this.R, url = this.stage.dataset.bg;
     for (const f of R.front) {
       const d = document.createElement("div");
@@ -232,15 +248,59 @@ export class LobbyRoom {
     this.layout();
   }
 
-  // fit the backdrop's aspect inside the floor; sprites at a whole-number scale
+  // the drawn room, layer by layer (see roomart.js)
+  buildArt() {
+    const R = this.R, vibe = this.vibe;
+    this.stage.style.backgroundImage = `url(${paintBackground(vibe, R.slots)})`;
+    // the window: an animated canvas over the wall
+    const win = windowArt(vibe);
+    win.canvas.className = "lr-window";
+    this.stage.prepend(win.canvas);
+    this._artTimer = setInterval(() => { if (this.stage.isConnected) win.frame(); }, 280);
+    // light spill + the lamp's pool, blended over the floor
+    const lamp = Object.values(R.slots).find(sl => sl.item === "lamp");
+    const light = document.createElement("div");
+    light.className = "lr-light";
+    light.style.backgroundImage = `url(${paintLight(vibe, lamp ? { x: lamp.x, y: lamp.y - 2 } : null)})`;
+    win.canvas.after(light);
+    // standing furniture: one sprite per slot, depth-sorted with the people
+    for (const [name, sl] of Object.entries(R.slots)) {
+      if (ITEMS[sl.item]?.flat) continue;
+      const spr = itemSprite(sl.item, vibe); if (!spr) continue;
+      let el;
+      if (name === "tv") {
+        el = document.createElement("button");
+        el.type = "button"; el.className = "lr-tv lr-furn"; el.setAttribute("aria-label", "the TV: pick a game");
+        el.addEventListener("pointerdown", e => { e.stopPropagation(); this.goTV(); });
+      } else {
+        el = document.createElement("div");
+        el.className = `lr-furn lr-${sl.item}`;
+      }
+      el.dataset.slot = name;
+      el.style.backgroundImage = `url(${spr.url})`;
+      el.style.zIndex = String(sl.y * 4);
+      this.layer.appendChild(el);
+    }
+    const fg = document.createElement("div");
+    fg.className = "lr-fg";
+    fg.style.backgroundImage = `url(${paintForeground()})`;
+    this.layer.appendChild(fg);
+    this.layout();
+  }
+
+  // fit the room inside the floor, centered. Drawn rooms snap to a whole
+  // number of screen pixels per art pixel (crisp), sprites use the same
+  // scale; backdrop rooms fit their aspect.
   layout() {
     const r = this.el.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const s = Math.min(r.width / ROOM_W, r.height / ROOM_H);
+    const [RW, RH] = dims(this.R);
+    let s = Math.min(r.width / RW, r.height / RH);
+    if (this.R.art) { const k = Math.floor(s * 4); if (k >= 2) s = k / 4; }
     this.s = s;
-    this.stage.style.width = `${Math.round(ROOM_W * s)}px`;
-    this.stage.style.height = `${Math.round(ROOM_H * s)}px`;
-    const k = Math.max(1, Math.round(ROOM_H * s / 300));     // sprite pixels -> CSS px
+    this.stage.style.width = `${Math.round(RW * s)}px`;
+    this.stage.style.height = `${Math.round(RH * s)}px`;
+    const k = this.R.art ? Math.max(1, Math.round(s * 4)) : Math.max(1, Math.round(ROOM_H * s / 300));     // sprite pixels -> CSS px
     this.k = k;
     this.stage.style.setProperty("--px", `${k}px`);
     this.stage.style.setProperty("--sw", `${SPRITE.W * k}px`);
@@ -250,15 +310,25 @@ export class LobbyRoom {
       Object.assign(f.style, { left: `${x0 * s}px`, top: `${y0 * s}px`, width: `${(x1 - x0) * s}px`, height: `${(y1 - y0) * s}px`,
         backgroundSize: `${ROOM_W * s}px ${ROOM_H * s}px`, backgroundPosition: `${-x0 * s}px ${-y0 * s}px` });
     }
-    const tv = this.layer.querySelector(".lr-tv");
-    if (tv) Object.assign(tv.style, { width: `${26 * k}px`, height: `${24 * k}px`, left: `${this.R.tv.x * s - 13 * k}px`, top: `${this.R.tv.y * s - 24 * k}px` });
+    if (this.R.art) {
+      const ap = s * 4;                                       // CSS px per art pixel
+      const W = GEO.window, win = this.stage.querySelector(".lr-window");
+      if (win) Object.assign(win.style, { left: `${W.x * ap}px`, top: `${W.y * ap}px`, width: `${W.w * ap}px`, height: `${W.h * ap}px` });
+      for (const f of this.layer.querySelectorAll(".lr-furn")) {
+        const sl = this.R.slots[f.dataset.slot], it = ITEMS[sl.item];
+        Object.assign(f.style, { width: `${it.w * ap}px`, height: `${it.h * ap}px`, left: `${(sl.x - it.w / 2) * ap}px`, top: `${(sl.y - it.h) * ap}px` });
+      }
+    } else {
+      const tv = this.layer.querySelector(".lr-tv");
+      if (tv) Object.assign(tv.style, { width: `${26 * k}px`, height: `${24 * k}px`, left: `${this.R.tv.x * s - 13 * k}px`, top: `${this.R.tv.y * s - 24 * k}px` });
+    }
     for (const id of this.people.keys()) this.place(id);
   }
 
   // ---- people
   doorSpot(id) {
     const [dx, dy] = this.R.door, h = hash(id);
-    return nearestOpenSpot(this.vibe, dx + ((h % 7) - 3) * 14, dy + (((h >> 3) % 5) - 2) * 10);
+    return nearestOpenSpot(this.roomId, dx + ((h % 7) - 3) * 14, dy + (((h >> 3) % 5) - 2) * 10);
   }
 
   // reconcile sprites with the room's presence (+ local bots)
@@ -367,9 +437,9 @@ export class LobbyRoom {
   walk(id, to, broadcast, exact = false) {
     const p = this.people.get(id); if (!p) return;
     if (id === this.me.id && !exact) this._tvPending = false;
-    let dest = nearestOpenSpot(this.vibe, to[0], to[1]);
+    let dest = nearestOpenSpot(this.roomId, to[0], to[1]);
     if (!exact) dest = this.roomy(id, dest);
-    const path = findPath(this.vibe, [p.x, p.y], dest);
+    const path = findPath(this.roomId, [p.x, p.y], dest);
     p.path = path;
     this.run();
     if (broadcast) this.room.send("lpos", { x: Math.round(dest[0]), y: Math.round(dest[1]), path });
@@ -383,7 +453,7 @@ export class LobbyRoom {
       let dx = x - ox, dy = y - oy;
       if (!dx && !dy) { dx = (hash(id) % 2) ? 1 : -1; dy = 0.3; }
       const d = Math.hypot(dx, dy);
-      [x, y] = nearestOpenSpot(this.vibe, ox + dx / d * PERSONAL, oy + dy / d * PERSONAL * 0.7);
+      [x, y] = nearestOpenSpot(this.roomId, ox + dx / d * PERSONAL, oy + dy / d * PERSONAL * 0.7);
     }
     return [x, y];
   }
@@ -391,10 +461,11 @@ export class LobbyRoom {
     const p = this.people.get(id); if (!p) return;
     const x = Number(m.x), y = Number(m.y);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    const path = Array.isArray(m.path) ? m.path.filter(q => Array.isArray(q) && Number.isFinite(+q[0]) && Number.isFinite(+q[1])).slice(0, 64).map(q => [clamp(+q[0], 0, ROOM_W), clamp(+q[1], 0, ROOM_H)]) : null;
+    const [RW, RH] = dims(this.R);
+    const path = Array.isArray(m.path) ? m.path.filter(q => Array.isArray(q) && Number.isFinite(+q[0]) && Number.isFinite(+q[1])).slice(0, 64).map(q => [clamp(+q[0], 0, RW), clamp(+q[1], 0, RH)]) : null;
     if (path?.length) { p.path = path; this.run(); return; }
     // no path: they're standing there (sent when someone joins)
-    if (Math.hypot(p.x - x, p.y - y) > 2) { p.x = clamp(x, 0, ROOM_W); p.y = clamp(y, 0, ROOM_H); p.path = []; this.place(id); }
+    if (Math.hypot(p.x - x, p.y - y) > 2) { p.x = clamp(x, 0, RW); p.y = clamp(y, 0, RH); p.path = []; this.place(id); }
   }
   face(id, f) { const p = this.people.get(id); if (p) { p.facing = f; this.place(id); } }
 

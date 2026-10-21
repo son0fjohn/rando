@@ -1,40 +1,45 @@
-// Top-down 2D sprites of each player's own character, for the party room.
+// Top-down 2D sprites of each player's own character, for the party room,
+// in the classic small-RPG style: ~20x30 pixels, flat colors with one shade
+// each, a pure black 1px outline, a round chunky head and big shoes.
 //
-// The player's real 3D avatar (avatar3.js: their hair, colors, outfit) is
-// posed and rendered through an orthographic camera tilted down from a 3/4
-// angle, into a small canvas at 4x, then flattened:
-//   * unlit solid colors: skin and hair from the avatar palette, each
-//     garment its median texture color (Tripo textures are too noisy to
-//     keep), every pixel snapped to that palette and reduced 4x4 -> 1
-//   * stray specks removed, then a 1px outline in a deep shade of whatever
-//     color it borders (never pure black)
-//   * eyes painted at their projected spot, 2x3 with a white highlight,
-//     so they read as big and open at this size
-// Shown with nearest-neighbor scaling at whole multiples, so it stays crisp.
+// So cosmetics just work, every sprite is made from the player's real 3D
+// avatar (avatar3.js), posed and rendered through the room's 3/4 camera:
+//   * the head and feet bones are scaled up a little first (chunky head,
+//     readable shoes)
+//   * an ID pass says which part each pixel is (skin, hair, top, bottom,
+//     shoes); a plain lit pass says whether it faces the light or away
+//   * each 4x4 block becomes one sprite pixel: its part's flat color, or that
+//     color's single shade. Skin and hair come from the avatar palette, each
+//     garment is its texture's median color.
+//   * stray pixels go, then the black outline goes around the silhouette
+//   * the face is never sampled: eyes (2px tall, a white highlight) and a
+//     small mouth are a fixed pixel overlay on the head, so every face comes
+//     out clean and friendly
+// Shown with nearest-neighbor scaling at whole multiples (the room's pixel
+// scale), so it stays crisp.
 //
 // One sheet per look: rows = down, left, up (the room flips left for right),
-// columns = [stand, walk 1-4]. Walk frames come from the rig's walk clip;
-// without it all five columns are the standing pose and the room bobs the
-// sprite instead. Idle breathing is CSS.
-//
-// Sheets are cached per look (memory + sessionStorage) and rebuilt only when
-// the look changes. If 3D can't render at all, the fallback is a little
-// pixel figure in the player's own skin, hair and outfit colors.
-const W = 32, H = 40;                        // sprite pixels per frame
+// columns = [idle, step A, step B]; the room plays A, idle, B, idle as a
+// bouncy walk. Sheets are cached per look (memory + sessionStorage) and
+// rebuilt only when the look changes. If 3D can't render at all, the
+// fallback is a little pixel figure in the player's own colors.
+const W = 20, H = 30;                        // sprite pixels per frame
 const SS = 4;                                // rendered at 4x, reduced per 4x4 block
-const COLS = 5, FACINGS = ["down", "left", "up"];
-const VERSION = 3;
+const COLS = 3, FACINGS = ["down", "left", "up"];
+const VERSION = 4;
 export const SPRITE = { W, H, COLS, FACINGS };
 
-const EYE = [34, 28, 52], WHITE = [252, 252, 255];
+const BLACK = [12, 10, 18], WHITE = [255, 255, 255], MOUTH = [70, 28, 40];
 const WORDS = { black: [44, 44, 52], white: [238, 240, 236], maroon: [128, 38, 56], blue: [70, 112, 196], navy: [44, 58, 104],
   khaki: [190, 166, 104], camo: [104, 118, 72], brown: [124, 88, 60], grey: [146, 150, 158], green: [84, 150, 86], pink: [240, 140, 176], tan: [196, 152, 98] };
 const FALLBACK_SKIN = { 1: [238, 196, 156], 2: [205, 170, 147], 3: [192, 135, 91], 4: [155, 99, 65], 5: [89, 60, 44] };
 const FALLBACK_HAIR = { black: [53, 52, 57], brown: [115, 82, 70], yellow: [225, 185, 122], red: [206, 55, 58], white: [225, 210, 200] };
-const FALLBACK_IRIS = { black: "#262a30", navy: "#2e4468", current: "#4a4e57", brown: "#8a6a52", blue: "#3f7fd1", green: "#5d9c53" };
+// the one shade per color: darker and a touch cooler, like night light
+const shadeOf = c => [Math.round(c[0] * 0.66), Math.round(c[1] * 0.64), Math.round(c[2] * 0.72 + 12)];
+const PARTS = ["body", "hair", "top", "bottom", "shoes"];
 
 const mem = new Map();                        // look key -> Promise<sheet>
-const lookKey = cfg => `v${VERSION}:` + ["skin", "hair", "hairColor", "face", "iris", "top", "bottom", "shoes"].map(k => cfg?.[k] ?? "").join("|");
+const lookKey = cfg => `v${VERSION}:` + ["skin", "hair", "hairColor", "top", "bottom", "shoes"].map(k => cfg?.[k] ?? "").join("|");
 
 // ---------------------------------------------------------------- public
 // Resolves to { url, anim, fallback }. Never rejects.
@@ -58,7 +63,7 @@ export function silhouetteFor(avatar) {
   const sheet = document.createElement("canvas");
   sheet.width = W * COLS; sheet.height = H * FACINGS.length;
   const sg = sheet.getContext("2d");
-  FACINGS.forEach((f, r) => { for (let c = 0; c < COLS; c++) sg.drawImage(flatten(figure(avatar, f, c)), c * W, r * H); });
+  FACINGS.forEach((f, r) => { for (let c = 0; c < COLS; c++) sg.drawImage(figure(avatar, f, c), c * W, r * H); });
   const out = { url: sheet.toDataURL(), anim: true, fallback: true };
   figCache.set(key, out);
   return out;
@@ -77,7 +82,7 @@ async function build(avatar) {
 }
 
 // ---------------------------------------------------------------- 3D
-let R = null;                                 // { THREE, A, renderer, scene, cam, camDir }
+let R = null;                                 // { THREE, A, renderer, scene, cam, light }
 async function rig() {
   if (R) return R;
   const THREE = await import("https://esm.sh/three@0.160.0");
@@ -89,16 +94,19 @@ async function rig() {
   renderer.setPixelRatio(1);
   renderer.setSize(W * SS, H * SS, false);
   renderer.setClearColor(0x000000, 0);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;   // ID colors must come out exact
   const scene = new THREE.Scene();
-  // 3/4 overworld view: tilted 30 degrees down at a 15-unit-tall character
-  const halfH = 7.6, halfW = halfH * W / H, elev = Math.PI / 6;
+  // the room's 3/4 view: tilted 30 degrees down; a 1px margin all round for the outline
+  const halfH = 8.7, halfW = halfH * W / H, elev = Math.PI / 6;
   const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 1, 120);
-  const target = new THREE.Vector3(0, 7.3, 0);
+  const target = new THREE.Vector3(0, 7.9, 0);
   cam.position.set(0, target.y + Math.sin(elev) * 60, Math.cos(elev) * 60);
   cam.lookAt(target);
-  const camDir = cam.position.clone().sub(target).normalize();
-  R = { THREE, A, renderer, scene, cam, camDir };
+  // the lit pass: light from the upper left, in front
+  const amb = new THREE.AmbientLight(0xffffff, 0.8);
+  const light = new THREE.DirectionalLight(0xffffff, 3.0);
+  light.position.set(-8, 14, 12);
+  R = { THREE, A, renderer, scene, cam, amb, light };
   return R;
 }
 
@@ -125,7 +133,7 @@ function medianColor(img) {
 }
 
 async function render3d(avatar) {
-  const { THREE, A, renderer, scene, cam, camDir } = await rig();
+  const { THREE, A, renderer, scene, cam, amb, light } = await rig();
   const cfg = A.normalizeAvatar3(avatar);
   // the rigged body brings a walk cycle; the static body is the fallback
   let ch = null, anim = false;
@@ -134,216 +142,230 @@ async function render3d(avatar) {
   if (!ch) ch = await A.makeHumanCharacter(cfg);
   await withTimeout(ch.ready ?? Promise.resolve(), 15000).catch(() => {});
 
-  const skin = A.SKIN_RGB?.[cfg.skin] ?? FALLBACK_SKIN[1];
-  const hair = A.HAIR_RGB?.[cfg.hairColor] ?? FALLBACK_HAIR.black;
-  const iris = hexRgb(A.IRIS3_HEX?.[cfg.iris]) ?? EYE;
-  const palette = [skin, EYE, WHITE];
-  const col = rgb => new THREE.Color().setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
-  const swaps = [], faces = [];
+  // flat colors: skin + hair from the avatar palette, garments by texture
+  const colors = {
+    body: A.SKIN_RGB?.[cfg.skin] ?? FALLBACK_SKIN[1],
+    hair: A.HAIR_RGB?.[cfg.hairColor] ?? FALLBACK_HAIR.black,
+  };
+  // ID colors in linear space, rendered linear: they come out exact
+  const idMats = PARTS.map((p, i) => new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB((i + 1) * 40 / 255, 0, 0, THREE.LinearSRGBColorSpace), side: THREE.DoubleSide }));
+  const litMat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  const meshes = [];
   ch.group.traverse(o => {
     if (!o.isMesh && !o.isSkinnedMesh) return;
     const part = o.userData.part ?? "body";
-    if (part === "face") { faces.push(o); o.visible = false; return; }   // eyes are painted
-    const rgb = part === "body" ? skin : part === "hair" ? hair : (medianColor(o.material.map?.image) ?? [128, 128, 128]);
-    palette.push(rgb);
-    const mat = new THREE.MeshBasicMaterial({ color: col(rgb), side: THREE.DoubleSide });
-    // clothes and hair sit a hair's breadth off the skin: pull them in front
-    // so the body never speckles through (units are depth-buffer steps)
-    if (part !== "body") Object.assign(mat, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -40000 });
-    swaps.push(mat);
-    o.material = mat;
+    if (part === "face") { o.visible = false; return; }     // the face is drawn, not sampled
+    if (!colors[part]) colors[part] = medianColor(o.material.map?.image) ?? [128, 128, 128];
+    meshes.push({ o, part });
   });
+  // chunky head, readable shoes
+  const bones = {};
+  ch.group.traverse(o => { if (o.isBone) bones[o.name] = o; });
+  const head = bones.tripoHead_1 ?? bones.tripoHead_0;
+  const feet = [bones.tripo1_Left_Limb_2, bones.tripo1_Right_Limb_2].filter(Boolean);
+  // classic-RPG proportions: a big round head, a stockier body, big shoes
+  const bigger = () => { head?.scale.setScalar(1.55); feet.forEach(f => f.scale.setScalar(1.35)); ch.group.scale.set(1.3, 0.9, 1.3); };
 
-  scene.add(ch.group);
+  scene.add(ch.group, amb, light);
   const sheet = document.createElement("canvas");
   sheet.width = W * COLS; sheet.height = H * FACINGS.length;
   const sg = sheet.getContext("2d");
   const yaw = { down: 0, left: -Math.PI / 2, up: Math.PI };
   const walkT = anim ? ch.clipLength("walk") : 0;
+  const ids = new Uint8Array(W * SS * H * SS), lit = new Uint8Array(W * SS * H * SS);
+  const gl = renderer.getContext();
+  const px = new Uint8Array(W * SS * H * SS * 4);
+  const grab = (into, fn) => {
+    renderer.render(scene, cam);
+    gl.readPixels(0, 0, W * SS, H * SS, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    for (let y = 0; y < H * SS; y++) for (let x = 0; x < W * SS; x++) {
+      const s = ((H * SS - 1 - y) * W * SS + x) * 4;          // GL rows are bottom-up
+      into[y * W * SS + x] = fn(px, s);
+    }
+  };
   try {
     FACINGS.forEach((f, row) => {
       ch.group.rotation.y = yaw[f];
       for (let c = 0; c < COLS; c++) {
-        if (anim) ch.pose(c === 0 ? "idle" : "walk", c === 0 ? 0 : (c - 1) / 4 * walkT);
+        if (anim) ch.pose(c === 0 ? "idle" : "walk", c === 0 ? 0 : (c === 1 ? 0.15 : 0.65) * walkT);
+        bigger();
         ch.group.updateMatrixWorld(true);
-        renderer.render(scene, cam);
-        const fr = flatten(renderer.domElement, palette);
-        if (f !== "up") paintEyes(fr, faces, cam, camDir, iris, THREE);
-        sg.drawImage(fr, c * W, row * H);
+        meshes.forEach(m => { m.o.material = idMats[PARTS.indexOf(m.part)] ?? idMats[0]; });
+        grab(ids, (d, s) => d[s + 3] < 128 ? 0 : Math.round(d[s] / 40));
+        meshes.forEach(m => { m.o.material = litMat; });
+        grab(lit, (d, s) => d[s]);
+        const headAt = head ? project(head, cam, THREE) : null;
+        const fr = flatten(ids, lit, colors, headAt, f);
+        // walking frames sit a pixel higher: the bounce
+        sg.drawImage(fr, c * W, row * H - (c ? 1 : 0));
       }
     });
   } finally {
-    scene.remove(ch.group);
+    ch.group.scale.set(1, 1, 1);
+    scene.remove(ch.group, amb, light);
     ch.dispose?.();
-    for (const m of swaps) m.dispose();
+    idMats.forEach(m => m.dispose()); litMat.dispose();
   }
   return { url: sheet.toDataURL(), anim, fallback: false };
 }
 
-const hexRgb = h => /^#[0-9a-f]{6}$/i.test(h ?? "") ? [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)) : null;
+// a bone's position in sprite pixels
+function project(bone, cam, THREE) {
+  const v = new THREE.Vector3();
+  bone.getWorldPosition(v);
+  v.project(cam);
+  return { x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H };
+}
+
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 
 // ---------------------------------------------------------------- flatten
-// Every rendered pixel snaps to the palette; each SSxSS block becomes one
-// sprite pixel (solid if half the block is, in its most common color).
-// Then stray specks go, and the silhouette gets its shaded outline.
-function flatten(src, palette = null) {
-  const sw = src.width, k = Math.max(1, Math.round(sw / W));
-  const big = document.createElement("canvas");
-  big.width = sw; big.height = src.height;
-  const bg = big.getContext("2d", { willReadFrequently: true });
-  bg.imageSmoothingEnabled = false;
-  bg.drawImage(src, 0, 0);
-  const sd = bg.getImageData(0, 0, sw, src.height).data;
+// ids: part per render pixel (0 = empty, 1.. = PARTS), lit: brightness.
+// Each SSxSS block -> one sprite pixel: the most common part (if at least
+// half the block is filled), shaded if most of that part's pixels are dark.
+function flatten(ids, lit, colors, headAt, facing) {
+  const RW = W * SS;
+  const part = new Uint8Array(W * H), dark = new Uint8Array(W * H);
+  // "dark" = clearly darker than that part's typical brightness (so one
+  // shade per color, wherever the light falls on it)
+  const hist = PARTS.map(() => []);
+  for (let i = 0; i < ids.length; i++) if (ids[i]) hist[ids[i] - 1].push(lit[i]);
+  const cut = hist.map(h => { if (!h.length) return 0; h.sort((a, b) => a - b); return h[Math.floor(h.length * 0.6)] * 0.78; });
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const votes = [0, 0, 0, 0, 0, 0], darks = [0, 0, 0, 0, 0, 0];
+    for (let yy = 0; yy < SS; yy++) for (let xx = 0; xx < SS; xx++) {
+      const i = (y * SS + yy) * RW + x * SS + xx, p = ids[i];
+      votes[p]++; if (p && lit[i] < cut[p - 1]) darks[p]++;
+    }
+    if (votes[0] * 2 > SS * SS) continue;
+    let best = 1; for (let p = 2; p <= PARTS.length; p++) if (votes[p] > votes[best]) best = p;
+    part[y * W + x] = best;
+    dark[y * W + x] = darks[best] * 2 > votes[best] ? 1 : 0;
+  }
+  despeckle(part, dark);
+  smoothShade(part, dark);
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
-  const g = cv.getContext("2d", { willReadFrequently: true });
+  const g = cv.getContext("2d");
   const im = g.createImageData(W, H), d = im.data;
-  const solid = new Uint8Array(W * H);
-  const snap = p => {
-    let best = 0, bd = Infinity;
-    for (let j = 0; j < palette.length; j++) {
-      const c = palette[j];
-      const e = (sd[p] - c[0]) ** 2 * 0.3 + (sd[p + 1] - c[1]) ** 2 * 0.59 + (sd[p + 2] - c[2]) ** 2 * 0.11;
-      if (e < bd) { bd = e; best = j; }
-    }
-    return best;
-  };
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const votes = new Map(); let n = 0, lastP = 0;
-    for (let yy = 0; yy < k; yy++) for (let xx = 0; xx < k; xx++) {
-      const p = ((y * k + yy) * sw + (x * k + xx)) * 4;
-      if (sd[p + 3] < 128) continue;
-      n++; lastP = p;
-      if (palette) { const c = snap(p); votes.set(c, (votes.get(c) ?? 0) + 1); }
-    }
-    if (n * 2 < k * k) continue;
-    const i = y * W + x, q = i * 4;
-    solid[i] = 1; d[q + 3] = 255;
-    if (!palette) { d[q] = sd[lastP]; d[q + 1] = sd[lastP + 1]; d[q + 2] = sd[lastP + 2]; continue; }
-    let best = 0, bv = -1;
-    for (const [c, v] of votes) if (v > bv) { bv = v; best = c; }
-    const c = palette[best];
-    d[q] = c[0]; d[q + 1] = c[1]; d[q + 2] = c[2];
+  const put = (i, c) => { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; };
+  for (let i = 0; i < W * H; i++) {
+    if (!part[i]) continue;
+    const base = colors[PARTS[part[i] - 1]] ?? [128, 128, 128];
+    put(i, dark[i] ? shadeOf(base) : base);
   }
-  if (palette) despeckle(d, solid);
-  outline(d, solid);
+  // the black outline, all the way round
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (part[i]) continue;
+    if ((x > 0 && part[i - 1]) || (x < W - 1 && part[i + 1]) || (y > 0 && part[i - W]) || (y < H - 1 && part[i + W])) put(i, BLACK);
+  }
+  if (facing !== "up") face(put, part, colors, dark, facing);
   g.putImageData(im, 0, 0);
   return cv;
 }
 
-// a deep shade of the color it borders: darker and a little bluer, so the
-// outline reads as part of each area instead of a black cartoon line
-const shade = c => [Math.round(c[0] * 0.42), Math.round(c[1] * 0.42), Math.round(c[2] * 0.5 + 14)];
-function outline(d, solid) {
-  const out = [];
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = y * W + x;
-    if (solid[i]) continue;
-    // prefer the neighbor below, then the sides, then above
-    const n = [y < H - 1 && i + W, x > 0 && i - 1, x < W - 1 && i + 1, y > 0 && i - W].find(j => j !== false && solid[j]);
-    if (n === undefined) continue;
-    out.push([i, shade([d[n * 4], d[n * 4 + 1], d[n * 4 + 2]])]);
-  }
-  for (const [i, c] of out) { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
-}
-
-// stray 1-2 pixel specks (skin through a garment seam, scalp between hair
-// spikes) take the most common color around them
-function despeckle(d, solid) {
-  const key = i => (d[i * 4] << 16) | (d[i * 4 + 1] << 8) | d[i * 4 + 2];
+// lone pixels of another part (or of shade) take their neighbors' value
+function despeckle(part, dark) {
   for (let pass = 0; pass < 2; pass++) {
-    const out = [];
+    const fixP = [], fixD = [];
     for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
       const i = y * W + x;
-      if (!solid[i]) continue;
-      const counts = new Map(); let same = 0, open = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const j = i + dy * W + dx;
-        if (!solid[j]) { open++; continue; }
-        if (key(j) === key(i)) same++;
-        else counts.set(key(j), (counts.get(key(j)) ?? 0) + 1);
+      if (!part[i]) continue;
+      const nb = [i - 1, i + 1, i - W, i + W].filter(j => part[j]);
+      const same = nb.filter(j => part[j] === part[i]).length;
+      if (same === 0 && nb.length >= 3) {
+        const counts = new Map(); for (const j of nb) counts.set(part[j], (counts.get(part[j]) ?? 0) + 1);
+        fixP.push([i, [...counts].sort((a, b) => b[1] - a[1])[0][0]]);
       }
-      if (same > 2 || open > 2) continue;     // a real shape, or the silhouette edge
-      let best = null, bv = 0;
-      for (const [kk, v] of counts) if (v > bv) { bv = v; best = kk; }
-      if (best !== null && bv >= 4) out.push([i, best]);
+      const sameD = nb.filter(j => part[j] === part[i] && dark[j] === dark[i]).length;
+      if (sameD === 0 && nb.filter(j => part[j] === part[i]).length >= 2) fixD.push(i);
     }
-    for (const [i, kk] of out) { d[i * 4] = kk >> 16; d[i * 4 + 1] = (kk >> 8) & 255; d[i * 4 + 2] = kk & 255; }
+    for (const [i, p] of fixP) part[i] = p;
+    for (const i of fixD) dark[i] ^= 1;
   }
 }
 
-// Eyes are painted, not sampled: at this size a face decal's eyes are a
-// pixel or less. Each eye facing the camera gets a 2x3 block at its
-// projected spot (lash row, iris, white highlight), only on the face.
-function paintEyes(cv, faces, cam, camDir, iris, THREE) {
-  const g = cv.getContext("2d", { willReadFrequently: true });
-  const v = new THREE.Vector3(), ctr = new THREE.Vector3(), n = new THREE.Vector3();
-  const im = g.getImageData(0, 0, W, H).data;
-  const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && im[(y * W + x) * 4 + 3] === 255 && !edge(im, x, y);
-  for (const mesh of faces) {
-    const r = mesh.geometry?.parameters?.radius;
-    if (!r) continue;
-    mesh.updateMatrixWorld(true);
-    ctr.set(0, 0, 0).applyMatrix4(mesh.matrixWorld);
-    for (const side of [-1, 1]) {
-      const ex = 0.3 * side, ey = -0.05;
-      v.set(ex * r, ey * r, Math.sqrt(1 - ex * ex - ey * ey) * r).applyMatrix4(mesh.matrixWorld);
-      n.copy(v).sub(ctr).normalize();
-      if (n.dot(camDir) < 0.45) continue;      // turned away
-      v.project(cam);
-      const x = Math.round((v.x + 1) / 2 * W) - 1, y = Math.round((1 - v.y) / 2 * H) - 1;
-      if (![[x, y], [x + 1, y], [x, y + 2], [x + 1, y + 2]].every(([a, b]) => inside(a, b))) continue;
-      eye(g, x, y, iris, side);
+// shade in blobs, not freckles: each pixel takes the majority shade of the
+// same-part pixels around it
+function smoothShade(part, dark) {
+  const next = dark.slice();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; if (!part[i]) continue;
+    let n = 0, d = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+      const j = yy * W + xx; if (part[j] !== part[i]) continue;
+      n++; d += dark[j];
     }
+    next[i] = d * 2 > n ? 1 : d * 2 < n ? 0 : dark[i];
   }
+  dark.set(next);
 }
-// the outline ring: solid pixels that touch transparency
-function edge(im, x, y) {
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-    const xx = x + dx, yy = y + dy;
-    if (xx < 0 || yy < 0 || xx >= W || yy >= H || im[(yy * W + xx) * 4 + 3] === 0) return true;
+
+// the face overlay, the same on everyone: a clean patch of skin where the
+// face is (bangs never hide it), two eyes 2px tall with a white highlight,
+// and a small mouth. One eye in profile; nothing from behind. The head is
+// found from the sprite's own silhouette (its top rows).
+function face(put, part, colors, dark, facing) {
+  const SKIN = 1;
+  let top = -1;
+  for (let y = 0; y < H && top < 0; y++) for (let x = 0; x < W; x++) if (part[y * W + x]) { top = y; break; }
+  if (top < 0) return;
+  let sx = 0, n = 0;
+  for (let y = top; y < Math.min(H, top + 9); y++) for (let x = 0; x < W; x++) if (part[y * W + x]) { sx += x; n++; }
+  const cx = Math.round(sx / n), ey = top + 6;
+  const skin = colors.body;
+  const solid = (x, y) => x >= 0 && y >= 0 && x < W && y < H && part[y * W + x];
+  const fill = (x0, x1, y0, y1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (solid(x, y) && solid(x - 1, y) && solid(x + 1, y)) { part[y * W + x] = SKIN; put(y * W + x, skin); } };
+  if (facing === "down") {
+    fill(cx - 3, cx + 2, ey - 1, ey + 3);
+    for (const x of [cx - 3, cx + 1]) { put(ey * W + x, WHITE); put(ey * W + x + 1, BLACK); put((ey + 1) * W + x, BLACK); put((ey + 1) * W + x + 1, BLACK); }
+    put((ey + 3) * W + cx - 1, MOUTH); put((ey + 3) * W + cx, MOUTH);
+  } else if (facing === "left") {
+    fill(cx - 4, cx - 1, ey - 1, ey + 3);
+    put(ey * W + cx - 3, WHITE); put((ey + 1) * W + cx - 3, BLACK); put(ey * W + cx - 2, BLACK); put((ey + 1) * W + cx - 2, BLACK);
+    put((ey + 3) * W + cx - 3, MOUTH);
   }
-  return false;
-}
-function eye(g, x, y, iris, side) {
-  const px = (c, xx, yy) => { g.fillStyle = `rgb(${c})`; g.fillRect(xx, yy, 1, 1); };
-  for (const xx of [x, x + 1]) { px(EYE, xx, y); px(iris, xx, y + 1); px(iris, xx, y + 2); }
-  px(WHITE, side < 0 ? x + 1 : x, y + 1);
 }
 
 // ---------------------------------------------------------------- fallback
-// A little pixel figure in the player's own colors — never a letter. Big
-// head, 3/4 view, the same facings and a two-step walk.
+// A little pixel figure in the player's own colors, the same style: round
+// head, simple body, big shoes, black outline, painted eyes.
 function figure(avatar, facing, col) {
   const skin = FALLBACK_SKIN[avatar?.skin] ?? FALLBACK_SKIN[1];
   const hair = FALLBACK_HAIR[avatar?.hairColor] ?? FALLBACK_HAIR.black;
-  const iris = hexRgb(FALLBACK_IRIS[avatar?.iris]) ?? [63, 127, 209];
   const word = id => WORDS[String(id ?? "").split("-").find(w => WORDS[w])] ?? null;
   const top = word(avatar?.top) ?? [92, 108, 170], bottom = word(avatar?.bottom) ?? [60, 66, 96], shoes = word(avatar?.shoes) ?? [44, 44, 52];
+  const part = new Uint8Array(W * H), dark = new Uint8Array(W * H);
+  const rect = (p, x, y, w, h, sh = 0) => { for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (xx >= 0 && yy >= 0 && xx < W && yy < H) { part[yy * W + xx] = p; dark[yy * W + xx] = sh; } };
+  const step = col === 0 ? 0 : (col === 1 ? 1 : -1), bob = col ? -1 : 0, side = facing === "left";
+  const y0 = 2 + bob;
+  // legs + big shoes
+  if (side) { rect(4, 8 - step, 21 + bob, 2, 4); rect(4, 10 + step, 21 + bob, 2, 4, 1); rect(5, 6 - step, 25 + bob, 5, 3); rect(5, 9 + step, 25 + bob, 5, 3, 1); }
+  else { rect(4, 6, 21 + bob, 3, 4 - Math.max(0, step)); rect(4, 11, 21 + bob, 3, 4 - Math.max(0, -step), 1); rect(5, 5, 25 + bob - Math.max(0, step), 5, 3); rect(5, 10, 25 + bob - Math.max(0, -step), 5, 3, 1); }
+  // body + arms
+  rect(3, 6, 14 + y0, 8, 7); rect(3, 6, 18 + y0, 8, 3, 1);
+  if (!side) { rect(1, 4, 15 + y0, 2, 5); rect(1, 14, 15 + y0, 2, 5, 1); } else rect(1, 9 + step, 15 + y0, 2, 5);
+  // round head
+  rect(1, 4, y0 + 1, 12, 11); rect(1, 5, y0, 10, 13); rect(1, 4, y0 + 9, 12, 3, 1);
+  if (avatar?.hair !== "none") {
+    if (facing === "up") { rect(2, 4, y0, 12, 11); rect(2, 5, y0 - 1, 10, 13); }
+    else if (side) { rect(2, 5, y0 - 1, 11, 4); rect(2, 11, y0 + 3, 5, 6, 1); }
+    else { rect(2, 5, y0 - 1, 10, 4); rect(2, 4, y0 + 1, 2, 6, 1); rect(2, 14, y0 + 1, 2, 6, 1); }
+  }
+  const colors = { body: skin, hair, top, bottom, shoes };
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
   const g = cv.getContext("2d");
-  const rect = (c, x, y, w, h) => { g.fillStyle = `rgb(${c})`; g.fillRect(x, y, w, h); };
-  const step = col === 0 ? 0 : (col % 2 ? 1 : -1);          // walk: legs alternate
-  const bob = col === 0 ? 0 : (col % 2 ? -1 : 0);
-  const y0 = 2 + bob;
-  const side = facing === "left";
-  // legs + shoes
-  if (side) { rect(bottom, 13 - step, 27 + bob, 3, 7); rect(bottom, 16 + step, 27 + bob, 3, 7); rect(shoes, 11 - step, 34 + bob, 5, 3); rect(shoes, 15 + step, 34 + bob, 5, 3); }
-  else { rect(bottom, 11, 27 + bob, 4, 7 - Math.max(0, step)); rect(bottom, 17, 27 + bob, 4, 7 - Math.max(0, -step)); rect(shoes, 10, 33 + bob - Math.max(0, step), 6, 3); rect(shoes, 16, 33 + bob - Math.max(0, -step), 6, 3); }
-  // body + arms
-  rect(top, 10, 19 + y0, 12, 9);
-  if (side) rect(skin, 14 + step, 21 + y0, 3, 7);
-  else { rect(skin, 7, 20 + y0, 3, 7); rect(skin, 22, 20 + y0, 3, 7); }
-  // head (big) + hair
-  rect(skin, 7, y0, 18, 18);
-  if (avatar?.hair !== "none") {
-    if (facing === "up") rect(hair, 6, y0 - 1, 20, 18);
-    else if (side) { rect(hair, 7, y0 - 1, 18, 6); rect(hair, 15, y0 + 4, 10, 10); }
-    else { rect(hair, 6, y0 - 1, 20, 6); rect(hair, 6, y0 + 4, 3, 9); rect(hair, 23, y0 + 4, 3, 9); }
+  const im = g.createImageData(W, H), d = im.data;
+  const put = (i, c) => { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; };
+  for (let i = 0; i < W * H; i++) if (part[i]) { const b = colors[PARTS[part[i] - 1]]; put(i, dark[i] ? shadeOf(b) : b); }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (!part[i] && ((x > 0 && part[i - 1]) || (x < W - 1 && part[i + 1]) || (y > 0 && part[i - W]) || (y < H - 1 && part[i + W]))) put(i, BLACK);
   }
-  if (facing === "down") { eye(g, 10, y0 + 8, iris, -1); eye(g, 20, y0 + 8, iris, 1); }
-  if (side) eye(g, 8, y0 + 8, iris, -1);
+  if (facing !== "up") face(put, part, colors, dark, facing);
+  g.putImageData(im, 0, 0);
   return cv;
 }

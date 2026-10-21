@@ -99,7 +99,8 @@ try {
   const code = await text(A, "#pt-code-chip");
   ok((await text(A, "#pt-title")) === "Saturday night", "the party has the name the host gave it");
   ok(await A.locator("#party-panel.pt-lobby").isVisible(), "the lobby is a full-screen room");
-  ok(await until(A, () => getComputedStyle(document.querySelector("#pt-floor .lr-stage")).backgroundImage.includes("lobbies/chaos.png")), "the chaotic vibe picks the chaotic backdrop");
+  ok(await until(A, () => document.querySelector("#pt-floor .lr-stage")?.dataset.vibe === "chaotic" && !!document.querySelector("#pt-floor .lr-window")), "the room is the drawn apartment, in the chaotic vibe's neon");
+  ok(await A.evaluate(() => [...document.querySelectorAll("#pt-floor .lr-furn")].map(f => f.dataset.slot).sort().join()) === "lamp,tv", "its standing furniture comes from named slots (the TV, the lamp)");
 
   const B = await phone("bob", `&party=${code}`);
   ok(await until(B, () => document.querySelectorAll(".lr-av").length === 2, null, 20000), "a friend joins straight from the share link");
@@ -118,7 +119,7 @@ try {
   await shot(A, "01-host-picker");
   await A.click("#pt-picker-x");
   ok(await A.locator("#pt-picker").isHidden(), "the host closes the picker");
-  ok(/needs 1 more/.test(await text(A, "#pt-start")), "start waits for the minimum: 'needs 1 more'");
+  ok(/needs 1 more/i.test(await text(A, "#pt-start")), "start waits for the minimum: 'needs 1 more'");
   ok(await until(B, () => /Today's Mission/.test(document.getElementById("pt-next")?.textContent) && /players choose/.test(document.getElementById("pt-next")?.textContent)), "guests see what's up next, options included");
   await A.click("#pt-open-picker");
   ok(await A.locator("#pt-picker").isVisible(), "the host can reopen it");
@@ -134,12 +135,13 @@ try {
 
   // ------------------------------------------------------------------ walk + chat
   head("Lobby: walking around and talking");
-  // the room is the backdrop at its own aspect; positions are backdrop pixels
+  // positions are room (backdrop) pixels: the apartment is 704x1200
   const standing = (pg, id) => pg.evaluate(id => window.party.current.lobby.where(id), id);
   const before = await standing(B, "u-alice");
   const sb = await A.locator("#pt-floor .lr-stage").boundingBox();
-  const target = [380, 1150];                         // open floor near the front of the bar
-  await A.mouse.click(sb.x + sb.width * target[0] / 752, sb.y + sb.height * target[1] / 1344);
+  const [RW, RH] = await A.evaluate(() => { const R = window.party.current.lobby.R; return [R.w, R.h]; });
+  const target = [520, 1000];                         // open floor near the front right
+  await A.mouse.click(sb.x + sb.width * target[0] / RW, sb.y + sb.height * target[1] / RH);
   ok(await until(B, () => window.party.current.lobby.where("u-alice")?.walking), "a tap walks you, and the others see you walking");
   await sleep(6000);
   // a background tab may not draw frames at all (WebKit); look at bob's
@@ -185,34 +187,41 @@ try {
   await shot(A, "07-mission-results");
   await A.locator("#hp-skip").first().click().catch(() => {});
   ok(await until(B, () => !document.getElementById("party-panel").hidden && document.querySelectorAll(".lr-av").length === 3, null, 15000), "everyone is back in the walkable lobby");
-  ok(/Today's Mission/.test(await text(B, "#pt-next")), "the queue survives, ready to run again or change");
+  ok(await until(B, () => /Today's Mission/.test(document.getElementById("pt-next")?.textContent ?? "")), "the queue survives, ready to run again or change");
+  ok(await until(B, () => /Game 2 of 3/.test(document.getElementById("pt-next")?.textContent ?? "") && /game 2 of 3/i.test(document.getElementById("pt-board")?.textContent ?? "")), "the party moves on to game 2 of 3, on the dialog and the room's board");
+  ok(await until(B, () => document.querySelectorAll("#pt-board .pb-row").length === 3 && [...document.querySelectorAll("#pt-board .pb-pts")].some(e => +e.textContent > 0)), "the room's high-score board has everyone, with party points");
+  await shot(B, "07b-room-board");
 
   // ------------------------------------------------------------------ Humiliation Ritual
-  head("Humiliation Ritual — the performer barely touches the phone");
+  head("Humiliation Ritual — charades: guesses feed the performer, who taps the right one");
   await A.click("#pt-open-picker");
   await A.click('[data-queue="ritual"]');
   await A.click("#pt-picker-done");
   await A.click("#pt-start");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");
   let performer = null;
-  for (let i = 0; i < 8 && !performer; i++) {
-    for (const pg of [A, B, C]) if (/act it out/.test(await stageTitle(pg))) { performer = pg; break; }
-    if (!performer) { await A.locator("#hp-skip").first().click().catch(() => {}); await sleep(900); }
+  for (let i = 0; i < 10 && !performer; i++) {
+    for (const pg of [A, B, C]) if (await pg.locator("#hr-feed").count()) { performer = pg; break; }
+    if (!performer) await sleep(900);
   }
-  ok(!!performer, "one phone becomes the performer");
+  ok(!!performer, "one phone becomes the performer, with the ACT IT OUT card");
   if (performer) {
-    const guesser = [A, B, C].find(pg => pg !== performer);
-    ok(!(await performer.locator(".hr-guess").count()), "the performer's screen has no guess feed to read");
-    ok(await performer.locator("#hr-heard").isVisible(), "just one big 'someone said it out loud' button");
+    const guessers = [A, B, C].filter(pg => pg !== performer);
+    const prompt = await text(performer, ".hr-prompt");
+    ok(/ACT IT OUT/.test(await text(performer, ".hr-kick")) && prompt.length > 1, `only the performer sees the prompt (${prompt})`);
+    ok((await Promise.all(guessers.map(pg => pg.locator(".hr-card").count()))).every(n => n === 0), "the guessers don't");
+    ok(/Guess what they're doing/.test(await stageTitle(guessers[0])), "the guessers see 'Guess what they're doing!' and a text box");
+    await guessers[0].fill("#gp-in", "a broken toaster");
+    await guessers[0].click("#game-panel .gp-form button");
+    await guessers[1].fill("#gp-in", prompt.toLowerCase());
+    await guessers[1].click("#game-panel .gp-form button");
+    ok(await until(performer, () => document.querySelectorAll("#hr-feed .hr-g").length === 2), "both guesses land in the performer's live feed");
+    ok(await performer.locator("#hr-feed .hr-g.match").count() === 1, "the right one is highlighted for the performer");
+    ok(!(await guessers[0].locator("#gp-in").isDisabled()), "you can keep guessing after one");
     await shot(performer, "08-ritual-performer");
-    await guesser.fill("#gp-in", "a broken toaster");
-    await guesser.click("#game-panel .gp-form button");
-    ok(await until(guesser, () => /toaster/.test(document.getElementById("hr-feed")?.textContent ?? "")), "typed guesses show in the guessers' feed");
-    ok(!(await guesser.locator("#gp-in").isDisabled()), "you can keep guessing after one");
-    await shot(guesser, "09-ritual-guesser");
-    await performer.click("#hr-heard");
-    await performer.locator("[data-heard]").first().click();
-    ok(await until(guesser, () => /got it/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "one tap by the performer credits an out-loud answer");
+    await shot(guessers[0], "09-ritual-guesser");
+    await performer.locator("#hr-feed .hr-g.match").click();
+    ok(await until(guessers[0], () => /got it/.test(document.querySelector("#game-panel h2")?.textContent ?? "") && !!document.querySelector(".hr-reveal")), "the performer's tap ends the turn; the answer is revealed big");
   }
   ok(await skipUntil(A, A, t => /Humiliation Ritual/.test(t), 25), "the ritual plays through to results");
   await A.locator("#hp-skip").first().click().catch(() => {});
@@ -259,7 +268,7 @@ try {
     await pg.click("#sd-submit");
   }
   await sleep(900);
-  ok((await C.locator(".sd-q").nth(w0).locator(".sd-in").inputValue()) === "half a thou", "others submitting doesn't wipe what you're typing");
+  ok((await C.locator(".sd-q").nth(w0).locator(".sd-in").textContent()) === "half a thou", "others submitting doesn't wipe what you're typing");
   for (let k = 0; k < qTypes.length; k++) {
     const q = C.locator(".sd-q").nth(k);
     if (qTypes[k] === "written") await q.locator(".sd-in").fill(`cy answer ${k + 1}`);
@@ -304,9 +313,17 @@ try {
   await shot(A, "18-diary-results");
   ok(await A.evaluate(() => (window.__logRows ?? []).length) >= 5 && await A.evaluate(() => window.__logRows.some(r => r.skipped)), "the host's phone logged the questions, including the swap");
 
-  head("Art Gallery — the dealer unveils the titles on wall plaques");
+  head("After game 3: the party results podium, then a new set");
   for (let i = 0; i < 20 && await A.locator("#party-panel").isHidden(); i++) { await A.evaluate(() => document.getElementById("hp-skip")?.click()); await sleep(600); }
   ok(await until(A, () => !document.getElementById("party-panel").hidden, null, 15000), "back in the lobby");
+  ok((await Promise.all([A, B, C].map(pg => until(pg, () => document.querySelectorAll("#pp .pp-step:not(.empty)").length === 3)))).every(Boolean), "after 3 games everyone sees the podium, top 3 on it");
+  ok(await A.locator("#pp-again").isVisible() && await A.locator("#pp-end").isVisible() && !(await B.locator("#pp-again").count()), "only the host gets 'new set' / 'end the party'");
+  await sleep(1200);
+  await shot(B, "18b-podium");
+  await A.click("#pp-again");
+  ok((await Promise.all([A, B].map(pg => until(pg, () => !document.getElementById("pp") && /game 1 of 3/i.test(document.getElementById("pt-board")?.textContent ?? ""))))).every(Boolean), "a new set starts: game 1 of 3, the podium closes for everyone");
+
+  head("Art Gallery — the dealer unveils the titles on wall plaques");
   await A.click("#pt-open-picker"); await A.click('[data-queue="artgallery"]'); await A.click("#pt-picker-done"); await A.click("#pt-start");
   ok(await until(B, () => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "everyone fills 3 frames");
   for (const [k, pg] of [A, B, C].entries()) for (let i = 0; i < 3; i++) {
@@ -343,12 +360,19 @@ try {
     const watch = () => {
       const room = document.querySelector(".ag-room");
       if (!room || !room.classList.contains("revealed")) return Date.now() - t0 > 15000 ? res({}) : setTimeout(watch, 20);
-      const out = {}; [400, 1150, 2400].forEach(t => setTimeout(() => { out[t] = op(); }, t)); setTimeout(() => res(out), 2500);
+      // fixed samples, plus when each plaque first starts to fade (a busy
+      // runner can push the whole unveil late; the order is what matters)
+      const out = { first: [null, null] };
+      [400, 2400].forEach(t => setTimeout(() => { out[t] = op(); }, t));
+      const t1 = Date.now();
+      const poll = () => { const o = op(); o.forEach((v, i) => { if (out.first[i] === null && v < 0.9) out.first[i] = Date.now() - t1; }); if (Date.now() - t1 < 2500) setTimeout(poll, 16); else res(out); };
+      poll();
     };
     watch();
   }));
   ok(seq[400]?.every(o => o > 0.9), `the painting goes first: plaques still covered at 0.4 s (${JSON.stringify(seq[400])})`);
-  ok(seq[1150]?.[0] < 0.9 && seq[1150]?.[1] > 0.9, `then plaque I, then plaque II — one by one (${JSON.stringify(seq[1150])} at 1.15 s)`);
+  const [f1, f2] = seq.first ?? [];
+  ok(f1 !== null && f2 !== null && f1 + 150 < f2, `then plaque I, then plaque II — one by one (they start to fade at ${f1} / ${f2} ms)`);
   ok(seq[2400]?.every(o => o < 0.05), "both plaques unveiled within ~2.5 s");
   // with 3 players each frame has 2 writers, so exactly one phone gets to vote
   let voter = null;

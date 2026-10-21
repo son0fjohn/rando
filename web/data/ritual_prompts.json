@@ -1,0 +1,71 @@
+{
+  "_readme": [
+    "DRAFT — Humiliation Ritual's charades prompts; needs curation before launch.",
+    "Each prompt: id (permanent — never reuse or renumber; to retire one, delete it and add its id to _retired), text (what the performer acts out, and what guesses are compared against for the 'close' hint), level ('mild' | 'spicy' | 'unhinged').",
+    "Spicy prompts appear when the party allows spicy content (private parties, or the 18+ setting); unhinged only with 18+."
+  ],
+  "_draft": true,
+  "_retired": [],
+  "prompts": [
+    {
+      "id": "hr-mild-01",
+      "text": "Peeing dog",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-02",
+      "text": "Ex-boyfriend",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-03",
+      "text": "Kid throwing a tantrum",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-04",
+      "text": "Constipated person",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-05",
+      "text": "Person with diarrhea",
+      "level": "mild"
+    },
+    {
+      "id": "hr-spicy-01",
+      "text": "Masochist",
+      "level": "spicy"
+    },
+    {
+      "id": "hr-mild-06",
+      "text": "Sydney Sweeney",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-07",
+      "text": "Michael Jordan",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-08",
+      "text": "Jake Paul",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-09",
+      "text": "Mike Tyson",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-10",
+      "text": "IShowSpeed",
+      "level": "mild"
+    },
+    {
+      "id": "hr-mild-11",
+      "text": "Alysa Liu",
+      "level": "mild"
+    }
+  ]
+}
