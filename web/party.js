@@ -44,6 +44,8 @@ import { LobbyRoom } from "./hplobby.js";
 import { openCard, close as closeCard } from "./profilecard.js";
 import { partyBeacons } from "./partybeacon.js";
 import { muteButton, typeDialog, popIn } from "./retro.js";
+import { newSet, addGame, standings, nextGameNo } from "./partyset.js";
+import { renderBoard, showPodium, closePodium, showCoins, coinBurst } from "./partyboard.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -71,6 +73,8 @@ const BLOCK_KEY = "rando-blocked";
 function loadBlocked() { try { return new Set(JSON.parse(localStorage.getItem(BLOCK_KEY) ?? "[]")); } catch { return new Set(); } }
 function saveBlocked(set) { try { localStorage.setItem(BLOCK_KEY, JSON.stringify([...set].slice(-200))); } catch {} }
 
+// a party session id: the coin ledger keys a party's games by it (codes repeat)
+const sessionId = () => crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 function makeCode() { let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 const inviteLink = code => `${location.origin}${location.pathname}?party=${code}`;
 const minFor = g => g?.minPlayers ?? MIN_PLAYERS;
@@ -98,7 +102,9 @@ export const party = {
   //   isFriend(id) -> bool · report(id, reason) -> Promise<bool>
   //   beaconZone() -> Promise<{ id, lat, lng }> — the host's presence zone,
   //   snapped on the phone; a public party's beacon goes there
-  hooks: { isFriend: null, report: null, beaconZone: null },
+  //   coins: { reportGame(g), confirmGame(g), partyCoins(set) } — the
+  //   server-side coin ledger (migrations/013); null = no coins here
+  hooks: { isFriend: null, report: null, beaconZone: null, coins: null },
   _view: null,
   _inited: false,
 
@@ -131,6 +137,7 @@ export const party = {
     const room = new Room(`party-${code}`, this.me);
     this.current = {
       room, launched: false, chat: [], queue: null, lobby: null, session: newSession(),
+      set: newSet(1, sessionId()), coins: {},
       meta: {
         name, vibe, cap, code, hostId: this.me.id, hostName: this.me.handle,
         privacy,
@@ -157,6 +164,7 @@ export const party = {
     const room = new Room(id, this.me);
     this.current = {
       room, launched: false, chat: [], queue: null, lobby: null, session: newSession(),
+      set: newSet(1, null), coins: {},
       // with no directory entry (code join) we start with placeholders and let
       // the host's `meta` broadcast fill in the real name / vibe / cap
       meta: {
@@ -234,6 +242,7 @@ export const party = {
       if (room.isHost) return;
       c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) }, playing: m.playing ?? null };
       c.queue = m.queue ?? null;
+      if (m.set) c.set = m.set;
       for (const id of m.diaryUsed ?? []) c.session.diaryUsed.add(id);
       this.render();
     });
@@ -254,6 +263,7 @@ export const party = {
       c.lobby?.wave(m.from);
       if (m.to === this.me.id) { sfx.ping(); buzz(30); c.lobby?.say(m.from, `👋 hi ${this.me.handle}!`); }
     });
+    room.on("partyend", m => { if (m.from === room.hostId && !room.isHost) { this.leave(); this.err("the party's over — thanks for coming"); } });
     room.on("full", m => { if (m.id === this.me.id) { this.leave(); this.err(`that party is full (cap ${m.cap})`); } });
   },
   _sendMeta() {
@@ -263,6 +273,7 @@ export const party = {
       privacy: c.meta.privacy, settings: c.meta.settings, diaryUsed: [...c.session.diaryUsed],
       // a game in progress: someone who joins now waits in the lobby for the next one
       playing: c.launched ? c.playing ?? null : null,
+      set: c.set,
     });
   },
   // host: anyone past the cap (by join order) is told to leave
@@ -310,7 +321,7 @@ export const party = {
   },
   launch() {
     const c = this.current;
-    if (!c || !c.room.isHost || c.launched || !c.queue) return;
+    if (!c || !c.room.isHost || c.launched || !c.queue || c.set.done) return;
     const g = gameById(c.queue.game);
     if (!g) { this.err(`unknown game "${c.queue.game}"`); return; }
     const n = this.playerCount();
@@ -325,6 +336,7 @@ export const party = {
     if (!g) { this.err(`unknown game "${m.game}"`); return; }
     c.launched = true;
     c.playing = g.title;
+    c.playingId = g.id;
     this.pickerOpen = false;
     $("party-panel").hidden = true;
     const humans = c.room.members.map(x => ({ id: x.id, handle: x.handle, avatar: x.avatar }));
@@ -332,7 +344,7 @@ export const party = {
       room: c.room, me: this.me, humans, seed: m.seed, isHost: () => c.room.isHost, party: c.meta,
       options: { ...defaultsFor(g), ...(m.options ?? {}) },
       session: c.session,
-      onEnd: () => this._onGameEnd(c),
+      onEnd: results => this._onGameEnd(c, results),
       // host, from a game's results: run it again straight away (a new batch,
       // and anyone who joined meanwhile is in)
       again: () => { c.again = true; },
@@ -344,8 +356,18 @@ export const party = {
   },
   // back to the lobby room between games; the queue survives so the host
   // can run the same game again or pick the next one
-  _onGameEnd(c) {
+  _onGameEnd(c, results = null) {
     if (this.current !== c) return;
+    // the set: a completed game counts (party points, coins); a game cut
+    // short doesn't. The host owns the set and shares it with the meta.
+    if (results?.completed && !c.set.done) {
+      const idx = c.set.games.length + 1, game = c.playingId;
+      if (c.room.isHost) {
+        c.set = addGame(c.set, game, results);
+        this.hooks.coins?.reportGame({ session: c.set.session, set: c.set.no, idx, game, results }).catch(e => console.warn("[party] coin report", e?.message ?? e));
+      }
+      this._confirmPlayed(c, results, idx);
+    }
     c.launched = false;
     c.playing = null;
     trash.flush("game ended");           // uploaded photos + entries go now
@@ -355,6 +377,63 @@ export const party = {
     if (c.again) { c.again = false; if (c.room.isHost) setTimeout(() => { if (this.current === c && !c.launched) this.launch(); }, 400); }
     if (c.room.isHost) this._announce();
     this._syncPause();
+  },
+
+  // I played this game: tell the coin ledger (it pays out only when the
+  // host's report and my own confirmation agree), then show what I got
+  async _confirmPlayed(c, results, idx) {
+    const coins = this.hooks.coins;
+    const mine = results.players.find(p => p.id === this.me.id && !p.gone && !p.bot);
+    if (!coins || !mine) return;
+    // a guest learns the set's session from the host's meta, which can trail the end by a moment
+    for (let i = 0; i < 20 && !c.set.session && this.current === c; i++) await new Promise(r => setTimeout(r, 250));
+    const g = { session: c.set.session, set: c.set.no, idx };
+    if (!g.session) return;
+    try {
+      await coins.confirmGame(g);
+      await new Promise(r => setTimeout(r, 1800));      // let the host's report land
+      const total = await coins.partyCoins(g);
+      const before = c.coins[g.set] ?? 0;
+      c.coins[g.set] = total;
+      if (this.current === c && total > before) this._coinToast(total - before);
+    } catch (e) { console.warn("[party] coin confirm", e?.message ?? e); }
+  },
+  _coinToast(n) {
+    const wrap = document.querySelector("#party-panel .pt-floor-wrap"); if (!wrap) return;
+    const t = document.createElement("div");
+    t.className = "pt-cointoast";
+    t.innerHTML = `<i class="coin"></i><b>+${n}</b> coins`;
+    wrap.appendChild(t);
+    coinBurst(t, 8);
+    sfx.chime?.();
+    setTimeout(() => t.remove(), 2600);
+  },
+
+  // ---------------------------------------------------------------- the set's end
+  // after the last game: the podium for everyone; the host starts a new set
+  // or ends the party
+  _renderSetEnd() {
+    const c = this.current; const host = $("party-panel"); if (!c || !host) return;
+    if (!c.set.done || c.launched) { if (c._podium) { c._podium = null; closePodium(host); } return; }
+    const key = `${c.set.session}:${c.set.no}`;
+    if (c._podium === key) return;
+    c._podium = key;
+    const avatars = Object.fromEntries(c.room.members.map(m => [m.id, m.avatar]));
+    const rows = standings(c.set, c.room.members.map(m => ({ id: m.id, handle: m.handle, avatar: m.avatar })));
+    showPodium(host, c.set, rows, {
+      me: this.me.id, avatars, isHost: c.room.isHost,
+      onNewSet: () => { if (!c.room.isHost) return; sfx.confirm(); c.set = newSet(c.set.no + 1, c.set.session); c.queue = null; this._sendMeta(); this.render(); },
+      onEnd: () => { if (!c.room.isHost) return; sfx.back(); c.room.send("partyend", {}); setTimeout(() => this.leave(), 300); },
+    });
+    sfx.win?.();
+    // what I earned this party, from the server's ledger (incl. a host reward)
+    const coins = this.hooks.coins;
+    if (coins && c.set.session) setTimeout(async () => {
+      try {
+        const total = await coins.partyCoins({ session: c.set.session, set: c.set.no });
+        if (c._podium === key) showCoins($("pp-coins"), total, { note: total ? "" : "no coins this time (daily cap reached, or not in every game)" });
+      } catch (e) { console.warn("[party] coins", e?.message ?? e); }
+    }, 2600);
   },
 
   // ---------------------------------------------------------------- world beacons
@@ -470,6 +549,7 @@ export const party = {
       </div>
       <div class="pt-floor-wrap">
         <div id="pt-floor"></div>
+        <div id="pt-board" class="pt-board" aria-label="party leaderboard"></div>
         <div id="pt-chat-feed" class="pt-chat-float"></div>
       </div>
       <div class="pt-bottom">
@@ -536,8 +616,11 @@ export const party = {
     c.lobby?.setBackground(LOBBY_BG[c.meta.vibe] ?? LOBBY_BG.chill);
     c.lobby?.setVibe(c.meta.vibe);
     c.lobby?.sync();
+    const members = c.room.members.map(m => ({ id: m.id, handle: m.handle, avatar: m.avatar }));
+    renderBoard($("pt-board"), c.set, standings(c.set, members), { me: this.me.id, avatars: Object.fromEntries(members.map(m => [m.id, m.avatar])) });
     this._renderNext();
     this._renderPicker();
+    this._renderSetEnd();
   },
 
   // under the room: a DS-style dialog box that types out what's up next (the
@@ -550,15 +633,16 @@ export const party = {
     const opts = g ? [optionsLabel(g, c.queue.options), g.describe?.(c.meta)].filter(Boolean).join(" · ") : "";
     const need = g ? Math.max(0, minFor(g) - n) : 0;
     const playing = !isHost && c.meta.playing;      // a game started before you got here
-    const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}:${playing || ""}`;
+    const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}:${playing || ""}:${c.set.no}.${c.set.games.length}`;
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
-    const upNext = g ? `Up next: ${g.title}${opts ? ` (${opts})` : ""}.` : "";
+    const gameNo = `Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET}.`;
+    const upNext = g ? `${gameNo} Up next: ${g.title}${opts ? ` (${opts})` : ""}.` : "";
     const line = isHost
-      ? (g ? `${upNext} ${need ? `Waiting for ${need} more ${need === 1 ? "player" : "players"}.` : "Everyone's here — hit start!"}` : "No game picked yet. Walk up to the TV and pick one!")
+      ? (g ? `${upNext} ${need ? `Waiting for ${need} more ${need === 1 ? "player" : "players"}.` : "Everyone's here — hit start!"}` : `${gameNo} Walk up to the TV and pick a game!`)
       : playing ? `${playing} is on — you're in the next one. Hang out!`
       : g ? `${upNext} ${need ? `Waiting for ${need} more.` : `Waiting for ${host} to start.`}`
-      : `${host} hasn't picked a game yet. Walk around and say hi!`;
+      : `${gameNo} ${host} hasn't picked a game yet. Walk around and say hi!`;
     el.innerHTML = `<div class="pt-dlg-host"></div>${isHost ? `<div class="pt-next-btns">
         <button type="button" class="y-btn small ${g ? "dim" : ""}" id="pt-open-picker">${g ? "change" : "pick a game"}</button>
         ${g ? `<button type="button" class="y-btn pink small pt-go" id="pt-start" ${need ? "disabled" : ""}>${need ? `needs ${need} more` : "start ▶"}</button>` : ""}

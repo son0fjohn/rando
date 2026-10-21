@@ -870,6 +870,6 @@ export const SECRET_DIARY = {
     trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
     game.start({ phase: "deal", left: DIARY.DEAL_MS, players: {}, batch: [], used: [], swapped: [], qs: [], keys: [], qi: -1, why: null, gameId: null });
     const o = ctx.onEnd;
-    ctx.onEnd = () => { game.stop(); ui.hide(); o(); };
+    ctx.onEnd = r => { game.stop(); ui.hide(); o(r); };
   },
 };

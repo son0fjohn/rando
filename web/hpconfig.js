@@ -26,6 +26,30 @@ export const PARTY = {
   CAP_MAX: 12,
   CAP_DEFAULT: 6,
   NAME_MAX: 28,
+  // a party is a SET of games: the host picks each one from the TV, everyone
+  // comes back to the room between them, and after the last the party
+  // results (podium) — then a new set, or the end of the party
+  GAMES_PER_SET: 3,
+};
+
+// The room leaderboard: each completed game turns into party points by
+// finishing place (ties share a place), so a 100-point game and a 6-point
+// game count the same. Everyone who finished gets at least the last value.
+export const LEADERBOARD = {
+  PLACE_POINTS: [100, 80, 65, 50, 40, 30, 25, 20],
+};
+
+// Coins: the earned currency (separate from future paid gems). These are the
+// numbers the SERVER uses (supabase/migrations/013_coins_shop.sql repeats
+// them; that copy is the one that counts — keep the two in step). The app
+// only uses these to label things.
+export const COINS = {
+  PLACE: [30, 20, 12],        // 1st, 2nd, 3rd in a completed game
+  FINISH: 5,                  // everyone else who finished it
+  HOST_SET: 50,               // the host, when a set of 3 completes...
+  HOST_MIN_PLAYERS: 4,        // ...with at least 4 players in all 3 games
+  DAILY_CAP: 300,             // most coins one player can earn per day (UTC)
+  HOST_DAILY_CAP: 3,          // most host rewards one player can get per day
 };
 
 // ---------------------------------------------------------------- game settings

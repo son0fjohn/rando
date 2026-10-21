@@ -396,10 +396,10 @@ export const MANHUNT_GAME = {
     startGeo();
     requestWake();
     const o = ctx.onEnd;
-    ctx.onEnd = () => {
+    ctx.onEnd = r => {
       game.stop(); stopGeo(); releaseWake(); cells.clear();
       document.removeEventListener("visibilitychange", onVis);
-      ui.hide(); o();
+      ui.hide(); o(r);
     };
   },
 };

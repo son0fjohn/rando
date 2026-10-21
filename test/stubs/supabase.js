@@ -9,6 +9,10 @@
 //             while you're open
 //   realtime  channels ride on BroadcastChannel (bcchannel.js), so tabs in one
 //             browser context form real parties through the real net.js
+//   coins     the coin + shop RPCs of migrations/013, same rules, kept in
+//             localStorage so every tab of the context shares one "server"
+//             (the real SQL is tested by test/coins_sql.mjs); ?coins=N starts
+//             you with N coins
 import { StubChannel } from "./bcchannel.js";
 
 const q = new URLSearchParams(location.search);
@@ -49,7 +53,46 @@ const db = {
     { id: 2, sender: "u-jae", handle: "jae", body: "coffee line is insane lol", zone_id: "itaewon-station", created_at: "2026-10-21T10:01:00Z" },
   ],
   matches: [], match_queue: [], messages: [], friend_messages: [], encounter_confirms: [], reports: [], diary_prompt_log: [],
+  shop_items: [
+    ["top-hoodie-maroon", "top", "hoodie-maroon", "maroon hoodie", 150], ["bottom-camo", "bottom", "camo", "camo pants", 100],
+    ["bottom-skirt-pleated", "bottom", "skirt-pleated-black", "pleated skirt", 100], ["bottom-shorts-blue", "bottom", "shorts-blue", "blue shorts", 60],
+    ["shoes-clog-pink", "shoes", "clog-pink", "pink clogs", 90], ["shoes-boot-work-tan", "shoes", "boot-work-tan", "tan work boots", 120],
+    ["haircolor-red", "hairColor", "red", "red hair dye", 80], ["haircolor-white", "hairColor", "white", "white hair dye", 80],
+  ].map(([id, slot, value, name, price]) => ({ id, slot, value, name, price })),
 };
+
+// ---- the coin "server", shared by every tab (localStorage)
+const CK = "stub-coins-v1";
+const load = () => { try { return JSON.parse(localStorage.getItem(CK)) ?? null; } catch { return null; } };
+const save = st => { try { localStorage.setItem(CK, JSON.stringify(st)); } catch {} };
+const cstate = () => load() ?? { ledger: [], games: {}, receipts: {}, inventory: {} };
+if (q.get("coins")) { const st = cstate(); st.ledger.push({ user: myId, delta: +q.get("coins"), reason: "seed", t: Date.now() }); save(st); }
+const balance = (st, u) => st.ledger.filter(l => l.user === u).reduce((a, l) => a + l.delta, 0);
+const PLACE = [30, 20, 12], FINISH = 5, HOST = 50, CAP = 300, HOST_CAP = 3;
+function earn(st, u, amount, reason, key) {
+  const day = new Date().toISOString().slice(0, 10);
+  if (st.ledger.some(l => l.user === u && l.reason === reason && l.key === key)) return 0;
+  const today = st.ledger.filter(l => l.user === u && l.delta > 0 && l.reason !== "seed" && new Date(l.t).toISOString().slice(0, 10) === day).reduce((a, l) => a + l.delta, 0);
+  const pay = Math.min(amount, CAP - today);
+  if (pay <= 0) return 0;
+  st.ledger.push({ user: u, delta: pay, reason, key, t: Date.now() });
+  return pay;
+}
+function settle(st, gk, u) {
+  const g = st.games[gk]; if (!g || !st.receipts[gk]?.includes(u)) return 0;
+  const r = g.ranking.find(e => e.id === u); if (!r) return 0;
+  return earn(st, u, PLACE[r.place - 1] ?? FINISH, "game", gk);
+}
+function hostReward(st, session, set) {
+  const ks = [1, 2, 3].map(i => `${session}|${set}|${i}`);
+  if (!ks.every(k => st.games[k])) return;
+  const full = new Set((st.receipts[ks[0]] ?? []).filter(u => ks.every(k => st.receipts[k]?.includes(u) && st.games[k].ranking.some(e => e.id === u))));
+  if (full.size < 4) return;
+  const h = st.games[ks[2]].host, day = new Date().toISOString().slice(0, 10);
+  if (st.ledger.filter(l => l.user === h && l.reason === "host" && new Date(l.t).toISOString().slice(0, 10) === day).length >= HOST_CAP) return;
+  earn(st, h, HOST, "host", `${session}|${set}`);
+}
+const wallet = st => ({ coins: balance(st, myId), owned: st.inventory[myId] ?? [] });
 window.__db = db;
 
 // a tiny PostgREST-ish query builder: filters, order, limit, single rows
@@ -86,7 +129,14 @@ class Query {
         return row;
       });
     } else if (this.op === "update") {
-      out = T.filter(match); out.forEach(r => Object.assign(r, this.patch));
+      out = T.filter(match);
+      if (this.t === "profiles" && this.patch.avatar) {
+        const owned = cstate().inventory[myId] ?? [];
+        for (const r of out) for (const it of db.shop_items)
+          if (this.patch.avatar[it.slot] === it.value && r.avatar?.[it.slot] !== it.value && !owned.includes(it.id))
+            return { data: null, error: { message: `locked: ${it.name} is in the shop (${it.price} coins)` } };
+      }
+      out.forEach(r => Object.assign(r, this.patch));
     } else if (this.op === "delete") {
       out = T.filter(match); db[this.t] = T.filter(r => !match(r));
     } else {
@@ -111,6 +161,32 @@ const RPC = {
     return z;
   },
   ensure_dm: ({ p_other }) => `dm-${p_other}`,
+  report_game: ({ p_session, p_set, p_idx, p_game, p_ranking }) => {
+    const st = cstate(), gk = `${p_session}|${p_set}|${p_idx}`;
+    if (st.games[gk] || !p_ranking.some(e => e.id === myId)) return 0;
+    st.games[gk] = { host: myId, game: p_game, ranking: p_ranking, t: Date.now() };
+    let paid = 0; for (const u of st.receipts[gk] ?? []) paid += settle(st, gk, u);
+    if (p_idx === 3) hostReward(st, p_session, p_set);
+    save(st); return paid;
+  },
+  confirm_game: ({ p_session, p_set, p_idx }) => {
+    const st = cstate(), gk = `${p_session}|${p_set}|${p_idx}`;
+    (st.receipts[gk] ??= []).includes(myId) || st.receipts[gk].push(myId);
+    const paid = settle(st, gk, myId);
+    if (p_idx === 3) hostReward(st, p_session, p_set);
+    save(st); return paid;
+  },
+  my_party_coins: ({ p_session, p_set }) => cstate().ledger.filter(l => l.user === myId && (l.key ?? "").startsWith(`${p_session}|${p_set}`) && ["game", "host"].includes(l.reason)).reduce((a, l) => a + l.delta, 0),
+  my_wallet: () => wallet(cstate()),
+  buy_item: ({ p_item }) => {
+    const st = cstate(), it = db.shop_items.find(i => i.id === p_item);
+    if (!it) throw new Error("no such item");
+    if ((st.inventory[myId] ?? []).includes(p_item)) return { ok: true, ...wallet(st) };
+    if (balance(st, myId) < it.price) return { ok: false, why: "not enough coins", coins: balance(st, myId) };
+    st.ledger.push({ user: myId, delta: -it.price, reason: "purchase", item: p_item, t: Date.now() });
+    (st.inventory[myId] ??= []).push(p_item);
+    save(st); return { ok: true, ...wallet(st) };
+  },
   request_match: () => null,
   encounter_status: () => [{ i_confirmed: false, encounter_complete: false, encounter_verified: false }],
 };
@@ -128,7 +204,10 @@ export function createClient() {
       signOut: async () => ({ error: null }),
     },
     from: t => new Query(t),
-    rpc: async (name, args) => RPC[name] ? { data: RPC[name](args ?? {}), error: null } : { data: null, error: { message: `rpc ${name} not stubbed` } },
+    rpc: async (name, args) => {
+      if (!RPC[name]) return { data: null, error: { message: `rpc ${name} not stubbed` } };
+      try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; }
+    },
     channel: (name, cfg) => new StubChannel(name, cfg),
     removeChannel: ch => ch.close(),
   };

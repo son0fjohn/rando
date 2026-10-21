@@ -136,6 +136,27 @@ async function refreshStatus() {
     // a public party's map beacon sits in the host's ZONE (the same on-device
     // snap presence uses), never at the host's position: parties are often
     // at someone's home
+    // coins: the host reports each completed game, every player confirms
+    // they played it; the server pays only when both agree (migrations/013)
+    party.hooks.coins = {
+      reportGame: async ({ session, set, idx, game, results }) => {
+        const { places } = await import("./partyset.js");
+        const ranking = places(results).map(p => ({ id: p.id, place: p.place }));
+        const { data, error } = await sb.rpc("report_game", { p_session: session, p_set: set, p_idx: idx, p_game: game, p_ranking: ranking });
+        if (error) throw error;
+        return data;
+      },
+      confirmGame: async ({ session, set, idx }) => {
+        const { data, error } = await sb.rpc("confirm_game", { p_session: session, p_set: set, p_idx: idx });
+        if (error) throw error;
+        return data;
+      },
+      partyCoins: async ({ session, set }) => {
+        const { data, error } = await sb.rpc("my_party_coins", { p_session: session, p_set: set });
+        if (error) throw error;
+        return data ?? 0;
+      },
+    };
     party.hooks.beaconZone = async () => {
       const z = presence.myZone ?? await presence.resolveZone();
       return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;
@@ -1316,6 +1337,7 @@ const TABS = [
   { key: "top", label: "Top" },
   { key: "bottom", label: "Bottom" },
   { key: "shoes", label: "Shoes" },
+  { key: "shop", label: "Shop" },
 ];
 const rgbCss = a => `rgb(${a[0]},${a[1]},${a[2]})`;
 // option tile art: category -> value -> image url (prep-generated crops)
@@ -1354,6 +1376,10 @@ export const avatar = {
   },
 
   async pick(key, value) {
+    // a shop item you don't own: go to it in the shop instead
+    const it = wallet.itemFor(key, value);
+    if (it && !wallet.owns(it.id) && this.mine[key] !== value) { this.tab = "shop"; this.focus = it.id; sfx.cursor(); this.renderGrid(); return; }
+    const prev = this.mine;
     this.mine = { ...this.mine, [key]: value };
     if (rooms.me) rooms.me.avatar = this.mine;
     this.applyOwn();
@@ -1361,11 +1387,18 @@ export const avatar = {
     styleView.view?.setAvatar(this.mine);
     sfx.cursor();
     const { data: { session } } = await sb.auth.getSession();
-    await sb.from("profiles").update({ avatar: this.mine }).eq("id", session.user.id);
+    const { error } = await sb.from("profiles").update({ avatar: this.mine }).eq("id", session.user.id);
+    if (error) {
+      // the server only lets you wear shop items you own
+      console.warn("[rando] outfit not saved:", error.message);
+      this.mine = prev; if (rooms.me) rooms.me.avatar = prev;
+      this.applyOwn(); this.renderGrid(); styleView.view?.setAvatar(prev);
+    }
   },
 
   renderGrid() {
     if (!TABS.some(t => t.key === this.tab)) this.tab = "skin";
+    wallet.paint();
 
     const tabsEl = document.getElementById("outfit-tabs");
     tabsEl.innerHTML = "";
@@ -1379,6 +1412,8 @@ export const avatar = {
     }
 
     outfitGrid.innerHTML = "";
+    outfitGrid.classList.toggle("shop", this.tab === "shop");
+    if (this.tab === "shop") { wallet.renderShop(outfitGrid); return; }
     const swatch = this.tab === "skin" ? v => rgbCss(SKIN_RGB[v])
       : this.tab === "hairColor" ? v => rgbCss(HAIR_RGB[v])
       : this.tab === "iris" ? v => IRIS3_HEX[v] : null;
@@ -1406,11 +1441,67 @@ export const avatar = {
         img.alt = value;
         b.appendChild(img);
       }
+      // shop items: a lock and the price until you own them
+      const it = wallet.itemFor(this.tab, value);
+      if (it && !wallet.owns(it.id)) { b.classList.add("locked"); b.insertAdjacentHTML("beforeend", `<span class="lock-tag"><i class="coin"></i>${it.price}</span>`); }
       b.addEventListener("click", () => this.pick(this.tab, value));
       outfitGrid.appendChild(b);
     }
   },
 };
+
+// ===================== coins + shop =====================
+// Coins are earned in house parties and spent in the shop. The balance, the
+// shop and what you own all live on the server (migrations/013); this only
+// shows them and asks the server to buy. Never trusts its own numbers.
+export const wallet = {
+  coins: 0,
+  owned: new Set(),
+  items: [],                 // shop_items rows
+  async load() {
+    const [{ data: w }, { data: items }] = await Promise.all([sb.rpc("my_wallet"), sb.from("shop_items").select("*").order("price")]);
+    if (w) { this.coins = w.coins ?? 0; this.owned = new Set(w.owned ?? []); }
+    if (items) this.items = items;
+    this.paint();
+  },
+  itemFor(slot, value) { return this.items.find(i => i.slot === slot && i.value === value) ?? null; },
+  owns(id) { return this.owned.has(id); },
+  paint() {
+    const el = document.getElementById("style-coins");
+    if (el) el.innerHTML = `<i class="coin"></i><b>${this.coins}</b>`;
+  },
+  renderShop(grid) {
+    if (!this.items.length) { grid.innerHTML = `<p class="shop-empty">the shop is closed right now</p>`; return; }
+    grid.innerHTML = this.items.map(it => {
+      const own = this.owns(it.id), wearing = avatar.mine[it.slot] === it.value;
+      const art = OPTION_ICON[it.slot]?.(it.value);
+      const vis = art ? `<img src="${art}" alt="">` : `<span class="shop-swatch" style="background:${it.slot === "hairColor" ? rgbCss(HAIR_RGB[it.value] ?? [128, 128, 128]) : "#555"}"></span>`;
+      return `<div class="shop-item ${own ? "owned" : ""} ${avatar.focus === it.id ? "focus" : ""}" data-item="${it.id}">
+          <div class="shop-vis">${vis}</div><b>${escHtml(it.name)}</b>
+          ${own ? `<button type="button" class="y-btn small ${wearing ? "dim" : "lime"}" data-wear="${it.id}" ${wearing ? "disabled" : ""}>${wearing ? "wearing" : "owned · wear"}</button>`
+                : `<button type="button" class="y-btn small gold" data-buy="${it.id}" ${this.coins < it.price ? "disabled" : ""}><i class="coin"></i>${it.price}</button>`}
+        </div>`;
+    }).join("") + `<p class="shop-note" id="shop-note">earn coins at house parties · ${this.owned.size} owned</p>`;
+    grid.querySelectorAll("[data-buy]").forEach(b => b.onclick = () => this.buy(b.dataset.buy));
+    grid.querySelectorAll("[data-wear]").forEach(b => b.onclick = () => { const it = this.items.find(i => i.id === b.dataset.wear); if (it) avatar.pick(it.slot, it.value); });
+    grid.querySelector(".shop-item.focus")?.scrollIntoView({ block: "nearest" });
+    avatar.focus = null;
+  },
+  async buy(id) {
+    const it = this.items.find(i => i.id === id); if (!it) return;
+    const note = document.getElementById("shop-note");
+    const { data, error } = await sb.rpc("buy_item", { p_item: id });
+    if (error || !data?.ok) { sfx.back(); if (note) note.textContent = data?.why ?? error?.message ?? "couldn't buy that"; return; }
+    this.coins = data.coins ?? this.coins; this.owned = new Set(data.owned ?? [...this.owned, id]);
+    sfx.win(); this.paint();
+    await avatar.pick(it.slot, it.value);                       // put it on straight away
+    const grid = document.getElementById("outfit-grid");
+    if (avatar.tab === "shop") this.renderShop(grid);
+    const card = grid.querySelector(`[data-item="${id}"]`);
+    if (card) { const { coinBurst } = await import("./partyboard.js"); coinBurst(card, 10); }
+  },
+};
+const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // ===================== style screen =====================
 // Its own full-screen screen (not on the map), like opening your profile:
@@ -1420,6 +1511,7 @@ const styleView = {
   view: null,
   open() {
     if (!styleScreen.hidden) return;
+    wallet.load().then(() => avatar.renderGrid()).catch(e => console.warn("[rando] wallet", e));
     avatar.renderGrid();
     styleScreen.hidden = false;
     styleScreen.classList.remove("y-in-wipe"); void styleScreen.offsetWidth; styleScreen.classList.add("y-in-wipe");

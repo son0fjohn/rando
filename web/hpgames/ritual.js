@@ -312,6 +312,6 @@ export const HUMILIATION_RITUAL = {
     trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
     game.start({ phase: "prep", left: PREP_MS, players: {}, order: [], rounds: [], ri: 0 });
     const o = ctx.onEnd;
-    ctx.onEnd = () => { game.stop(); ui.hide(); o(); };
+    ctx.onEnd = r => { game.stop(); ui.hide(); o(r); };
   },
 };
