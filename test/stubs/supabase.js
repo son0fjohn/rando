@@ -61,12 +61,23 @@ const db = {
   ].map(([id, slot, value, name, price]) => ({ id, slot, value, name, price })),
 };
 
-// ---- the coin "server", shared by every tab (localStorage)
-const CK = "stub-coins-v1";
-const load = () => { try { return JSON.parse(localStorage.getItem(CK)) ?? null; } catch { return null; } };
-const save = st => { try { localStorage.setItem(CK, JSON.stringify(st)); } catch {} };
+// ---- the coin "server", shared by every tab: IndexedDB (localStorage writes
+// reach other tabs' processes late, so concurrent calls lost each other's
+// updates), one call at a time across tabs (a Web Lock), like the real one's
+// transactions. window.__coins() reads it, for tests.
+let CUR = null, dirty = false;
+const idb = () => new Promise((res, rej) => { const r = indexedDB.open("stub-coins", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const idbGet = async () => { const d = await idb(); return new Promise(res => { const g = d.transaction("kv").objectStore("kv").get("state"); g.onsuccess = () => res(g.result ?? null); g.onerror = () => res(null); }); };
+const idbPut = async v => { const d = await idb(); return new Promise(res => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, "state"); t.oncomplete = res; t.onerror = res; }); };
+const load = () => CUR;
+const save = st => { CUR = st; dirty = true; };
 const cstate = () => load() ?? { ledger: [], games: {}, receipts: {}, inventory: {} };
-if (q.get("coins")) { const st = cstate(); st.ledger.push({ user: myId, delta: +q.get("coins"), reason: "seed", t: Date.now() }); save(st); }
+function withCoins(fn) {
+  const go = async () => { CUR = await idbGet(); dirty = false; const r = fn(); if (dirty) await idbPut(CUR); return r; };
+  return navigator.locks ? navigator.locks.request("stub-coins", go) : go();
+}
+window.__coins = () => withCoins(() => cstate());
+withCoins(() => { if (q.get("coins")) { const st = cstate(); st.ledger.push({ user: myId, delta: +q.get("coins"), reason: "seed", t: Date.now() }); save(st); } });
 const balance = (st, u) => st.ledger.filter(l => l.user === u).reduce((a, l) => a + l.delta, 0);
 const PLACE = [30, 20, 12], FINISH = 5, HOST = 50, CAP = 300, HOST_CAP = 3;
 function earn(st, u, amount, reason, key) {
@@ -206,7 +217,7 @@ export function createClient() {
     from: t => new Query(t),
     rpc: async (name, args) => {
       if (!RPC[name]) return { data: null, error: { message: `rpc ${name} not stubbed` } };
-      try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; }
+      return withCoins(() => { try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; } });
     },
     channel: (name, cfg) => new StubChannel(name, cfg),
     removeChannel: ch => ch.close(),
