@@ -46,6 +46,12 @@ function waitPhase(t, phase, maxMs = 5 * 60 * 1000) {
   return t.s?.phase === phase;
 }
 
+// The suite runs in three page loads (run.mjs: ?part=1, 2, 3): each
+// is one long synchronous stretch, and Chromium only frees the DOM garbage
+// of all the panel rebuilds when the page yields — in one go the renderer
+// grew past 6 GB and CI's Chromium 131 ran out of memory. No ?part = all.
+const PART = new URLSearchParams(location.search).get("part");
+if (!PART || PART === "1") {
 // ===================================================================== 1
 // The exact list the brief supplied (type, level, text). The pool must be
 // this and nothing else.
@@ -567,6 +573,8 @@ group("Secret Diary — logging survives a missing table");
   ok(promptLog.queued() === 0 && window.__logRows.some(r => r.prompt_id === "w-mild-01"), "…and flushed on the next successful write");
 }
 
+}
+if (!PART || PART === "2") {
 // ===================================================================== 2
 group("Today's Mission — quick start, rated 0-10");
 {
@@ -859,6 +867,8 @@ group("The party set: 3 games, places, standings");
   ok(fullParticipants(set).join() === "b,c", "full participants: only those in all 3 games");
 }
 
+}
+if (!PART || PART === "3") {
 // ===================================================================== 4
 group("The Art Gallery (4 players)");
 {
@@ -1069,5 +1079,6 @@ group("Cleanup — nothing survives the party");
   ok(window.__game === null, "the debug handle no longer pins the state");
 }
 
+}
 log("head", `\n${pass} passed, ${fail} failed`);
 window.__done = { pass, fail };
