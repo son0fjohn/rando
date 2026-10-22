@@ -13,7 +13,7 @@
 // The host picks the next game from a picker overlay they can open and close
 // at will. Picking QUEUES the game ("up next") — it doesn't need the player
 // minimum to be met yet, so the host can set it up while people arrive. Games
-// can declare options (e.g. Today's Mission: quick start vs players choose);
+// can declare options (e.g. Mask Off: everyone once / twice / three times);
 // those are set in the picker and travel with the launch. Start is a separate
 // tap, enabled once there are enough players.
 //
@@ -61,7 +61,7 @@ const LOBBY_BG = { chill: "lobbies/chill.png", chaotic: "lobbies/chaos.png", spo
 const px = (d, fill) => `<path d="${d}" fill="${fill}"/>`;
 const CHANNEL_ART = {
   secretdiary: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M3 2h9v12H3z", "#ff5d8a")}${px("M4 3h7v10H4z", "#ffd3e0")}${px("M3 2h1v12H3z", "#b02a55")}${px("M10 7h3v3h-3z", "#ffc84d")}${px("M11 6h1v1h-1z", "#8a8fa8")}</svg>`,
-  mission: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M2 2h12v12H2z", "#4de8c8")}${px("M4 4h8v8H4z", "#0b0d24")}${px("M6 6h4v4H6z", "#4de8c8")}${px("M7 7h2v2H7z", "#ff5d8a")}</svg>`,
+  mask_off: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M2 3h12v6H2zM3 9h10v2H3zM5 11h6v2H5z", "#f2f4ff")}${px("M4 5h3v2H4zM9 5h3v2H9z", "#0b0d24")}${px("M6 10h4v1H6z", "#ff5d8a")}${px("M1 4h1v2H1zM14 4h1v2h-1z", "#ffc84d")}${px("M7 3h2v1H7z", "#b9a6ff")}</svg>`,
   ritual: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M3 3h10v8H3z", "#f2f4ff")}${px("M5 5h2v2H5zM9 5h2v2H9z", "#0b0d24")}${px("M6 9h4v1H6z", "#ff4d5e")}${px("M5 11h6v2H5z", "#f2f4ff")}${px("M7 1h2v2H7z", "#ffc84d")}</svg>`,
   sidequest: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M7 0h2v2H7zM6 2h4v2H6zM5 4h6v2H5z", "#6b3fd6")}${px("M7 2h1v1H7z", "#ffd23f")}${px("M3 6h10v1H3z", "#140c22")}${px("M5 9h6v5H5zM4 10h8v3H4z", "#b9a6ff")}${px("M6 10h2v1H6z", "#fff")}${px("M4 14h8v2H4z", "#6b3a1c")}</svg>`,
   artgallery: `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${px("M1 3h14v10H1z", "#ffc84d")}${px("M3 5h10v6H3z", "#4da6ff")}${px("M3 9h4v2H3zM7 8h3v3H7z", "#7dff5e")}${px("M11 6h1v1h-1z", "#fff")}</svg>`,
@@ -691,7 +691,7 @@ export const party = {
     this._sendMeta();
     this._renderNext(); this._renderPicker();
   },
-  // host: the per-game options (Mission's mode, the Ritual's rounds), chosen in the votes sheet
+  // host: the per-game options (the Ritual's and Mask Off's rounds), chosen in the votes sheet
   gameOption(gameId, key, value) {
     const c = this.current; if (!c?.room.isHost) return;
     c.gameOpts = { ...(c.gameOpts ?? {}), [gameId]: { ...(c.gameOpts?.[gameId] ?? {}), [key]: value } };

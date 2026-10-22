@@ -861,3 +861,81 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .sq-wizard.w3d-on .sq-wiz-art { visibility: hidden; }
 .sq-wizard.w3d-on .sq-ball { left: var(--bx, 50%); top: var(--by, 60%); bottom: auto; width: 58px; height: 58px; transform: translate(-50%, -82%); }   /* wizard3d.js floats it just above his palms */
 .sq-wizard.w3d-on .sq-stand { display: none; }
+
+/* ===== Mask Off ===== a truth card flips up; the room rates honesty 1-5;
+   the reveal keeps the mask on (grin), cracks it, or shatters it off */
+.stage:has(.mo-game) { background: var(--g-bg-strong); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); border: 1px solid var(--g-line); border-radius: 22px; color: #fff; }
+.stage:has(.mo-game) h2 { font: 700 var(--fs-h2)/26px var(--f-sys); color: #fff; }
+.stage:has(.mo-game) h2:empty { display: none; }
+.stage:has(.mo-game) .st-sub, .stage:has(.mo-game) .ab-sub { color: rgba(255,255,255,.62); }
+.mo-game { display: flex; flex-direction: column; align-items: stretch; }
+.mo-card { perspective: 900px; margin: 8px 0; }
+.mo-card-in { position: relative; padding: 16px 16px 18px; border-radius: 18px; color: #fff; text-align: left;
+  background: radial-gradient(circle at 85% 0, rgba(255, 93, 138, .35), transparent 55%), linear-gradient(160deg, #3a1d5e, #1c0f33 70%);
+  border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 10px 28px rgba(0, 0, 0, .35); transform-origin: 50% 50%; backface-visibility: hidden; }
+.mo-card.flip .mo-card-in { animation: mo-flip .7s cubic-bezier(.2, .9, .3, 1.15) both; }
+@keyframes mo-flip { from { transform: rotateY(-180deg) scale(.9); opacity: 0; } 45% { opacity: 1; } to { transform: none; opacity: 1; } }
+.mo-kicker { font: 800 15px/18px var(--f-sys); letter-spacing: .08em; color: #ffc83d; }
+.mo-text { font: 700 22px/28px var(--f-sys); margin-top: 8px; }
+.mo-lv { position: absolute; right: 12px; top: 12px; font: 700 11px/18px var(--f-sys); font-style: normal; padding: 0 9px; border-radius: 999px; background: rgba(255,255,255,.14); color: #fff; }
+.mo-lv.l2 { background: rgba(255, 93, 138, .35); } .mo-lv.l3 { background: rgba(77, 232, 200, .3); }
+.mo-card.small .mo-card-in { padding: 10px 12px 12px; }
+.mo-card.small .mo-kicker { font-size: 12px; line-height: 14px; }
+.mo-card.small .mo-text { font-size: 15px; line-height: 20px; margin-top: 4px; }
+.sq-clock.small { font-size: 34px; line-height: 40px; }
+.mo-rate { display: flex; justify-content: center; gap: 8px; margin: 10px 0 2px; }
+.stage .mo-r { width: 52px; height: 52px; border-radius: 50%; padding: 0; border: 1px solid var(--g-line); background: rgba(255,255,255,.1); color: #fff;
+  font: 800 20px/1 var(--f-sys); cursor: pointer; transition: transform .1s, background .15s; }
+.stage .mo-r:active { transform: scale(1.12); }
+.stage .mo-r.on { background: #ffc83d; color: #1c0f33; border-color: transparent; }
+.mo-rate.locked .mo-r:not(.on) { opacity: .35; }
+.stage .mo-r:disabled { cursor: default; }
+.mo-ends { display: flex; justify-content: space-between; max-width: 300px; width: 100%; margin: 0 auto; font: 600 12px/16px var(--f-sys); color: rgba(255,255,255,.55); }
+.stage .mo-skip { align-self: center; margin-top: 8px; padding: 10px 18px; color: rgba(255,255,255,.75); font: 600 15px/1 var(--f-sys) !important; }
+.stage .mo-skip.armed { background: #ff4d5e; color: #fff; }
+/* the mask: two halves of one theatrical mask over the player's sprite */
+.mo-reel-wrap { position: relative; width: 60px; height: 90px; margin: 6px auto 0; }
+.mo-reel-wrap .mo-mask { left: 8px; top: 7px; width: 44px; }
+.mo-reveal { position: relative; width: 100px; height: 150px; margin: 4px auto 0; }
+.mo-face .pb-face { image-rendering: pixelated; background-repeat: no-repeat; background-position: 0 0; display: block; }
+.mo-reveal .mo-mask { left: 14px; top: 12px; width: 72px; }
+.mo-mask { position: absolute; aspect-ratio: 60 / 46; filter: drop-shadow(0 3px 4px rgba(0,0,0,.4)); }
+.mo-half { position: absolute; inset: 0; }
+.mo-half.l { clip-path: inset(0 50% 0 0); } .mo-half.r { clip-path: inset(0 0 0 50%); }
+.mo-half svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.mo-m-face { fill: #f6f1ff; stroke: #2a1840; stroke-width: 2; }
+.mo-m-eye { fill: #1a0f2a; }
+.mo-m-brow { fill: none; stroke: #2a1840; stroke-width: 2; stroke-linecap: round; }
+.mo-m-grin { fill: none; stroke: #2a1840; stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 30; stroke-dashoffset: 30; }
+.mo-m-crack { fill: none; stroke: #2a1840; stroke-width: 1.8; stroke-linejoin: round; stroke-dasharray: 50; stroke-dashoffset: 50; }
+.mo-burst { position: absolute; left: 50%; top: 50%; }
+.mo-burst i { position: absolute; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; background: #ffc83d; box-shadow: 0 0 8px 1px #ffc83d; opacity: 0; }
+.mo-burst i:nth-child(3n) { background: #fff3b0; } .mo-burst i:nth-child(4n) { background: #ff5d8a; box-shadow: 0 0 8px 1px #ff5d8a; }
+/* MASK ON: it stays put and grins slyly */
+.mo-reveal.on .mo-m-grin { animation: mo-draw .5s ease-out forwards; }
+.mo-reveal.on .mo-mask { animation: mo-sly 1.4s ease-in-out .4s 2; }
+@keyframes mo-sly { 0%, 100% { transform: none; } 30% { transform: rotate(-6deg); } 65% { transform: rotate(5deg) translateY(-1px); } }
+/* SUS: it cracks down the middle and shudders */
+.mo-reveal.sus .mo-m-crack { animation: mo-draw .45s steps(6) forwards; }
+.mo-reveal.sus .mo-half.l { animation: mo-crack-l .5s ease-out .4s forwards; }
+.mo-reveal.sus .mo-half.r { animation: mo-crack-r .5s ease-out .4s forwards; }
+@keyframes mo-crack-l { 30% { transform: translateX(-2px) rotate(-2deg); } to { transform: translateX(-1px) rotate(-1.5deg); } }
+@keyframes mo-crack-r { 30% { transform: translateX(2px) rotate(2deg); } to { transform: translateX(1px) rotate(1.5deg); } }
+/* MASK OFF: it shatters, the halves fall away, a burst */
+.mo-reveal.off .mo-m-crack { animation: mo-draw .2s steps(4) forwards; }
+.mo-reveal.off .mo-half.l { animation: mo-fall-l 1.3s ease-in .25s forwards; }
+.mo-reveal.off .mo-half.r { animation: mo-fall-r 1.3s ease-in .25s forwards; }
+.mo-reveal.off .mo-burst i { animation: mo-burst 1s cubic-bezier(.2, .7, .3, 1) .25s forwards; }
+@keyframes mo-fall-l { 18% { transform: translate(-12px, -8px) rotate(-14deg); } 70% { opacity: 1; } to { transform: translate(-52px, 130px) rotate(-75deg); opacity: 0; } }
+@keyframes mo-fall-r { 18% { transform: translate(12px, -8px) rotate(14deg); } 70% { opacity: 1; } to { transform: translate(52px, 130px) rotate(75deg); opacity: 0; } }
+@keyframes mo-burst { 0% { opacity: 1; transform: rotate(var(--a)) translateY(-8px) scale(1.3); } 60% { opacity: 1; } to { opacity: 0; transform: rotate(var(--a)) translateY(calc(-1 * var(--d))) scale(.4); } }
+@keyframes mo-draw { to { stroke-dashoffset: 0; } }
+.mo-stamp { width: max-content; margin: 10px auto 12px; padding: 3px 14px; border-radius: 10px; font: 900 28px/36px var(--f-sys); letter-spacing: .04em; color: #ff5d8a;
+  border: 3px solid currentColor; transform: rotate(-7deg) scale(.4); opacity: 0; transition: opacity .15s, transform .3s cubic-bezier(.3, 1.6, .5, 1); }
+.mo-stamp.show { opacity: 1; transform: rotate(-7deg); }
+.mo-stamp.sus { color: #ffc83d; } .mo-stamp.off { color: #7dff5e; }
+@media (prefers-reduced-motion: reduce) {
+  .mo-card.flip .mo-card-in, .mo-reveal .mo-mask, .mo-reveal .mo-half, .mo-burst i { animation: none !important; }
+  .mo-reveal.on .mo-m-grin, .mo-reveal.sus .mo-m-crack { animation: none; stroke-dashoffset: 0; }
+  .mo-reveal.off .mo-mask { display: none; }
+}

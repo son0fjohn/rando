@@ -18,8 +18,8 @@ Run `./fetch.sh` from a machine that can reach the CDN to drop them into place
 (see below). Then actually look at them, and if any is generic, keep it as a
 placeholder and flag it rather than burning the remaining 2 attempts blind.
 
-Until they land, every one of them degrades cleanly: the mission card, the
-charades stage and the radar all sit on CSS gradients, and the bomb icon
+Until they land, every one of them degrades cleanly: the charades stage and
+the radar sit on CSS gradients, and the bomb icon
 layers over a CSS sphere, so a missing file costs polish and nothing else.
 
 ## Style block (appended verbatim to every prompt)
@@ -34,18 +34,14 @@ Model `gpt_image_2_5` (variant flare), `quality: high`, `resolution: 1k`.
 
 | # | Ships as | Job ID | Size | Attempts | Kept? |
 |---|---|---|---|---|---|
-| 1 | `web/games/mission/card.jpg` | `8ebbe168-6ffc-48ac-89dc-3712706d744a` | 1024×688 (3:2) | 1 of 3 | generated, unreviewed |
+| 1 | (retired: its game was removed) | `8ebbe168-6ffc-48ac-89dc-3712706d744a` | 1024×688 (3:2) | 1 of 3 | not used |
 | 2 | `web/games/manhunt/radar.jpg` | `b134e086-90c9-4100-9e30-cf7bc0cdb710` | 1024×1024 (1:1) | 1 of 3 | generated, unreviewed |
 | 3 | `web/games/manhunt/bomb.png` | `e4873a39-2e2e-41e9-a957-048a6b609abf` | 1024×1024 (1:1), `background: transparent` | 1 of 3 | generated, unreviewed |
 | 4 | `web/games/ritual/stage.jpg` | `b418264a-bbf8-48fa-ad2e-975e58e60fa4` | 1168×880 (4:3) | 1 of 3 | generated, unreviewed |
 
 ### Prompt subjects
 
-1. **Mission card** — blank indigo briefing card, gold pinstripe border,
-   vignetted corners, wax seal, empty centre panel, one hard overhead
-   spotlight. Prompt insists on no text anywhere: the UI draws
-   "TODAY'S MISSION:" and the task over it, so any baked-in lettering is a
-   reject.
+1. **Briefing card** — retired with the game it was made for.
 2. **Radar** — top-down tactical display, dark green-black, concentric range
    rings, thin square grid, scuffed metal bezel, scanlines. Deliberately
    empty: the live cells are DOM elements over the top.

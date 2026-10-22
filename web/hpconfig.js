@@ -93,20 +93,21 @@ export const DIARY = {
   SHAPES: ["circle", "star", "square", "triangle", "diamond", "plus",
            "heart", "flower", "bolt", "moon", "ring", "cross"],
 };
-export const MISSION = {
-  // How missions reach players. The host picks per game in the lobby:
-  //   quick  — the game deals one mission card each, straight into play
-  //   choose — everyone is offered CHOICES cards and picks the one they'll do
-  MODES: ["quick", "choose"],
-  DEFAULT_MODE: "quick",
-  CHOICES: 3,
-  PICK_MS: 45000,
-  // the room rates each attempt on a 0..SCALE spectrum; points = average
-  // rating as a share of MAX_PTS
-  SCALE: 10,
-  MAX_PTS: 100,
-  // labels shown under the slider, low to high
-  LABELS: ["didn't even try", "half-hearted", "got it done", "nailed it", "legendary"],
+// Mask Off: a truth card flips up for one player (fair pick), they answer out
+// loud, everyone else rates their honesty 1-5 (1 = mask on, totally fake;
+// 5 = mask off, totally real). One tap locks a rating; the turn ends when all
+// have rated, or at TALK_MS. Skipping the card scores 0 and skips the rating.
+export const MASKOFF = {
+  POOL_URL: "data/mask_off_cards.json",
+  TALK_MS: 2 * 60 * 1000,
+  STARS: 5,
+  POINTS_PER_STAR: 20,          // points = average x this (5 = 100)
+  // the reveal: average below SUS -> the mask stays on (MASK ON), below OFF ->
+  // it cracks (SUS), from OFF up -> it shatters (MASK OFF)
+  SUS: 2.5, OFF: 3.5,
+  // cards escalate through the game: the first LEVEL_SPLIT[0] share of the
+  // turns draws level 1, up to LEVEL_SPLIT[1] level 2, the rest level 3
+  LEVEL_SPLIT: [1 / 3, 2 / 3],
 };
 
 export const RITUAL = {
@@ -139,39 +140,8 @@ export const SIDEQUEST = {
 // safe, but a repeat right away is rare.
 export const PICKER = { START: 1, GROW: 1, FLOOR: 0.25 };
 
-// ---------------------------------------------------------------- prompt pools
-// Shape: { text, spice: "mild" | "spicy" }
-// (Secret Diary's pool is NOT here — it lives in web/data/diary_prompts.json.)
-
-/* ======================= DRAFT — NEEDS CURATION =======================
- * Today's Mission. Absurd task, done in the next couple of minutes, in view
- * of the room. HARD RULE: a mission may only embarrass the player who drew
- * it. Nothing that requires touching, naming, ranking, or using another
- * person — bystanders are never the joke and never the prop.
- * ===================================================================== */
-export const MISSION_PROMPTS = [
-  { text: "Deliver a 20-second TED talk on something in this room nobody asked about.", spice: "mild" },
-  { text: "Narrate everything you do like a nature documentary until the timer ends.", spice: "mild" },
-  { text: "Convince the room you've just returned from space. Stay in character.", spice: "mild" },
-  { text: "Do your best impression of your own phone's notification sound, repeatedly, with feeling.", spice: "mild" },
-  { text: "Invent and demonstrate a signature dance move. Name it.", spice: "mild" },
-  { text: "Give an emotional acceptance speech for an award you just made up.", spice: "mild" },
-  { text: "Walk across the room as if the floor were lava, but stay dignified.", spice: "mild" },
-  { text: "Read the nearest text out loud — label, screen, anything — as dramatic poetry.", spice: "mild" },
-  { text: "Become a sports commentator for the next 30 seconds of absolutely nothing.", spice: "mild" },
-  { text: "Perform a one-person interpretive dance of your day.", spice: "mild" },
-  { text: "Sing your last text message as an opera.", spice: "mild" },
-  { text: "Do a full catwalk strut, turn, and pose. Commit completely.", spice: "mild" },
-  { text: "Deliver a villain monologue explaining your evil plan for this party.", spice: "spicy" },
-  { text: "Loudly apologise to an inanimate object for something you did to it.", spice: "spicy" },
-];
-
 // (Humiliation Ritual's pool lives in web/data/ritual_prompts.json.)
 
-// serve a pool, filtered by the spice flag
-export function pool(list, { spicy = FLAGS.SPICY } = {}) {
-  return list.filter(p => spicy || p.spice === "mild");
-}
 
 // ---------------------------------------------------------------- Manhunt geo
 /* ======================= PLACEHOLDER COORDINATES =======================

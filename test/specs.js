@@ -4,14 +4,14 @@ import { installClock, seatTable } from "/test/harness.js";
 import { SECRET_DIARY, diaryPool, maxLevelFor, capAt, yesnoTarget, countLine, shelfPages } from "/web/hpgames/secretdiary.js";
 import * as CONFIG from "/web/hpconfig.js";
 import { promptLog } from "/web/hplog.js";
-import { TODAYS_MISSION } from "/web/hpgames/mission.js";
 import { HUMILIATION_RITUAL, judge, ritualPool, ritualPromptsFor, ritualPoints } from "/web/hpgames/ritual.js";
 import { SIDE_QUEST, questPool, questsFor, questPoints } from "/web/hpgames/sidequest.js";
+import { MASK_OFF, maskPool, levelFor, maskVerdict, maskPoints } from "/web/hpgames/maskoff.js";
 import { fairPick, chances } from "/web/fairpick.js";
 import { newSet, places, addGame, standings, fullParticipants } from "/web/partyset.js";
 import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
 import { ART_GALLERY } from "/web/artgallery.js";
-import { MANHUNT, DIARY, MISSION, RITUAL, SIDEQUEST, LEADERBOARD } from "/web/hpconfig.js";
+import { MANHUNT, DIARY, RITUAL, SIDEQUEST, MASKOFF, LEADERBOARD } from "/web/hpconfig.js";
 import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
 import { ui } from "/web/gamekit.js";
 import { findPath, walkable } from "/web/hplobby.js";
@@ -27,6 +27,7 @@ const group = name => { log("head", "\n" + name); console.info(`[spec] ${name}`)
 const POOL = await diaryPool();
 const HR_POOL = await ritualPool();
 const SQ = await questPool();
+const MO = await maskPool();
 const clock = installClock();
 // HostGame caps dt at 0.25 s per tick, so advancing in slices bigger than that
 // makes game time run SLOWER than virtual time. Every advance here uses 200 ms
@@ -575,88 +576,6 @@ group("Secret Diary — logging survives a missing table");
 
 }
 if (!PART || PART === "2") {
-// ===================================================================== 2
-group("Today's Mission — quick start, rated 0-10");
-{
-  const t = seatTable(TODAYS_MISSION, 4);
-  adv(500);
-  ok(t.s.mode === "quick", "quick start is the default");
-  ok(t.s.phase === "card", "quick start goes straight to the first card");
-  ok(Object.values(t.s.missions).every(m => m.task && m.task.length > 10), "every player was dealt a mission");
-
-  const performer = t.s.order[0];
-  const voters = t.s.order.filter(x => x !== performer);
-  ok(waitPhase(t, "do"), "the card rolls into doing it");
-  t.input(performer, "claim");
-  adv(3000);
-  ok(t.s.phase === "vote", "claiming done advances to the rating");
-  t.input(performer, "rate", { v: 10 });
-  adv(400);
-  ok(t.s.missions[performer].ratings[performer] === undefined, "the performer cannot rate themselves");
-  [10, 8, 6].forEach((v, i) => t.input(voters[i], "rate", { v }));
-  adv(3000);
-  ok(t.s.phase === "result", "all ratings in ends the vote");
-  const m = t.s.missions[performer];
-  ok(m.avg === 8, `the score is the average rating (got ${m.avg})`);
-  ok(m.pts === 80, `average 8/10 -> 80 points (got ${m.pts})`);
-  ok(t.s.players[performer].score === 80, "points land on the performer");
-
-  ok(waitPhase(t, "vote", 200000), "next mission reaches its rating");
-  const p2 = t.s.order[1];
-  const v2 = t.s.order.filter(x => x !== p2);
-  t.input(v2[0], "rate", { v: 15 }); t.input(v2[1], "rate", { v: -3 }); t.input(v2[2], "rate", { v: 0 });
-  adv(400);
-  ok(t.s.missions[p2].ratings[v2[0]] === 10 && t.s.missions[p2].ratings[v2[1]] === 0, "ratings are clamped to the 0-10 scale");
-  t.input(v2[0], "rate", { v: 4 });
-  adv(3000);
-  ok(t.s.missions[p2].ratings[v2[0]] === 4 || t.s.phase === "result", "a rater can change their mind before the vote closes");
-  ok(t.s.missions[p2].pts === Math.round(100 * (4 + 0 + 0) / 3 / 10), `a low average scores low (got ${t.s.missions[p2].pts})`);
-
-  ok(runOut(t), "all four missions play out and the game ends");
-  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
-}
-
-// ===================================================================== 2b
-group("Today's Mission — players choose");
-{
-  const t = seatTable(TODAYS_MISSION, 4, { options: { mode: "choose" } });
-  adv(500);
-  ok(t.s.mode === "choose", "the host's choice reaches the game");
-  ok(t.s.phase === "pick", "choose mode opens on picking");
-  const hands = Object.values(t.s.offers).map(o => o.hand);
-  ok(hands.every(h => h.length === MISSION.CHOICES && new Set(h).size === h.length), `everyone is offered ${MISSION.CHOICES} different cards`);
-  t.input("p1", "pick", { idx: 2 }); t.input("p2", "pick", { idx: 0 }); t.input("p4", "pick", { idx: 1 });
-  t.input("p4", "pick", { idx: 9 });          // out of range: ignored
-  adv(3000);
-  ok(t.s.phase === "pick", "it waits while someone is still choosing");
-  ok(t.s.offers.p4.picked === 1, "an out-of-range pick is ignored");
-  ok(waitPhase(t, "card", MISSION.PICK_MS + 5000), "the clock closes picking for the straggler");
-  ok(t.s.missions.p1.task === t.s.offers.p1.hand[2], "you do the mission you picked");
-  ok(t.s.offers.p3.hand.includes(t.s.missions.p3.task) && t.s.missions.p3.autoPicked, "a player who didn't pick gets one from their own hand");
-  ok(runOut(t), "the game plays out");
-  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
-}
-{
-  const t = seatTable(TODAYS_MISSION, 3, { options: { mode: "choose" } });
-  adv(500);
-  for (const id of ["p1", "p2", "p3"]) t.input(id, "pick", { idx: 0 });
-  adv(3000);
-  ok(t.s.phase === "card", "everyone picking moves on without waiting for the clock");
-}
-
-// ===================================================================== 2c
-group("Today's Mission — performer drops mid-mission");
-{
-  const t = seatTable(TODAYS_MISSION, 4);
-  adv(500);
-  const performer = t.s.order[0];
-  t.drop(performer);
-  adv(4000);
-  ok(t.s.missions[performer].skipped === true, "a performer who leaves is skipped, not waited on");
-  ok(runOut(t), "game still finishes");
-  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
-}
-
 // ===================================================================== 3
 group("Humiliation Ritual — the prompt pool (draft)");
 {
@@ -850,18 +769,97 @@ group("Side Quest (4 players)");
   ui.hide();
 }
 
+group("Mask Off — the card pool (draft)");
+{
+  const ids = MO.map(c => c.id);
+  ok(MO.length === 21, `21 cards in the draft pool (${MO.length})`);
+  ok(new Set(ids).size === ids.length && ids.every(id => /^mo-\d{3}$/.test(id)), "every card has its own permanent id");
+  ok([1, 2, 3].every(l => MO.filter(c => c.level === l).length === 7), "7 cards per level: fun, personal, deep");
+  ok(!MO.some(c => /mission/i.test(c.text)), "no leftover dare cards");
+  ok(levelFor(0, 9) === 1 && levelFor(3, 9) === 2 && levelFor(8, 9) === 3, "cards escalate: level 1, then 2, then 3 through the game");
+  ok(maskVerdict(1) === "on" && maskVerdict(2.4) === "on" && maskVerdict(3) === "sus" && maskVerdict(3.5) === "off" && maskVerdict(5) === "off",
+    "the reveal: 1-2 MASK ON, 3 SUS, 4-5 MASK OFF");
+  ok(maskPoints(4.5) === 90 && maskPoints(0) === 0, "points = average × 20");
+}
+
+group("Mask Off (4 players)");
+{
+  const t = seatTable(MASK_OFF, 4);
+  adv(500);
+  ok(t.s.phase === "pick" && t.s.turns === 8, `default length: everyone twice (4 players, ${t.s.turns} turns)`);
+  ok(t.s.turn?.card.level === 1, "the first card is level 1 (fun)");
+  ok(waitPhase(t, "talk", 10000), "the pick lands and the card flips up");
+  ok(t.s.left > MASKOFF.TALK_MS - 1500, "a 2-minute clock");
+  const who = t.s.turn.who, voters = Object.keys(t.s.players).filter(x => x !== who);
+  t.input(who, "rate", { v: 5 });
+  t.input(voters[0], "rate", { v: 5 }); t.input(voters[1], "rate", { v: 4 }); t.input(voters[1], "rate", { v: 1 });
+  t.input(voters[2], "rate", { v: 0 });
+  adv(400);
+  ok(t.s.phase === "talk" && t.s.turn.votes[voters[0]] === 5, "rating opens with the card");
+  ok(t.s.turn.votes[who] === undefined, "you can't rate your own honesty");
+  ok(t.s.turn.votes[voters[1]] === 4, "one tap locks a rating in");
+  ok(t.s.turn.votes[voters[2]] === undefined, "ratings are 1-5");
+  const left = t.s.left;
+  t.input(voters[2], "rate", { v: 3 });
+  ok(waitPhase(t, "reveal", 3000), "everyone has rated: the turn ends at once");
+  ok(left > MASKOFF.TALK_MS - 10000, `…with most of the clock left (${Math.round(left / 1000)} s)`);
+  ok(t.s.turn.avg === 4 && t.s.turn.pts === 80 && t.s.turn.verdict === "off" && t.s.players[who].score === 80, `average 4 → MASK OFF, 80 points (got ${t.s.turn.verdict}, ${t.s.turn.pts})`);
+
+  ok(waitPhase(t, "talk", 20000), "next turn");
+  const w2 = t.s.turn.who, before = t.s.players[w2].score, other = Object.keys(t.s.players).find(x => x !== w2);
+  t.input(other, "rate", { v: 5 });
+  adv(300);
+  t.input(other, "pass");
+  adv(300);
+  ok(t.s.phase === "talk", "only the player answering can skip");
+  t.input(w2, "pass");
+  ok(waitPhase(t, "reveal", 3000), "skip → straight to the reveal");
+  ok(t.s.turn.pts === 0 && t.s.turn.n === 0 && t.s.turn.verdict === null && t.s.players[w2].score === before, "skipping scores 0 and skips the rating");
+
+  ok(waitPhase(t, "talk", 20000), "next turn");
+  const w3 = t.s.turn.who, r3 = Object.keys(t.s.players).filter(x => x !== w3);
+  t.input(r3[0], "rate", { v: 1 }); t.input(r3[1], "rate", { v: 2 });
+  adv(1000);
+  ok(t.s.phase === "talk", "not everyone has rated: the turn waits");
+  ok(waitPhase(t, "reveal", MASKOFF.TALK_MS + 2000), "the 2-minute timer ends the turn");
+  ok(t.s.turn.n === 2 && t.s.turn.verdict === "on" && t.s.turn.pts === 30, `the ratings that came in count (1 and 2 → MASK ON, ${t.s.turn.pts})`);
+  const levels = [];
+  while (t.s.phase !== "end" && !t.allEnded()) { if (t.s.phase === "talk" && !levels[t.s.ti]) levels[t.s.ti] = t.s.turn.card.level; adv(2000); }
+  ok(levels.slice(3, 6).every(l => l === 2) && levels.slice(6).every(l => l === 3) && levels.length === 8, `the cards escalate: fun, then personal, then deep (turns 4-8: ${levels.slice(3).join(" ")})`);
+  ok(runOut(t), "all 8 turns play out and the game ends");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+{
+  const t = seatTable(MASK_OFF, 3, { options: { rounds: "1" } });
+  adv(500);
+  ok(t.s.turns === 3, "the host's setting sticks: everyone once (3 turns)");
+  ok(waitPhase(t, "talk", 10000), "into the first card");
+  t.drop(t.s.turn.who);
+  adv(3000);
+  ok(t.s.turn.left && t.s.phase !== "talk", "the player answering leaves: the turn is skipped, nobody waits");
+  ok(runOut(t), "and the game still finishes");
+}
+{
+  const t = seatTable(MASK_OFF, 5);
+  adv(500);
+  const counts = {};
+  while (!t.allEnded()) { if (t.s?.phase === "talk" && t.s.turn && !t.s.turn._seen) { t.s.turn._seen = true; counts[t.s.turn.who] = (counts[t.s.turn.who] ?? 0) + 1; for (const p of Object.keys(t.s.players)) if (p !== t.s.turn.who) t.input(p, "rate", { v: 3 }); } adv(1000); }
+  const n = Object.values(counts);
+  ok(Object.keys(counts).length === 5 && Math.max(...n) - Math.min(...n) <= 2, `the fair picker spreads 10 turns over 5 players (${n.join(" ")})`);
+}
+
 group("The party set: 3 games, places, standings");
 {
   const R = (scores, completed = true) => ({ completed, players: Object.entries(scores).map(([id, score]) => ({ id, handle: id, score, gone: false, bot: id.startsWith("bot") })) });
   let set = newSet(1, "sess");
   ok(places(R({ a: 50, b: 50, c: 10, bot1: 99 })).map(p => `${p.id}${p.place}`).join() === "a1,b1,c3", "ties share a place; bots are left out");
-  set = addGame(set, "mission", R({ a: 300, b: 200, c: 100 }));
+  set = addGame(set, "mask_off", R({ a: 300, b: 200, c: 100 }));
   set = addGame(set, "ritual", R({ a: 0, b: 0, c: 0 }, false));
   ok(set.games.length === 1, "a game that didn't complete doesn't count toward the 3");
   set = addGame(set, "ritual", R({ a: 10, b: 900, c: 40 }));
   set = addGame(set, "sidequest", R({ b: 5, c: 9 }));
   ok(set.done && set.games.length === 3, "after 3 completed games the set is done");
-  ok(addGame(set, "mission", R({ a: 1 })).games.length === 3, "nothing is added after the set is done");
+  ok(addGame(set, "mask_off", R({ a: 1 })).games.length === 3, "nothing is added after the set is done");
   const rows = standings(set, [{ id: "a", handle: "a" }, { id: "b", handle: "b" }, { id: "c", handle: "c" }]);
   const P = LEADERBOARD.PLACE_POINTS;
   ok(rows[0].id === "b" && rows[0].total === P[1] + P[0] + P[1], `standings total the place points (b: ${rows[0].total})`);

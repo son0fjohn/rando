@@ -3,13 +3,13 @@
 // module reads BOTS_N = 3 exactly as it would in the browser.
 import { installClock, seatTable } from "/test/harness.js";
 import { SECRET_DIARY } from "/web/hpgames/secretdiary.js";
-import { TODAYS_MISSION } from "/web/hpgames/mission.js";
 import { HUMILIATION_RITUAL, ritualPool } from "/web/hpgames/ritual.js";
 import { SIDE_QUEST, questPool } from "/web/hpgames/sidequest.js";
+import { MASK_OFF, maskPool } from "/web/hpgames/maskoff.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { DIARY } from "/web/hpconfig.js";
 import { diaryPool } from "/web/hpgames/secretdiary.js";
-await diaryPool(); await ritualPool(); await questPool();
+await diaryPool(); await ritualPool(); await questPool(); await maskPool();
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -62,33 +62,6 @@ group("Secret Diary — you + 3 bots");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 
-// ===================================================================== 2
-group("Today's Mission — you + 3 bots");
-{
-  const t = seatTable(TODAYS_MISSION, 1, { ids: [ME] });
-  adv(500);
-  ok(t.s.order.length === 4, "you and the bots all get a mission");
-  let guard = 0, botJudged = 0, myJudged = false;
-  while (t.s.phase !== "end" && guard++ < 20000) {
-    const cur = t.s.order[t.s.mi];
-    if (t.s.phase === "do" && cur === ME && !t.s.missions[ME].claimed) t.input(ME, "claim");
-    // you rate every bot's mission a 9
-    if (t.s.phase === "vote" && cur !== ME && t.s.missions[cur].ratings[ME] === undefined) t.input(ME, "rate", { v: 9 });
-    if (t.s.phase === "result") {
-      if (cur === ME) myJudged = true;
-      else if (t.s.missions[cur].n > 0) botJudged++;
-    }
-    adv(200);
-  }
-  ok(t.s.phase === "end", "all four missions play out");
-  ok(myJudged && t.s.missions[ME].n === 3, `the bots rated your mission (${t.s.missions[ME].n}/3 ratings)`);
-  ok(t.s.missions[ME].pts > 0, `bot ratings turn into points (${t.s.missions[ME].pts})`);
-  ok(botJudged > 0, "bot missions get rated");
-  let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
-  ok(t.allEnded(), "the game closes out");
-  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
-}
-
 // ===================================================================== 3
 group("Humiliation Ritual — you + 3 bots");
 {
@@ -117,6 +90,26 @@ group("Humiliation Ritual — you + 3 bots");
   ok(botTurns.every(o => o.won), "a bot performer taps a right guess");
   ok(mine.every(o => o.won && o.won !== ME), "on your turn you tap a bot's right guess");
   ok(t.s.players[ME].score > 0, `you scored (${t.s.players[ME].score})`);
+  let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
+  ok(t.allEnded(), "the game closes out");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+
+group("Mask Off — you + 3 bots");
+{
+  const t = seatTable(MASK_OFF, 1, { ids: [ME], options: { rounds: "1" } });
+  adv(500);
+  ok(t.s.phase === "pick" && t.s.turns === 4, "you and the bots: everyone once is 4 turns");
+  let guard = 0, voted = -1;
+  const turns = [];
+  while (t.s.phase !== "end" && guard++ < 40000) {
+    const q = t.s.turn;
+    if (t.s.phase === "talk" && q.who !== ME && voted !== t.s.ti) { t.input(ME, "rate", { v: 4 }); voted = t.s.ti; }
+    if (t.s.phase === "reveal" && turns.length === t.s.ti) turns.push({ who: q.who, status: q.status, n: q.n, pts: q.pts, v: q.verdict });
+    adv(200);
+  }
+  ok(t.s.phase === "end" && turns.length === 4, `4 turns play out (${turns.map(x => `${x.who.slice(0, 5)}:${x.status}:${x.v}:${x.pts}`).join(" ")})`);
+  ok(turns.every(x => x.status === "skipped" ? x.pts === 0 && x.n === 0 : x.n >= 2 && !!x.v), "bots rate every card; a skip gets no rating");
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
