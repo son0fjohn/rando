@@ -131,7 +131,7 @@ function drawBrow(g, cx, cy, S, side, lift, angle, color) {
 }
 
 function drawMouth(g, S, expr) {
-  const cx = S / 2, cy = S * 0.665;
+  const cx = S / 2, cy = S * 0.6; // above the chin's turn, so open mouths stay on the face
   g.strokeStyle = LINE; g.lineCap = "round"; g.lineJoin = "round";
   g.lineWidth = S * 0.016;
   const open = (w, h, smile) => {
@@ -164,8 +164,8 @@ function drawMouth(g, S, expr) {
       g.beginPath(); g.ellipse(cx, cy + S * 0.012, S * 0.03, S * 0.04, 0, 0, Math.PI * 2);
       g.fillStyle = "#7a2632"; g.fill(); g.stroke();
       break;
-    case "laugh": open(S * 0.075, S * 0.075, S * 0.012); break;
-    case "wink": open(S * 0.05, S * 0.04, S * 0.008); break;
+    case "laugh": open(S * 0.068, S * 0.058, S * 0.012); break;
+    case "wink": open(S * 0.045, S * 0.032, S * 0.008); break;
     default: // neutral: a small relaxed curve
       g.beginPath(); g.moveTo(cx - S * 0.035, cy);
       g.quadraticCurveTo(cx, cy + S * 0.018, cx + S * 0.035, cy); g.stroke();

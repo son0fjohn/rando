@@ -402,7 +402,7 @@ function shapeBody(sm, wp, f) {
   // regions
   const rgn = new Float32Array(n * 4);
   const ss = THREE.MathUtils.smoothstep;
-  const WAIST = 0.468, HEM = 0.31, NECKLINE = 0.668, SLEEVE = 0.548;
+  const WAIST = 0.468, HEM = 0.31, NECKLINE = 0.638, SLEEVE = 0.548;
   for (let i = 0; i < n; i++) {
     const y = yn(i);
     const torso = kw[i * 5 + 2], leg = kw[i * 5 + 4], arm = kw[i * 5 + 3], head = kw[i * 5];
@@ -415,11 +415,12 @@ function shapeBody(sm, wp, f) {
     // into the thighs, which chewed the hem into spikes)
     const body = notArm * (1 - ss(head + kw[i * 5 + 1], 0.4, 0.6));
     // the base tee: torso up to the neck, plus short sleeves on the arms
-    // (neck weights reach down onto the chest on this rig: the neckline is
-    // cut by height, neck weights only clear the neck itself)
-    const neck = 1 - ss(head + kw[i * 5 + 1], 0.4, 0.6) * band(y, 0.64, 0.008);
+    // (cut by height alone: this rig's neck weights reach down onto the
+    // chest, and following them made the neckline ragged)
     const armCut = THREE.MathUtils.lerp(1, band(y, SLEEVE, 0.012), ss(arm, 0.4, 0.6)); // sleeves
-    rgn[i * 4 + 2] = neck * armCut * band(y, WAIST, 0.012) * (1 - band(y, NECKLINE, 0.01));
+    // a crew neck: low at the middle, rising over the shoulders
+    const neckH = NECKLINE + 0.045 * ss(Math.abs(lat(i)) / H, 0.022, 0.045);
+    rgn[i * 4 + 2] = armCut * band(y, WAIST, 0.012) * (1 - band(y, neckH, 0.012));
     rgn[i * 4 + 3] = body * (1 - band(y, WAIST, 0.012)) * band(y, HEM, 0.03);
     // scalp: anything on the skull above a hairline that sits high on the
     // forehead, above the ears at the sides and drops to the nape
@@ -610,7 +611,9 @@ const srgb = c => new THREE.Color().setRGB(c[0] / 255, c[1] / 255, c[2] / 255, T
 const BASE_TANK = [244, 241, 232], BASE_SHORTS = [62, 70, 104];
 const paintFor = cfg => ({
   skin: srgb(SKIN_RGB[cfg.skin] ?? SKIN_BASE),
-  scalp: srgb((HAIR_RGB[cfg.hairColor] ?? HAIR_RGB.black).map(c => c * 0.82)),
+  // exactly the hair's color: where a shell sits close, the scalp reads as
+  // more hair rather than a darker patch
+  scalp: srgb(HAIR_RGB[cfg.hairColor] ?? HAIR_RGB.black),
   tank: srgb(BASE_TANK), shorts: srgb(BASE_SHORTS),
   // with hair on, the scalp reaches 0.12 R lower (see bodyRgn)
   scalpCut: cfg.hair === "none" ? 0.5 : 0.44,
@@ -735,6 +738,7 @@ function loadPiece(cat, id) {
           v.y < trim.yBelow && v.dot(f) > trim.front &&
           Math.abs(v.dot(s)) < trim.halfWidth);
       }
+      if (cat !== "hair") g.scene.traverse(o => { if (o.isMesh) dilateMap(o); });
       if (cat === "hair") fitHair(g.scene, key);
       if (cat === "shoes") chunkyShoes(g.scene, key);
       T.pieces[key] = g.scene;
@@ -758,6 +762,59 @@ function tintHair(root, color) {
     o.material.side = THREE.DoubleSide;
     o.material.needsUpdate = true;
   });
+}
+
+// Texture seams: Tripo atlases leave the background (near-white) right up
+// to each UV island, and filtering/mipmaps bleed it in as white fringes
+// along garment seams. Rasterize the mesh's own UV triangles into a mask
+// and push the island colors a few pixels outward over the background.
+// Once per piece template, at load.
+function dilateMap(mesh) {
+  const map = mesh.material.map, img = map?.image, uv = mesh.geometry.attributes.uv;
+  if (!img || !uv) return;
+  const sc = Math.min(1, 1024 / img.width), W = Math.round(img.width * sc), H = Math.round(img.height * sc);
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d", { willReadFrequently: true });
+  g.drawImage(img, 0, 0, W, H);
+  const mk = document.createElement("canvas"); mk.width = W; mk.height = H;
+  const m = mk.getContext("2d", { willReadFrequently: true });
+  m.fillStyle = "#fff"; m.strokeStyle = "#fff"; m.lineWidth = 1.5;
+  const idx = mesh.geometry.index?.array, n = idx ? idx.length : uv.count;
+  const P = i => [uv.getX(i) * W, (map.flipY ? 1 - uv.getY(i) : uv.getY(i)) * H];
+  m.beginPath();
+  for (let t = 0; t < n; t += 3) {
+    const [a, b, c] = [0, 1, 2].map(k => P(idx ? idx[t + k] : t + k));
+    m.moveTo(a[0], a[1]); m.lineTo(b[0], b[1]); m.lineTo(c[0], c[1]); m.closePath();
+  }
+  m.fill(); m.stroke();
+  const id = g.getImageData(0, 0, W, H), px = id.data;
+  const mask = m.getImageData(0, 0, W, H).data;
+  let inside = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) inside[i] = mask[i * 4 + 3] > 0 ? 1 : 0;
+  for (let pass = 0; pass < 6; pass++) {
+    const next = inside.slice();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (inside[i]) continue;
+      let r = 0, gg = 0, b = 0, k = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        const j = yy * W + xx;
+        if (!inside[j]) continue;
+        r += px[j * 4]; gg += px[j * 4 + 1]; b += px[j * 4 + 2]; k++;
+      }
+      if (k) { px[i * 4] = r / k; px[i * 4 + 1] = gg / k; px[i * 4 + 2] = b / k; next[i] = 1; }
+    }
+    inside = next;
+  }
+  g.putImageData(id, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = map.flipY; tex.wrapS = map.wrapS; tex.wrapT = map.wrapT;
+  tex.anisotropy = 4;
+  mesh.material.map = tex;
+  mesh.material.needsUpdate = true;
 }
 
 // Chunky sneakers: each shoe grows 18% wider/longer and 12% taller about
@@ -831,10 +888,10 @@ function fitHair(scene, key) {
         }
       }
       // snug: above the ears, shells float off the skull
-      if (v.y > h.eyeY - 0.25 * h.R && dist > 1.02 * h.R) {
+      if (v.y > h.eyeY - 0.25 * h.R && dist > 1.06 * h.R) {
         d.copy(v).sub(h.C);
         const dd = d.length();
-        v.copy(h.C).addScaledVector(d, (1.02 * h.R + (dd - 1.02 * h.R) * 0.8) / dd);
+        v.copy(h.C).addScaledVector(d, (1.06 * h.R + (dd - 1.06 * h.R) * 0.82) / dd);
       }
       v.applyMatrix4(inv);
       pos.setXYZ(i, v.x, v.y, v.z);
@@ -847,8 +904,8 @@ function fitHair(scene, key) {
       kept.push(idx[t], idx[t + 1], idx[t + 2]);
     }
     geo.setIndex(kept);
-    geo.computeVertexNormals();
     geo.computeBoundingBox(); geo.computeBoundingSphere();
+    smoothNormals(geo); // welded + relaxed: no cel blotches on lumpy shells
   });
 }
 
