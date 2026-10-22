@@ -1,0 +1,132 @@
+// The Style screen on the REAL app page, offline (test/appserve.mjs), on a
+// phone: open it, try things on in every tab (a sparkle and a reaction on
+// each), try on a shop item (it shows a Buy bar and Save waits), buy it,
+// preview the walk, randomize, save, leave with unsaved changes (asks).
+// Checks as it goes; screenshots + a screen recording.
+//
+//   node test/style_rec.mjs <dir>        (FFMPEG=/path/to/ffmpeg for style.mp4)
+import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { chromium } from "playwright";
+import { serve } from "./appserve.mjs";
+
+const OUT = process.argv[2];
+if (!OUT) { console.error("usage: node test/style_rec.mjs <dir>"); process.exit(2); }
+await mkdir(join(OUT, "frames"), { recursive: true });
+const { base, close } = await serve();
+const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const browser = await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, args: ["--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
+await ctx.addInitScript(() => { try { localStorage.setItem("rando-hint-v1", "1"); } catch {} });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let pass = 0, fail = 0;
+const ok = (c, msg) => { if (c) { pass++; console.log(`  ✓ ${msg}`); } else { fail++; console.log(`  ✗ ${msg}`); } };
+const errors = [];
+const LOOK = { skin: "2", hair: "m1", hairColor: "black", face: "f1", iris: "brown", top: "tee-baggy-black", bottom: "cargo-black", shoes: "sneaker-white-stripe" };
+const A = await ctx.newPage();
+A.on("pageerror", e => errors.push(e.message));
+await A.goto(`${base}/app.html?me=tony&coins=200&av=${encodeURIComponent(JSON.stringify(LOOK))}&devlat=37.5347&devlng=126.9945`);
+await A.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 40000 });
+await sleep(3000);
+
+// record the screen from here
+const cdp = await ctx.newCDPSession(A), frames = [];
+cdp.on("Page.screencastFrame", f => { frames.push({ t: f.metadata.timestamp, data: f.data }); cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {}); });
+await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, everyNthFrame: 1 });
+const shot = async name => { await A.screenshot({ path: join(OUT, `${name}.png`), timeout: 120000 }); };
+const state = () => A.evaluate(() => ({
+  tab: document.querySelector("#outfit-tabs .active span")?.textContent,
+  save: document.getElementById("style-save").textContent, saveOn: !document.getElementById("style-save").disabled,
+  buy: !document.getElementById("ss-buy").hidden, coins: document.getElementById("style-coins").textContent.replace(/\D/g, ""),
+  canvas: !!document.querySelector("#style-view canvas"),
+}));
+
+await A.click("#nav-style");
+await A.waitForFunction(() => !!document.querySelector("#style-view canvas"), null, { timeout: 60000 }).catch(() => {});
+await sleep(2500);
+let s = await state();
+ok(s.canvas, "the character is on the stage in 3D");
+ok(s.tab === "Hair" && s.save === "Saved" && !s.saveOn, `opens on Hair, nothing to save ("${s.save}")`);
+const tabs = await A.locator("#outfit-tabs button").evaluateAll(bs => bs.map(b => b.textContent.trim()));
+ok(["Hair", "Eyes", "Top", "Bottom", "Shoes", "Head", "Face", "Neck", "Shop"].every(t => tabs.includes(t)), `icon tabs: ${tabs.join(" · ")}`);
+await shot("01-open");
+
+// hair: a style, then a color swatch
+await A.locator('#outfit-grid [data-slot="hair"][data-value="f2"]').click(); await sleep(1500);
+await A.locator('#outfit-grid [data-slot="hairColor"][data-value="yellow"]').click(); await sleep(1600);
+s = await state();
+ok(s.save === "Save" && s.saveOn, "trying on a new hair makes Save ready");
+const sparks = await A.locator("#style-view .ss-sparks i").count();
+await shot("02-hair");
+ok(await A.locator('#outfit-grid [data-slot="hairColor"][data-value="yellow"].selected').count() === 1, "the yellow swatch is selected");
+
+// eyes
+await A.locator("#outfit-tabs button", { hasText: /^Eyes$/ }).click(); await sleep(500);
+await A.locator('#outfit-grid [data-slot="face"][data-value="f3"]').click(); await sleep(400);
+await A.locator('#outfit-grid [data-slot="iris"][data-value="green"]').click(); await sleep(1400);
+await shot("03-eyes");
+
+// top: the hoodie is a shop item -> try it on, a Buy bar shows, Save waits
+await A.locator("#outfit-tabs button", { hasText: /^Top$/ }).click(); await sleep(2500);
+await A.locator('#outfit-grid [data-slot="top"][data-value="hoodie-maroon"]').click(); await sleep(2200);
+s = await state();
+ok(s.buy && s.save === "Unlock to save" && !s.saveOn, `a locked item is tried on; Save waits ("${s.save}")`);
+await shot("04-try-locked");
+await A.locator("#ss-buy [data-ss-buy]").click(); await sleep(2500);
+s = await state();
+ok(!s.buy && +s.coins === 50, `bought it: 200 → ${s.coins} coins (hoodie 150), Buy bar gone`);
+ok(s.save === "Saved ✓" || s.save === "Saved", `buying saves the look ("${s.save}")`);
+
+// bottoms + shoes strips (3D thumbnails)
+await A.locator("#outfit-tabs button", { hasText: /^Bottom$/ }).click(); await sleep(3500);
+const thumbs = await A.locator("#outfit-grid .opt-tile.thumb3d").count();
+ok(thumbs >= 5, `bottoms show 3D thumbnails (${thumbs})`);
+await A.locator('#outfit-grid [data-slot="bottom"][data-value="jeans-baggy-blue"]').click(); await sleep(1500);
+await shot("05-bottom");
+await A.locator("#outfit-tabs button", { hasText: /^Shoes$/ }).click(); await sleep(3000);
+await A.locator('#outfit-grid [data-slot="shoes"][data-value="sneaker-hitop-black"]').click(); await sleep(1500);
+await shot("06-shoes");
+await A.locator("#outfit-tabs button", { hasText: /^Head$/ }).click(); await sleep(700);
+ok(await A.locator("#outfit-grid .ss-soon").count() === 1, "Head says new drops are coming (no items yet)");
+
+// walk preview
+await A.locator('#style-view [data-preview="walk"]').click(); await sleep(1800);
+await shot("07-walk");
+await A.locator('#style-view [data-preview="idle"]').click(); await sleep(800);
+
+// randomize, then save
+await A.locator("#style-random").click(); await sleep(2000);
+await shot("08-random");
+s = await state();
+if (s.saveOn) { await A.locator("#style-save").click(); await sleep(1500); }
+s = await state();
+ok(!s.saveOn && /Saved/.test(s.save), `Save keeps the look ("${s.save}")`);
+const saved = await A.evaluate(async () => { const B = await import("/web/backend.js"); return B.avatar.mine; });
+ok(saved && saved.shoes !== undefined, "the saved look is what the map uses now");
+
+// leave with a change: it asks
+await A.locator("#outfit-tabs button", { hasText: /^Hair$/ }).click(); await sleep(500);
+await A.locator('#outfit-grid [data-slot="hairColor"]:not(.selected):not(.locked)').first().click(); await sleep(800);
+await A.locator("#style-close").click(); await sleep(500);
+ok(await A.locator("#ss-ask:not([hidden])").count() === 1, "leaving with changes asks Save / Discard");
+await shot("09-ask");
+await A.locator('#ss-ask [data-ask="discard"]').click(); await sleep(800);
+ok(await A.evaluate(() => document.getElementById("style-screen").hidden), "Discard closes the screen");
+await sleep(500);
+await cdp.send("Page.stopScreencast");
+
+// the recording
+for (let i = 0; i < frames.length; i++) await writeFile(join(OUT, "frames", `f${String(i).padStart(4, "0")}.jpg`), Buffer.from(frames[i].data, "base64"));
+if (process.env.FFMPEG && frames.length) {
+  const { execFileSync } = await import("node:child_process");
+  const list = frames.map((f, i) => `file 'frames/f${String(i).padStart(4, "0")}.jpg'\nduration ${Math.max(0.01, ((frames[i + 1]?.t ?? f.t + 0.1) - f.t)).toFixed(3)}`).join("\n");
+  await writeFile(join(OUT, "frames.txt"), list);
+  execFileSync(process.env.FFMPEG, ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", join(OUT, "frames.txt"),
+    "-vf", "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", join(OUT, "style.mp4")]);
+}
+console.log(`  (${frames.length} frames, ${sparks} sparkles mid-burst)`);
+if (errors.length) console.log("page errors:\n  " + errors.slice(0, 6).join("\n  "));
+console.log(`\n${pass} passed, ${fail} failed`);
+await browser.close(); close();
+process.exit(fail || errors.length ? 1 : 0);

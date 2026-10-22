@@ -1421,3 +1421,44 @@ export function avatarThumb3(rawCfg, size = 128) {
   g.restore();
   return cv.toDataURL();
 }
+
+// 3D item thumbnails for the style screen: the piece on its own, cel
+// shaded, framed to its bounds, rendered once into a data URL (cached per
+// piece + tint). One small offscreen renderer, one render at a time.
+const thumbCache = new Map();
+let thumbR = null, thumbQ = Promise.resolve();
+export function pieceThumb(cat, id, { hairColor = "brown", size = 160 } = {}) {
+  const key = `${cat}/${id}/${cat === "hair" ? hairColor : ""}/${size}`;
+  if (!thumbCache.has(key)) {
+    thumbCache.set(key, thumbQ = thumbQ.catch(() => {}).then(async () => {
+      await loadHumanTemplate();
+      const scene0 = await loadPiece(cat, id);
+      if (!thumbR) {
+        thumbR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        thumbR.outputColorSpace = THREE.SRGBColorSpace;
+      }
+      thumbR.setSize(size, size, false);
+      const scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xeef3ff, 0x5a6aa8, 2.4));
+      const key2 = new THREE.DirectionalLight(0xfff3dc, 1.8); key2.position.set(4, 10, 12); scene.add(key2);
+      const rim2 = new THREE.DirectionalLight(0xffd57a, 1.4); rim2.position.set(-6, 6, -8); scene.add(rim2);
+      const wrap = attachWrapper(scene0, `${cat}/${id}`);
+      if (cat === "hair") tintHair(wrap, hairColor);
+      scene.add(wrap);
+      wrap.rotation.y = cat === "shoes" ? -0.6 : cat === "hair" ? 0.5 : 0.3;
+      wrap.updateWorldMatrix(true, true);
+      const box = new THREE.Box3().setFromObject(wrap), c = new THREE.Vector3(), sz = new THREE.Vector3();
+      box.getCenter(c); box.getSize(sz);
+      const r = Math.max(sz.x, sz.y, sz.z) * 0.62;
+      const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 500);
+      const el = cat === "shoes" ? 0.55 : 0.12;
+      cam.position.set(c.x, c.y + r * 4 * el, c.z + r / Math.tan(15 * Math.PI / 180));
+      cam.lookAt(c);
+      thumbR.render(scene, cam);
+      const url = thumbR.domElement.toDataURL("image/png");
+      wrap.traverse(o => { if (o.isMesh) o.material.dispose(); });
+      return url;
+    }));
+  }
+  return thumbCache.get(key);
+}
