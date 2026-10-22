@@ -143,12 +143,11 @@ try {
   for (const name of ["bob", "cy", "dee", "eve"]) guests.push(await phone(name, `&party=${code}`));
   const [B, C, D, E] = guests;
   ok(await until(A, () => document.querySelectorAll(".lr-av").length === 5, null, 25000), "bob, cy, dee and eve join from the link — 5 in the room");
-  await A.click("#pt-open-picker");
-  await A.click('[data-queue="secretdiary"]');
-  await A.click("#pt-picker-done");
-  ok(await until(E, () => /Secret Diary/.test(document.getElementById("pt-next")?.textContent ?? "") && /up to spicy/.test(document.getElementById("pt-next")?.textContent ?? "")), "everyone sees Secret Diary up next, up to spicy (private default)");
+  for (const g of guests) { await g.click("#pt-vote"); await g.click('[data-vote="secretdiary"]'); await g.click("#pt-picker-x"); }
+  await A.click("#pt-vote");
+  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "secretdiary" && /^4/.test(document.querySelector('[data-game="secretdiary"] .pv-n')?.textContent ?? "")), "everyone votes Secret Diary: the host sees it on top with 4 votes");
   const batchCast = BATCH_VIDEO ? await screencast(A) : null;
-  await A.click("#pt-start");
+  await A.click('[data-game="secretdiary"] .pv-t > b');
 
   // ------------------------------------------------------------------ deal
   head("Deal — the host picks the batch");
@@ -196,7 +195,7 @@ try {
   await shot(B, "03-answer-empty");
   // a sixth phone turns up now: they wait for the next batch
   const F = await phone("fay", `&party=${code}`);
-  ok(await until(F, () => /Secret Diary is on — you're in the next one/.test(document.getElementById("pt-wait")?.textContent ?? ""), null, 20000), "fay joins mid-game: the lobby tells her she's in the next one");
+  ok(await until(F, () => /Secret Diary is on — you're in the next one/.test(document.getElementById("pt-next")?.textContent ?? ""), null, 20000), "fay joins mid-game: the lobby tells her she's in the next one");
   ok(!(await F.locator(".sd-q").count()), "…and she doesn't get this batch");
   await shot(F, "04-late-joiner");
 
@@ -345,7 +344,7 @@ try {
   head("Next batch — the host deals again, and the late joiner is in");
   await A.click("#sd-again");
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5, null, 20000), "'deal a new batch': straight to a fresh deal");
-  ok(await until(F, () => !/you're in the next one/.test(document.getElementById("pt-wait")?.textContent ?? ""), null, 10000), "fay's 'next one' notice clears");
+  ok(await until(F, () => !/you're in the next one/.test(document.getElementById("pt-next")?.textContent ?? ""), null, 10000), "fay's 'next one' notice clears");
   const second = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
   ok(!second.some(t => sent.includes(t) || swappedOut.includes(t)), "no card from the first game (sent or swapped) comes back");
   await A.click("#sd-send");

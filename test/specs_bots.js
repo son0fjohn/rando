@@ -132,13 +132,12 @@ group("Side Quest — you + 3 bots");
   const turns = [];
   while (t.s.phase !== "end" && guard++ < 40000) {
     const q = t.s.turn;
-    if (t.s.phase === "do" && q.who === ME && !q.status) t.input(ME, "done");
-    if (t.s.phase === "vote" && q.who !== ME && voted !== t.s.ti) { t.input(ME, "rate", { v: 5 }); voted = t.s.ti; }
+    if (t.s.phase === "do" && q.who !== ME && voted !== t.s.ti) { t.input(ME, "rate", { v: 5 }); voted = t.s.ti; }
     if (t.s.phase === "result" && turns.length === t.s.ti) turns.push({ who: q.who, status: q.status, n: q.n, pts: q.pts });
     adv(200);
   }
   ok(t.s.phase === "end" && turns.length === 4, `4 turns play out (${turns.map(x => `${x.who.slice(0, 5)}:${x.status}:${x.pts}`).join(" ")})`);
-  ok(turns.every(x => x.status === "gaveup" ? x.pts === 0 && x.n === 0 : x.n >= 2), "bots vote on every finished quest; a give-up gets no vote");
+  ok(turns.every(x => x.status === "gaveup" ? x.pts === 0 && x.n === 0 : x.n >= 2), "bots rate every quest while it's on; a give-up gets no rating");
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));

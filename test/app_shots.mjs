@@ -161,10 +161,26 @@ const walkTo = (pg, x, y) => pg.evaluate(([x, y]) => {
 await walkTo(guests[0], 250, 640); await walkTo(guests[1], 520, 760); await walkTo(guests[2], 380, 980);
 await walkTo(A, 300, 820);
 await A.bringToFront(); await sleep(6000);
-await shot(A, "09-room-4", "the party room with 4 players");
+await shot(A, "09-room-4", "the party room with 4 players (host: chat + Game votes)");
+// players vote: one vote each, changeable until the host starts a game
+if (await guests[0].locator("#pt-vote").count()) {
+  await guests[0].bringToFront(); await guests[0].click("#pt-vote"); await sleep(1200);
+  await shot(guests[0], "09b-player-vote", "a player: Vote next game opens the game list");
+  await guests[0].locator("[data-vote]").nth(1).click(); await sleep(800);
+  await shot(guests[0], "09c-player-voted", "a player: voted (tap another game to change it)");
+  await guests[0].evaluate(() => document.getElementById("pt-picker-x")?.click());
+  await sleep(600);
+  await shot(guests[0], "09d-player-room", "a player's lobby: chat + Vote next game (✓ Voted)");
+  for (const g of guests.slice(1)) {
+    await g.click("#pt-vote"); await sleep(800);
+    await g.locator("[data-vote]").nth(1).click(); await sleep(300);
+    await g.evaluate(() => document.getElementById("pt-picker-x")?.click());
+  }
+  await A.bringToFront(); await sleep(1500);
+}
 await A.evaluate(() => document.querySelector(".lr-tv")?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1 })));
 await sleep(4500);
-await shot(A, "10-tv-picker", "tapped the TV: walked over, the game picker opened");
+await shot(A, "10-tv-picker", "the host: tapped the TV (same as Game votes): live counts, most votes on top, tap any game to start");
 if (stop) console.log(`flow: ${await stop(join(OUT, "flow"))} frames`);
 await A.evaluate(() => document.getElementById("pt-picker-x")?.click());
 await sleep(500);

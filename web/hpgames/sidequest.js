@@ -3,9 +3,12 @@
 // Each turn the wizard's crystal ball reveals a quest, then spins through
 // everyone's faces and lands on whoever has to do it (random but fair — see
 // fairpick.js). They get 3 minutes, out in the world, while the others film
-// on their own phones. Then they tap Done (the room rates 1-5 stars: "how
-// hard did they commit?") or Give up (an automatic 0, no vote). Points are
-// the average stars x SIDEQUEST.POINTS_PER_STAR.
+// on their own phones. Rating opens the moment the turn starts: everyone
+// watching taps 1-5 stars ("how hard did they commit?") as soon as they've
+// seen enough, and one tap locks it in. The turn ends once everyone has
+// rated; the timer only ends it if they haven't. Giving up is an automatic
+// 0 and skips the rating. Points are the average stars x
+// SIDEQUEST.POINTS_PER_STAR.
 //
 // Before the first turn the host sees the quest pool grouped by category,
 // everything on; they can switch single quests or whole categories off and
@@ -87,6 +90,14 @@ const wizardHtml = (inBall = "", cls = "") => `<div class="sq-wizard ${cls}">
     <div class="sq-ball"><div class="sq-swirl"></div><div class="sq-in">${inBall}</div><i class="sq-shine"></i></div>
     <div class="sq-stand"></div>
   </div>`;
+// the 3D wizard (wizard3d.js) when this phone can draw it; until it has drawn
+// a frame (or if it never can) the pixel one above stays
+let wizP = null;
+const wizKit = () => wizP ??= import("./../wizard3d.js").then(m => m.wizardKit()).catch(() => null);
+const dress = (mode, then) => {
+  const el = $("game-panel")?.querySelector(".sq-wizard");
+  if (el) wizKit().then(k => { if (k && el.isConnected) { k.attach(el, mode); then?.(k); } });
+};
 const cardHtml = (q, cls = "") => `<div class="sq-card ${cls}"><div class="sq-kicker">SIDE QUEST:</div><div class="sq-text">${esc(q?.text ?? "…")}</div>${q?.level && q.level !== "mild" ? `<em class="sq-lv ${esc(q.level)}">${esc(q.level)}</em>` : ""}</div>`;
 const starsHtml = (fill, cls = "") => `<div class="sq-stars ${cls}" style="--fill:${Math.max(0, Math.min(1, fill)) * 100}%"><span class="sq-st-bg">${"★".repeat(STARS)}</span><span class="sq-st-fg">${"★".repeat(STARS)}</span></div>`;
 
@@ -108,7 +119,7 @@ export const SIDE_QUEST = {
     const AVAIL = questsFor(POOL, meta);
     const cats = CATS.filter(c => AVAIL.some(q => q.category === c.id));
     let lastHud = 0, lastTurn = null, myVote = null, giveUpArmed = 0, openCats = new Set(), spinTok = 0, dlg = null;
-    trash.add(() => { myVote = null; dlg?.close(); dlg = null; });
+    trash.add(() => { myVote = null; dlg?.close(); dlg = null; wizP?.then(k => k?.detach()); });
 
     const turn = s => s.turn ?? null;
     const isMe = s => turn(s)?.who === ctx.me.id;
@@ -121,14 +132,11 @@ export const SIDE_QUEST = {
       { name: "quest", ms: QUEST_MS, next: () => "spin" },
       { name: "spin", ms: SPIN_MS, next: () => "do" },
       {
+        // the quest and the rating at once: done when they give up, or when
+        // everyone watching has rated (the timer is only the backstop)
         name: "do", ms: SIDEQUEST.DO_MS,
-        done: s => !!turn(s)?.status,
-        next: s => (turn(s)?.status === "gaveup" ? (tally(s), "result") : (turn(s).status ??= "timeup", "vote")),
-      },
-      {
-        name: "vote", ms: SIDEQUEST.VOTE_MS,
-        done: s => voters(s).every(p => turn(s)?.votes[p.id] !== undefined),
-        next: s => { tally(s); return "result"; },
+        done: s => turn(s)?.status === "gaveup" || (voters(s).length > 0 && voters(s).every(p => turn(s)?.votes[p.id] !== undefined)),
+        next: s => { const t = turn(s); if (t && !t.status) t.status = voters(s).every(p => t.votes[p.id] !== undefined) ? "rated" : "timeup"; tally(s); return "result"; },
       },
       { name: "result", ms: RESULT_MS, next: s => (s.ti + 1 < s.turns ? (s.ti++, "wizard") : "end") },
       { name: "end", ms: END_MS, next: () => null },
@@ -138,7 +146,6 @@ export const SIDE_QUEST = {
         if (name === "wizard") sfx.open();
         if (name === "quest") sfx.whoosh();
         if (name === "do") { sfx.now(); buzz([30, 40, 30]); }
-        if (name === "vote") sfx.tick();
         if (name === "result") sfx.pop();
         if (name === "end") sfx.win();
       },
@@ -165,13 +172,13 @@ export const SIDE_QUEST = {
           rounds.enter(s, "result");
           return;
         }
-        if (t && s.phase === "do" && s.players[t.who]?.isBot && !t.status && game.rng() < dt * 0.1) {
-          t.status = game.rng() < 0.2 ? "gaveup" : "done";
+        if (t && s.phase === "do" && s.players[t.who]?.isBot && !t.status && game.rng() < dt * 0.02) {
+          t.status = "gaveup";
           t.doneAt = Date.now();
         }
-        if (t && s.phase === "vote")
+        if (t && s.phase === "do" && !t.status)
           for (const p of voters(s))
-            if (p.isBot && t.votes[p.id] === undefined && game.rng() < dt * 0.6) t.votes[p.id] = 2 + Math.floor(game.rng() * 4);
+            if (p.isBot && t.votes[p.id] === undefined && game.rng() < dt * 0.15) t.votes[p.id] = 2 + Math.floor(game.rng() * 4);
         rounds.hostStep(s, dt);
         if (s.phase === "end" && s.left <= 0) game.finish();
       },
@@ -190,11 +197,12 @@ export const SIDE_QUEST = {
         }
         const t = turn(s), p = s.players[m.from];
         if (!t || !p) return;
-        if ((m.in === "done" || m.in === "giveup") && s.phase === "do" && m.from === t.who && !t.status) {
-          t.status = m.in === "done" ? "done" : "gaveup";
+        if (m.in === "giveup" && s.phase === "do" && m.from === t.who && !t.status) {
+          t.status = "gaveup";
           t.doneAt = Date.now();
         }
-        if (m.in === "rate" && s.phase === "vote" && m.from !== t.who) {
+        // one tap locks a rating in: a second one is ignored
+        if (m.in === "rate" && s.phase === "do" && !t.status && m.from !== t.who && t.votes[p.id] === undefined) {
           const v = Math.round(Number(m.v));
           if (v >= 1 && v <= STARS) t.votes[p.id] = v;
         }
@@ -250,7 +258,7 @@ export const SIDE_QUEST = {
       let t = 0, d = 60, i = Math.floor(Math.random() * ids.length);
       while (t + d < SPIN_LAND_MS) { steps.push([t, ids[i++ % ids.length]]); t += d; d *= 1.16; }
       steps.push([SPIN_LAND_MS, target]);
-      const landed = () => { el.closest(".sq-wizard")?.classList.add("landed"); $("sq-who")?.classList.add("on"); };
+      const landed = () => { el.closest(".sq-wizard")?.classList.add("landed"); $("sq-who")?.classList.add("on"); wizP?.then(k => { k?.setMode("landed"); k?.nod(); }); };
       if (elapsed >= SPIN_LAND_MS) { show(target); landed(); return; }
       for (const [at, id] of steps) {
         if (at < elapsed) continue;
@@ -268,7 +276,7 @@ export const SIDE_QUEST = {
     function renderSQ(s) {
       // per-turn local state resets on every phone, keyed off the state
       const tk = `${s.ti}:${s.phase}`;
-      if (tk !== lastTurn) { lastTurn = tk; if (s.phase !== "vote") myVote = null; giveUpArmed = 0; if (s.phase !== "wizard") { dlg?.close(); dlg = null; } }
+      if (tk !== lastTurn) { lastTurn = tk; if (s.phase !== "do") myVote = null; giveUpArmed = 0; if (s.phase !== "wizard") { dlg?.close(); dlg = null; } }
       const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
@@ -283,6 +291,7 @@ export const SIDE_QUEST = {
         if (!ui.once(`su:${isHost ? 1 : 0}:${[...off].sort().join(",")}:${turns}:${[...openCats].join(",")}:${n}`, () => {})) return;
         if (!isHost) {
           ui.stage("Side Quest", wizardHtml("", "idle") + `<p class="ab-sub">the host is choosing tonight's quests…</p>`, "the wizard awaits");
+          dress("idle");
           return;
         }
         const on = AVAIL.filter(q => !off.has(q.id)).length;
@@ -318,13 +327,15 @@ export const SIDE_QUEST = {
         ui.stage("", wizardHtml("", "glow") + `<div class="sq-dlg-host" id="sq-dlg"></div>${hostSkip(ctx)}`, `turn ${t?.no ?? ""}`);
         dlg?.close();
         dlg = typeDialog($("sq-dlg"), { name: "WIZARD", text: WIZARD_LINE, blip: () => sfx.blip(), sticky: true, cls: "sq-dlg" });
+        dress("glow");
         bindHostSkip(game);
 
       } else if (s.phase === "quest") {
         if (!ui.once(`q:${s.ti}`, () => {})) return;
         const elapsed = QUEST_MS - s.left;
         ui.stage("", wizardHtml("", "swirl") + `<div class="sq-card-slot" id="sq-slot"></div>${hostSkip(ctx)}`, `turn ${t?.no ?? ""}`);
-        const put = () => { const el = $("sq-slot"); if (el && !el.firstChild) { el.innerHTML = cardHtml(t.quest, "pop"); sfx.ping(); } };
+        const put = () => { const el = $("sq-slot"); if (el && !el.firstChild) { el.innerHTML = cardHtml(t.quest, "pop"); sfx.ping(); wizP?.then(k => k?.nod()); } };
+        dress("swirl");
         if (elapsed >= SWIRL_MS) put(); else setTimeout(put, SWIRL_MS - elapsed);
         bindHostSkip(game);
 
@@ -333,54 +344,46 @@ export const SIDE_QUEST = {
         ui.stage("", cardHtml(t.quest, "small") + wizardHtml(`<div class="sq-reel" id="sq-reel"></div>`, "spin")
           + `<div class="sq-who" id="sq-who">${isMe(s) ? "it's YOU!" : `${esc(who)}!`}</div>${hostSkip(ctx)}`, "who's it going to be…");
         const ids = P.filter(p => !p.gone).map(p => p.id);
+        dress("spin");
         spin($("sq-reel"), ids.length ? ids : [t.who], t.who, SPIN_MS - s.left);
         bindHostSkip(game);
 
       } else if (s.phase === "do") {
         const mine = isMe(s);
-        if (ui.once(`d:${s.ti}:${t.status ?? "-"}:${mine ? 1 : 0}:${giveUpArmed ? 1 : 0}`, () => {})) {
+        const held = t.votes[ctx.me.id] ?? myVote;
+        if (ui.once(`d:${s.ti}:${t.status ?? "-"}:${mine ? 1 : 0}:${giveUpArmed ? 1 : 0}:${held ?? "-"}`, () => {})) {
           if (mine) {
-            ui.stage(t.status ? "nice. hold on…" : "go. now.", cardHtml(t.quest) + `<div class="sq-clock" id="sq-clock">${ui.clock(s.left)}</div>`
-              + (t.status ? `<p class="ab-sub">the room is about to rate you</p>` : `<div class="sq-btns">
-                  <button type="button" class="sq-giveup ${giveUpArmed ? "armed" : ""}" id="sq-giveup">${giveUpArmed ? "tap again to give up" : "give up"}</button>
-                  <button type="button" class="pt-btn pt-primary sq-done" id="sq-done">done ✓</button></div>
-                  <p class="ab-sub">your friends are filming · give up = 0 points</p>`)
+            ui.stage(t.status ? "you gave up" : "go. now.", cardHtml(t.quest) + `<div class="sq-clock" id="sq-clock">${ui.clock(s.left)}</div>`
+              + (t.status ? "" : `<div class="sq-btns one">
+                  <button type="button" class="sq-giveup ${giveUpArmed ? "armed" : ""}" id="sq-giveup">${giveUpArmed ? "tap again to give up" : "give up"}</button></div>
+                  <p class="ab-sub">your friends are filming and rating · <b id="sq-vcount"></b> · give up = 0 points</p>`)
               + hostSkip(ctx), "your side quest");
-            const d = $("sq-done"); if (d) d.onclick = () => { game.input("done"); sfx.confirm(); buzz(40); };
             const g = $("sq-giveup");
             if (g) g.onclick = () => {
               if (giveUpArmed && performance.now() - giveUpArmed < 3500) { game.input("giveup"); sfx.back(); giveUpArmed = 0; return; }
               giveUpArmed = performance.now(); ui.resetKey();
               setTimeout(() => { if (giveUpArmed && performance.now() - giveUpArmed >= 3400) { giveUpArmed = 0; ui.resetKey(); } }, 3500);
             };
+          } else if (t.status === "gaveup") {
+            ui.stage(`${esc(who)} gave up`, cardHtml(t.quest, "small") + `<p class="ab-sub">no rating this time</p>${hostSkip(ctx)}`, "watch · film · judge");
           } else {
-            ui.stage(`${esc(who)} is on a side quest`, cardHtml(t.quest) + `<div class="sq-clock" id="sq-clock">${ui.clock(s.left)}</div>
+            const lbl = held ? ["barely", "a little", "decent", "properly", "FULL SEND"][held - 1] : "";
+            ui.stage(`${esc(who)} is on a side quest`, cardHtml(t.quest, "small") + `<div class="sq-clock" id="sq-clock">${ui.clock(s.left)}</div>
               <p class="sq-film">● REC — film it on your phone</p>
-              <p class="ab-sub">${t.status === "done" ? `${esc(who)} says they did it` : t.status === "gaveup" ? `${esc(who)} gave up` : "you'll rate how hard they committed"}</p>${hostSkip(ctx)}`, "watch · film · judge");
-          }
-          bindHostSkip(game);
-        }
-        // the big timer ticks in place (rebuilding would eat taps)
-        const c = $("sq-clock");
-        if (c) { c.textContent = ui.clock(s.left); c.classList.toggle("urgent", s.left < 30000); }
-
-      } else if (s.phase === "vote") {
-        const mine = isMe(s);
-        const held = t.votes[ctx.me.id] ?? myVote;
-        if (ui.once(`v:${s.ti}:${mine ? 1 : 0}:${held ?? "-"}`, () => {})) {
-          if (mine) {
-            ui.stage("the room is rating you", cardHtml(t.quest, "small") + `<p class="ab-sub"><b id="sq-vcount"></b> · nothing you can do now</p>${hostSkip(ctx)}`, "the verdict");
-          } else {
-            ui.stage(`how hard did ${esc(who)} commit?`, cardHtml(t.quest, "small") + `<div class="sq-rate">${Array.from({ length: STARS }, (_, i) =>
-                `<button type="button" class="sq-star ${held && i < held ? "on" : ""}" data-star="${i + 1}" aria-label="${i + 1} star${i ? "s" : ""}">★</button>`).join("")}</div>
-              <p class="sq-rate-lbl">${held ? ["barely", "a little", "decent", "properly", "FULL SEND"][held - 1] : "tap the stars"}</p>
-              <p class="ab-sub"><b id="sq-vcount"></b>${held ? " · tap again to change" : ""}</p>${hostSkip(ctx)}`, `rate · ${ui.clock(s.left)}`);
+              <div class="sq-rate ${held ? "locked" : ""}">${Array.from({ length: STARS }, (_, i) =>
+                `<button type="button" class="sq-star ${held && i < held ? "on" : ""}" data-star="${i + 1}" aria-label="${i + 1} star${i ? "s" : ""}" ${held ? "disabled" : ""}>★</button>`).join("")}</div>
+              <p class="sq-rate-lbl">${held ? `${lbl} · locked in` : "how hard are they committing? tap to rate"}</p>
+              <p class="ab-sub"><b id="sq-vcount"></b>${held ? " · the turn ends when everyone has rated" : ""}</p>${hostSkip(ctx)}`, "watch · film · rate");
             $("game-panel").querySelectorAll("[data-star]").forEach(b => b.onclick = () => {
-              myVote = +b.dataset.star; game.input("rate", { v: myVote }); sfx.pop(); ui.resetKey();
+              if (myVote || t.votes[ctx.me.id] !== undefined) return;
+              myVote = +b.dataset.star; game.input("rate", { v: myVote }); sfx.pop(); buzz(20); ui.resetKey();
             });
           }
           bindHostSkip(game);
         }
+        // the big timer and the count tick in place (rebuilding would eat taps)
+        const c = $("sq-clock");
+        if (c) { c.textContent = ui.clock(s.left); c.classList.toggle("urgent", s.left < 30000); }
         const vc = $("sq-vcount");
         if (vc) vc.textContent = `${Object.keys(t.votes).length}/${voters(s).length} rated`;
 

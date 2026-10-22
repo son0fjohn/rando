@@ -20,6 +20,7 @@ import { serve } from "./appserve.mjs";
 const args = process.argv.slice(2);
 const OUT = args.find(a => !a.startsWith("--") && !["sidequest", "ritual", "party"].includes(a));
 if (!OUT) { console.error("usage: node test/games_rec.mjs <dir> [sidequest|ritual|party ...]"); process.exit(2); }
+const WIZARD = process.env.WIZARD ? `&wizard=${process.env.WIZARD}` : "";   // WIZARD=dealer: the 3D wizard on the dealer's rig
 const SCENES = args.filter(a => ["sidequest", "ritual", "party"].includes(a));
 if (!SCENES.length) SCENES.push("sidequest", "ritual", "party");
 await mkdir(OUT, { recursive: true });
@@ -100,8 +101,9 @@ async function phones(names, { coins = false } = {}) {
   const open = async (name, qs = "") => {
     const pg = await newWindow(ctx);
     pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
+    pg.on("console", m => { if (/\[wizard3d\]/.test(m.text())) log(`    [${name}] ${m.text()}`); });
     if (process.env.DEBUG_REC) pg.on("console", m => { if (/\[party\]|coin/i.test(m.text())) log(`    [${name}] ${m.text()}`); });
-    await pg.goto(`${base}/test/hpparty.html?me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}${coins ? "&coinhook=1" : ""}${qs}`);
+    await pg.goto(`${base}/test/hpparty.html?me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}${coins ? "&coinhook=1" : ""}${WIZARD}${qs}`);
     await pg.waitForFunction(() => window.__ready);
     pg.label = name;
     return pg;
@@ -120,12 +122,9 @@ const idOf = pg => `u-${pg.label}`;
 const stateOn = pg => pg.evaluate(() => { const s = window.__game?.s; return s ? JSON.parse(JSON.stringify(s)) : null; });
 const phaseIs = (pg, ph, ms = 30000) => until(pg, ph => window.__game?.s?.phase === ph, ph, ms);
 async function queue(host, game) {
-  await host.click("#pt-open-picker");
-  await host.click(`[data-queue="${game}"]`);
-  await sleep(500);
-  await host.click("#pt-picker-done");
-  await sleep(600);
-  await host.click("#pt-start");
+  await host.click("#pt-vote");
+  await sleep(700);
+  await host.click(`[data-game="${game}"] .pv-t > b`);
 }
 const skip = pg => pg.locator("#hp-skip").first().click().catch(() => {});
 const backInRoom = pg => until(pg, () => !document.getElementById("party-panel").hidden, null, 40000);
@@ -156,11 +155,9 @@ async function sidequest() {
     log(`  turn ${turn}: ${perf.label} — ${s.turn.quest.text}`);
     await sleep(6000);
     if (turn === 1) {
-      await perf.click("#sq-done");
-      await phaseIs(A, "vote", 8000);
-      await sleep(1500);
+      // the room rates while the quest is on; the turn ends once all three have
       const stars = [5, 4, 4];
-      for (const [i, pg] of P.list.filter(pg => pg !== perf).entries()) { await pg.locator(`[data-star="${stars[i]}"]`).click(); await sleep(900); }
+      for (const [k, pg] of P.list.filter(pg => pg !== perf).entries()) { await pg.locator(`[data-star="${stars[k]}"]`).click(); await sleep(1400); }
     } else {
       await perf.click("#sq-giveup"); await sleep(1200);
       await perf.click("#sq-giveup");
@@ -226,7 +223,6 @@ async function partySet() {
       for (const pg of P.list) {
         if (await pg.locator("#tm-lock").count()) await pg.click("#tm-lock").catch(() => {});
         if (await pg.locator('[data-star="4"]').count()) await pg.locator('[data-star="4"]').click().catch(() => {});
-        if (await pg.locator("#sq-done").count()) await pg.click("#sq-done").catch(() => {});
         if (game === "ritual" && s.phase === "act" && await pg.locator("#gp-in").count()) { await pg.fill("#gp-in", s.turn.prompt).catch(() => {}); await pg.press("#gp-in", "Enter").catch(() => {}); }
         if (await pg.locator("#hr-feed .hr-g.match").count()) await pg.locator("#hr-feed .hr-g.match").first().click().catch(() => {});
       }

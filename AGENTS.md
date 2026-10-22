@@ -15,13 +15,18 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   is `web/config.js`; the anon key there is meant to be public.
 - **Multiplayer:** Supabase Realtime broadcast + presence (`web/net.js`). No
   database tables for game state: rooms, games and chat die with the room.
-- **Map chrome:** `web/backend.js` (auth, presence, the bottom bar: explore /
-  host / style, pull-to-refresh, the style screen, NPC dialog),
+- **Map chrome:** `web/backend.js` (auth, presence, the navy bottom bar on
+  the world screen only: Explore / Host / Style, pull-to-refresh, the style
+  screen, NPC dialog),
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
   `web/charview.js` (a character in 3D: drag to spin, pinch to zoom),
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
-  synthesized in `web/fx.js`), `web/theme.css` (the retro console theme).
-- **House party:** `web/party.js` (party + lobby), `web/hplobby.js` (the
+  synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
+  for Korean) and frosted-glass panels; pixel art only in the room art and
+  sprites, never in text, buttons or panels).
+- **House party:** `web/party.js` (party + lobby: chat, players vote for the
+  next game, the host's "Game votes" sheet starts one; the TV opens the same
+  sheet), `web/hplobby.js` (the
   top-down room: tap-to-walk with pathfinding, depth sorting, the TV),
   `web/roomart.js` (the apartment drawn in code, layer by layer, furniture
   items), `web/roomdefs.js` (each room's floor, blocks, furniture slots and
@@ -30,10 +35,12 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   someone: 3D card, wave, report, block), `web/hpkit.js` (round machine, results screen, cleanup),
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots; its
   `finish()` hands the final standings to the party),
-  `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/hpconfig.js`
+  `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/wizard3d.js`
+  (Side Quest's 3D wizard over the pixel one; off until its model is in,
+  `SIDEQUEST.WIZARD_3D`, see `docs/wizard_assets.md`), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors, party/coin/game numbers),
   `web/partyset.js` (a party is a set of 3 games: places → party points),
-  `web/partyboard.js` (the room's high-score board, the podium, coin bursts),
+  `web/partyboard.js` (the podium, coin bursts; its room board is hidden),
   `web/fairpick.js` (random-but-fair "who's next" for Side Quest and the Ritual),
   `web/data/diary_prompts.json` (Secret Diary's prompt pool),
   `web/data/side_quests.json` (Side Quest's quests),
@@ -58,8 +65,9 @@ npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Dia
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
+node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]   # Side Quest's 3D wizard: loads, fits, every mode + the nod
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
-node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> picker, profile card (FFMPEG=... for an mp4)
+node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
 node test/games_rec.mjs <dir> [sidequest|ritual|party]   # phones playing Side Quest / a Ritual turn / a full 3-game set + shop, recorded side by side
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
@@ -92,6 +100,11 @@ keyboard, safe areas) see `docs/dev-stack.md` → device testing.
   players). A player who leaves must never stall a phase.
 - **Cleanup:** anything a game keeps (photos, answers, caches) registers a
   disposer with `trash` so it dies when the game or party ends.
+- **Backdrop:** a game def with `backdrop: "room"` (the Ritual) is played
+  over the dimmed party room (`#party-panel.pt-behind`) instead of the map.
+- **Ratings (Side Quest):** open as soon as the turn starts, one tap locks a
+  rating, and the turn ends once every watcher has rated; the clock only ends
+  it if they haven't. Giving up fails the turn and skips ratings.
 - **Styling:** the page declares `color-scheme: dark`, so any `<button>` with
   no explicit `color` renders white text. Set colors on buttons inside game
   cards (`.stage`).
