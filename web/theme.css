@@ -946,13 +946,13 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 /* Back (setup screens) top-left, End game top-right; the HUD makes room */
 .hp-ctl { position: absolute; top: calc(8px + env(safe-area-inset-top)); z-index: 30; height: 34px; padding: 0 12px; border-radius: 999px;
   border: 1px solid var(--g-line); background: rgba(15, 26, 58, .82); color: #fff; font: 600 13px/1 var(--f-sys);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); cursor: pointer; }
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); cursor: pointer; pointer-events: auto; }
 .hp-ctl:active { transform: scale(.96); }
 #hp-back { left: 10px; }
 #hp-end { right: 10px; color: #ffb3c4; }
 body.hp-ctl-back #game-hud { padding-left: 92px; }
 body.hp-ctl-end #game-hud { padding-right: 104px; }
-.hp-ask { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgba(6, 8, 20, .62); }
+.hp-ask { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgba(6, 8, 20, .62); pointer-events: auto; }
 .hp-ask-card { width: min(340px, 100%); padding: 18px 16px 14px; border-radius: 20px; border: 1px solid var(--g-line); background: rgba(22, 28, 58, .94);
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); color: #fff; font: 15px/20px var(--f-sys); text-align: center; }
 .hp-ask-card b { display: block; font: 700 18px/24px var(--f-sys); margin-bottom: 6px; }
