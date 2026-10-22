@@ -136,7 +136,7 @@ try {
     const s = A.locator(".pt-settings");
     if (await s.count()) { await s.scrollIntoViewIfNeeded(); await sleep(300); await shot(A, "08-party-settings", "party settings (18+, diary max level)"); }
   });
-  await A.click('[data-game="secretdiary"]');
+  await A.click('[data-game="secretdiary"] .pv-t > b');
   await until(A, () => document.querySelectorAll(".sd-card").length >= 3);
   await sleep(700);
   await shot(A, "10-sd-deal-host", "Secret Diary: the host's deal");

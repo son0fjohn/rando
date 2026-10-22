@@ -77,7 +77,7 @@ const text = (pg, sel) => pg.locator(sel).first().innerText().catch(() => "");
 const until = async (pg, fn, arg, ms = 15000) => pg.waitForFunction(fn, arg, { timeout: ms }).then(() => true).catch(() => false);
 const stageTitle = pg => text(pg, "#game-panel .stage h2, #game-panel .hp-res-title");
 // the host starts a game from the votes list
-const startGame = async (pg, id) => { await pg.click("#pt-vote"); await pg.click(`[data-game="${id}"]`); };
+const startGame = async (pg, id) => { await pg.click("#pt-vote"); await pg.click(`[data-game="${id}"] .pv-t > b`); };   // the title: the row middle can be an option chip
 // the host taps "skip ahead" until `done(title)` holds on `watch`
 async function skipUntil(host, watch, done, tries = 12) {
   for (let i = 0; i < tries; i++) {
@@ -124,7 +124,7 @@ try {
   ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "ritual" && /^0/.test(document.querySelector('[data-game="mission"] .pv-n')?.textContent ?? "")), "a player can change their vote: one vote each, the tally follows");
   await A.click('[data-opt="mode"][data-val="choose"][data-for="mission"]');
   ok(await until(A, () => document.querySelector('[data-opt="mode"][data-val="choose"][data-for="mission"]')?.classList.contains("on")), "the host sets a game's options right in the list");
-  await A.click('[data-game="mission"]');
+  await A.click('[data-game="mission"] .pv-t > b');
   ok(await until(A, () => /needs 1 more/i.test(document.getElementById("pv-err")?.textContent ?? "")) && !(await A.evaluate(() => window.party.current.launched)), "starting waits for the minimum: 'needs 1 more'");
   await sleep(300);
   await shot(A, "01-host-votes");
@@ -251,7 +251,7 @@ try {
   ok(await until(A, () => document.querySelector('[data-set="diaryMax"][data-val="unhinged"]')?.classList.contains("on")), "the host sets the Secret Diary max level");
 
   head("Secret Diary — deal, answer the batch, reveal one by one (3 phones; diary_e2e.mjs plays it with 5)");
-  await A.click('[data-game="secretdiary"]');
+  await A.click('[data-game="secretdiary"] .pv-t > b');
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "the host is dealt a batch of 5, with Swap");
   ok(await until(B, () => /is picking/.test(document.querySelector(".sd-incoming")?.textContent ?? "")), "everyone else waits while the host picks");
   await shot(A, "11-diary-deal");

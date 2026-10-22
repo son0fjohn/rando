@@ -147,7 +147,7 @@ try {
   await A.click("#pt-vote");
   ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "secretdiary" && /^4/.test(document.querySelector('[data-game="secretdiary"] .pv-n')?.textContent ?? "")), "everyone votes Secret Diary: the host sees it on top with 4 votes");
   const batchCast = BATCH_VIDEO ? await screencast(A) : null;
-  await A.click('[data-game="secretdiary"]');
+  await A.click('[data-game="secretdiary"] .pv-t > b');
 
   // ------------------------------------------------------------------ deal
   head("Deal — the host picks the batch");

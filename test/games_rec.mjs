@@ -124,7 +124,7 @@ const phaseIs = (pg, ph, ms = 30000) => until(pg, ph => window.__game?.s?.phase 
 async function queue(host, game) {
   await host.click("#pt-vote");
   await sleep(700);
-  await host.click(`[data-game="${game}"]`);
+  await host.click(`[data-game="${game}"] .pv-t > b`);
 }
 const skip = pg => pg.locator("#hp-skip").first().click().catch(() => {});
 const backInRoom = pg => until(pg, () => !document.getElementById("party-panel").hidden, null, 40000);
