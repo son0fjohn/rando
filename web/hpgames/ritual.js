@@ -115,6 +115,7 @@ export const HUMILIATION_RITUAL = {
   id: "ritual", title: "Humiliation Ritual",
   blurb: "charades, in public. one player acts out a secret prompt, everyone types guesses, the performer taps the right one.",
   minPlayers: 3, maxPlayers: 12, length: "~1.5 min per turn",
+  backdrop: "room",            // played over the party room (dimmed), not the map
   options: [{
     key: "rounds", label: "rounds",
     choices: [

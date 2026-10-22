@@ -36,16 +36,16 @@ import { Room, directory, mulberry } from "./net.js";
 import { world3d } from "./world3d.js";
 import { sfx, buzz } from "./fx.js";
 import { rooms } from "./rooms.js";
-import { PARTY_CATALOG, gameById } from "./partycatalog.js";
+import { PARTY_CATALOG, gameById, gameTitle } from "./partycatalog.js";
 import { FLAGS, PARTY, DIARY } from "./hpconfig.js";
 import { esc, trash } from "./hpkit.js";
 import { makeBots, shareText } from "./gamekit.js";
 import { LobbyRoom } from "./hplobby.js";
 import { openCard, close as closeCard } from "./profilecard.js";
 import { partyBeacons } from "./partybeacon.js";
-import { muteButton, typeDialog, popIn } from "./retro.js";
+import { muteButton, popIn } from "./retro.js";
 import { newSet, addGame, standings, nextGameNo } from "./partyset.js";
-import { renderBoard, showPodium, closePodium, showCoins, coinBurst } from "./partyboard.js";
+import { showPodium, closePodium, showCoins, coinBurst } from "./partyboard.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -137,7 +137,7 @@ export const party = {
     const code = makeCode();
     const room = new Room(`party-${code}`, this.me);
     this.current = {
-      room, launched: false, chat: [], queue: null, lobby: null, session: newSession(),
+      room, launched: false, chat: [], queue: null, votes: {}, gameOpts: {}, lobby: null, session: newSession(),
       set: newSet(1, sessionId()), coins: {},
       meta: {
         name, vibe, cap, code, hostId: this.me.id, hostName: this.me.handle,
@@ -164,7 +164,7 @@ export const party = {
     await rooms.leave(); await this.leave();
     const room = new Room(id, this.me);
     this.current = {
-      room, launched: false, chat: [], queue: null, lobby: null, session: newSession(),
+      room, launched: false, chat: [], queue: null, votes: {}, gameOpts: {}, lobby: null, session: newSession(),
       set: newSet(1, null), coins: {},
       // with no directory entry (code join) we start with placeholders and let
       // the host's `meta` broadcast fill in the real name / vibe / cap
@@ -229,6 +229,8 @@ export const party = {
       if (this.current !== c) return;
       if (room.isHost) {
         c.meta.hostId = this.me.id; c.meta.hostName = this.me.handle;
+        const here = new Set(room.members.map(x => x.id));
+        c.votes = Object.fromEntries(Object.entries(c.votes ?? {}).filter(([id]) => here.has(id)));
         if (c.meta.privacy === "public" && !directory.announcing) { if (!c.zone) this._findZone().then(() => this._announce()); else this._announce(); }
         this._sendMeta();
         this._enforceCap();
@@ -243,6 +245,7 @@ export const party = {
       if (room.isHost) return;
       c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) }, playing: m.playing ?? null };
       c.queue = m.queue ?? null;
+      if (m.votes) c.votes = m.votes;
       if (m.set) c.set = m.set;
       for (const id of m.diaryUsed ?? []) c.session.diaryUsed.add(id);
       this.render();
@@ -250,6 +253,7 @@ export const party = {
     // the host's "up next" changed
     // only the host's word counts — a stray message from anyone else is ignored
     room.on("queue", m => { if (m.from !== room.hostId) return; c.queue = m.queue ?? null; this._renderNext(); this._renderPicker(); });
+    room.on("vote", m => this._onVote(m));
     room.on("chat", m => {
       if (this.blocked.has(m.from)) return;
       c.chat.push({ from: m.from, who: room.presence[m.from]?.handle ?? "someone", text: m.text });
@@ -274,7 +278,7 @@ export const party = {
       privacy: c.meta.privacy, settings: c.meta.settings, diaryUsed: [...c.session.diaryUsed],
       // a game in progress: someone who joins now waits in the lobby for the next one
       playing: c.launched ? c.playing ?? null : null,
-      set: c.set,
+      set: c.set, votes: c.votes ?? {},
     });
   },
   // host: anyone past the cap (by join order) is told to leave
@@ -328,6 +332,7 @@ export const party = {
     const n = this.playerCount();
     if (n < minFor(g)) { this.err(`${g.title} needs ${minFor(g)}+ players · ${n} here`); return; }
     this.pickerOpen = false;
+    c.votes = {};
     c.room.send("launch", { game: g.id, options: c.queue.options ?? {}, seed: (Date.now() % 1e9) | 0, at: Date.now() + 500 });
   },
   _onLaunch(m) {
@@ -336,10 +341,16 @@ export const party = {
     const g = gameById(m.game);
     if (!g) { this.err(`unknown game "${m.game}"`); return; }
     c.launched = true;
+    c.votes = {};
     c.playing = g.title;
     c.playingId = g.id;
     this.pickerOpen = false;
-    $("party-panel").hidden = true;
+    // most games cover the map; a game that asks for the room keeps the party
+    // room on screen behind it, dimmed (the room's own bars and chat hide)
+    const behind = g.backdrop === "room";
+    $("party-panel").hidden = !behind;
+    $("party-panel").classList.toggle("pt-behind", behind);
+    if (behind) { this.pickerOpen = false; this._renderPicker(); }
     const humans = c.room.members.map(x => ({ id: x.id, handle: x.handle, avatar: x.avatar }));
     const ctx = {
       room: c.room, me: this.me, humans, seed: m.seed, isHost: () => c.room.isHost, party: c.meta,
@@ -351,7 +362,7 @@ export const party = {
       again: () => { c.again = true; },
     };
     try { g.start(ctx); }
-    catch (e) { console.warn("[party] game start", e); c.launched = false; $("party-panel").hidden = false; this.err(`${g.title} failed to start`); return; }
+    catch (e) { console.warn("[party] game start", e); c.launched = false; $("party-panel").hidden = false; $("party-panel").classList.remove("pt-behind"); this.err(`${g.title} failed to start`); return; }
     if (c.room.isHost) this._announce();
     this._syncPause();
   },
@@ -373,6 +384,7 @@ export const party = {
     c.playing = null;
     trash.flush("game ended");           // uploaded photos + entries go now
     $("party-panel").hidden = false;
+    $("party-panel").classList.remove("pt-behind");
     if (c.room.isHost) this._sendMeta();  // shares the session's used prompts
     this.render();
     if (c.again) { c.again = false; if (c.room.isHost) setTimeout(() => { if (this.current === c && !c.launched) this.launch(); }, 400); }
@@ -479,8 +491,12 @@ export const party = {
 
   // the map underneath stops drawing while the party room or a game covers it
   _syncPause() {
-    const c = this.current;
-    world3d.setPaused?.(!!c && (c.launched || !$("party-panel").hidden));
+    const c = this.current, shown = !$("party-panel").hidden;
+    world3d.setPaused?.(!!c && (c.launched || shown));
+    // the map's bar and chat stay out of the party room (and its games);
+    // the Host tab is lit while the host-a-party menu is open
+    document.body.classList.toggle("in-lobby", !!c && (c.launched || shown));
+    document.getElementById("nav-host")?.classList.toggle("on", !c && shown);
   },
 
   // ---------------------------------------------------------------- UI
@@ -548,23 +564,23 @@ export const party = {
     return `<div class="pt-top">
         <div class="pt-top-row">
           <b id="pt-title">party</b>
+          <span id="pt-mute"></span>
           <button id="pt-hide" type="button" class="pt-icon" aria-label="Back to the map">&#9660;</button>
-          <button id="pt-leave" type="button" class="pt-leave">leave</button>
+          <button id="pt-leave" type="button" class="pt-leave">Leave</button>
         </div>
         <div class="pt-top-row">
           <div id="pt-sub" class="rp-sub"></div>
-          <span class="pt-invite">invite</span><button id="pt-code-chip" type="button" class="pt-code-chip" title="share the invite" aria-label="invite code — tap to share"></button>
+          <span class="pt-invite">Invite</span><button id="pt-code-chip" type="button" class="pt-code-chip" title="share the invite" aria-label="invite code — tap to share"></button>
         </div>
       </div>
       <div class="pt-floor-wrap">
         <div id="pt-floor"></div>
-        <div id="pt-board" class="pt-board" aria-label="party leaderboard"></div>
         <div id="pt-chat-feed" class="pt-chat-float"></div>
       </div>
       <div class="pt-bottom">
         <div id="pt-next" class="pt-next"></div>
         <div id="pt-err" class="pt-err"></div>
-        <form id="pt-chat-form"><span id="pt-mute"></span><input id="pt-chat-input" maxlength="160" placeholder="say something&hellip;" autocomplete="off"><button type="submit" aria-label="send">&#9654;</button></form>
+        <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="Say something&hellip;" autocomplete="off"><button type="submit" aria-label="send">&#8593;</button><button type="button" id="pt-vote" class="y-btn small pink pt-vote"></button></form>
       </div>
       <div id="pt-picker" class="pt-picker" hidden></div>`;
   },
@@ -598,6 +614,7 @@ export const party = {
       const c = this.current; if (!c) return;
       shareText(`join my party "${c.meta.name}" on Rando — code ${c.meta.code} · ${inviteLink(c.meta.code)}`);
     });
+    p.querySelector("#pt-vote")?.addEventListener("click", () => { this.pickerOpen = true; sfx.open(); this._renderPicker(); });
     p.querySelector("#pt-chat-form")?.addEventListener("submit", e => {
       e.preventDefault();
       const inp = $("pt-chat-input"), text = inp.value.trim().slice(0, 160);
@@ -625,118 +642,137 @@ export const party = {
     c.lobby?.setBackground(LOBBY_BG[c.meta.vibe] ?? LOBBY_BG.chill);
     c.lobby?.setVibe(c.meta.vibe);
     c.lobby?.sync();
-    const members = c.room.members.map(m => ({ id: m.id, handle: m.handle, avatar: m.avatar }));
-    renderBoard($("pt-board"), c.set, standings(c.set, members), { me: this.me.id, avatars: Object.fromEntries(members.map(m => [m.id, m.avatar])) });
     this._renderNext();
     this._renderPicker();
     this._renderSetEnd();
   },
 
-  // under the room: a DS-style dialog box that types out what's up next (the
-  // host's name on its tab), with the host's buttons beside it
+  // under the room: one status line, then chat + the vote button
   _renderNext() {
     const c = this.current; const el = $("pt-next"); if (!c || !el) return;
     const isHost = c.room.isHost, host = c.room.presence[c.room.hostId]?.handle ?? "the host";
-    const n = this.playerCount();
-    const g = c.queue ? gameById(c.queue.game) : null;
-    const opts = g ? [optionsLabel(g, c.queue.options), g.describe?.(c.meta)].filter(Boolean).join(" · ") : "";
-    const need = g ? Math.max(0, minFor(g) - n) : 0;
     const playing = !isHost && c.meta.playing;      // a game started before you got here
-    const sig = `${isHost ? 1 : 0}:${n}:${host}:${c.queue?.game ?? "-"}:${opts}:${playing || ""}:${c.set.no}.${c.set.games.length}`;
-    if (el.dataset.sig === sig) return;
-    el.dataset.sig = sig;
-    const gameNo = `Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET}.`;
-    const upNext = g ? `${gameNo} Up next: ${g.title}${opts ? ` (${opts})` : ""}.` : "";
-    const line = isHost
-      ? (g ? `${upNext} ${need ? `Waiting for ${need} more ${need === 1 ? "player" : "players"}.` : "Everyone's here — hit start!"}` : `${gameNo} Walk up to the TV and pick a game!`)
-      : playing ? `${playing} is on — you're in the next one. Hang out!`
-      : g ? `${upNext} ${need ? `Waiting for ${need} more.` : `Waiting for ${host} to start.`}`
-      : `${gameNo} ${host} hasn't picked a game yet. Walk around and say hi!`;
-    el.innerHTML = `<div class="pt-dlg-host"></div>${isHost ? `<div class="pt-next-btns">
-        <button type="button" class="y-btn small ${g ? "dim" : ""}" id="pt-open-picker">${g ? "change" : "pick a game"}</button>
-        ${g ? `<button type="button" class="y-btn pink small pt-go" id="pt-start" ${need ? "disabled" : ""}>${need ? `needs ${need} more` : "start ▶"}</button>` : ""}
-      </div>` : ""}`;
-    const dlg = typeDialog(el.querySelector(".pt-dlg-host"), { name: host, text: line, blip: () => sfx.blip(), sticky: true, cls: "pt-dlg" });
-    if (!isHost) dlg.el.id = "pt-wait";
-    if (isHost) {
-      $("pt-open-picker").onclick = () => { this.pickerOpen = true; sfx.open(); this._renderPicker(); };
-      const st = $("pt-start"); if (st) st.onclick = () => { sfx.confirm(); this.launch(); };
+    const nVotes = Object.keys(c.votes ?? {}).length, mine = c.votes?.[this.me.id];
+    const gameNo = `Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET}`;
+    const line = playing ? `${playing} is on — you're in the next one`
+      : isHost ? `${gameNo} · ${nVotes ? `${nVotes} vote${nVotes === 1 ? "" : "s"} in — pick a game to start` : "pick a game to start"}`
+      : `${gameNo} · ${mine ? `you voted ${gameTitle(mine)}` : "vote for the next game"} · ${host} starts it`;
+    if (el.textContent !== line) el.textContent = line;
+    const btn = $("pt-vote");
+    if (btn) {
+      const label = isHost ? `Game votes${nVotes ? ` · ${nVotes}` : ""}` : mine ? "✓ Voted" : "Vote next game";
+      if (btn.textContent !== label) btn.textContent = label;
+      btn.disabled = !!(c.launched || c.set.done);
     }
   },
 
-  // host-only overlay: tap a game to queue it, set its options, close any time
+  // ---------------------------------------------------------------- votes
+  // Players vote for the next game (one each, changeable until the host
+  // starts one). The host keeps the tally and shares it in the meta.
+  vote(gameId) {
+    const c = this.current; if (!c || c.room.isHost || c.launched || !gameById(gameId)) return;
+    c.votes = { ...(c.votes ?? {}), [this.me.id]: gameId };          // shown at once; the host's meta confirms it
+    c.room.send("vote", { game: gameId });
+    sfx.cursor(); buzz(15);
+    this._renderNext(); this._renderPicker();
+  },
+  _onVote(m) {
+    const c = this.current;
+    if (!c?.room.isHost || c.launched || !c.room.members.some(x => x.id === m.from) || !gameById(m.game)) return;
+    c.votes = { ...(c.votes ?? {}), [m.from]: m.game };
+    this._sendMeta();
+    this._renderNext(); this._renderPicker();
+  },
+  // host: the per-game options (Mission's mode, the Ritual's rounds), chosen in the votes sheet
+  gameOption(gameId, key, value) {
+    const c = this.current; if (!c?.room.isHost) return;
+    c.gameOpts = { ...(c.gameOpts ?? {}), [gameId]: { ...(c.gameOpts?.[gameId] ?? {}), [key]: value } };
+    sfx.cursor();
+    this._renderPicker();
+  },
+  // host: tap a game in the votes sheet to start it
+  startGame(gameId) {
+    const c = this.current; const g = gameById(gameId);
+    if (!c?.room.isHost || !g || c.launched || c.set.done) return;
+    const need = Math.max(0, minFor(g) - this.playerCount());
+    if (need) { const e = $("pv-err"); if (e) e.textContent = `${g.title} needs ${need} more ${need === 1 ? "player" : "players"}`; sfx.back?.(); return; }
+    sfx.confirm();
+    this.queue(gameId, c.gameOpts?.[gameId] ?? null);
+    this.launch();
+  },
+
+  // the game list, as a sheet over the room: players vote, the host sees the
+  // live tally (most votes first) and taps a game to start it
   _renderPicker() {
     const c = this.current; const el = $("pt-picker"); if (!c || !el) return;
-    const open = this.pickerOpen && c.room.isHost && !c.launched;
+    const open = this.pickerOpen && !c.launched && !c.set.done;
     el.hidden = !open;
     if (!open) { el.dataset.sig = ""; el.dataset.shown = ""; return; }
-    const n = this.playerCount();
-    const sig = `${n}:${c.queue?.game ?? "-"}:${JSON.stringify(c.queue?.options ?? {})}:${JSON.stringify(c.meta.settings)}`;
+    const isHost = c.room.isHost, n = this.playerCount();
+    const votes = c.votes ?? {}, mine = votes[this.me.id];
+    const count = id => Object.values(votes).filter(v => v === id).length;
+    const sig = `${isHost ? 1 : 0}:${n}:${JSON.stringify(votes)}:${JSON.stringify(c.gameOpts ?? {})}:${JSON.stringify(c.meta.settings)}:${this.settingsOpen ? 1 : 0}`;
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
+    const host = c.room.presence[c.room.hostId]?.handle ?? "the host";
+    const total = Object.keys(votes).length;
+    const games = PARTY_CATALOG.map((g, i) => ({ g, i, v: count(g.id) }));
+    if (isHost) games.sort((a, b) => b.v - a.v || a.i - b.i);
+    const optsFor = g => {
+      if (!isHost || !(g.options ?? []).length) return "";
+      const cur = { ...defaultsFor(g), ...(c.gameOpts?.[g.id] ?? {}) };
+      return `<span class="pv-opts">${g.options.map(opt => opt.choices.map(ch =>
+        `<button type="button" class="pv-chip ${cur[opt.key] === ch.value ? "on" : ""}" data-opt="${esc(opt.key)}" data-val="${esc(ch.value)}" data-for="${g.id}">${esc(ch.label)}</button>`).join("")).join("")}</span>`;
+    };
+    const rows = games.map(({ g, v }) => {
+      const need = Math.max(0, minFor(g) - n);
+      const attr = isHost ? `data-game="${g.id}"` : `data-vote="${g.id}"`;
+      return `<div class="pv-row ${mine === g.id ? "mine" : ""} ${need && isHost ? "short" : ""}" ${attr} role="button" tabindex="0" aria-label="${esc(g.title)}${v ? `, ${v} vote${v === 1 ? "" : "s"}` : ""}">
+          <span class="pv-art" aria-hidden="true">${CHANNEL_ART[g.id] ?? ""}</span>
+          <span class="pv-t"><b>${esc(g.title)}</b><small>${mine === g.id ? "✓ your vote · " : ""}${need ? `needs ${need} more` : `${minFor(g)}+ players · ${esc(g.length ?? "")}`}</small>${optsFor(g)}</span>
+          <span class="pv-n ${v ? "" : "zero"}">${v}<i>${v === 1 ? "vote" : "votes"}</i></span>
+        </div>`;
+    }).join("");
     const st = c.meta.settings ?? {};
     const dflt = DIARY.DEFAULT_MAX[c.meta.privacy === "public" ? "public" : "private"];
     const effMax = (st.diaryMax === "unhinged" && !st.adult) ? "spicy" : (st.diaryMax || dflt);
-    const settingsHtml = `<div class="pt-settings">
-        <div class="rl-h">party settings <small>— optional, defaults are fine</small></div>
-        <div class="pt-opt"><span>18+ party</span><div class="pt-row">
-          <button type="button" class="pt-btn ${st.adult ? "" : "on"}" data-set="adult" data-val="0">off</button>
-          <button type="button" class="pt-btn ${st.adult ? "on" : ""}" data-set="adult" data-val="1">on — everyone's 18+</button></div>
+    const settingsHtml = !isHost ? "" : `<div class="pt-settings pv-settings">
+        <button type="button" class="pv-settings-h" id="pv-settings-h">Party settings <span>${this.settingsOpen ? "▴" : "▾"}</span></button>
+        ${this.settingsOpen ? `<div class="pt-opt"><span>18+ party</span><div class="pt-row">
+          <button type="button" class="pt-btn ${st.adult ? "" : "on"}" data-set="adult" data-val="0">Off</button>
+          <button type="button" class="pt-btn ${st.adult ? "on" : ""}" data-set="adult" data-val="1">On — everyone's 18+</button></div>
           <small>unlocks unhinged content</small></div>
         <div class="pt-opt"><span>Secret Diary max level</span><div class="pt-row">${DIARY.LEVELS.map(l => {
           const locked = l === "unhinged" && !st.adult;
           return `<button type="button" class="pt-btn ${effMax === l ? "on" : ""}" data-set="diaryMax" data-val="${l}" ${locked ? "disabled" : ""}>${l}${l === dflt ? " (default)" : ""}</button>`;
         }).join("")}</div>
-          <small>${st.adult ? "" : "unhinged needs 18+ on · "}levels still build up: rounds 1-2 mild, 3-4 up to spicy, then up to this</small></div>
+          <small>${st.adult ? "" : "unhinged needs 18+ on · "}levels still build up: rounds 1-2 mild, 3-4 up to spicy, then up to this</small></div>` : ""}
       </div>`;
-    const sel = c.queue ? gameById(c.queue.game) : null;
-    const optsHtml = sel ? (sel.options ?? []).map(opt => `<div class="pt-opt"><span>${esc(opt.label)}</span><div class="pt-row">${opt.choices.map(ch =>
-        `<button type="button" class="pt-btn ${c.queue.options?.[opt.key] === ch.value ? "on" : ""}" data-opt="${esc(opt.key)}" data-val="${esc(ch.value)}" title="${esc(ch.hint ?? "")}">${esc(ch.label)}</button>`).join("")}</div>
-        ${opt.choices.find(ch => ch.value === c.queue.options?.[opt.key])?.hint ? `<small>${esc(opt.choices.find(ch => ch.value === c.queue.options?.[opt.key]).hint)}</small>` : ""}</div>`).join("") : "";
-    el.innerHTML = `<div class="pt-picker-sheet">
-        <div class="pt-picker-head"><b>pick the next game</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
-        <div class="pt-games">
-          <div class="pt-chans">${PARTY_CATALOG.map((g, i) => {
-            const on = c.queue?.game === g.id;
-            const need = Math.max(0, minFor(g) - n);
-            return `<div class="pt-game pt-chan ch-${g.id} ${on ? "on" : ""}" data-queue="${g.id}" role="button" tabindex="0" style="--i:${i}" aria-label="${esc(g.title)}${need ? `, needs ${need} more` : ""}">
-              <div class="pt-chan-art" aria-hidden="true">${CHANNEL_ART[g.id] ?? ""}</div>
-              <b>${esc(g.title)}${on ? ' <em>✓ up next</em>' : ""}</b>
-              <small>${minFor(g)}+ · ${esc(g.length ?? "")}</small>
-            </div>`;
-          }).join("")}</div>
-          ${sel ? `<div class="pt-chan-info"><b>${esc(sel.title)}</b><span>${esc(sel.blurb)}</span>${Math.max(0, minFor(sel) - n) ? `<small>needs ${Math.max(0, minFor(sel) - n)} more to start</small>` : ""}${optsHtml}</div>`
-            : `<div class="pt-chan-info empty">tap a channel to put it up next</div>`}
-          ${settingsHtml}</div>
-        <div class="pt-picker-foot">
-          ${c.queue ? `<button type="button" class="y-btn small dim" id="pt-unqueue">clear</button>` : ""}
-          <button type="button" class="y-btn small pink pt-go" id="pt-picker-done">${c.queue ? "done" : "close"}</button>
-        </div>
+    el.innerHTML = `<div class="pt-picker-sheet pv-sheet">
+        <div class="pt-picker-head"><b>${isHost ? "Game votes" : "Vote for the next game"}</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
+        <p class="pv-sub">Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET} · ${isHost ? `${total} vote${total === 1 ? "" : "s"} so far · tap a game to start it` : `one vote each — you can change it until ${esc(host)} starts a game`}</p>
+        <div id="pv-err" class="pv-err"></div>
+        <div class="pv-list">${rows}</div>
+        ${settingsHtml}
       </div>`;
-    if (!el.dataset.shown) { el.dataset.shown = "1"; popIn(el.querySelector(".pt-picker-sheet"), "wipe"); }
+    if (!el.dataset.shown) { el.dataset.shown = "1"; popIn(el.querySelector(".pt-picker-sheet"), "pop"); }
     const close = () => { this.pickerOpen = false; sfx.back(); this._renderPicker(); };
     $("pt-picker-x").onclick = close;
-    $("pt-picker-done").onclick = close;
     el.onclick = e => { if (e.target === el) close(); };          // tap the dimmed backdrop to close
-    const un = $("pt-unqueue"); if (un) un.onclick = () => this.clearQueue();
-    el.querySelectorAll("[data-queue]").forEach(card => card.onclick = e => {
-      if (e.target.closest("[data-opt]")) return;
-      sfx.cursor();
-      this.queue(card.dataset.queue);
-    });
-    el.querySelectorAll("[data-opt]").forEach(b => b.onclick = e => { e.stopPropagation(); this.setOption(b.dataset.opt, b.dataset.val); });
+    el.querySelectorAll("[data-vote]").forEach(r => r.onclick = () => this.vote(r.dataset.vote));
+    el.querySelectorAll("[data-game]").forEach(r => r.onclick = e => { if (e.target.closest("[data-opt]")) return; this.startGame(r.dataset.game); });
+    el.querySelectorAll("[data-opt]").forEach(b => b.onclick = e => { e.stopPropagation(); this.gameOption(b.dataset.for, b.dataset.opt, b.dataset.val); });
+    const sh = $("pv-settings-h"); if (sh) sh.onclick = () => { this.settingsOpen = !this.settingsOpen; sfx.cursor(); this._renderPicker(); };
     el.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
       const k = b.dataset.set, v = b.dataset.val;
       this.setSetting(k, k === "adult" ? v === "1" : v);
     });
   },
 
-  // walked up to the TV: the host gets the game picker
+  // walked up to the TV: the same game list as the vote button
   _onTV() {
-    const c = this.current; if (!c || c.launched) return;
-    if (c.room.isHost) { this.pickerOpen = true; sfx.open(); this._renderPicker(); return; }
-    const host = c.room.presence[c.room.hostId]?.handle ?? "the host";
-    c.lobby?.say(this.me.id, `${host} picks the games`);
+    const c = this.current; if (!c || c.launched || c.set.done) return;
+    this.pickerOpen = true; sfx.open(); this._renderPicker();
   },
 
   // tapped someone in the room

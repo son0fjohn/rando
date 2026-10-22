@@ -76,6 +76,8 @@ const shot = async (pg, name) => { if (SHOTS) await pg.screenshot({ path: join(S
 const text = (pg, sel) => pg.locator(sel).first().innerText().catch(() => "");
 const until = async (pg, fn, arg, ms = 15000) => pg.waitForFunction(fn, arg, { timeout: ms }).then(() => true).catch(() => false);
 const stageTitle = pg => text(pg, "#game-panel .stage h2, #game-panel .hp-res-title");
+// the host starts a game from the votes list
+const startGame = async (pg, id) => { await pg.click("#pt-vote"); await pg.click(`[data-game="${id}"]`); };
 // the host taps "skip ahead" until `done(title)` holds on `watch`
 async function skipUntil(host, watch, done, tries = 12) {
   for (let i = 0; i < tries; i++) {
@@ -107,31 +109,40 @@ try {
   ok(await until(A, () => document.querySelectorAll(".lr-av").length === 2), "the host sees them arrive in the room");
   ok(await until(B, () => document.getElementById("pt-title")?.textContent === "Saturday night"), "the joiner gets the party name from the host");
 
-  // ------------------------------------------------------------------ queue with too few
-  head("Lobby: host queues a game before the room is full");
-  await A.click("#pt-open-picker");
-  ok(await A.locator("#pt-picker").isVisible(), "the host opens the game picker");
-  ok(!(await B.locator("#pt-open-picker").count()), "guests don't get a picker");
-  await A.click('[data-queue="mission"]');
-  ok(await until(A, () => /up next/.test(document.querySelector('[data-queue="mission"]')?.textContent ?? "")), "tapping a game queues it");
-  await A.click('[data-opt="mode"][data-val="choose"]');
+  // ------------------------------------------------------------------ voting with too few
+  head("Lobby: players vote for the next game, the host sees the votes");
+  ok(await until(B, () => /Vote next game/.test(document.getElementById("pt-vote")?.textContent ?? "")) && /Game votes/.test(await text(A, "#pt-vote")), "players get 'Vote next game', the host gets 'Game votes'");
+  ok(!(await A.locator("#navbar:visible").count()) && !(await B.locator("#navbar:visible").count()), "no navigation bar in the lobby");
+  await B.click("#pt-vote");
+  ok(await B.locator("#pt-picker").isVisible() && /Vote for the next game/.test(await text(B, ".pt-picker-head")), "a player opens the game list to vote");
+  await B.click('[data-vote="mission"]');
+  ok(await until(B, () => document.querySelector('[data-vote="mission"]')?.classList.contains("mine")), "their vote is marked");
+  await A.click("#pt-vote");
+  ok(await A.locator("#pt-picker").isVisible() && /Game votes/.test(await text(A, ".pt-picker-head")), "the host opens 'Game votes'");
+  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "mission" && /^1/.test(document.querySelector('[data-game="mission"] .pv-n')?.textContent ?? "")), "the host sees the vote live, most votes first");
+  await B.click('[data-vote="ritual"]');
+  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "ritual" && /^0/.test(document.querySelector('[data-game="mission"] .pv-n')?.textContent ?? "")), "a player can change their vote: one vote each, the tally follows");
+  await A.click('[data-opt="mode"][data-val="choose"][data-for="mission"]');
+  ok(await until(A, () => document.querySelector('[data-opt="mode"][data-val="choose"][data-for="mission"]')?.classList.contains("on")), "the host sets a game's options right in the list");
+  await A.click('[data-game="mission"]');
+  ok(await until(A, () => /needs 1 more/i.test(document.getElementById("pv-err")?.textContent ?? "")) && !(await A.evaluate(() => window.party.current.launched)), "starting waits for the minimum: 'needs 1 more'");
   await sleep(300);
-  await shot(A, "01-host-picker");
+  await shot(A, "01-host-votes");
+  await shot(B, "01b-player-vote");
   await A.click("#pt-picker-x");
-  ok(await A.locator("#pt-picker").isHidden(), "the host closes the picker");
-  ok(/needs 1 more/i.test(await text(A, "#pt-start")), "start waits for the minimum: 'needs 1 more'");
-  ok(await until(B, () => /Today's Mission/.test(document.getElementById("pt-next")?.textContent) && /players choose/.test(document.getElementById("pt-next")?.textContent)), "guests see what's up next, options included");
-  await A.click("#pt-open-picker");
-  ok(await A.locator("#pt-picker").isVisible(), "the host can reopen it");
-  await A.locator("#pt-picker").click({ position: { x: 20, y: 30 } });
-  ok(await A.locator("#pt-picker").isHidden(), "tapping the dimmed backdrop closes it too");
+  ok(await A.locator("#pt-picker").isHidden(), "the host closes the list");
+  await B.locator("#pt-picker").click({ position: { x: 20, y: 30 } });
+  ok(await B.locator("#pt-picker").isHidden(), "tapping the dimmed backdrop closes it too");
+  ok(await until(B, () => /you voted Humiliation Ritual/.test(document.getElementById("pt-next")?.textContent ?? "")), "the player's status line shows their vote");
 
   const C = await phone("cy");
   await C.click("#party-btn");
   await C.fill("#pt-code", code);
   await C.press("#pt-code", "Enter");
   ok(await until(C, () => document.querySelectorAll(".lr-av").length === 3, null, 20000), "a third friend joins by typing the code");
-  ok(await until(A, () => /start/.test(document.getElementById("pt-start")?.textContent) && !document.getElementById("pt-start")?.disabled), "with 3 players, start unlocks");
+  await A.click("#pt-vote");
+  ok(await until(A, () => !document.querySelector('[data-game="mission"]')?.classList.contains("short")), "with 3 players, every 3+ game can start");
+  await A.click("#pt-picker-x");
 
   // ------------------------------------------------------------------ walk + chat
   head("Lobby: walking around and talking");
@@ -161,7 +172,7 @@ try {
 
   // ------------------------------------------------------------------ Today's Mission, players choose
   head("Today's Mission — players choose, rated 0-10");
-  await A.click("#pt-start");
+  await startGame(A, "mission");
   ok(await until(B, () => !document.getElementById("game-layer").hidden && /pick your mission/.test(document.querySelector("#game-panel h2")?.textContent)), "everyone lands on 'pick your mission'");
   ok(await A.locator("#party-panel").isHidden(), "the lobby steps aside during the game");
   await shot(B, "04-mission-pick");
@@ -187,17 +198,12 @@ try {
   await shot(A, "07-mission-results");
   await A.locator("#hp-skip").first().click().catch(() => {});
   ok(await until(B, () => !document.getElementById("party-panel").hidden && document.querySelectorAll(".lr-av").length === 3, null, 15000), "everyone is back in the walkable lobby");
-  ok(await until(B, () => /Today's Mission/.test(document.getElementById("pt-next")?.textContent ?? "")), "the queue survives, ready to run again or change");
-  ok(await until(B, () => /Game 2 of 3/.test(document.getElementById("pt-next")?.textContent ?? "") && /game 2 of 3/i.test(document.getElementById("pt-board")?.textContent ?? "")), "the party moves on to game 2 of 3, on the dialog and the room's board");
-  ok(await until(B, () => document.querySelectorAll("#pt-board .pb-row").length === 3 && [...document.querySelectorAll("#pt-board .pb-pts")].some(e => +e.textContent > 0)), "the room's high-score board has everyone, with party points");
-  await shot(B, "07b-room-board");
+  ok(await until(B, () => /Game 2 of 3/.test(document.getElementById("pt-next")?.textContent ?? "") && /Vote next game/.test(document.getElementById("pt-vote")?.textContent ?? "")), "the party moves on to game 2 of 3, and the votes start over");
+  ok(!(await B.locator("#pt-board:visible, .pt-board:visible").count()), "no high-score board in the room");
 
   // ------------------------------------------------------------------ Humiliation Ritual
   head("Humiliation Ritual — charades: guesses feed the performer, who taps the right one");
-  await A.click("#pt-open-picker");
-  await A.click('[data-queue="ritual"]');
-  await A.click("#pt-picker-done");
-  await A.click("#pt-start");
+  await startGame(A, "ritual");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");
   let performer = null;
   for (let i = 0; i < 10 && !performer; i++) {
@@ -223,13 +229,15 @@ try {
     await performer.locator("#hr-feed .hr-g.match").click();
     ok(await until(guessers[0], () => /got it/.test(document.querySelector("#game-panel h2")?.textContent ?? "") && !!document.querySelector(".hr-reveal")), "the performer's tap ends the turn; the answer is revealed big");
   }
+  ok(await A.evaluate(() => !document.getElementById("party-panel").hidden && document.getElementById("party-panel").classList.contains("pt-behind")), "the ritual is played over the party room (dimmed), not the map");
   ok(await skipUntil(A, A, t => /Humiliation Ritual/.test(t), 25), "the ritual plays through to results");
   await A.locator("#hp-skip").first().click().catch(() => {});
-  ok(await until(A, () => !document.getElementById("party-panel").hidden, null, 15000), "back to the lobby");
+  ok(await until(A, () => document.getElementById("game-layer").hidden && !document.getElementById("party-panel").classList.contains("pt-behind"), null, 15000), "back to the lobby");
 
   // ------------------------------------------------------------------ Secret Diary
   head("Party settings: 18+ gate and Secret Diary max level");
-  await A.click("#pt-open-picker");
+  await A.click("#pt-vote");
+  await A.click("#pv-settings-h");
   await A.locator(".pt-settings").scrollIntoViewIfNeeded();
   ok(await A.locator('[data-set="diaryMax"][data-val="unhinged"]').isDisabled(), "unhinged is locked until the party is 18+");
   ok(/default/.test(await text(A, '[data-set="diaryMax"].on')) && /spicy/.test(await text(A, '[data-set="diaryMax"].on')), "a private party defaults to spicy, marked (default)");
@@ -240,12 +248,10 @@ try {
   ok(/18 or older/.test(asked ?? ""), "turning on 18+ asks the host to confirm everyone's an adult");
   ok(await until(A, () => !document.querySelector('[data-set="diaryMax"][data-val="unhinged"]')?.disabled), "unhinged unlocks");
   await A.click('[data-set="diaryMax"][data-val="unhinged"]');
-  await A.click('[data-queue="secretdiary"]');
-  await A.click("#pt-picker-done");
-  ok(await until(B, () => /Secret Diary/.test(document.getElementById("pt-next")?.textContent) && /up to unhinged/.test(document.getElementById("pt-next")?.textContent)), "guests see the queued game and its level");
+  ok(await until(A, () => document.querySelector('[data-set="diaryMax"][data-val="unhinged"]')?.classList.contains("on")), "the host sets the Secret Diary max level");
 
   head("Secret Diary — deal, answer the batch, reveal one by one (3 phones; diary_e2e.mjs plays it with 5)");
-  await A.click("#pt-start");
+  await A.click('[data-game="secretdiary"]');
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "the host is dealt a batch of 5, with Swap");
   ok(await until(B, () => /is picking/.test(document.querySelector(".sd-incoming")?.textContent ?? "")), "everyone else waits while the host picks");
   await shot(A, "11-diary-deal");
@@ -321,10 +327,10 @@ try {
   await sleep(1200);
   await shot(B, "18b-podium");
   await A.click("#pp-again");
-  ok((await Promise.all([A, B].map(pg => until(pg, () => !document.getElementById("pp") && /game 1 of 3/i.test(document.getElementById("pt-board")?.textContent ?? ""))))).every(Boolean), "a new set starts: game 1 of 3, the podium closes for everyone");
+  ok((await Promise.all([A, B].map(pg => until(pg, () => !document.getElementById("pp") && /Game 1 of 3/.test(document.getElementById("pt-next")?.textContent ?? ""))))).every(Boolean), "a new set starts: game 1 of 3, the podium closes for everyone");
 
   head("Art Gallery — the dealer unveils the titles on wall plaques");
-  await A.click("#pt-open-picker"); await A.click('[data-queue="artgallery"]'); await A.click("#pt-picker-done"); await A.click("#pt-start");
+  await startGame(A, "artgallery");
   ok(await until(B, () => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "everyone fills 3 frames");
   for (const [k, pg] of [A, B, C].entries()) for (let i = 0; i < 3; i++) {
     await until(pg, () => !!document.getElementById("ag-file"));

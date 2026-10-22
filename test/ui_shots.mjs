@@ -122,20 +122,21 @@ try {
     const g = A.locator("#pt-settings-btn");
     if (await g.count()) { await g.click(); await sleep(500); await shot(A, "05-settings", "settings (sound, party settings)"); await A.click("#ui-settings-x").catch(() => {}); await sleep(300); }
   });
-  await A.click("#pt-open-picker");
+  await B.click("#pt-vote");
+  await sleep(500);
+  await B.click('[data-vote="secretdiary"]');
+  await sleep(600);
+  await shot(B, "06-vote", "a player votes for the next game");
+  await B.click("#pt-picker-x");
+  await A.click("#pt-vote");
   await sleep(700);
-  await shot(A, "06-picker", "game picker");
-  await A.click('[data-queue="secretdiary"]');
-  await sleep(900);
-  await shot(A, "07-picker-selected", "Secret Diary selected in the picker");
+  await shot(A, "07-game-votes", "the host's game votes, most votes first");
   await step("party settings", async () => {
+    await A.click("#pv-settings-h");
     const s = A.locator(".pt-settings");
     if (await s.count()) { await s.scrollIntoViewIfNeeded(); await sleep(300); await shot(A, "08-party-settings", "party settings (18+, diary max level)"); }
   });
-  await A.click("#pt-picker-done");
-  await sleep(500);
-  await shot(A, "09-lobby-up-next", "lobby with Secret Diary up next");
-  await A.click("#pt-start");
+  await A.click('[data-game="secretdiary"]');
   await until(A, () => document.querySelectorAll(".sd-card").length >= 3);
   await sleep(700);
   await shot(A, "10-sd-deal-host", "Secret Diary: the host's deal");
