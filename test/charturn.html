@@ -9,7 +9,7 @@
      through its idle clip as it turns), the Style screen and a face
      close-up (the static build and lights the Style screen uses) — for a
      few hairstyles. node test/charturn_shots.mjs screenshots it.
-     ?hair=f2,f5,m1  ?angles=8 -->
+     ?hair=f2,f3,m1  ?angles=8  ?scale=2  ?only=close-up -->
 <base href="/web/">
 <script type="importmap">
 { "imports": {
@@ -36,14 +36,20 @@
 import * as THREE from "https://esm.sh/three@0.160.0";
 import * as A from "/web/avatar3.js";
 const q = new URLSearchParams(location.search);
-const HAIRS = (q.get("hair") ?? "f2,f5,m1").split(",");
+const HAIRS = (q.get("hair") ?? "f2,f3,m1").split(",");
 const N = +(q.get("angles") ?? 8);
-const LOOK = { skin: "2", hairColor: "brown", face: "f1", iris: "blue", top: "none", bottom: "none", shoes: "none" };
+const BIG = +(q.get("scale") ?? 1); // bigger cells for inspecting details
+const ONLY = q.get("only"); // e.g. only=close-up
+const LOOK = { skin: "2", hairColor: (q.get("hc") ?? "brown"), face: "f1", iris: "blue", top: "none", bottom: "none", shoes: "none" };
 const ZOOMS = [
   // name, builder, canvas w/h, fov, camera (dist, eyeY, lookY), lights
   { name: "map distance", cls: "map", anim: true, w: 120, h: 120, fov: 40, dist: 70, eye: 22, look: 7.5 },
   { name: "Style screen", cls: "style", anim: false, w: 150, h: 200, fov: 30, dist: 34, eye: 9, look: 7.2 },
   { name: "close-up", cls: "closeup", anim: false, w: 150, h: 150, fov: 30, dist: 13, eye: 12.6, look: 12.2 },
+  // live motion (tick(), so the attitude layers, blinks and nods run): 3/4 view over ~4 s
+  { name: "motion, idle", cls: "style", anim: true, motion: "idle", w: 150, h: 200, fov: 30, dist: 34, eye: 9, look: 7.2 },
+  { name: "motion, walk", cls: "style", anim: true, motion: "walk", w: 150, h: 200, fov: 30, dist: 34, eye: 9, look: 7.2 },
+  { name: "motion, walk, hoodie + cargo + sneakers", cls: "style", anim: true, motion: "walk", outfit: true, w: 150, h: 200, fov: 30, dist: 34, eye: 9, look: 7.2 },
   // the animated build up close, facing the camera, stepping through the idle clip: does the face follow the head?
   { name: "close-up, animated, idle clip at 0°", cls: "closeup", anim: true, still: true, w: 150, h: 150, fov: 30, dist: 13, eye: 12.6, look: 12.2 },
 ];
@@ -61,7 +67,9 @@ const info = document.getElementById("info");
 const notes = [];
 const OUTFIT_ZOOM = { name: "Style screen, hoodie + cargo + sneakers", cls: "style", anim: false, outfit: true, w: 150, h: 200, fov: 30, dist: 34, eye: 9, look: 7.2 };
 for (const hair of HAIRS) {
-  for (const z of [...ZOOMS, OUTFIT_ZOOM]) {
+  for (const z0 of [...ZOOMS, OUTFIT_ZOOM]) {
+    if (ONLY && !z0.name.startsWith(ONLY)) continue;
+    const z = { ...z0, w: z0.w * BIG, h: z0.h * BIG };
     const cfg = { ...LOOK, hair, ...(z.outfit ? OUTFIT : {}) };
     let ch;
     try { ch = await (z.anim ? A.makeAnimatedCharacter(cfg) : A.makeHumanCharacter(cfg)); await ch.ready; }
@@ -73,17 +81,24 @@ for (const hair of HAIRS) {
     scene.background = new THREE.Color(z.cls === "map" ? 0x6f8fb8 : 0x2a3160);
     const h = document.createElement("h3"); h.textContent = `hair ${hair} · ${z.name}${z.anim ? " (animated build, idle clip)" : " (static build)"}`;
     const row = document.createElement("div"); row.className = `row ${z.cls}`;
+    let tNow = 0;
     for (let i = 0; i < N; i++) {
       const ang = i / N * Math.PI * 2;
       ch.group.rotation.y = z.still ? 0 : ang;
-      if (z.anim && ch.pose) ch.pose("idle", i / N * (ch.clipLength("idle") || 1));
+      if (z.motion) {
+        // advance real time in 1/30 s ticks to this frame's moment
+        ch.group.rotation.y = +(q.get("rot") ?? 0.6);
+        ch.walking = z.motion === "walk";
+        const until = (i + 1) * (z.motion === "walk" ? 0.12 : 0.6);
+        while (tNow < until) { tNow += 1 / 30; ch.tick(tNow); }
+      } else if (z.anim && ch.pose) ch.pose("idle", i / N * (ch.clipLength("idle") || 1));
       renderer.render(scene, cam);
       const img = document.createElement("canvas"); img.width = z.w * 2; img.height = z.h * 2;
       img.style.width = `${z.w}px`; img.style.height = `${z.h}px`;
       img.getContext("2d").drawImage(renderer.domElement, 0, 0);
       const cell = document.createElement("div"); cell.className = "cell";
       cell.append(img);
-      const lab = document.createElement("small"); lab.textContent = z.still ? `idle ${Math.round(i / N * 100)}%` : `${Math.round(ang * 180 / Math.PI)}°`; cell.append(lab);
+      const lab = document.createElement("small"); lab.textContent = z.motion ? `${tNow.toFixed(2)}s` : z.still ? `idle ${Math.round(i / N * 100)}%` : `${Math.round(ang * 180 / Math.PI)}°`; cell.append(lab);
       row.append(cell);
     }
     grid.append(h, row);

@@ -66,6 +66,14 @@ export class Room {
     return this;
   }
 
+  // a new look mid-party: re-track presence (same join time, so the host
+  // election doesn't move); everyone's lobby rebuilds that sprite
+  async updateMe(patch) {
+    Object.assign(this.me, patch);
+    if (!this.ch || !this.alive) return;
+    await this.ch.track({ id: this.me.id, handle: this.me.handle, avatar: this.me.avatar, joined_at: this.joinedAt });
+  }
+
   leave() {
     this.alive = false;
     if (this.ch) { try { sb.removeChannel(this.ch); } catch {} }

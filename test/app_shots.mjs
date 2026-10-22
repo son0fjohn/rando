@@ -33,7 +33,7 @@ const LOOKS = {
   mina: { skin: "2", hair: "f1", hairColor: "brown", face: "f1", iris: "blue", top: "tee-baggy-black", bottom: "skirt-pleated-black", shoes: "clog-pink" },
   jae: { skin: "4", hair: "m3", hairColor: "white", face: "f5", iris: "navy", top: "tee-white-graphic", bottom: "jeans-baggy-blue", shoes: "sneaker-white-stripe" },
   sol: { skin: "1", hair: "f2", hairColor: "red", face: "f2", iris: "green", top: "none", bottom: "track-navy", shoes: "boot-work-tan" },
-  haru: { skin: "5", hair: "f4", hairColor: "yellow", face: "f6", iris: "blue", top: "tee-white-graphic", bottom: "shorts-green", shoes: "sneaker-white-lowtop" },
+  haru: { skin: "5", hair: "f3", hairColor: "yellow", face: "f6", iris: "blue", top: "tee-white-graphic", bottom: "shorts-green", shoes: "sneaker-white-lowtop" },
 };
 async function phone(name, qs = "") {
   const pg = await ctx.newPage();
@@ -58,7 +58,7 @@ async function shot(pg, name, note) {
 async function tap(pg, ...sels) {
   for (const s of sels) {
     const el = pg.locator(s).first();
-    if (await el.count() && await el.isVisible()) { await el.click(); return s; }
+    if (await el.count() && await el.isVisible()) { await el.click({ timeout: 120000 }); return s; } // software GL can stall the page for a while
   }
   throw new Error(`none of ${sels.join(", ")} is visible`);
 }
@@ -138,6 +138,8 @@ if (await A.locator("#style-screen").count()) {
   await shot(A, "06b-style-top", "style: the Top slot, a new top on, the character updates");
 }
 await A.evaluate(() => { const x = document.querySelector("#style-close"); if (x) x.click(); else document.getElementById("outfit-sheet").hidden = true; });
+await sleep(400);
+await A.evaluate(() => document.querySelector('#ss-ask:not([hidden]) [data-ask="discard"]')?.click()); // tried a top on: leave without saving
 await sleep(600);
 
 // host a party
