@@ -558,7 +558,7 @@ export const party = {
       <div class="pt-tiles two" id="pt-priv">
         <button type="button" class="pt-tile ${f.privacy !== "public" ? "on" : ""}" data-priv="private"><i aria-hidden="true">✉</i>invite only<small>code or link</small></button>
         <button type="button" class="pt-tile ${f.privacy === "public" ? "on" : ""}" data-priv="public"><i aria-hidden="true">⌂</i>public<small>a house on the map</small></button></div>` : ""}
-      <button id="pt-create" class="y-btn pink pt-big" type="button">throw the party &#9654;</button>
+      <button id="pt-create" class="y-btn host pt-big" type="button">throw the party &#9654;</button>
       <div id="pt-err" class="pt-err"></div>
       ${FLAGS.PUBLIC_PARTIES ? `<div class="pt-sep"><span>parties nearby</span></div><div id="pt-list"></div>` : ""}
       <div class="pt-sep"><span>got an invite code?</span></div>
@@ -588,7 +588,7 @@ export const party = {
       <div class="pt-bottom">
         <div id="pt-next" class="pt-next"></div>
         <div id="pt-err" class="pt-err"></div>
-        <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="Say something&hellip;" autocomplete="off"><button type="submit" aria-label="send">&#8593;</button><button type="button" id="pt-vote" class="y-btn small pink pt-vote"></button></form>
+        <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="Say something&hellip;" autocomplete="off"><button type="submit" aria-label="send">&#8593;</button><button type="button" id="pt-vote" class="y-btn small host pt-vote"></button></form>
       </div>
       <div id="pt-picker" class="pt-picker" hidden></div>`;
   },

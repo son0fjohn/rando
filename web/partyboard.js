@@ -79,7 +79,7 @@ export function showPodium(host, set, rows, { me, avatars = {}, isHost = false, 
     </div>
     <div class="pp-coins" id="pp-coins" hidden></div>
     <div class="pp-btns">${isHost
-      ? `<button type="button" class="y-btn dim" id="pp-end">end the party</button><button type="button" class="y-btn pink" id="pp-again">new set of ${PARTY.GAMES_PER_SET} ▶</button>`
+      ? `<button type="button" class="y-btn dim" id="pp-end">end the party</button><button type="button" class="y-btn host" id="pp-again">new set of ${PARTY.GAMES_PER_SET} ▶</button>`
       : `<p class="pp-wait">the host picks: another set, or the end of the party</p>`}</div>`;
   host.appendChild(wrap);
   wrap.querySelectorAll("[data-id]").forEach(el => {

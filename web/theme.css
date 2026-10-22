@@ -701,6 +701,8 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .y-btn:active:not(:disabled) { transform: scale(.97); box-shadow: none; }
 .y-btn:disabled { filter: none; opacity: .45; }
 .y-btn.pink { background: #ff5d8a; color: #fff; }
+/* hosting a party (throw it, game votes, a new set): the nav's Host gold */
+.y-btn.host { background: var(--nav-gold); color: var(--nav-bg); }
 .y-btn.gold { background: #ffc84d; color: #2a1d00; }
 .y-btn.lime { background: #7dff5e; color: #0b2a07; }
 .y-btn.dim { background: rgba(255,255,255,.12); color: #fff; border: 1px solid var(--g-line); box-shadow: none; }
@@ -737,7 +739,7 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .pt-sep::before, .pt-sep::after { height: 1px; background: var(--g-line); }
 .pt-codein { font: 700 20px/28px var(--f-sys); letter-spacing: .4em; }
 .pt-menu .rl-row { border-top: 1px solid var(--g-line); }
-.pt-menu .rl-row button { border-radius: 999px; clip-path: none; font: 600 13px/16px var(--f-sys); background: #ff5d8a; color: #fff; }
+.pt-menu .rl-row button { border-radius: 999px; clip-path: none; font: 600 13px/16px var(--f-sys); background: var(--nav-gold); color: var(--nav-bg); }
 /* the party room screen */
 #party-panel.pt-lobby { background: #0b1022; }
 .pt-top, .pt-bottom { background: var(--g-bg-strong); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); border: none; }
