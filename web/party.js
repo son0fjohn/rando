@@ -494,9 +494,17 @@ export const party = {
     const c = this.current, shown = !$("party-panel").hidden;
     world3d.setPaused?.(!!c && (c.launched || shown));
     // the map's bar and chat stay out of the party room (and its games);
-    // the Host tab is lit while the host-a-party menu is open
+    // the Host tab is lit while the host-a-party menu is open, and while
+    // you're in a party it's "My party" (its gold ring filled): it goes back
+    // to the room
     document.body.classList.toggle("in-lobby", !!c && (c.launched || shown));
-    document.getElementById("nav-host")?.classList.toggle("on", !c && shown);
+    const host = document.getElementById("nav-host");
+    if (host) {
+      host.classList.toggle("on", !c && shown);
+      host.classList.toggle("hosting", !!c);
+      host.querySelector(".nav-lbl").textContent = c ? "My party" : "Host";
+      host.setAttribute("aria-label", c ? "Back to my party" : "Host a party");
+    }
   },
 
   // ---------------------------------------------------------------- UI

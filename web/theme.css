@@ -212,22 +212,39 @@
 /* ===================================================================== */
 /* the map: bottom bar, explore, style, NPC dialog, party beacons          */
 /* The bottom bar (map only): full-width deep navy, through the home-indicator
-   area. The map's bottom corners are rounded over it, so the bar looks tucked
-   under the map: two navy corner pieces with a quarter-circle cut out sit just
-   above the bar (the map itself keeps drawing full screen underneath). */
-:root { --nav-h: 58px; --nav-r: 28px; --nav-bg: #0F1A3A; --nav-off: #3D4E7A; --nav-on: #ffffff; }
+   area. The map meets it with a straight edge. */
+:root { --nav-h: 58px; --nav-bg: #0F1A3A; --nav-off: #3D4E7A; --nav-on: #ffffff; --nav-gold: #FFC83D; }
 #navbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 130; display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch;
   height: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding: 0 8px env(safe-area-inset-bottom); box-sizing: border-box; background: var(--nav-bg);
   touch-action: none; -webkit-user-select: none; user-select: none; }
 #navbar[hidden] { display: none; }
-#navbar::before, #navbar::after { content: ""; position: absolute; bottom: 100%; width: var(--nav-r); height: var(--nav-r); pointer-events: none; }
-#navbar::before { left: 0; background: radial-gradient(circle at 100% 0, transparent calc(var(--nav-r) - .5px), var(--nav-bg) var(--nav-r)); }
-#navbar::after { right: 0; background: radial-gradient(circle at 0 0, transparent calc(var(--nav-r) - .5px), var(--nav-bg) var(--nav-r)); }
 .nav-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 0 4px; margin: 0; border: none; background: none;
   color: var(--nav-off); cursor: pointer; -webkit-tap-highlight-color: transparent; font: 600 11px/13px var(--f-sys); transition: color var(--y-fast); }
 .nav-tab svg { width: 26px; height: 26px; display: block; fill: currentColor; }
 .nav-tab.on { color: var(--nav-on); }
 .nav-tab:active svg { transform: scale(.92); }
+/* Host: the beacon's house in a thin gold ring with a soft breathing glow and
+   three tiny roof lights. It takes the other icons' 26px of layout (negative
+   margins), so the labels line up and the ring stays inside the bar. Tapping
+   fills it with a sparkle; while you're in a party it stays filled. */
+.nav-ring { position: relative; width: 34px; height: 34px; margin: -4px 0; box-sizing: border-box; border: 2px solid var(--nav-gold); border-radius: 50%;
+  display: grid; place-items: center; color: #fff; animation: nav-glow 3s ease-in-out infinite; }
+.nav-tab .nav-ring svg { width: 20px; height: 18px; fill: currentColor; shape-rendering: crispEdges; }
+.nav-ring .nh-win { fill: var(--nav-gold); } .nav-ring .nh-door { fill: var(--nav-bg); }
+.nav-ring i { position: absolute; top: 11px; width: 2px; height: 2px; border-radius: 50%; background: #fff3b0; opacity: .2; animation: nav-blink 2.4s steps(1) infinite; }
+.nav-ring i:nth-of-type(1) { left: 8.5px; }
+.nav-ring i:nth-of-type(2) { left: 14px; top: 6px; animation-delay: .8s; }
+.nav-ring i:nth-of-type(3) { left: 19.5px; animation-delay: 1.6s; }
+@keyframes nav-glow { 0%, 100% { box-shadow: 0 0 3px rgba(255, 200, 61, .18); } 50% { box-shadow: 0 0 11px 1px rgba(255, 200, 61, .5); } }
+@keyframes nav-blink { 0%, 60% { opacity: .2; } 61%, 100% { opacity: .95; } }
+#nav-host.tap .nav-ring, #nav-host.hosting .nav-ring { background: var(--nav-gold); color: var(--nav-bg); }
+#nav-host.tap .nav-ring .nh-win, #nav-host.hosting .nav-ring .nh-win { fill: #fff3b0; }
+#nav-host.tap .nav-ring .nh-door, #nav-host.hosting .nav-ring .nh-door { fill: var(--nav-gold); }
+#nav-host.hosting { color: var(--nav-on); }
+.nav-spark { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--nav-gold); pointer-events: none;
+  box-shadow: 0 0 4px var(--nav-gold); animation: nav-spark .55s ease-out forwards; }
+@keyframes nav-spark { from { transform: rotate(var(--a)) translateY(-14px); opacity: 1; } to { transform: rotate(var(--a)) translateY(-27px) scale(.3); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .nav-ring, .nav-ring i { animation: none; } .nav-ring i { opacity: .6; } .nav-spark { display: none; } }
 /* pull-to-refresh spinner, above the bar */
 #nav-refresh { position: absolute; left: 50%; top: -34px; z-index: 3; width: 26px; height: 26px; margin-left: -13px; opacity: calc(var(--pull, 0) * 1); pointer-events: none;
   transform: translateY(calc(var(--pull, 0) * -8px)) rotate(calc(var(--pull, 0) * 270deg)); }
@@ -235,7 +252,7 @@
 #nav-refresh.spinning { opacity: 1; transform: translateY(-8px); }
 #nav-refresh.spinning i { animation: nav-spin .7s linear infinite; }
 @keyframes nav-spin { to { transform: rotate(360deg); } }
-#nav-backtome { position: absolute; right: 12px; bottom: calc(var(--nav-h) + var(--nav-r) + 56px + env(safe-area-inset-bottom)); z-index: 125; }
+#nav-backtome { position: absolute; right: 12px; bottom: calc(var(--nav-h) + 84px + env(safe-area-inset-bottom)); z-index: 125; }
 #nav-backtome[hidden] { display: none; }
 /* chat sits just above the bar, translucent */
 #pubchat { bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom)); }

@@ -1696,10 +1696,20 @@ const nav = {
     sfx.ping();
   },
 };
-document.getElementById("nav-host").addEventListener("click", () => {
+// Host: the gold ring fills with a little sparkle burst, then the host flow
+// (or, while you're in a party, back to its room) opens
+document.getElementById("nav-host").addEventListener("click", e => {
   if (nav.swallow()) return;
+  const btn = e.currentTarget, ring = btn.querySelector(".nav-ring");
+  if (btn.classList.contains("tap")) return;
   sfx.confirm();
-  party.togglePanel(true);
+  btn.classList.add("tap");
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!calm) for (let i = 0; i < 8; i++) {
+    const s = document.createElement("b"); s.className = "nav-spark"; s.style.setProperty("--a", `${i * 45}deg`);
+    ring.appendChild(s); setTimeout(() => s.remove(), 600);
+  }
+  setTimeout(() => { btn.classList.remove("tap"); party.togglePanel(true); }, calm ? 120 : 280);
 });
 {
   let y0 = null, pulled = 0;
