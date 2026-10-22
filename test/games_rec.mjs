@@ -4,10 +4,12 @@
 //              turn (timer, Done, star votes, points) and a Give-up turn
 //   ritual     3 phones: one full charades turn — the performer's prompt and
 //              live guess feed, a guesser typing, the performer tapping it
+//   maskoff    4 phones: two Mask Off turns — the pick, the truth card, the
+//              room rating honesty, the mask reveal (MASK OFF, then MASK ON)
 //   party      4 phones: a full set of 3 games (skipped through) ending on the
 //              podium with coins, then a shop purchase in the real app
 //
-//   node test/games_rec.mjs <dir> [sidequest|ritual|party ...]
+//   node test/games_rec.mjs <dir> [sidequest|ritual|maskoff|party ...]
 // Every phone is screencast; with FFMPEG=/path/to/ffmpeg each scene is also
 // written as <dir>/<scene>.mp4, the phones side by side on one timeline.
 import { mkdir, writeFile } from "node:fs/promises";
@@ -18,11 +20,11 @@ import { chromium } from "playwright";
 import { serve } from "./appserve.mjs";
 
 const args = process.argv.slice(2);
-const OUT = args.find(a => !a.startsWith("--") && !["sidequest", "ritual", "party"].includes(a));
+const OUT = args.find(a => !a.startsWith("--") && !["sidequest", "ritual", "maskoff", "party"].includes(a));
 if (!OUT) { console.error("usage: node test/games_rec.mjs <dir> [sidequest|ritual|party ...]"); process.exit(2); }
 const WIZARD = process.env.WIZARD ? `&wizard=${process.env.WIZARD}` : "";   // WIZARD=dealer: the 3D wizard on the dealer's rig
-const SCENES = args.filter(a => ["sidequest", "ritual", "party"].includes(a));
-if (!SCENES.length) SCENES.push("sidequest", "ritual", "party");
+const SCENES = args.filter(a => ["sidequest", "ritual", "maskoff", "party"].includes(a));
+if (!SCENES.length) SCENES.push("sidequest", "ritual", "maskoff", "party");
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve({ realAvatars: true });
 const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
@@ -123,8 +125,11 @@ const stateOn = pg => pg.evaluate(() => { const s = window.__game?.s; return s ?
 const phaseIs = (pg, ph, ms = 30000) => until(pg, ph => window.__game?.s?.phase === ph, ph, ms);
 async function queue(host, game) {
   await host.click("#pt-vote");
-  await sleep(700);
-  await host.click(`[data-game="${game}"] .pv-t > b`);
+  const title = host.locator(`[data-game="${game}"] .pv-t > b`);
+  await title.waitFor({ state: "visible" });
+  await sleep(700);                                       // the sheet slides up
+  await title.scrollIntoViewIfNeeded().catch(() => {});
+  await title.click({ timeout: 10000 }).catch(() => title.evaluate(b => b.click()));
 }
 const skip = pg => pg.locator("#hp-skip").first().click().catch(() => {});
 const backInRoom = pg => until(pg, () => !document.getElementById("party-panel").hidden, null, 40000);
@@ -173,6 +178,103 @@ async function sidequest() {
   await P.ctx.close();
 }
 
+// ---------------------------------------------------------------- Mask Off
+// two full turns on 4 phones: the pick, the card flipping up, the room rating
+// (one turn honest -> MASK OFF, one fake -> MASK ON), the reveal, the points
+async function maskoff() {
+  log("\nMask Off");
+  const P = await phones(["alice", "bob", "cy", "dee"]);
+  const casts = await Promise.all(P.list.map(screencast));
+  const A = P.host;
+  await sleep(1500);
+  await queue(A, "mask_off");
+  const snaps = [];
+  // three turns, one of each verdict: 4–5 MASK OFF, 3 SUS, 1–2 MASK ON
+  for (const [turn, stars] of [[1, [5, 4, 5]], [2, [3, 3, 4]], [3, [1, 2, 2]]]) {
+    await phaseIs(A, "talk", 30000);
+    const s = await stateOn(A);
+    const who = P.list.find(pg => idOf(pg) === s.turn.who);
+    log(`  turn ${turn}: ${who.label} — level ${s.turn.card.level}: ${s.turn.card.text}`);
+    await sleep(3500);                                   // they answer out loud
+    const raters = P.list.filter(pg => pg !== who);
+    if (turn === 1) await raters[0].screenshot({ path: join(OUT, "maskoff-1-card-rater.png") }), await who.screenshot({ path: join(OUT, "maskoff-2-card-answering.png") });
+    for (const [k, pg] of raters.entries()) { await pg.locator(`[data-honest="${stars[k]}"]`).click(); await sleep(1200); }
+    if (turn === 1) await raters[0].screenshot({ path: join(OUT, "maskoff-3-rated.png") });
+    await phaseIs(A, "reveal", 10000);
+    const snap = snapReveal(who);
+    await sleep(2600);                                   // the verdict plays out live
+    await who.screenshot({ path: join(OUT, `maskoff-${turn + 3}-reveal.png`) });
+    const r = (await stateOn(A)).turn;
+    log(`    ${r.status}: avg ${r.avg?.toFixed(2)} → ${r.verdict} +${r.pts}`);
+    snaps.push([`maskoff-reveal-${turn}`, await snap]);
+    await sleep(3000);
+  }
+  await writeScene("maskoff", casts);
+  await P.ctx.close();
+  for (const [name, snap] of snaps) await filmReveal(snap, name);
+}
+
+// The reveal is short and the software renderer drops frames, so it is also
+// filmed frame by frame: the moment the verdict lands on the performer's
+// phone, the verdict panel (its DOM, the sprite and the page's CSS) is copied;
+// after the scene the reveal is replayed in a light page of its own and
+// stepped at 15 fps. Same markup, same CSS; only the dimmed room is left out.
+async function snapReveal(pg) {
+  const verdict = await pg.waitForFunction(() => ["off", "sus", "on"].find(v => document.getElementById("mo-reveal")?.classList.contains(v)), null, { timeout: 15000 }).then(h => h.jsonValue());
+  const snap = await pg.evaluate(async () => {
+    const stage = document.querySelector(".stage"), face = stage.querySelector(".pb-face");
+    const clone = stage.cloneNode(true);
+    clone.querySelector("#mo-reveal").classList.remove("off", "sus", "on");
+    clone.querySelector("#mo-stamp")?.classList.remove("show");
+    clone.querySelector("#mo-pts")?.classList.remove("on");
+    const bg = face && getComputedStyle(face).backgroundImage.match(/url\("?(.*?)"?\)/)?.[1];
+    if (bg) {
+      const blob = await (await fetch(bg)).blob();
+      const data = await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(blob); });
+      clone.querySelector(".pb-face").style.backgroundImage = `url("${data}")`;
+    }
+    let html = clone.outerHTML;
+    for (let el = stage.parentElement; el && el !== document.body; el = el.parentElement)
+      html = `<${el.tagName.toLowerCase()} id="${el.id}" class="${el.className}" style="position:static;display:block">${html}</${el.tagName.toLowerCase()}>`;
+    const css = [...document.styleSheets].map(sh => { try { return [...sh.cssRules].map(r => r.cssText).join("\n"); } catch { return ""; } }).join("\n");
+    const r = stage.getBoundingClientRect();
+    return { html, css, body: document.body.className, w: innerWidth, avg: window.__game?.s?.turn?.avg ?? 0 };
+  });
+  return { ...snap, verdict };
+}
+async function filmReveal(snap, name) {
+  const verdict = snap.verdict;
+  const fctx = await browser.newContext({ deviceScaleFactor: 2 });
+  const film = await fctx.newPage();
+  await film.setViewportSize({ width: snap.w, height: 520 });
+  await film.setContent(`<!doctype html><html><head><style>${snap.css}</style></head><body class="${snap.body}" style="background:#0a0b1e;margin:0;padding-top:12px">${snap.html}</body></html>`);
+  await film.waitForTimeout(400);
+  const box = await film.locator(".stage").boundingBox();
+  const clip = { x: box.x, y: box.y, width: box.width, height: Math.min(box.height, 480) };
+  const FPS = 15, frames = [];
+  const shoot = async () => frames.push(await film.screenshot({ clip }));
+  // add a class to one element, hold its new animations at 0; then step them
+  const play = (cls, sel) => film.evaluate(([cls, sel]) => { const el = document.querySelector(sel); el.classList.add(cls); el.getAnimations({ subtree: true }).forEach(a => { a.pause(); a.currentTime = 0; }); }, [cls, sel]);
+  const at = (sel, ms) => film.evaluate(([sel, ms]) => document.querySelector(sel).getAnimations({ subtree: true }).forEach(a => { a.currentTime = ms; }), [sel, ms]);
+  // the score counts up alongside, as in the game (1.3 s), then the points pop
+  const count = ms => film.evaluate(([avg, ms]) => { const k = Math.min(1, ms / 1300); const av = document.getElementById("mo-avg"); if (av) av.textContent = (avg * k).toFixed(1); if (k >= 1) document.getElementById("mo-pts")?.classList.add("on"); }, [snap.avg, ms]);
+  await count(0);
+  for (let i = 0; i < 8; i++) await shoot();                           // the beat before
+  await play(verdict, "#mo-reveal");
+  for (let ms = 0; ms <= 1700; ms += 1000 / FPS) { await at("#mo-reveal", ms); await count(ms); await shoot(); }
+  await play("show", "#mo-stamp");
+  for (let ms = 0; ms <= 400; ms += 1000 / FPS) { await at("#mo-stamp", ms); await shoot(); }
+  for (let i = 0; i < 20; i++) await shoot();                          // hold on the verdict
+  await fctx.close();
+  const dir = join(OUT, name);
+  await mkdir(dir, { recursive: true });
+  for (let i = 0; i < frames.length; i++) await writeFile(join(dir, `f${String(i).padStart(4, "0")}.png`), frames[i]);
+  if (process.env.FFMPEG) execFileSync(process.env.FFMPEG, ["-y", "-loglevel", "error", "-framerate", String(FPS), "-i", join(dir, "f%04d.png"),
+    "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", join(OUT, `${name}-${verdict}.mp4`)]);
+  log(`    filmed the ${verdict} reveal (${frames.length} frames)`);
+  return verdict;
+}
+
 // ---------------------------------------------------------------- Humiliation Ritual
 async function ritual() {
   log("\nHumiliation Ritual");
@@ -211,7 +313,7 @@ async function partySet() {
   const casts = [await screencast(P.host), await screencast(P.pages.bob)];
   const A = P.host;
   await sleep(2500);
-  for (const game of (process.env.DEBUG_REC === "1" ? ["mission"] : ["mission", "ritual", "sidequest"])) {
+  for (const game of (process.env.DEBUG_REC === "1" ? ["mask_off"] : ["mask_off", "ritual", "sidequest"])) {
     await queue(A, game);
     await until(A, () => !document.getElementById("game-layer").hidden);
     await sleep(2500);
@@ -221,13 +323,13 @@ async function partySet() {
       const s = await stateOn(A);
       if (!s || s.phase === "end") break;
       for (const pg of P.list) {
-        if (await pg.locator("#tm-lock").count()) await pg.click("#tm-lock").catch(() => {});
+        if (await pg.locator('[data-honest="4"]:not([disabled])').count()) await pg.locator('[data-honest="4"]').click().catch(() => {});
         if (await pg.locator('[data-star="4"]').count()) await pg.locator('[data-star="4"]').click().catch(() => {});
         if (game === "ritual" && s.phase === "act" && await pg.locator("#gp-in").count()) { await pg.fill("#gp-in", s.turn.prompt).catch(() => {}); await pg.press("#gp-in", "Enter").catch(() => {}); }
         if (await pg.locator("#hr-feed .hr-g.match").count()) await pg.locator("#hr-feed .hr-g.match").first().click().catch(() => {});
       }
       await sleep(1100);
-      if (["card", "prep", "wizard", "quest", "spin", "result"].includes(s.phase) || (s.phase === "do" && i % 3 === 2)) await skip(A);
+      if (["pick", "reveal", "prep", "wizard", "quest", "spin", "result"].includes(s.phase) || (["do", "talk"].includes(s.phase) && i % 3 === 2)) await skip(A);
     }
     await sleep(3000);
     await skip(A);
@@ -267,7 +369,7 @@ async function partySet() {
 }
 
 for (const s of SCENES) {
-  try { await ({ sidequest, ritual, party: partySet })[s](); }
+  try { await ({ sidequest, ritual, maskoff, party: partySet })[s](); }
   catch (e) { errors.push(`${s}: ${e.message}`); console.log(`  ✗ ${s}: ${e.message}`); }
 }
 if (errors.length) console.log("page errors:\n" + errors.slice(0, 20).join("\n"));

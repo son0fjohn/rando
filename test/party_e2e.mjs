@@ -115,16 +115,16 @@ try {
   ok(!(await A.locator("#navbar:visible").count()) && !(await B.locator("#navbar:visible").count()), "no navigation bar in the lobby");
   await B.click("#pt-vote");
   ok(await B.locator("#pt-picker").isVisible() && /Vote for the next game/.test(await text(B, ".pt-picker-head")), "a player opens the game list to vote");
-  await B.click('[data-vote="mission"]');
-  ok(await until(B, () => document.querySelector('[data-vote="mission"]')?.classList.contains("mine")), "their vote is marked");
+  await B.click('[data-vote="mask_off"]');
+  ok(await until(B, () => document.querySelector('[data-vote="mask_off"]')?.classList.contains("mine")), "their vote is marked");
   await A.click("#pt-vote");
   ok(await A.locator("#pt-picker").isVisible() && /Game votes/.test(await text(A, ".pt-picker-head")), "the host opens 'Game votes'");
-  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "mission" && /^1/.test(document.querySelector('[data-game="mission"] .pv-n')?.textContent ?? "")), "the host sees the vote live, most votes first");
+  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "mask_off" && /^1/.test(document.querySelector('[data-game="mask_off"] .pv-n')?.textContent ?? "")), "the host sees the vote live, most votes first");
   await B.click('[data-vote="ritual"]');
-  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "ritual" && /^0/.test(document.querySelector('[data-game="mission"] .pv-n')?.textContent ?? "")), "a player can change their vote: one vote each, the tally follows");
-  await A.click('[data-opt="mode"][data-val="choose"][data-for="mission"]');
-  ok(await until(A, () => document.querySelector('[data-opt="mode"][data-val="choose"][data-for="mission"]')?.classList.contains("on")), "the host sets a game's options right in the list");
-  await A.click('[data-game="mission"] .pv-t > b');
+  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "ritual" && /^0/.test(document.querySelector('[data-game="mask_off"] .pv-n')?.textContent ?? "")), "a player can change their vote: one vote each, the tally follows");
+  await A.click('[data-opt="rounds"][data-val="1"][data-for="mask_off"]');
+  ok(await until(A, () => document.querySelector('[data-opt="rounds"][data-val="1"][data-for="mask_off"]')?.classList.contains("on")), "the host sets a game's options right in the list (Mask Off: once each)");
+  await A.click('[data-game="mask_off"] .pv-t > b');
   ok(await until(A, () => /needs 1 more/i.test(document.getElementById("pv-err")?.textContent ?? "")) && !(await A.evaluate(() => window.party.current.launched)), "starting waits for the minimum: 'needs 1 more'");
   await sleep(300);
   await shot(A, "01-host-votes");
@@ -141,7 +141,7 @@ try {
   await C.press("#pt-code", "Enter");
   ok(await until(C, () => document.querySelectorAll(".lr-av").length === 3, null, 20000), "a third friend joins by typing the code");
   await A.click("#pt-vote");
-  ok(await until(A, () => !document.querySelector('[data-game="mission"]')?.classList.contains("short")), "with 3 players, every 3+ game can start");
+  ok(await until(A, () => !document.querySelector('[data-game="mask_off"]')?.classList.contains("short")), "with 3 players, every 3+ game can start");
   await A.click("#pt-picker-x");
 
   // ------------------------------------------------------------------ walk + chat
@@ -170,32 +170,43 @@ try {
   await shot(A, "02-lobby-host");
   await shot(B, "03-lobby-guest");
 
-  // ------------------------------------------------------------------ Today's Mission, players choose
-  head("Today's Mission — players choose, rated 0-10");
-  await startGame(A, "mission");
-  ok(await until(B, () => !document.getElementById("game-layer").hidden && /pick your mission/.test(document.querySelector("#game-panel h2")?.textContent)), "everyone lands on 'pick your mission'");
-  ok(await A.locator("#party-panel").isHidden(), "the lobby steps aside during the game");
-  await shot(B, "04-mission-pick");
-  for (const pg of [A, B, C]) await pg.locator("[data-pick]").nth(1).click();
-  ok(await until(A, () => /turn|your turn/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 10000), "once everyone picks, the first card comes up");
-  // get the first mission to its rating, find a phone that rates
-  let rater = null;
-  for (let i = 0; i < 6 && !rater; i++) {
-    for (const pg of [A, B, C]) if (await pg.locator("#tm-slider").count()) { rater = pg; break; }
-    if (!rater) { await A.locator("#hp-skip").first().click().catch(() => {}); await sleep(900); }
-  }
-  ok(!!rater, "the room reaches the rating screen");
-  if (rater) {
-    await rater.locator("#tm-slider").evaluate(e => { e.value = 8; e.dispatchEvent(new Event("input", { bubbles: true })); });
-    ok((await text(rater, "#tm-val")) === "8" && /nailed|got it/.test(await text(rater, "#tm-label")), "the slider shows the number and its label as you drag");
-    await shot(rater, "05-mission-rate");
-    await rater.click("#tm-lock");
-    ok(await until(rater, () => /you gave/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "locking in shows your rating");
-  }
-  ok(await skipUntil(A, A, t => /\/ 10|nobody rated/.test(t)), "the verdict shows the average out of 10");
-  await shot(A, "06-mission-verdict");
-  ok(await skipUntil(A, A, t => /Today's Mission/.test(t), 20), "missions play through to the results screen");
-  await shot(A, "07-mission-results");
+  // ------------------------------------------------------------------ Mask Off
+  head("Mask Off — a truth card, honesty rated 1-5, the mask reveal");
+  await startGame(A, "mask_off");
+  ok(await until(B, () => !document.getElementById("game-layer").hidden && !!document.querySelector("#mo-reel")), "everyone lands on the pick: whose mask comes off?");
+  ok(await A.evaluate(() => !document.getElementById("party-panel").hidden && document.getElementById("party-panel").classList.contains("pt-behind")), "it's played over the dimmed party room, not the map");
+  const mo = () => A.evaluate(() => window.__game?.s ?? null);
+  ok(await until(A, () => window.__game?.s?.phase === "talk", null, 15000), "the reel lands and the turn starts");
+  const { turn: t1, weights: w1 } = (await mo()) ?? {};
+  const ids = { "u-alice": A, "u-bob": B, "u-cy": C };
+  const perf = ids[t1?.who], raters = [A, B, C].filter(pg => pg !== perf);
+  ok(!!perf && t1.card.level === 1 && /^mo-\d{3}$/.test(t1.card.id), `the first card is level 1 (${t1?.card.id})`);
+  ok(await until(perf, () => /MASK OFF:/.test(document.querySelector(".mo-kicker")?.textContent ?? "") && !document.querySelector("[data-honest]")), "the performer sees the card flip up, with no rating buttons");
+  ok(await until(raters[0], () => document.querySelectorAll("[data-honest]").length === 5), "everyone else can rate 1-5 straight away");
+  await shot(perf, "04-maskoff-card");
+  await raters[0].click('[data-honest="5"]');
+  ok(await until(raters[0], () => document.querySelector('[data-honest="5"]')?.classList.contains("on") && /locked/.test(document.querySelector(".sq-rate-lbl")?.textContent ?? "")), "one tap locks your rating");
+  await raters[0].locator('[data-honest="1"]').evaluate(b => b.click());          // a second tap does nothing
+  ok(await until(A, () => Object.keys(window.__game.s.turn.votes).length === 1) && (await mo()).turn.votes[raters[0] === A ? "u-alice" : raters[0] === B ? "u-bob" : "u-cy"] === 5, "…and it stays locked");
+  await shot(raters[0], "05-maskoff-rated");
+  await raters[1].click('[data-honest="4"]');
+  ok(await until(A, () => window.__game?.s?.phase === "reveal", null, 8000), "once everyone has rated, the turn ends early");
+  const r1 = (await mo()).turn;
+  ok(r1.avg === 4.5 && r1.verdict === "off" && r1.pts === 90, `4.5 average: MASK OFF, +90 (${r1.avg} ${r1.verdict} +${r1.pts})`);
+  ok(await until(perf, () => document.getElementById("mo-reveal")?.classList.contains("off") && document.getElementById("mo-stamp")?.classList.contains("show") && /MASK OFF/.test(document.getElementById("mo-stamp").textContent), null, 8000), "the mask shatters and the MASK OFF stamp lands");
+  await shot(perf, "06-maskoff-reveal");
+  // the next turn: the performer skips their card, which scores 0 with no rating
+  ok(await until(A, () => window.__game?.s?.phase === "talk" && window.__game.s.ti === 1, null, 20000), "on to the next player");
+  const perf2 = ids[(await mo()).turn.who];
+  ok(!!perf2 && Object.keys(w1).every(id => id === t1.who || w1[id] > w1[t1.who]), "the fair picker made whoever just went the least likely next");
+  await perf2.click("#mo-skip");
+  ok(await until(perf2, () => document.getElementById("mo-skip")?.classList.contains("armed")), "skip asks for a second tap");
+  await perf2.click("#mo-skip");
+  ok(await until(A, () => window.__game?.s?.turn?.status === "skipped"), "skipping the card ends the turn");
+  const r2 = (await mo()).turn;
+  ok(r2.pts === 0 && !Object.keys(r2.votes).length, "skip: 0 points and no rating");
+  ok(await skipUntil(A, A, t => /Mask Off/.test(t), 20), "Mask Off plays through to the results screen");
+  await shot(A, "07-maskoff-results");
   await A.locator("#hp-skip").first().click().catch(() => {});
   ok(await until(B, () => !document.getElementById("party-panel").hidden && document.querySelectorAll(".lr-av").length === 3, null, 15000), "everyone is back in the walkable lobby");
   ok(await until(B, () => /Game 2 of 3/.test(document.getElementById("pt-next")?.textContent ?? "") && /Vote next game/.test(document.getElementById("pt-vote")?.textContent ?? "")), "the party moves on to game 2 of 3, and the votes start over");

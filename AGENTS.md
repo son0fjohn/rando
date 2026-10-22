@@ -16,8 +16,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 - **Multiplayer:** Supabase Realtime broadcast + presence (`web/net.js`). No
   database tables for game state: rooms, games and chat die with the room.
 - **Map chrome:** `web/backend.js` (auth, presence, the navy bottom bar on
-  the world screen only: Explore / Host / Style, pull-to-refresh, the style
-  screen, NPC dialog),
+  the world screen only: Explore / Host / Style, flat against the map; Host
+  is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
+  the style screen, NPC dialog),
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
   `web/charview.js` (a character in 3D: drag to spin, pinch to zoom),
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
@@ -44,6 +45,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/fairpick.js` (random-but-fair "who's next" for Side Quest and the Ritual),
   `web/data/diary_prompts.json` (Secret Diary's prompt pool),
   `web/data/side_quests.json` (Side Quest's quests),
+  `web/data/mask_off_cards.json` (Mask Off's truth cards by level, a draft),
   `web/data/ritual_prompts.json` (Humiliation Ritual's charades prompts, a draft), `web/diary3d.js` + `web/models/diary/` (Secret
   Diary's tinted 3D diaries, with sprite and CSS fallbacks; see
   `docs/diary_assets.md`), `web/diarypage.js` (answers written on and read
@@ -68,7 +70,8 @@ node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are 
 node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]   # Side Quest's 3D wizard: loads, fits, every mode + the nod
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
-node test/games_rec.mjs <dir> [sidequest|ritual|party]   # phones playing Side Quest / a Ritual turn / a full 3-game set + shop, recorded side by side
+node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|party]   # phones playing Side Quest / Mask Off (+ each reveal frame by frame) / a Ritual turn / a full 3-game set + shop, recorded side by side
+node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
 ```
@@ -100,11 +103,12 @@ keyboard, safe areas) see `docs/dev-stack.md` → device testing.
   players). A player who leaves must never stall a phase.
 - **Cleanup:** anything a game keeps (photos, answers, caches) registers a
   disposer with `trash` so it dies when the game or party ends.
-- **Backdrop:** a game def with `backdrop: "room"` (the Ritual) is played
+- **Backdrop:** a game def with `backdrop: "room"` (the Ritual, Mask Off) is played
   over the dimmed party room (`#party-panel.pt-behind`) instead of the map.
-- **Ratings (Side Quest):** open as soon as the turn starts, one tap locks a
-  rating, and the turn ends once every watcher has rated; the clock only ends
-  it if they haven't. Giving up fails the turn and skips ratings.
+- **Ratings (Side Quest, Mask Off):** open as soon as the turn starts, one tap
+  locks a rating, and the turn ends once every watcher has rated; the clock
+  only ends it if they haven't. Giving up / skipping the card scores 0 and
+  skips ratings. Mask Off: honesty 1–5, points = average × `MASKOFF.POINTS_PER_STAR`.
 - **Styling:** the page declares `color-scheme: dark`, so any `<button>` with
   no explicit `color` renders white text. Set colors on buttons inside game
   cards (`.stage`).
@@ -152,16 +156,17 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   numbers in `hpconfig.js` `COINS` are labels only.
 
 ### Safety and content
-- Today's Mission prompts may only embarrass the player who drew them —
-  nothing that involves, names, ranks or touches another person.
 - Unhinged Secret Diary content requires the party's 18+ setting
   (`maxLevelFor()`); a public party defaults to mild.
-- Prompt ids in `web/data/diary_prompts.json`, `side_quests.json` and
-  `ritual_prompts.json` are permanent: never renumber or reuse one (logs
+- Prompt ids in `web/data/diary_prompts.json`, `side_quests.json`,
+  `ritual_prompts.json` and `mask_off_cards.json` are permanent: never renumber or reuse one (logs
   reference them).
 - Side Quest's quests are exactly the supplied list; unhinged ones only appear
   when the party's 18+ setting is on (`questsFor()`). Humiliation Ritual's
   prompts go up to `maxLevelFor()` (public parties: mild).
+- Mask Off's cards are exactly the supplied (draft) list, escalating
+  level 1 → 2 → 3 over a game (`levelFor()`). Answers are spoken out loud,
+  never typed, sent or stored.
 - Humiliation Ritual: only the performer's phone shows the prompt, and only
   the performer decides which guess is right; the close-guess matcher is a
   hint, never a verdict.

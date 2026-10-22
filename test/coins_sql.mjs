@@ -1,4 +1,5 @@
 // The coin and shop rules, run for real: supabase/migrations/013_coins_shop.sql
+// (+ 014_mask_off.sql)
 // in an embedded Postgres (PGlite, WASM — no server), with a tiny stand-in
 // for Supabase's auth schema (auth.users, auth.uid() from a setting).
 //   node test/coins_sql.mjs
@@ -19,6 +20,7 @@ await db.exec(`
   create table public.profiles (id uuid primary key references auth.users (id), handle text, avatar jsonb not null default '{}'::jsonb);
 `);
 await db.exec(await readFile(`${ROOT}supabase/migrations/013_coins_shop.sql`, "utf8"));
+await db.exec(await readFile(`${ROOT}supabase/migrations/014_mask_off.sql`, "utf8"));
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 for (let i = 1; i <= 9; i++) { await db.query("insert into auth.users values ($1)", [U(i)]); await db.query("insert into profiles (id, handle) values ($1, $2)", [U(i), `p${i}`]); }
@@ -58,6 +60,8 @@ await report(1, S3, 1, 1, [1, 2, 3, 9]);
 ok(await confirm(9, S3, 1, 1) === 5, "someone in the report who confirms is paid");
 ok(await err(report(2, "session-eeee-5555", 1, 1, [3, 4, 5])) !== null, "the host must be one of the players");
 ok(await err(report(2, "session-eeee-5555", 1, 1, [2, 3], "poker")) !== null, "only known games");
+ok(await err(report(2, "session-eeee-5555", 1, 1, [2, 3], "mission")) !== null, "the retired game no longer pays");
+ok(await err(report(2, "session-ffff-6666", 1, 1, [2, 3], "mask_off")) === null, "Mask Off reports like any other game");
 // the daily cap: 300 per player per day
 for (let k = 0; k < 14; k++) {
   const s = `session-cap-${String(k).padStart(4, "0")}`;
