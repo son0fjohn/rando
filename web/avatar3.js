@@ -33,7 +33,10 @@ export const IRIS3_HEX = { // UI swatches only; decals carry the real color
   brown: "#8a6a52", blue: "#3f7fd1", green: "#5d9c53",
 };
 
-export const HAIR_STYLES = ["f1", "f2", "f3", "f4", "f5", "m1", "m2", "m3", "m5"];
+// f4, f5 and m5 are blocked: their meshes hang a panel of hair over the
+// face from every mounting (front or back), which no fit can clear. A
+// saved f4/f5/m5 falls back to the default style (normalizeAvatar3).
+export const HAIR_STYLES = ["f1", "f2", "f3", "m1", "m2", "m3"];
 export const PART_OPTIONS3 = {
   skin: ["1", "2", "3", "4", "5"],
   hair: ["none", ...HAIR_STYLES],
@@ -501,6 +504,26 @@ function shapeBody(sm, wp, f) {
   }
   pos.needsUpdate = true;
   smoothNormals(geo);
+  // anime-style face shading: the face's normals lean toward straight
+  // ahead (and a little up), so the face lights as one calm surface — the
+  // jaw and cheek undersides no longer fall into cel shadow (which read
+  // as a beard on small sprites)
+  const nrm = geo.attributes.normal;
+  const NM = new THREE.Matrix3().getNormalMatrix(sm.matrixWorld), NMi = NM.clone().invert();
+  const ahead = f.dir.clone().addScaledVector(f.ay, 0.35).normalize();
+  const nw = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    v.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).sub(f.C);
+    const dist = v.length() / f.R;
+    if (dist > 1.35) continue;
+    const depth = v.dot(f.dir) / Math.max(1e-6, v.length());
+    const below = 1 - ss(v.dot(f.ay), f.eyeB + 0.25 * f.R, f.eyeB + 0.45 * f.R);
+    const k = 0.8 * ss(depth, -0.05, 0.35) * below * (1 - ss(dist, 1.2, 1.35)) * (1 - kw[i * 5 + 2] - kw[i * 5 + 3]);
+    if (k <= 0.001) continue;
+    nw.fromBufferAttribute(nrm, i).applyMatrix3(NM).normalize().lerp(ahead, k).normalize().applyMatrix3(NMi).normalize();
+    nrm.setXYZ(i, nw.x, nw.y, nw.z);
+  }
+  nrm.needsUpdate = true;
   geo.computeBoundingBox(); geo.computeBoundingSphere();
 }
 
@@ -797,9 +820,15 @@ function fitHair(scene, key) {
       const dist = d.length(), depth = d.dot(h.dir) / Math.max(1e-6, dist);
       const lat = Math.abs(d.dot(ax));
       onFace[i] = depth > 0.25 && v.y < browY + 0.05 * h.R && dist < 1.12 * h.R ? 1 : 0;
-      // fringe: in front of the face, below the brows -> folded up
-      if (depth > 0.35 && lat < 0.8 * h.R && v.y < browY && v.y > h.eyeY - 0.9 * h.R) {
-        v.y = browY - (browY - v.y) * 0.12;
+      // in front of the face, below the brows: a fringe in the middle folds
+      // up above the eyes; face-framing locks further out are pushed
+      // sideways clear of the eyes (they keep their length)
+      if (depth > 0.3 && v.y < browY && v.y > h.eyeY - 0.9 * h.R) {
+        if (lat < 0.42 * h.R) v.y = browY - (browY - v.y) * 0.12;
+        else if (lat < 0.95 * h.R) {
+          const sgn = Math.sign(d.dot(ax)) || 1;
+          v.addScaledVector(ax, sgn * (0.95 * h.R - lat));
+        }
       }
       // snug: above the ears, shells float off the skull
       if (v.y > h.eyeY - 0.25 * h.R && dist > 1.02 * h.R) {
@@ -829,7 +858,7 @@ function fitHair(scene, key) {
 // fringe hangs to the nose — clip the central fringe triangles below brow
 // height in the raw frame (raw "front" is the +T.yaw direction).
 const PIECE_LIFT = { "hair/f2": 0.02 };
-const PIECE_YAW = {};
+const PIECE_YAW = { "hair/m2": Math.PI }; // m2 exports facing backwards
 const PIECE_TRIM = { "hair/f2": { yBelow: 0.335, front: 0.03, halfWidth: 0.12 } };
 
 function attachWrapper(scene, pieceKey) {
@@ -943,38 +972,36 @@ function buildHumanApi(cfg) {
   };
 }
 
-// ---------------- animated-body mode (opt-in) ----------------
-// Tripo-retargeted clips (avatar3/anims/idle.glb + walk.glb — same rig as
-// body.glb). The idle scene IS the body; garments follow the skeleton via
-// runtime skin-weight transfer from the nearest body vertex, so every
-// cosmetic combination animates without per-outfit rigging. Kept opt-in
-// (?anim=1 in world3d) until visually signed off; the static bob stays the
-// shipped default.
+// ---------------- animated-body mode ----------------
+// body.glb kept skinned and moved procedurally (applyMotion); garments
+// follow the skeleton via runtime skin-weight transfer from the nearest
+// body vertex (hair: the head bone), so every cosmetic combination
+// animates without per-outfit rigging. The map uses this build.
 let animPromise = null;
-let AT = null; // { scene, clips: {idle, walk}, bodyMesh }
+let AT = null; // { scene, bodyMesh, face }
 
 export function loadAnimTemplate() {
   if (animPromise) return animPromise;
   animPromise = (async () => {
-    await loadHumanTemplate(); // head frame / piece cache
-    const [gi, gw] = await Promise.all([
-      loader.loadAsync(`${BASE}/anims/idle.glb`),
-      loader.loadAsync(`${BASE}/anims/walk.glb`),
-    ]);
-    const scene = gi.scene;
+    await loadHumanTemplate(); // head frame / piece cache / shaped geometry
+    // The same body.glb, kept skinned. (The Tripo idle/walk clips are
+    // retired: retargeted onto this rig they bent the knees with the feet
+    // trailing, so everyone hovered in a kneel. Motion is procedural on
+    // this skeleton now, from its straight rest pose.)
+    const g = await loader.loadAsync(`${BASE}/body.glb`);
+    const scene = g.scene;
     scene.updateWorldMatrix(true, true);
     let bodyMesh = null;
     scene.traverse(o => { if (o.isSkinnedMesh && !bodyMesh) bodyMesh = o; });
-    if (!bodyMesh) throw new Error("anim idle.glb has no skinned mesh");
-    // the rigged export re-bakes its own atlas — the static template's
-    // face-erase/skin-mask coordinates don't apply. Run the same analysis
-    // on THIS texture.
-    const face = analyzeFace(scene);
-    AT = {
-      scene,
-      clips: { idle: gi.animations[0] ?? null, walk: gw.animations[0] ?? null },
-      bodyMesh, face,
-    };
+    if (!bodyMesh) throw new Error("body.glb has no skinned mesh");
+    // share the static template's processed geometry (same file, same
+    // vertex order): face UVs, painted regions, the slimmer shape
+    let tg = null;
+    T.fit.traverse(o => { if (o.isMesh && !tg) tg = o.geometry; });
+    if (tg?.attributes.skinIndex && tg.attributes.position.count === bodyMesh.geometry.attributes.position.count) {
+      bodyMesh.geometry = tg;
+    } else analyzeFace(scene);
+    AT = { scene, bodyMesh, face: T.face };
     return AT;
   })();
   return animPromise;
@@ -1048,6 +1075,65 @@ function skinToBody(garmentMesh, bodySkinned, rigidBone = -1) {
   return sm; // caller binds: sm.bind(skeleton, bindMatrix) + parents it
 }
 
+// Rebuild the skeleton where the body actually is. Tripo's bones sit
+// mirrored and offset from the joints they move (their inverse bind
+// matrices hide it at rest, but any rotation swings limbs about the wrong
+// pivots — the old clips bent knees backwards). Each bone is moved to its
+// joint as the skin weights show it (the seam where its vertices hand over
+// from its parent), with no rotation or scale, parented straight into the
+// character's frame; then the mesh is re-bound to it. At rest nothing
+// moves; rotations now pivot at real joints, in the character's own axes.
+function cleanRig(sm, frame) {
+  const bones = sm.skeleton.bones;
+  const geo = sm.geometry, pos = geo.attributes.position;
+  const sI = geo.attributes.skinIndex, sW = geo.attributes.skinWeight;
+  frame.updateMatrixWorld(true);
+  const toFrame = new THREE.Matrix4().copy(frame.matrixWorld).invert().multiply(sm.matrixWorld);
+  const n = pos.count;
+  const P = Array.from({ length: n }, (_, i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(toFrame));
+  const parentIdx = bones.map(b => bones.indexOf(b.parent));
+  const sums = bones.map(() => ({ seam: new THREE.Vector3(), ns: 0, all: new THREE.Vector3(), na: 0 }));
+  for (let i = 0; i < n; i++) {
+    const w = [0, 1, 2, 3].map(c => [sI.getComponent(i, c), sW.getComponent(i, c)]);
+    for (const [j, wt] of w) {
+      if (wt <= 0) continue;
+      sums[j].all.addScaledVector(P[i], wt); sums[j].na += wt;
+      // a seam vertex: shared with this bone's parent
+      const pj = parentIdx[j];
+      const wp = w.find(([k]) => k === pj)?.[1] ?? 0;
+      if (pj >= 0 && wt > 0.15 && wp > 0.15) { sums[j].seam.add(P[i]); sums[j].ns++; }
+    }
+  }
+  const pivot = bones.map(() => null);
+  const pivotOf = j => {
+    if (pivot[j]) return pivot[j];
+    const sm_ = sums[j], pj = parentIdx[j];
+    if (sm_.ns >= 3) pivot[j] = sm_.seam.clone().divideScalar(sm_.ns);
+    else if (pj < 0) pivot[j] = sm_.na ? sm_.all.clone().divideScalar(sm_.na) : new THREE.Vector3();
+    else {
+      // no seam: the end of its own vertices nearest the parent's joint
+      const pp = pivotOf(pj);
+      if (!sm_.na) pivot[j] = pp.clone();
+      else {
+        const c = sm_.all.clone().divideScalar(sm_.na);
+        pivot[j] = pp.clone().lerp(c, 0.35);
+      }
+    }
+    return pivot[j];
+  };
+  bones.forEach((_, j) => pivotOf(j));
+  for (let j = 0; j < bones.length; j++) {
+    const b = bones[j], pj = parentIdx[j];
+    if (pj < 0) { b.parent?.remove(b); frame.add(b); }
+    b.quaternion.identity();
+    b.scale.set(1, 1, 1);
+    b.position.copy(pivot[j]).sub(pj >= 0 ? pivot[pj] : new THREE.Vector3());
+  }
+  frame.updateMatrixWorld(true);
+  sm.skeleton.calculateInverses();
+  sm.bind(sm.skeleton, sm.matrixWorld);
+}
+
 function buildAnimApi(cfg) {
   const group = new THREE.Group();
   let disposed = false;
@@ -1062,62 +1148,31 @@ function buildAnimApi(cfg) {
   const fit = new THREE.Group();
   fit.add(rig);
   fit.rotation.y = -T.yaw;
-  const mixer = new THREE.AnimationMixer(rig);
-  const idle = AT.clips.idle ? mixer.clipAction(AT.clips.idle) : null;
-  const walk = AT.clips.walk ? mixer.clipAction(AT.clips.walk) : null;
-  idle?.play();
 
   let bodySkinned = null;
   rig.traverse(o => { if (o.isSkinnedMesh && !bodySkinned) bodySkinned = o; });
   const headBone = bodySkinned.skeleton.bones.findIndex(b => /Head_2/.test(b.name));
 
-  // Tripo rigs carry wild mesh-node transforms: a static Box3 measure is
-  // off by orders of magnitude vs what the skinning pipeline renders.
-  // Measure TRUE skinned world bounds — and note boneMatrices are
-  // renderer-updated, so skeleton.update() must be forced per sample.
-  const measure = (clipTime) => {
-    mixer.setTime(clipTime);
-    fit.updateWorldMatrix(true, true);
-    bodySkinned.skeleton.update();
-    const box = new THREE.Box3();
-    const pos = bodySkinned.geometry.attributes.position;
-    const v = new THREE.Vector3();
-    // r151+ names it applyBoneTransform (boneTransform is a warning alias)
-    const skinV = (bodySkinned.applyBoneTransform ?? bodySkinned.boneTransform)
-      .bind(bodySkinned);
-    for (let i = 0; i < pos.count; i += 2) {
-      v.fromBufferAttribute(pos, i);
-      skinV(i, v);
-      v.applyMatrix4(bodySkinned.matrixWorld);
-      box.expandByPoint(v);
-    }
-    return box;
-  };
-  const bb = measure(0); // frame 0: scale + centering
-  // ground on the LOWEST foot contact across the idle cycle — presets can
-  // hover above their frame-0 pose for most of the loop, which read as
-  // "floating above the map"
-  let minY = bb.min.y;
-  const idleDur = AT.clips.idle?.duration ?? 0;
-  for (const f of [0.2, 0.45, 0.7, 0.95]) {
-    minY = Math.min(minY, measure(f * idleDur).min.y);
-  }
-  mixer.setTime(0);
-  const size = new THREE.Vector3();
-  bb.getSize(size);
-  const s = CHAR_H / size.y;
+  // Same body.glb as the static template, placed by the same numbers.
+  // Then RE-BIND the skin to the skeleton exactly as it now stands (its
+  // rest pose): Tripo's inverse bind matrices don't match its own node
+  // tree, which rendered the skinned body half a body low and made bone
+  // rotations swing about the wrong pivots. Re-bound, skinning at rest is
+  // the identity and the bones live in the character's own frame.
+  const s = T.fitScale;
   fit.scale.setScalar(s);
-  fit.position.set(-s * (bb.min.x + bb.max.x) / 2, -s * minY,
-                   -s * (bb.min.z + bb.max.z) / 2);
+  fit.position.copy(T.fitOffset);
   group.add(fit);
+  group.updateMatrixWorld(true);
+  cleanRig(bodySkinned, group);
+
   // the rigged body's proportions shift slightly vs the static template —
   // hair jigged with static numbers lands low on this head. Lift it by the
   // measured world-space face-height difference between the two templates.
   const staticFaceY = T.face ? T.face.C.y * T.fitScale + T.fitOffset.y : 0;
   const animFaceY = AT.face ? AT.face.C.y * s + fit.position.y : staticFaceY;
-  // +0.3: the rigged head is also marginally smaller — measured delta alone
-  // still leaves fringes brushing the eye line
-  const headLift = animFaceY - staticFaceY + 0.3;
+  // (same body.glb as the static build now, so this is ~0; kept as a guard)
+  const headLift = animFaceY - staticFaceY;
 
   let ready = Promise.resolve();
   let bodyMat = null, expr = "neutral";
@@ -1184,22 +1239,103 @@ function buildAnimApi(cfg) {
   };
   rebuild();
 
-  let wasWalking = false;
-  let lastT = null;
+  // ---- motion: procedural, on the rig, from its straight rest pose ----
+  const bones = bodySkinned.skeleton.bones;
+  const boneBy = re => bones.find(b => re.test(b.name)) ?? null;
+  const rest = new Map(bones.map(b => [b, b.quaternion.clone()]));
+  group.updateMatrixWorld(true);
+  // which limb chain is on the character's +x side (names can't be trusted
+  // to agree with the facing): compare where the thigh/upper arm sit
+  const gInv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const sideOf = b => b ? Math.sign(b.getWorldPosition(new THREE.Vector3()).applyMatrix4(gInv).x) || 1 : 1;
+  const chain = (re, n) => Array.from({ length: n }, (_, k) => boneBy(new RegExp(re + k + "$")));
+  const legL = chain("1_Left_Limb_", 3), legR = chain("1_Right_Limb_", 3);
+  const armL = chain("0_Left_Limb_", 2), armR = chain("0_Right_Limb_", 2);
+  // a = the leg on the character's +x side; b = the other
+  const [legA, legB] = sideOf(legL[0]) > 0 ? [legL, legR] : [legR, legL];
+  const [armA, armB] = sideOf(armL[0]) > 0 ? [armL, armR] : [armR, armL];
+  const M = {
+    spine0: boneBy(/Spine_0/), spine1: boneBy(/Spine_1/),
+    neck: boneBy(/Head_0/), head: boneBy(/Head_2/),
+    nextBlink: 1.5, blinkUntil: 0, nextNod: 4, nodAt: -10, smileUntil: 0, shownExpr: null,
+  };
+  const gq = new THREE.Quaternion(), pq = new THREE.Quaternion(), dq = new THREE.Quaternion();
+  const euler = new THREE.Euler();
+  // rotate a bone by (pitch x, yaw y, roll z) in the CHARACTER's frame
+  // (x = its left-right axis, y = up, z = forward), whatever the rig's
+  // axes. Parents first: each call refreshes the bone's subtree.
+  const turn = (b, x, y, z) => {
+    if (!b || (!x && !y && !z)) return;
+    group.getWorldQuaternion(gq);
+    b.parent.getWorldQuaternion(pq);
+    const rel = gq.invert().multiply(pq); // parent, in the character frame
+    dq.setFromEuler(euler.set(x, y, z, "YXZ"));
+    dq.premultiply(rel.clone().invert()).multiply(rel);
+    b.quaternion.premultiply(dq);
+    b.updateMatrixWorld(true);
+  };
+  const STRIDE = 7.5; // walk phase, rad/s: a step every ~0.42 s
+  // w = how much walk is blended in (0 idle .. 1 walk); p = walk phase
+  // Idle (swagger): weight on the -x leg, the other knee relaxed forward;
+  // upper body leaning off the hip, chest up, shoulders loose, chin a
+  // touch up and head cocked; a slow breathing sway, and every few seconds
+  // a little double nod (with a smile, see faceTick).
+  // Walk: thighs swing, knees fold on the way through, arms swing against
+  // the legs, shoulders twist, head steadies, a springy bounce.
+  const applyMotion = (t, w, p) => {
+    for (const [b, q] of rest) b.quaternion.copy(q);
+    group.updateMatrixWorld(true);
+    const i = 1 - w;
+    const sway = Math.sin(t * 1.15);
+    const since = t - M.nodAt;
+    const nod = since >= 0 && since < 0.9 ? Math.sin(since / 0.45 * Math.PI) ** 2 * 0.16 : 0;
+    const sA = Math.sin(p), sB = Math.sin(p + Math.PI);
+    const fold = x => Math.max(0, x); // knees only bend one way
+    // torso
+    turn(M.spine0, -0.02 * w, w * sA * 0.08 + i * 0.06, i * (0.1 + sway * 0.015) + w * sA * 0.03);
+    turn(M.spine1, -0.05 * i - 0.04 * w, w * sA * 0.14, -i * 0.05 + w * sA * 0.04);
+    turn(M.neck, (-0.06 + nod * 0.5) * i - 0.04 * w, -w * sA * 0.1, 0);
+    turn(M.head, (-0.08 + nod) * i - 0.02 * w, i * (sway * 0.03 - 0.06), i * 0.09 - w * sA * 0.03);
+    // legs (character frame: -x pitch swings a foot forward, +x folds a knee)
+    turn(legA[0], i * -0.2 + w * -0.5 * sA, i * 0.2, i * 0.07);
+    turn(legA[1], i * 0.4 + w * (0.08 + 0.85 * fold(Math.sin(p - 0.9))), 0, 0);
+    turn(legA[2], i * -0.2 + w * 0.25 * fold(-sA), 0, 0);
+    turn(legB[0], w * -0.5 * sB, 0, i * -0.02);
+    turn(legB[1], w * (0.08 + 0.85 * fold(Math.sin(p + Math.PI - 0.9))), 0, 0);
+    turn(legB[2], w * 0.25 * fold(-sB), 0, 0);
+    // arms: loose at the sides in idle, swinging against the legs in walk
+    turn(armA[0], w * 0.45 * sB + i * (0.06 + sway * 0.02), 0, 0.1 * i);
+    turn(armA[1], -0.2 - w * 0.25 * fold(-sB), 0, 0);
+    turn(armB[0], w * 0.45 * sA + i * (0.02 - sway * 0.02), 0, -0.12 * i);
+    turn(armB[1], -0.15 - w * 0.25 * fold(-sA), 0, 0);
+    // bounce: a breath in idle, a springy step (twice per stride) in walk
+    group.position.y = i * (0.03 + sway * 0.03) + w * 0.38 * Math.abs(Math.sin(p));
+  };
+  const faceTick = (t, walking) => {
+    if (t > M.nextBlink) { M.blinkUntil = t + 0.12; M.nextBlink = t + 2.2 + Math.random() * 3; }
+    if (!walking && t > M.nextNod) {
+      M.nodAt = t; M.smileUntil = t + 1.6; M.nextNod = t + 6 + Math.random() * 5;
+    }
+    // a set expression (setExpression) wins; neutral gets blinks and smiles
+    let show = expr;
+    if (expr === "neutral") show = t < M.blinkUntil ? "blink" : t < M.smileUntil ? "smile" : "neutral";
+    if (show !== M.shownExpr) { M.shownExpr = show; setFace(bodyMat, faceFor(cfg, show)); }
+  };
+  applyMotion(0, 0, 0);
+
+  let lastT = null, walkW = 0, walkP = 0;
+  const IDLE_LEN = 4, WALK_LEN = Math.PI * 2 / STRIDE;
   return {
     group,
     get ready() { return ready; },
-    // sprite baking: pose the rig at a clip time without the crossfade
+    // sprite baking: a pose at a moment of the idle or walk cycle
     pose(clip, t) {
-      const a = clip === "walk" ? walk : idle;
-      if (!a) return false;
-      mixer.stopAllAction();
-      a.reset().play();
-      a.time = t % a.getClip().duration;
-      mixer.update(0);
+      const walk = clip === "walk";
+      applyMotion(t, walk ? 1 : 0, walk ? t / WALK_LEN * Math.PI * 2 : 0);
       return true;
     },
-    clipLength(clip) { return (clip === "walk" ? walk : idle)?.getClip().duration ?? 0; },
+    clipLength(clip) { return clip === "walk" ? WALK_LEN : IDLE_LEN; },
+    __rig: () => ({ turn, bones, rest, legA, legB, armA, armB, M, group }), // dev harness only
     get config() { return { ...cfg }; },
     setConfig(next) {
       cfg = normalizeAvatar3({ ...cfg, ...next });
@@ -1207,11 +1343,20 @@ function buildAnimApi(cfg) {
     },
     setExpression(name) {
       expr = EXPRESSIONS.includes(name) || name === "blink" ? name : "neutral";
+      M.shownExpr = expr;
       setFace(bodyMat, faceFor(cfg, expr));
     },
     get expression() { return expr; },
+    // react to something (equip, a win): a quick expression, then back
+    react(name = "smile", secs = 1.2) {
+      this.setExpression(name);
+      clearTimeout(M.reactT);
+      M.reactT = setTimeout(() => !disposed && this.setExpression("neutral"), secs * 1000);
+      M.nodAt = lastT ?? 0;
+    },
     dispose() {
       disposed = true;
+      clearTimeout(M.reactT);
       epoch++;
       disposeOwned();
       group.clear();
@@ -1219,15 +1364,12 @@ function buildAnimApi(cfg) {
     walking: false,
     phase: Math.random() * Math.PI * 2,
     tick(t) {
-      if (walk && this.walking !== wasWalking) {
-        const [from, to] = this.walking ? [idle, walk] : [walk, idle];
-        to?.reset().fadeIn(0.22).play();
-        from?.fadeOut(0.22);
-        wasWalking = this.walking;
-      }
       const dt = lastT === null ? 0.016 : Math.min(0.1, Math.max(0, t - lastT));
       lastT = t;
-      mixer.update(dt);
+      walkW += ((this.walking ? 1 : 0) - walkW) * Math.min(1, dt / 0.2);
+      walkP += dt * STRIDE * Math.min(1, walkW * 1.5 + 0.2);
+      applyMotion(t, walkW, walkP);
+      faceTick(t, this.walking);
     },
   };
 }

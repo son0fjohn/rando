@@ -33,7 +33,7 @@ const LOOKS = {
   mina: { skin: "2", hair: "f1", hairColor: "brown", face: "f1", iris: "blue", top: "tee-baggy-black", bottom: "skirt-pleated-black", shoes: "clog-pink" },
   jae: { skin: "4", hair: "m3", hairColor: "white", face: "f5", iris: "navy", top: "tee-white-graphic", bottom: "jeans-baggy-blue", shoes: "sneaker-white-stripe" },
   sol: { skin: "1", hair: "f2", hairColor: "red", face: "f2", iris: "green", top: "none", bottom: "track-navy", shoes: "boot-work-tan" },
-  haru: { skin: "5", hair: "f4", hairColor: "yellow", face: "f6", iris: "blue", top: "tee-white-graphic", bottom: "shorts-green", shoes: "sneaker-white-lowtop" },
+  haru: { skin: "5", hair: "f3", hairColor: "yellow", face: "f6", iris: "blue", top: "tee-white-graphic", bottom: "shorts-green", shoes: "sneaker-white-lowtop" },
 };
 async function phone(name, qs = "") {
   const pg = await ctx.newPage();
