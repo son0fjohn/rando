@@ -1,14 +1,16 @@
-// Side Quest's wizard in 3D: an old fortune teller from the same cast as the
-// Art Gallery's dealer (Higgsfield views -> Tripo -> Meshy rig, see
-// docs/wizard_assets.md). One WebGL canvas, moved into whichever
-// `.sq-wizard` the game just drew; the pixel wizard stays underneath as the
-// fallback and is hidden only once the 3D one has actually drawn a frame.
+// Side Quest's wizard in 3D: a sleepy old fortune teller in the same render
+// style as the Art Gallery's dealer, but his own character (Higgsfield views
+// -> Tripo -> Meshy rig, see docs/wizard_assets.md). One WebGL canvas, moved
+// into whichever `.sq-wizard` the game just drew; the pixel wizard stays
+// underneath as the fallback and is hidden only once the 3D one has actually
+// drawn a frame.
 //
-// The crystal ball stays the HTML one in front of his hands (it holds the
-// face reel, and text never goes into the canvas). The model brings its idle
-// clip; on top of it, in code: a slow sway, the beard bobbing with the head,
-// hands waving over the ball while it glows / swirls / spins, and a small
-// nod when the quest is revealed.
+// The crystal ball stays the HTML one, floated just above his cupped palms
+// (it holds the face reel, and text never goes into the canvas). All motion
+// is in code, on the rig's rest pose: a slow sway, the beard bobbing with the
+// head, his hands rising and falling over the ball while it glows / swirls /
+// spins, and a small nod when the quest is revealed. (The rigger's stock idle
+// clip crumples his robe, so it isn't played.)
 //
 // Loaded lazily by the game (dynamic import): a failure here can never stop
 // Side Quest from running. ?wizard=pixel pins the pixel one, ?wizard=dealer
@@ -20,7 +22,6 @@ const THREE_URL = "https://esm.sh/three@0.160.0";
 const params = new URLSearchParams(location.search);
 const FORCE = params.get("wizard");
 const MODEL = FORCE === "dealer" ? "games/artgallery/dealer.glb" : "models/wizard/wizard.glb";
-const CAST = "models/wizard/wizard_cast.glb";   // optional: a hands-over-the-ball clip on the same rig
 const WAVING = new Set(["glow", "swirl", "spin"]);
 
 let kitP = null;
@@ -34,15 +35,12 @@ async function makeKit() {
   const probe = document.createElement("canvas");
   if (!(probe.getContext("webgl2") || probe.getContext("webgl"))) throw new Error("no WebGL");
   const [THREE, { GLTFLoader }] = await Promise.all([import(THREE_URL), import(`${THREE_URL}/examples/jsm/loaders/GLTFLoader.js`)]);
-  const loader = new GLTFLoader();
-  const base = new URL("./", import.meta.url);
-  const gltf = await loader.loadAsync(new URL(MODEL, base).href);
-  const cast = FORCE === "dealer" ? null : await loader.loadAsync(new URL(CAST, base).href).catch(() => null);
-  return new Wizard(THREE, gltf, cast?.animations?.[0] ?? null);
+  const gltf = await new GLTFLoader().loadAsync(new URL(MODEL, new URL("./", import.meta.url)).href);
+  return new Wizard(THREE, gltf);
 }
 
 class Wizard {
-  constructor(THREE, gltf, castClip) {
+  constructor(THREE, gltf) {
     this.THREE = THREE;
     const o = gltf.scene;
     // normalise: 1 unit tall, feet on the floor, centred
@@ -56,14 +54,10 @@ class Wizard {
     o.traverse(m => { if (m.isMesh) { m.frustumCulled = false; if (m.material) m.material.envMapIntensity = 0; } });
 
     const bone = re => { let b = null; o.traverse(n => { if (!b && n.isBone && re.test(n.name)) b = n; }); return b; };
-    this.bones = { head: bone(/^head$/i), neck: bone(/^neck$/i), spine: bone(/^spine0?2$/i) ?? bone(/^spine$/i),
+    this.bones = { head: bone(/^head$/i), neck: bone(/^neck$/i),
       lArm: bone(/^leftarm$/i), rArm: bone(/^rightarm$/i), lFore: bone(/^leftforearm$/i), rFore: bone(/^rightforearm$/i) };
+    this.hands = [bone(/^lefthand$/i), bone(/^righthand$/i)];
     for (const b of Object.values(this.bones)) if (b) b.userData.rest = b.quaternion.clone();
-
-    this.mixer = gltf.animations.length || castClip ? new THREE.AnimationMixer(o) : null;
-    this.idle = gltf.animations[0] ? this.mixer.clipAction(gltf.animations[0]) : null;
-    this.cast = castClip ? this.mixer.clipAction(castClip) : null;
-    this.idle?.play();
 
     this.scene = new THREE.Scene();
     this.scene.add(this.root);
@@ -81,7 +75,7 @@ class Wizard {
     this.canvas.setAttribute("aria-hidden", "true");
 
     this.mode = "idle"; this.wave = 0; this.nodAt = -1e9; this.raf = 0; this.last = 0;
-    this.q = new THREE.Quaternion(); this.e = new THREE.Euler();
+    this.q = new THREE.Quaternion(); this.e = new THREE.Euler(); this.v = new THREE.Vector3(); this.ballAt = null;
     this.tick = this.tick.bind(this);
   }
 
@@ -97,15 +91,7 @@ class Wizard {
     }
     if (!this.raf) { this.last = performance.now(); this.raf = requestAnimationFrame(this.tick); }
   }
-  setMode(mode) {
-    if (mode === this.mode) return;
-    this.mode = mode;
-    if (this.cast) {
-      const on = WAVING.has(mode);
-      (on ? this.cast : this.idle)?.reset().fadeIn(0.35).play();
-      (on ? this.idle : this.cast)?.fadeOut(0.35);
-    }
-  }
+  setMode(mode) { this.mode = mode; }
   nod() { this.nodAt = performance.now(); }
   fit(el) {
     const w = this.canvas.clientWidth || el.clientWidth || 240, h = this.canvas.clientHeight || el.clientHeight || 282;
@@ -118,7 +104,22 @@ class Wizard {
     this.canvas.remove();
   }
 
-  // a small extra rotation on a bone, on top of whatever the clip set
+  // the HTML ball floats just above his palms: the hands' midpoint on screen,
+  // eased, and held still while the hands wave over it
+  placeBall(dt) {
+    const [l, r] = this.hands, el = this.shown;
+    if (!l || !r || !el) return;
+    const v = l.getWorldPosition(this.v).add(r.getWorldPosition(new this.THREE.Vector3())).multiplyScalar(0.5);
+    this.ballLight.position.set(v.x, v.y + 0.08, v.z + 0.12);
+    v.project(this.camera);
+    const c = this.canvas, x = c.offsetLeft + (v.x + 1) / 2 * c.clientWidth, y = c.offsetTop + (1 - v.y) / 2 * c.clientHeight;
+    if (!this.ballAt) this.ballAt = { x, y };
+    else if (this.wave < 0.05) { const k = Math.min(1, dt * 3); this.ballAt.x += (x - this.ballAt.x) * k; this.ballAt.y += (y - this.ballAt.y) * k; }
+    el.style.setProperty("--bx", `${this.ballAt.x.toFixed(1)}px`);
+    el.style.setProperty("--by", `${this.ballAt.y.toFixed(1)}px`);
+  }
+
+  // a small extra rotation on a bone, on top of its rest pose
   turn(b, x, y, z) {
     if (!b) return;
     b.quaternion.multiply(this.q.setFromEuler(this.e.set(x, y, z)));
@@ -129,34 +130,32 @@ class Wizard {
     if (!this.canvas.isConnected) { this.detach(); return; }
     const dt = Math.min(0.1, (now - this.last) / 1000); this.last = now;
     const t = now / 1000, B = this.bones;
-    // back to rest first: the clip overwrites the bones it animates, the
-    // others would otherwise pile up the turns below frame after frame
     for (const b of Object.values(B)) if (b) b.quaternion.copy(b.userData.rest);
-    this.mixer?.update(dt);
 
-    // idle sway, a little hunched; the beard rides the head's slow bob
+    // idle sway, a little hunched; the beard rides the head's slow, sleepy bob
     this.root.rotation.z = Math.sin(t * 0.9) * 0.025;
     this.root.rotation.y = Math.sin(t * 0.45) * 0.08;
-    this.turn(B.head ?? B.neck, Math.sin(t * 1.8) * 0.045, 0, Math.sin(t * 0.9) * 0.03);
-    // hands over the ball (procedural when there's no cast clip)
-    this.wave += ((WAVING.has(this.mode) && !this.cast ? 1 : 0) - this.wave) * Math.min(1, dt * 4);
+    this.turn(B.head ?? B.neck, 0.03 + Math.sin(t * 1.6) * 0.05, 0, Math.sin(t * 0.9) * 0.03);
+    // hands over the ball: the forearms rise and fall in turn, the arms ease
+    // in a little (Meshy rig: a forearm's x lifts the hand, an arm's z swings
+    // it in, mirrored left / right)
+    this.wave += ((WAVING.has(this.mode) ? 1 : 0) - this.wave) * Math.min(1, dt * 4);
     if (this.wave > 0.01) {
-      // (Meshy rig: an arm's z swings it in toward the ball, mirrored left /
-      // right; a forearm's x bends it in)
-      const a = this.wave, s1 = Math.sin(t * 4.2), s2 = Math.sin(t * 4.2 + 1.7);
-      this.turn(B.lArm, 0, 0, a * (0.22 + 0.14 * s1));
-      this.turn(B.rArm, 0, 0, -a * (0.22 + 0.14 * s2));
-      this.turn(B.lFore, a * (0.2 + 0.25 * s2), 0, 0);
-      this.turn(B.rFore, a * (0.2 + 0.25 * s1), 0, 0);
+      const a = this.wave, s1 = Math.sin(t * 4.2), s2 = Math.sin(t * 4.2 + Math.PI);
+      this.turn(B.lFore, a * 0.32 * s1, 0, 0);
+      this.turn(B.rFore, a * 0.32 * s2, 0, 0);
+      this.turn(B.lArm, 0, 0, a * 0.08 * s2);
+      this.turn(B.rArm, 0, 0, -a * 0.08 * s1);
     }
     // the nod: down and back up over ~0.7 s
     const p = (now - this.nodAt) / 700;
-    if (p >= 0 && p < 1) this.turn(B.head ?? B.neck, Math.sin(p * Math.PI) * 0.22, 0, 0);
+    if (p >= 0 && p < 1) this.turn(B.head ?? B.neck, Math.sin(p * Math.PI) * 0.26, 0, 0);
     // the ball lights his face from below while it's busy
     const glow = this.mode === "swirl" ? 2.2 : this.mode === "landed" ? 1.8 : WAVING.has(this.mode) ? 1.3 : 0.5;
     this.ballLight.intensity += (glow * (0.85 + 0.15 * Math.sin(t * 6)) - this.ballLight.intensity) * Math.min(1, dt * 5);
 
     this.renderer.render(this.scene, this.camera);
+    this.placeBall(dt);
     this.shown?.classList.add("w3d-on");    // only now hide the pixel wizard
     this.raf = requestAnimationFrame(this.tick);
   }
