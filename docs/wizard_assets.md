@@ -1,62 +1,71 @@
 # Side Quest wizard — 3D asset log
 
-An old wizard / fortune teller from the same cast as the Art Gallery's
-dealer (`web/games/artgallery/dealer_*.png`, `dealer.glb`): chibi, about 3
-heads tall, chunky low-poly faceted shapes, matte hand-painted texture. Long
-white beard, bushy eyebrows, tall droopy star hat, a robe with stars and
-moons, slightly hunched.
+A sleepy old grandpa wizard / fortune teller. He shares the Art Gallery
+dealer's **render style** (chibi, about 3 heads tall, chunky low-poly faceted
+shapes, matte hand-painted texture, soft shading) and nothing else: a round
+soft face, sleepy eyes under huge bushy brows, a big round nose, no
+mustache-only face but a long beard past his belt, a tall droopy midnight-blue
+star hat (taller than his head), a deep purple robe to the floor with a blue
+star-and-moon mantle, slightly hunched, palms cupped in front. As solid black
+silhouettes the two are a round-headed suit versus a tall cone.
 
-The crystal ball is **not** in the model. It's the HTML ball in front of his
-hands (`.sq-ball`: glow, swirl, the face reel), so his hands can wave over it
-and the names inside it stay HTML.
+The crystal ball is **not** in the model. It's the HTML ball (`.sq-ball`:
+glow, swirl, the face reel), floated just above his palms by `wizard3d.js`,
+so the names inside it stay HTML.
 
-Pipeline: the dealer renders, imported into Higgsfield from the live site,
-anchor `gpt_image_2_5` turnaround views → Tripo H3.1 multi-view → `.glb` →
-Meshy rig (same skeleton as `dealer.glb`). Max 3 attempts per view.
+Pipeline: `gpt_image_2_5` turnaround views (the dealer render as a style-only
+reference for the front; the other views from the front only) → Tripo H3.1
+multi-view → `.glb` → turned to face +Z in the Higgsfield sandbox
+(`@gltf-transform`, baked into the vertices) → Meshy rig. Max 3 attempts per
+view.
 
-## v2: old wizard, the dealer's sibling (current)
+## v3: sleepy grandpa wizard (current)
 
 | Step | Job | Attempt | Credits | Kept? |
 | --- | --- | --- | --- | --- |
-| Dealer idle render (import) | `58bfe7df-1245-4a3a-a516-0bb9f60f4655` | — | 0 | reference |
-| Dealer unveil render (import) | `0014e3b4-42cb-4611-9476-142af828782f` | — | 0 | reference |
-| Front view (3:4, high, both dealer renders as reference) | `383d9cb8-c25e-4413-821b-dd0083790a72` | 1 | 1.5 | kept (pending your review) |
-| Left view (facing left) | `b8597f93-5679-4f67-9b1f-5452a2ca3670` | 1 | 1.5 | kept (pending your review) |
-| Back view | `99c1eba1-ec75-40d1-b649-31ea9363af2e` | 1 | 1.5 | kept (pending your review) |
-| Right view (facing right) | `d053de46-08f0-432d-ad8a-796487c59f76` | 1 | 1.5 | kept (pending your review) |
-| Tripo H3.1 multi-view → GLB (front, left, back, right; 20k faces, detailed texture) | `f39083a4-fa1c-408d-b1ca-f1af2fa78c83` | 1 | 12 | kept (pending your review) |
-| Meshy rig + Idle clip (0), 1 m tall | `35f421dd-5038-45be-815a-a3a53f0b553b` | 1 | 8 | kept (pending your review) |
+| Front view (3:4, high, dealer idle render as style reference) | `950e05d2-86cd-4f9d-a84b-69357ba3e160` | 1 | 1.5 | kept |
+| Left view (facing left, from the front view) | `ea9c721d-3b18-4171-a994-5d22b004bd6d` | 1 | 1.5 | kept |
+| Back view | `042e4fd1-9e19-49f4-b3aa-1f794b716434` | 1 | 1.5 | kept |
+| Right view (facing right) | `fed8448f-5feb-4a0d-9c37-01ac55cb861c` | 1 | 1.5 | kept |
+| Tripo H3.1 multi-view → GLB (20k faces, detailed texture) | `398c34b2-e472-4119-a20f-57c329507bd6` | 1 | 12 | rejected: exported side-on (+X) |
+| Meshy rig of that mesh | `6b828384-7ece-4778-9863-85a512f23cc6` | 1 | 8 | rejected: rigged side-on, arms swing sideways |
+| Tripo H3.1 again, `orientation: align_image` | `0a409507-19af-498c-b541-d0de8c9f7bdb` | 2 | 12 | kept, after a -90° turn baked in (still +X) |
+| Front-facing mesh (uploaded media) | `28888a2d-9190-42c3-bc7d-da16ed0f588e` | — | 0 | the rig's input |
+| Meshy rig + Idle clip (0), 1 m tall | `eb724420-a625-495f-b149-1c692d4d8ea5` | 1 | 8 | kept (the clip isn't used: it crumples the robe) |
 
-v2 total: 26 credits. The waving, beard bob, sway and nod are done in code
-(`wizard3d.js`), so no extra clip was bought.
+v3 total: 46 credits.
 
-GLBs (under `https://d8j0ntlcm91z4.cloudfront.net/user_3Ei5h1HOK7Uxrcue448ZmRc0GqQ/`):
-- mesh: `hf_20261022_035016_f39083a4-fa1c-408d-b1ca-f1af2fa78c83.glb`
-- rigged + idle: `hf_20261022_035608_35f421dd-5038-45be-815a-a3a53f0b553b.glb` → `web/models/wizard/wizard.glb`
+GLB to ship (under `https://d8j0ntlcm91z4.cloudfront.net/user_3Ei5h1HOK7Uxrcue448ZmRc0GqQ/`):
+`hf_20261022_062556_eb724420-a625-495f-b149-1c692d4d8ea5.glb` → `web/models/wizard/wizard.glb`
 
-## v1: young hooded fortune teller (rejected: replaced by v2)
+## Rejected earlier designs
 
-Front `ebf7a891-…`, right `3957a534-…`, back `1f6ae332-…`, left
-`fde92b52-…` (1.5 each), Tripo mesh `2591c85e-…` (12), rigs with Idle
-`47cd5a76-…` and Magic_Genie `0ce100a8-…` (8 each). 34 credits.
+- **v2, old wizard as the dealer's "sibling"** (26 credits): came out as the
+  dealer in a hat (same face, side tufts, mustache, silhouette). Views
+  `383d9cb8-…`, `b8597f93-…`, `99c1eba1-…`, `d053de46-…`; mesh `f39083a4-…`;
+  rig `35f421dd-…`.
+- **v1, young hooded fortune teller** (34 credits): front `ebf7a891-…`, right
+  `3957a534-…`, back `1f6ae332-…`, left `fde92b52-…`, mesh `2591c85e-…`, rigs
+  `47cd5a76-…` and `0ce100a8-…`.
 
 ## In the app
 
-`web/wizard3d.js` draws the model behind the HTML ball: the rig's idle clip,
-plus in code a slow sway, the beard bobbing with the head, hands waving over
-the ball while it glows / swirls / spins (or a `wizard_cast.glb` clip, if
-there is one), and a small nod when the quest card appears and when the reel
-lands. The arm and head axes were measured on the dealer's rig (`?wizard=dealer`),
-which has the same bone names (Hips / Spine / neck / Head / LeftArm …); check them
-again on the wizard's own rig. The pixel wizard stays until a 3D frame is up, and whenever WebGL or
-the model isn't there.
+`web/wizard3d.js` draws the model on its rest pose; all motion is in code: a
+slow sway, the beard bobbing with a sleepy head bob, his forearms rising and
+falling in turn over the ball while it glows / swirls / spins, and a nod when
+the quest card appears and when the reel lands. The ball follows his palms
+(eased, held still while his hands wave). The pixel wizard stays until a 3D
+frame is up, and whenever WebGL or the model isn't there.
+
+Checked on the real v3 rig in the Higgsfield sandbox, with the shipped
+`wizard3d.js` (the dev sandbox can't download the GLB): every mode renders
+front-on, intact, the ball over his palms.
 
 It's off until the model is in: `SIDEQUEST.WIZARD_3D` in `hpconfig.js`.
-`?wizard=dealer` runs it on the dealer's rig (same skeleton) to test it now;
-`node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]` checks it
-loads, fits the frame, hides the pixel wizard, and shoots every mode.
+`?wizard=dealer` runs it on the dealer's rig (same bone names) to test without
+the model; `node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]`
+checks it loads, fits the frame, hides the pixel wizard, and shoots every mode.
 
-To finish: download the rigged GLB from Higgsfield's CDN
-(`d8j0ntlcm91z4.cloudfront.net`, blocked in the dev sandbox), save it as
-`web/models/wizard/wizard.glb` (and an optional `wizard_cast.glb`), and set
-`WIZARD_3D: true`.
+To finish: download the GLB above (the dev sandbox's network policy blocks
+`d8j0ntlcm91z4.cloudfront.net`), save it as `web/models/wizard/wizard.glb`,
+run `node test/wizard3d_shots.mjs <dir> --model=3d`, and set `WIZARD_3D: true`.
