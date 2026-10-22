@@ -54,6 +54,16 @@ export const PART_OPTIONS3 = {
           "boot-work-tan", "clog-pink", "sneaker-white-stripe"],
 };
 
+// six starter fits, all from free items (baggy, street): top + bottom + shoes
+export const STARTER_FITS = [
+  { id: "skate", name: "Skate", top: "tee-baggy-black", bottom: "jeans-baggy-blue", shoes: "sneaker-hitop-black" },
+  { id: "utility", name: "Utility", top: "tee-white-graphic", bottom: "cargo-khaki", shoes: "sneaker-white-stripe" },
+  { id: "night-run", name: "Night run", top: "tee-baggy-black", bottom: "track-navy", shoes: "sneaker-white-lowtop" },
+  { id: "weekend", name: "Weekend", top: "tee-white-graphic", bottom: "loose-brown", shoes: "sneaker-white-stripe" },
+  { id: "summer", name: "Summer", top: "tee-white-graphic", bottom: "shorts-green", shoes: "sneaker-white-lowtop" },
+  { id: "all-black", name: "All black", top: "tee-baggy-black", bottom: "cargo-black", shoes: "sneaker-hitop-black" },
+];
+
 export const DEFAULT_AVATAR3 = {
   skin: "1", hair: "f1", hairColor: "black", face: "f1", iris: "current",
   top: "none", bottom: "none", shoes: "sneaker-white-stripe",
@@ -597,6 +607,9 @@ function celify(root) {
     if (!o.isMesh && !o.isSkinnedMesh) return;
     o.material = celMaterial({ map: o.material.map ?? null });
     o.frustumCulled = false;
+    // some pieces ship without normals (skirt-denim-grey): the toon ramp
+    // lit them solid black
+    if (!o.geometry.attributes.normal) { o.geometry.computeBoundingSphere(); smoothNormals(o.geometry); }
   });
 }
 
@@ -1354,11 +1367,11 @@ function buildAnimApi(cfg) {
     turn(M.neck, (-0.06 + nod * 0.5) * i - 0.04 * w, -w * sA * 0.1, 0);
     turn(M.head, (-0.08 + nod) * i - 0.02 * w, i * (sway * 0.03 - 0.06), i * 0.09 - w * sA * 0.03);
     // legs (character frame: -x pitch swings a foot forward, +x folds a knee)
-    turn(legA[0], i * -0.2 + w * -0.5 * sA, i * 0.2, i * 0.07);
-    turn(legA[1], i * 0.4 + w * (0.08 + 0.85 * fold(Math.sin(p - 0.9))), 0, 0);
+    turn(legA[0], i * -0.2 + w * -0.42 * sA, i * 0.2, i * 0.07);
+    turn(legA[1], i * 0.4 + w * (0.08 + 0.75 * fold(Math.sin(p - 0.9))), 0, 0);
     turn(legA[2], i * -0.2 + w * 0.25 * fold(-sA), 0, 0);
-    turn(legB[0], w * -0.5 * sB, 0, i * -0.02);
-    turn(legB[1], w * (0.08 + 0.85 * fold(Math.sin(p + Math.PI - 0.9))), 0, 0);
+    turn(legB[0], w * -0.42 * sB, 0, i * -0.02);
+    turn(legB[1], w * (0.08 + 0.75 * fold(Math.sin(p + Math.PI - 0.9))), 0, 0);
     turn(legB[2], w * 0.25 * fold(-sB), 0, 0);
     // arms: loose at the sides in idle, swinging against the legs in walk
     turn(armA[0], w * 0.45 * sB + i * (0.06 + sway * 0.02), 0, 0.1 * i);

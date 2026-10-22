@@ -11,7 +11,7 @@ import { typeDialog, muteButton } from "./retro.js";
 import { mountCharView } from "./charview.js";
 import {
   PART_OPTIONS3, DEFAULT_AVATAR3, normalizeAvatar3, avatarThumb3,
-  SKIN_RGB, HAIR_RGB, IRIS3_HEX, loadFaceDecals, pieceThumb,
+  SKIN_RGB, HAIR_RGB, IRIS3_HEX, loadFaceDecals, pieceThumb, STARTER_FITS,
 } from "./avatar3.js";
 import { drawFace } from "./face3.js";
 // avatar v3 humanoid replaces the blob system; keep the old names local so
@@ -1345,7 +1345,7 @@ const ICON = {
 const TABS = [
   { key: "hair", label: "Hair", rows: [["hair", "tiles"], ["hairColor", "swatch"]] },
   { key: "eyes", label: "Eyes", rows: [["face", "eyes"], ["iris", "swatch"], ["skin", "swatch"]] },
-  { key: "top", label: "Top", rows: [["top", "tiles"]] },
+  { key: "top", label: "Top", rows: [["fits", "fits"], ["top", "tiles"]] },
   { key: "bottom", label: "Bottom", rows: [["bottom", "tiles"]] },
   { key: "shoes", label: "Shoes", rows: [["shoes", "tiles"]] },
   { key: "head", label: "Head", soon: "Beanies, caps, headphones and goggles are on the way." },
@@ -1353,7 +1353,7 @@ const TABS = [
   { key: "neck", label: "Neck", soon: "Chains and backpacks are on the way." },
   { key: "shop", label: "Shop" },
 ];
-const ROW_LABEL = { hair: "Style", hairColor: "Color", face: "Eyes", iris: "Iris", skin: "Skin", top: "Tops", bottom: "Bottoms", shoes: "Sneakers & shoes" };
+const ROW_LABEL = { fits: "Starter fits", hair: "Style", hairColor: "Color", face: "Eyes", iris: "Iris", skin: "Skin", top: "Tops", bottom: "Bottoms", shoes: "Sneakers & shoes" };
 const SLOTS = ["skin", "hair", "hairColor", "face", "iris", "top", "bottom", "shoes"];
 const rgbCss = a => `rgb(${a[0]},${a[1]},${a[2]})`;
 // fallback tile art while the 3D thumbnail renders (prep-generated crops)
@@ -1434,6 +1434,7 @@ export const avatar = {
     this.mine = { ...look };
     if (rooms.me) rooms.me.avatar = this.mine;
     this.applyOwn();
+    party.current?.room?.updateMe?.({ avatar: this.mine }).catch?.(() => {}); // the party room sees it live
     sfx.win(); haptic(14);
     styleView.paintActions(true);
     return true;
@@ -1486,6 +1487,24 @@ export const avatar = {
       row.className = `ss-row ss-${kind}`;
       row.innerHTML = `<small>${ROW_LABEL[slot]}</small><div class="ss-strip"></div>`;
       const strip = row.lastChild;
+      if (kind === "fits") {
+        // a whole fit in one tap: its top, bottom and shoes side by side
+        for (const f of STARTER_FITS) {
+          const b = document.createElement("button");
+          b.type = "button"; b.className = "fit-tile"; b.dataset.fit = f.id;
+          b.innerHTML = `<span class="fit-art">${["top", "bottom", "shoes"].map(k => `<img alt="" data-k="${k}" src="${OPTION_ICON[k](f[k])}">`).join("")}</span><b>${f.name}</b>`;
+          for (const k of ["top", "bottom", "shoes"]) pieceThumb(k, f[k], { size: 96 }).then(url => { const im = b.querySelector(`[data-k="${k}"]`); if (im) im.src = url; }).catch(() => {});
+          b.addEventListener("click", () => {
+            this.draft = { ...(this.draft ?? this.mine), top: f.top, bottom: f.bottom, shoes: f.shoes };
+            styleView.view?.setAvatar(this.draft);
+            sfx.cursor(); haptic(); styleView.sparkle(true);
+            this.markSelected(); styleView.paintActions();
+          });
+          strip.appendChild(b);
+        }
+        outfitGrid.appendChild(row);
+        continue;
+      }
       for (const value of PART_OPTIONS3[slot]) {
         const b = document.createElement("button");
         b.type = "button";
@@ -1526,6 +1545,10 @@ export const avatar = {
 
   markSelected() {
     const look = this.draft ?? this.mine;
+    outfitGrid.querySelectorAll("[data-fit]").forEach(b => {
+      const f = STARTER_FITS.find(x => x.id === b.dataset.fit);
+      b.classList.toggle("selected", !!f && f.top === look.top && f.bottom === look.bottom && f.shoes === look.shoes);
+    });
     outfitGrid.querySelectorAll("[data-slot]").forEach(b => {
       const sel = look[b.dataset.slot] === b.dataset.value;
       if (sel && !b.classList.contains("selected")) b.scrollIntoView?.({ block: "nearest", inline: "nearest" });

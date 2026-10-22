@@ -20,7 +20,13 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
   the style screen, NPC dialog),
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
-  `web/charview.js` (a character in 3D: drag to spin, pinch to zoom),
+  `web/charview.js` (a character in 3D, alive: drag to spin, pinch to zoom,
+  double-tap to reset, Idle/Walk preview; the Style screen's lit stage),
+  `web/avatar3.js` (the player character: body.glb with faces painted into
+  the head through a face UV set, flat-painted body regions, a rebuilt rig
+  with procedural swagger idle/walk, hair/clothes fitted at load),
+  `web/face3.js` (faces drawn in code: 6 eye styles × 6 expressions),
+  `web/cel.js` (the one cel shader every character mesh uses),
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
   for Korean) and frosted-glass panels; pixel art only in the room art and
@@ -69,7 +75,10 @@ node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
 node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]   # Side Quest's 3D wizard: loads, fits, every mode + the nod
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
-node test/charturn_shots.mjs <dir> [--hair=none,f2,f5,m1]   # the player character turned 360° at map / Style / close-up zoom, animated close-up, with an outfit
+node test/charturn_shots.mjs <dir> [--hair=none,f2,m1] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
+node test/combos_shots.mjs <dir>       # every top × bottom (idle + walk) and hairstyle × top, for clipping
+node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
+test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
 node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|party]   # phones playing Side Quest / Mask Off (+ each reveal frame by frame) / a Ritual turn / a full 3-game set + shop, recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)

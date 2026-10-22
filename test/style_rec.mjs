@@ -42,6 +42,12 @@ const state = () => A.evaluate(() => ({
   canvas: !!document.querySelector("#style-view canvas"),
 }));
 
+// host a party first, so we can check the room sees the new look live
+await A.click("#nav-host"); await sleep(900);
+await A.locator("#pt-name").fill("Tony's party").catch(() => {});
+await A.click("#pt-create").catch(() => {}); await sleep(3000);
+await A.click("#pt-hide").catch(() => {}); await sleep(1200);
+
 await A.click("#nav-style");
 await A.waitForFunction(() => !!document.querySelector("#style-view canvas"), null, { timeout: 60000 }).catch(() => {});
 await sleep(2500);
@@ -104,6 +110,12 @@ s = await state();
 ok(!s.saveOn && /Saved/.test(s.save), `Save keeps the look ("${s.save}")`);
 const saved = await A.evaluate(async () => { const B = await import("/web/backend.js"); return B.avatar.mine; });
 ok(saved && saved.shoes !== undefined, "the saved look is what the map uses now");
+await sleep(800);
+const inRoom = await A.evaluate(async () => {
+  const { party } = await import("/web/party.js");
+  const r = party.current?.room; return r ? r.presence[r.me.id]?.avatar ?? null : "no party";
+});
+ok(inRoom !== "no party" && JSON.stringify(inRoom) === JSON.stringify(saved), "the party room has the new look live (lobby sprites rebuild from it)");
 
 // leave with a change: it asks
 await A.locator("#outfit-tabs button", { hasText: /^Hair$/ }).click(); await sleep(500);
