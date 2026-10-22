@@ -44,7 +44,7 @@ import { LobbyRoom } from "./hplobby.js";
 import { openCard, close as closeCard } from "./profilecard.js";
 import { partyBeacons } from "./partybeacon.js";
 import { muteButton, popIn } from "./retro.js";
-import { newSet, addGame, standings, nextGameNo } from "./partyset.js";
+import { newSet, addGame, addPartial, standings, nextGameNo } from "./partyset.js";
 import { showPodium, closePodium, showCoins, coinBurst } from "./partyboard.js";
 
 const $ = id => document.getElementById(id);
@@ -361,10 +361,89 @@ export const party = {
       // and anyone who joined meanwhile is in)
       again: () => { c.again = true; },
     };
+    c.ctx = ctx;
+    c.setupPhases = g.hostSetup ?? [];
+    c.behind = behind;
     try { g.start(ctx); }
     catch (e) { console.warn("[party] game start", e); c.launched = false; $("party-panel").hidden = false; $("party-panel").classList.remove("pt-behind"); this.err(`${g.title} failed to start`); return; }
     if (c.room.isHost) this._announce();
+    this._watchGame(c);
     this._syncPause();
+  },
+
+  // ---------------------------------------------------------------- host controls in a game
+  // While a game runs: during the host's own setup screens (a game's
+  // `hostSetup` phases: Side Quest's quest picking, Secret Diary's deal) the
+  // host gets Back (top-left) and everyone else simply stays in the lobby, so
+  // backing out changes nothing for them; in every other phase the host gets
+  // End game (top-right), which asks first.
+  _watchGame(c) {
+    clearInterval(c.watch);
+    const tick = () => {
+      if (this.current !== c || !c.launched) { clearInterval(c.watch); this._hostCtl(null); return; }
+      const phase = c.ctx?.hostGame?.s?.phase ?? null, host = c.room.isHost;
+      const setup = !!phase && c.setupPhases.includes(phase);
+      this._hostCtl(host ? (setup ? "back" : "end") : null);
+      const wait = !host && setup;
+      if (wait !== !!c.setupWait) {
+        c.setupWait = wait;
+        document.body.classList.toggle("hp-setup-wait", wait);
+        $("party-panel").hidden = !wait && !c.behind;
+        $("party-panel").classList.toggle("pt-behind", !wait && c.behind);
+        this._renderNext();
+      }
+    };
+    c.watch = setInterval(tick, 250);
+    tick();
+  },
+  _hostCtl(mode) {
+    const layer = $("game-layer");
+    if (layer && !$("hp-back")) {
+      layer.insertAdjacentHTML("beforeend", `<button type="button" id="hp-back" class="hp-ctl" hidden aria-label="Back to the lobby">&#8249; Back</button><button type="button" id="hp-end" class="hp-ctl" hidden>End game</button>`);
+      $("hp-back").onclick = () => this.backOut();
+      $("hp-end").onclick = () => this.askEnd();
+    }
+    const back = $("hp-back"), end = $("hp-end");
+    if (back) back.hidden = mode !== "back";
+    if (end) end.hidden = mode !== "end";
+    document.body.classList.toggle("hp-ctl-back", mode === "back");
+    document.body.classList.toggle("hp-ctl-end", mode === "end");
+    if (mode !== "end") $("hp-end-ask")?.remove();
+  },
+  // host: leave a setup screen without starting anything
+  backOut() {
+    const c = this.current;
+    if (!c?.launched || !c.room.isHost) return;
+    sfx.back();
+    c.ctx?.hostGame?.endByHost({ backout: true });
+  },
+  // host: "End this game for everyone?" first
+  askEnd() {
+    const c = this.current;
+    if (!c?.launched || !c.room.isHost || $("hp-end-ask")) return;
+    sfx.cursor();
+    const ask = document.createElement("div");
+    ask.id = "hp-end-ask"; ask.className = "hp-ask";
+    ask.innerHTML = `<div class="hp-ask-card" role="alertdialog" aria-labelledby="hp-ask-t"><b id="hp-ask-t">End this game for everyone?</b>
+      <p>Points so far still count on the party board. It won't count as one of the 3 games, and nobody gets coins for it.</p>
+      <div class="hp-ask-btns"><button type="button" class="y-btn dim" id="hp-ask-no">Cancel</button><button type="button" class="y-btn hp-ask-yes" id="hp-ask-yes">End game</button></div></div>`;
+    $("game-layer").appendChild(ask);
+    $("hp-ask-no").onclick = () => { sfx.back(); ask.remove(); };
+    ask.onclick = e => { if (e.target === ask) { sfx.back(); ask.remove(); } };
+    $("hp-ask-yes").onclick = () => {
+      ask.remove();
+      const g = c.ctx?.hostGame;
+      if (!g || this.current !== c || !c.launched) return;
+      // already on its results: that's a normal finish, not a cut
+      if (g.s?.phase === "end") g.finish(); else g.endByHost();
+    };
+  },
+  _toast(text) {
+    const wrap = document.querySelector("#party-panel .pt-floor-wrap") ?? $("party-panel"); if (!wrap) return;
+    const t = document.createElement("div");
+    t.className = "pt-toast"; t.textContent = text;
+    wrap.appendChild(t);
+    setTimeout(() => t.remove(), 3200);
   },
   // back to the lobby room between games; the queue survives so the host
   // can run the same game again or pick the next one
@@ -380,6 +459,14 @@ export const party = {
       }
       this._confirmPlayed(c, results, idx);
     }
+    // the host ended it mid-way: what was earned still counts on the board;
+    // no coins, and it isn't one of the set's 3 games
+    if (results?.ended && !results.backout && c.room.isHost) c.set = addPartial(c.set, c.playingId, results);
+    clearInterval(c.watch);
+    this._hostCtl(null);
+    c.setupWait = false;
+    document.body.classList.remove("hp-setup-wait");
+    c.ctx = null;
     c.launched = false;
     c.playing = null;
     trash.flush("game ended");           // uploaded photos + entries go now
@@ -387,6 +474,7 @@ export const party = {
     $("party-panel").classList.remove("pt-behind");
     if (c.room.isHost) this._sendMeta();  // shares the session's used prompts
     this.render();
+    if (results?.ended && !results.backout) this._toast(c.room.isHost ? "You ended the game." : "The host ended the game.");
     if (c.again) { c.again = false; if (c.room.isHost) setTimeout(() => { if (this.current === c && !c.launched) this.launch(); }, 400); }
     if (c.room.isHost) this._announce();
     this._syncPause();
@@ -662,7 +750,8 @@ export const party = {
     const playing = !isHost && c.meta.playing;      // a game started before you got here
     const nVotes = Object.keys(c.votes ?? {}).length, mine = c.votes?.[this.me.id];
     const gameNo = `Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET}`;
-    const line = playing ? `${playing} is on — you're in the next one`
+    const line = c.setupWait ? `${host} is setting up ${c.playing ?? "the next game"}…`
+      : playing ? `${playing} is on — you're in the next one`
       : isHost ? `${gameNo} · ${nVotes ? `${nVotes} vote${nVotes === 1 ? "" : "s"} in — pick a game to start` : "pick a game to start"}`
       : `${gameNo} · ${mine ? `you voted ${gameTitle(mine)}` : "vote for the next game"} · ${host} starts it`;
     if (el.textContent !== line) el.textContent = line;
@@ -757,7 +846,7 @@ export const party = {
           <small>${st.adult ? "" : "unhinged needs 18+ on · "}levels still build up: rounds 1-2 mild, 3-4 up to spicy, then up to this</small></div>` : ""}
       </div>`;
     el.innerHTML = `<div class="pt-picker-sheet pv-sheet">
-        <div class="pt-picker-head"><b>${isHost ? "Game votes" : "Vote for the next game"}</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
+        <div class="pt-picker-head"><button type="button" class="pt-back" id="pt-picker-back" aria-label="Back to the lobby">&#8249; Back</button><b>${isHost ? "Game votes" : "Vote for the next game"}</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
         <p class="pv-sub">Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET} · ${isHost ? `${total} vote${total === 1 ? "" : "s"} so far · tap a game to start it` : `one vote each — you can change it until ${esc(host)} starts a game`}</p>
         <div id="pv-err" class="pv-err"></div>
         <div class="pv-list">${rows}</div>
@@ -766,6 +855,7 @@ export const party = {
     if (!el.dataset.shown) { el.dataset.shown = "1"; popIn(el.querySelector(".pt-picker-sheet"), "pop"); }
     const close = () => { this.pickerOpen = false; sfx.back(); this._renderPicker(); };
     $("pt-picker-x").onclick = close;
+    $("pt-picker-back").onclick = close;
     el.onclick = e => { if (e.target === el) close(); };          // tap the dimmed backdrop to close
     el.querySelectorAll("[data-vote]").forEach(r => r.onclick = () => this.vote(r.dataset.vote));
     el.querySelectorAll("[data-game]").forEach(r => r.onclick = e => { if (e.target.closest("[data-opt]")) return; this.startGame(r.dataset.game); });

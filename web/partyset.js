@@ -5,11 +5,12 @@
 //     different scoring scales count the same
 //   * the leaderboard is the running total per player across the set
 //   * a game that didn't complete (cut short, not enough players) isn't
-//     added at all: it doesn't count toward the 3 and earns nothing
+//     one of the 3 and earns no coins; one the host ended mid-way still adds
+//     party points for what was earned so far (addPartial)
 // The host owns the set and shares it in its party meta; everyone renders it.
 import { PARTY, LEADERBOARD } from "./hpconfig.js";
 
-export const newSet = (no = 1, session = null) => ({ no, session, games: [], done: false });
+export const newSet = (no = 1, session = null) => ({ no, session, games: [], extra: [], done: false });
 
 // finishing places for one game's results: [{ id, place }] — 1 is best;
 // equal scores share a place; bots are left out (they never earn anything)
@@ -34,6 +35,18 @@ export function addGame(set, gameId, results) {
   return { ...set, games, done: games.length >= PARTY.GAMES_PER_SET };
 }
 
+// a game the host ended mid-way: the points earned so far still count on the
+// leaderboard (party points by place, among players who had scored), but it
+// isn't one of the set's 3 games and pays no coins. Returns a new set.
+export function addPartial(set, gameId, results) {
+  if (!results?.ended || results.backout || set.done) return set;
+  const scored = { ...results, players: (results.players ?? []).filter(p => p.score > 0) };
+  const pp = placePoints(scored);
+  if (!Object.keys(pp).length) return set;
+  const handles = Object.fromEntries((results.players ?? []).map(p => [p.id, p.handle]));
+  return { ...set, extra: [...(set.extra ?? []), { game: gameId, points: pp, handles, partial: true }] };
+}
+
 // the leaderboard: [{ id, handle, total, last }] best first; `last` is what
 // the most recent game added (for the ticking animation)
 export function standings(set, members = []) {
@@ -47,6 +60,11 @@ export function standings(set, members = []) {
       rows.set(id, r);
     }
   });
+  for (const g of set.extra ?? []) for (const [id, pts] of Object.entries(g.points)) {
+    const r = rows.get(id) ?? { id, handle: g.handles[id] ?? "someone", total: 0, last: 0, here: false };
+    r.total += pts;
+    rows.set(id, r);
+  }
   return [...rows.values()].sort((a, b) => b.total - a.total || a.handle.localeCompare(b.handle));
 }
 

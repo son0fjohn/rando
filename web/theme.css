@@ -808,7 +808,9 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 /* lobby bottom: one status line, then chat + the vote button */
 .pt-next { display: block; font: 500 13px/18px var(--f-sys); color: rgba(255,255,255,.65); padding: 0 4px 6px; min-height: 0; }
 #party-panel.pt-lobby #pt-chat-form { align-items: center; }
-#party-panel.pt-lobby #pt-chat-form .pt-vote { flex: none; width: auto; height: 40px; min-height: 40px; border-radius: 999px; padding: 0 14px; white-space: nowrap; }
+#party-panel.pt-lobby #pt-chat-form .pt-vote { flex: none; width: auto; height: 40px; min-height: 40px; border-radius: 999px; padding: 0 14px; white-space: nowrap;
+  border: none; clip-path: none; background: var(--nav-gold); color: var(--nav-bg); }
+#party-panel.pt-lobby #pt-chat-form .pt-vote:disabled { background: rgba(255,255,255,.14); color: rgba(255,255,255,.6); }
 /* the game list sheet: vote (players) / live votes + start (host) */
 .pv-sheet { max-height: 82%; display: flex; flex-direction: column; }
 .pt-picker-head { font: 700 19px/26px var(--f-sys); }
@@ -939,3 +941,33 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
   .mo-reveal.on .mo-m-grin, .mo-reveal.sus .mo-m-crack { animation: none; stroke-dashoffset: 0; }
   .mo-reveal.off .mo-mask { display: none; }
 }
+
+/* ---------------------------------------------------------- host controls in a game */
+/* Back (setup screens) top-left, End game top-right; the HUD makes room */
+.hp-ctl { position: absolute; top: calc(8px + env(safe-area-inset-top)); z-index: 30; height: 34px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--g-line); background: rgba(15, 26, 58, .82); color: #fff; font: 600 13px/1 var(--f-sys);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); cursor: pointer; }
+.hp-ctl:active { transform: scale(.96); }
+#hp-back { left: 10px; }
+#hp-end { right: 10px; color: #ffb3c4; }
+body.hp-ctl-back #game-hud { padding-left: 92px; }
+body.hp-ctl-end #game-hud { padding-right: 104px; }
+.hp-ask { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgba(6, 8, 20, .62); }
+.hp-ask-card { width: min(340px, 100%); padding: 18px 16px 14px; border-radius: 20px; border: 1px solid var(--g-line); background: rgba(22, 28, 58, .94);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); color: #fff; font: 15px/20px var(--f-sys); text-align: center; }
+.hp-ask-card b { display: block; font: 700 18px/24px var(--f-sys); margin-bottom: 6px; }
+.hp-ask-card p { margin: 0 0 14px; color: rgba(255, 255, 255, .7); font-size: 13px; line-height: 18px; }
+.hp-ask-btns { display: flex; gap: 10px; } .hp-ask-btns .y-btn { flex: 1; }
+.y-btn.hp-ask-yes { background: #ff4d5e; color: #fff; }
+/* a player waits in the lobby while the host sets a game up */
+body.hp-setup-wait #game-layer { display: none !important; }
+.pt-toast { position: absolute; left: 50%; top: 14px; z-index: 20; transform: translateX(-50%); padding: 9px 16px; border-radius: 999px;
+  background: rgba(15, 26, 58, .9); border: 1px solid var(--g-line); color: #fff; font: 600 14px/18px var(--f-sys); white-space: nowrap;
+  animation: pt-toast 3.2s ease both; pointer-events: none; }
+@keyframes pt-toast { 0% { opacity: 0; transform: translate(-50%, -8px); } 8%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+.pt-picker-head .pt-back { flex: none; height: 34px; padding: 0 12px 0 8px; margin-right: 8px; border: 1px solid var(--g-line); border-radius: 999px;
+  background: rgba(255, 255, 255, .1); color: #fff; font: 600 14px/1 var(--f-sys); cursor: pointer; }
+.pt-picker-head b { flex: 1; }
+/* Secret Diary: the host's +30s in the HUD (the HUD itself lets taps through) */
+#game-hud .sd-more { pointer-events: auto; margin-left: auto; height: 28px; padding: 0 10px; border: none; border-radius: 999px;
+  background: var(--nav-gold); color: var(--nav-bg); font: 700 13px/1 var(--f-sys); cursor: pointer; }

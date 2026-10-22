@@ -116,7 +116,7 @@ export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, par
       party: party ?? { name: "test party", vibe: "chill", cap: 12, code: "TEST", privacy: "private", settings: { adult: false, diaryMax: null } },
       options,
       session: session ?? {},
-      onEnd: () => { c.ended = true; },
+      onEnd: r => { c.ended = true; c.results = r ?? null; },
     };
     gamedef.start(ctx);
     c.game = window.__game;          // HostGame publishes itself for debugging

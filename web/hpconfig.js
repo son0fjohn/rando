@@ -74,11 +74,13 @@ export const DIARY = {
   // About 1 card in 3 is yes/no, when there are yes/no prompts left at the level.
   YESNO_SHARE: 1 / 3,
   DEAL_MS: 90000,                // host's deal screen; sends by itself after this
-  ANSWER_MS_PER_Q: 36000,        // answer window: 36 s per question (5 -> 3 min)
-  GUESS_MS: 60000,               // each question's matching / guessing window
+  ANSWER_MS_PER_Q: 45000,        // answer window: 45 s per question, one clock for the batch (5 -> 3:45)
+  GUESS_MS: 45000,               // each question's matching / guessing window
   GUESS_MS_PER_EXTRA: 5000,      // + this per written answer beyond 6 (big rooms)
-  GUESS_MS_MAX: 90000,
+  GUESS_MS_MAX: 75000,
   POINTS_MS: 6000,               // the points screen after each question (the host can skip it)
+  MORE_MS: 30000,                // the host's "+30s": once per phase (per question while guessing)
+  URGENT_MS: 10000,              // the last 10 s: the countdown goes red and ticks softly
   // Diary colors: one per player for a whole batch. When the host sends the
   // batch, every player is dealt a color (no two alike in the room) and keeps
   // it for the writing diary and every reveal in that batch, so you can track

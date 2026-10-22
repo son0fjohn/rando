@@ -8,7 +8,7 @@ import { HUMILIATION_RITUAL, judge, ritualPool, ritualPromptsFor, ritualPoints }
 import { SIDE_QUEST, questPool, questsFor, questPoints } from "/web/hpgames/sidequest.js";
 import { MASK_OFF, maskPool, levelFor, maskVerdict, maskPoints } from "/web/hpgames/maskoff.js";
 import { fairPick, chances } from "/web/fairpick.js";
-import { newSet, places, addGame, standings, fullParticipants } from "/web/partyset.js";
+import { newSet, places, addGame, addPartial, standings, fullParticipants, nextGameNo } from "/web/partyset.js";
 import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { MANHUNT, DIARY, RITUAL, SIDEQUEST, MASKOFF, LEADERBOARD } from "/web/hpconfig.js";
@@ -207,6 +207,39 @@ group("Secret Diary — the shelf: 3 to 6 diaries at a time");
   ok(P(7).join() === "4,3" && P(9).join() === "5,4" && P(12).join() === "6,6" && P(13).join() === "5,4,4", "more than 6 are paged in even groups");
   ok([...Array(28).keys()].slice(3).every(n => { const pg = shelfPages(n); return pg[0][0] === 0 && pg.at(-1)[1] === n && pg.every(([a, b], i) => b - a >= 3 && b - a <= 6 && (i === 0 || pg[i - 1][1] === a)); }),
     "every page holds 3-6 diaries and the pages cover every answer once (3-30)");
+}
+
+group("Secret Diary — the timers");
+{
+  const t = seatTable(SECRET_DIARY, 4);
+  adv(300);
+  ok(t.s.phase === "deal" && t.s.left > DIARY.DEAL_MS - 1000, "the deal has its own clock (it sends by itself)");
+  t.input("p1", "send"); adv(400);
+  const n = t.s.batch.length;
+  ok(t.s.phase === "answer" && Math.abs(t.s.left - DIARY.ANSWER_MS_PER_Q * n) < 1500 && DIARY.ANSWER_MS_PER_Q === 45000, `answering: one clock for the batch, 45 s a question (${n} → ${Math.round(t.s.left / 1000)} s)`);
+  const before = t.s.left;
+  t.input("p2", "more"); adv(100);
+  ok(t.s.left < before, "only the host can add time");
+  t.input("p1", "more"); adv(100);
+  const after = t.s.left;
+  ok(after > before + DIARY.MORE_MS - 1000, "the host's +30s adds 30 seconds");
+  t.input("p1", "more"); adv(100);
+  ok(t.s.left < after, "…once per phase");
+  const who = SD_IDS(t);
+  answerAll(t, who, { yes: id => +id.slice(1) % 2 === 0 });
+  who.forEach(id => t.input(id, "submit"));
+  ok(waitPhase(t, "reveal", 4000), "everyone submitted: it ends early");
+  ok(t.s.left <= DIARY.GUESS_MS + 500 && DIARY.GUESS_MS === 45000, `guessing: 45 s a question (${Math.round(t.s.left / 1000)} s)`);
+  const g0 = t.s.left;
+  t.input("p1", "more"); adv(100);
+  ok(t.s.left > g0 + DIARY.MORE_MS - 1000, "+30s is there again for each question's guessing");
+  ok(waitPhase(t, "points", DIARY.GUESS_MS_MAX + 40000), "nobody guessed: the clock runs out and the question moves on (their guesses are skipped)");
+  ok(t.s.left <= DIARY.POINTS_MS && DIARY.POINTS_MS === 6000, "the points screen: 6 s, then on");
+  adv(DIARY.POINTS_MS + 1500);
+  ok(t.s.phase === "reveal" || t.s.phase === "end", `…and it moves on by itself (${t.s.phase})`);
+  ok(DIARY.URGENT_MS === 10000, "the last 10 s go red and tick");
+  for (const c of t.clients) c.game?.stop();
+  trash.flush("spec");
 }
 
 group("Secret Diary — diary colors: one per player for the whole batch, never two alike, reshuffled next batch");
@@ -869,6 +902,46 @@ group("The party set: 3 games, places, standings");
   ok(rows[0].id === "b" && rows[0].total === P[1] + P[0] + P[1], `standings total the place points (b: ${rows[0].total})`);
   ok(rows.find(r => r.id === "a").last === 0 && rows.find(r => r.id === "c").last === P[0], "`last` is what the latest game added");
   ok(fullParticipants(set).join() === "b,c", "full participants: only those in all 3 games");
+  // a game the host ended mid-way
+  const E = (scores, extra = {}) => ({ ...R(scores, false), ended: true, ...extra });
+  let s2 = addGame(newSet(1, "s2"), "mask_off", R({ a: 30, b: 20, c: 10 }));
+  s2 = addPartial(s2, "ritual", E({ a: 0, b: 40, c: 15 }));
+  ok(s2.games.length === 1 && !s2.done && s2.extra.length === 1, "an ended game isn't one of the 3 games");
+  const r2 = Object.fromEntries(standings(s2, []).map(r => [r.id, r.total]));
+  ok(r2.b === P[1] + P[0] && r2.c === P[2] + P[1] && r2.a === P[0], `…but what was earned still counts on the board, by place among those who'd scored (a ${r2.a}, b ${r2.b}, c ${r2.c})`);
+  ok(addPartial(s2, "ritual", E({ a: 0, b: 0 })).extra.length === 1, "an ended game where nobody had scored adds nothing");
+  ok(addPartial(s2, "sidequest", E({ a: 5 }, { backout: true })).extra.length === 1, "backing out of a setup screen adds nothing");
+  ok(fullParticipants(s2).join() === "a,b,c" && nextGameNo(s2) === 2, "ended games don't change who played the set or which game is next");
+}
+
+group("The host's controls: End game anytime, Back out of a setup screen");
+{
+  const t = seatTable(MASK_OFF, 4);
+  adv(500);
+  ok(waitPhase(t, "talk", 10000), "a Mask Off turn is on");
+  const who = t.s.turn.who, raters = Object.keys(t.s.players).filter(x => x !== who);
+  raters.forEach(id => t.input(id, "rate", { v: 5 }));
+  ok(waitPhase(t, "reveal", 4000) && t.s.players[who].score === 100, "someone has scored");
+  const guest = t.clients.find(c => !c.room.isHost);
+  guest.game.endByHost();
+  adv(300);
+  ok(!guest.ended && t.s?.phase === "reveal", "a player can't end the game");
+  t.host.game.endByHost();
+  adv(300);
+  ok(t.clients.every(c => c.ended), "the host ends it: everyone is out at once");
+  const r = t.host.results, rg = guest.results;
+  ok(r?.ended && !r.completed && rg?.ended && !rg.completed, "it counts as ended, not completed (no coins, not one of the 3)");
+  ok(r.players.find(p => p.id === who)?.score === 100, "the standings so far go with it, for the party board");
+  ok(t.clients.every(c => c.game.s === null), "every phone drops the game's state (answers, votes, timers)");
+}
+{
+  const t = seatTable(SIDE_QUEST, 4);
+  adv(500);
+  ok(t.s.phase === "setup" && SIDE_QUEST.hostSetup.includes("setup"), "Side Quest's quest picking is a host setup screen");
+  t.host.game.endByHost({ backout: true });
+  adv(300);
+  ok(t.clients.every(c => c.ended && c.results?.backout && !c.results.completed), "Back: out of the setup, nothing started, nothing counted");
+  ok(SECRET_DIARY.hostSetup.includes("deal"), "Secret Diary's deal is a host setup screen too");
 }
 
 }

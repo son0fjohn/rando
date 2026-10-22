@@ -152,8 +152,9 @@ try {
   // ------------------------------------------------------------------ deal
   head("Deal — the host picks the batch");
   ok(await until(A, () => document.querySelectorAll(".sd-card").length === 5), "the host is dealt 5 cards");
-  ok(await until(B, () => /alice is picking/.test(document.querySelector(".sd-incoming")?.textContent ?? "")), "everyone else waits: 'alice is picking the questions…'");
-  ok(!(await B.locator(".sd-card").count()), "guests can't see the cards");
+  ok(await until(B, () => document.body.classList.contains("hp-setup-wait") && /alice is setting up Secret Diary/.test(document.getElementById("pt-next")?.textContent ?? "")), "everyone else waits in the lobby: 'alice is setting up Secret Diary…'");
+  ok(!(await B.locator(".sd-card").count()) && !(await B.locator("#game-layer:visible").count()), "guests can't see the cards (or any game screen yet)");
+  ok(await A.locator("#hp-back").isVisible() && !(await A.locator("#hp-end:visible").count()), "the host has Back on the deal screen (no End game yet)");
   const levels = await A.locator(".sd-card .sd-level").allInnerTexts();
   const rank = l => ["mild", "spicy", "unhinged"].indexOf(l.toLowerCase());
   ok(levels.every((l, i) => !i || rank(levels[i - 1]) <= rank(l)) && rank(levels[0]) === 0, `mild first, spicier later (${levels.join(", ")})`);

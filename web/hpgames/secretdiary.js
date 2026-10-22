@@ -148,6 +148,9 @@ export const SECRET_DIARY = {
   id: "secretdiary", title: "Secret Diary",
   blurb: "the host deals a batch of questions, everyone answers in secret, then they're revealed one by one — guess who said what. nobody ever finds out.",
   minPlayers: 3, maxPlayers: 12, length: "~12 min",
+  // the deal is the host's own setup: everyone else waits in the lobby, and
+  // the host can back out of it (party.js)
+  hostSetup: ["deal"],
   // shown under "up next" in the lobby
   describe: meta => `up to ${maxLevelFor(meta)}`,
 
@@ -172,7 +175,7 @@ export const SECRET_DIARY = {
     const dropShelf = l => { if (!l) return; l.shelfToken = null; l.fx.forEach(clearTimeout); l.fx = []; try { l.shelf?.destroy(); } catch {} l.shelf = null; };
     const local = s => { if (!L || L.gameId !== s.gameId) { if (L) { Object.values(L.timers).forEach(clearTimeout); dropShelf(L); } L = freshLocal(s.gameId); } return L; };
     trash.add(() => { if (L) { Object.values(L.timers).forEach(clearTimeout); dropShelf(L); } L = null; });
-    let lastHud = 0;
+    let lastHud = 0, lastTick = null;
 
     const guessMs = s => {
       const q = s.qs?.[s.qi];
@@ -251,6 +254,12 @@ export const SECRET_DIARY = {
       hostInput(s, m) {
         const fromHost = m.from === room.hostId;
         if (m.in === "skip" && fromHost) { s.left = 0; return; }            // "send" / skip ahead
+        // "+30s": once per phase, per question while guessing
+        if (m.in === "more" && fromHost && (s.phase === "answer" || s.phase === "reveal")) {
+          const k = `${s.phase}:${s.phase === "reveal" ? s.qi : 0}`;
+          if (s.moreUsed !== k) { s.moreUsed = k; s.left += DIARY.MORE_MS; }
+          return;
+        }
         if (s.phase === "deal" && fromHost) {
           if (m.in === "send") { s.left = 0; return; }
           if (m.in === "swap") { swapCard(s, +m.i); return; }
@@ -498,7 +507,16 @@ export const SECRET_DIARY = {
         lastHud = now;
         const where = { deal: "dealing", answer: `${n} questions`, reveal: `question ${(s.qi ?? 0) + 1}/${n}`, points: `question ${(s.qi ?? 0) + 1}/${n}`, end: "" }[s.phase] ?? "";
         const label = { deal: "", answer: "answering", reveal: s.batch?.[s.qi]?.type === "yesno" ? "who said yes?" : "matching", points: "points", end: "final" }[s.phase] ?? "";
-        ui.hud(`<div class="hq"><b>SECRET DIARY</b><span>${where}</span><span>${label}</span><span class="clk ${s.left < 8000 && s.phase !== "end" ? "urgent" : ""}">${ui.clock(s.left)}</span></div>`);
+        // the host's "+30s", while answering and guessing, once per phase
+        const moreKey = `${s.phase}:${s.phase === "reveal" ? s.qi : 0}`;
+        const more = isHost && (s.phase === "answer" || s.phase === "reveal") && s.moreUsed !== moreKey
+          ? `<button type="button" class="sd-more" data-more="1">+30s</button>` : "";
+        const urgent = s.left < DIARY.URGENT_MS && s.phase !== "end";
+        ui.hud(`<div class="hq"><b>SECRET DIARY</b><span>${where}</span><span>${label}</span><span class="clk ${urgent ? "urgent" : ""}">${ui.clock(s.left)}</span>${more}</div>`);
+        // a soft tick each second of the last 10
+        const sec = Math.ceil(s.left / 1000);
+        if (urgent && s.phase !== "deal" && sec > 0 && sec !== lastTick) { lastTick = sec; sfx.tick(); }
+        if (!urgent) lastTick = null;
       }
 
       if (s.phase !== "reveal" && l.shelf) dropShelf(l);
@@ -868,6 +886,10 @@ export const SECRET_DIARY = {
     // live game on window.__game for debugging, which would otherwise keep
     // every answer alive after the party ended
     trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
+    // the host's "+30s" lives in the HUD, which is redrawn every few frames
+    const onMore = e => { if (e.target.closest("[data-more]") && ctx.isHost()) { sfx.confirm(); game.input("more"); } };
+    $("game-hud")?.addEventListener("click", onMore);
+    trash.add(() => $("game-hud")?.removeEventListener("click", onMore));
     game.start({ phase: "deal", left: DIARY.DEAL_MS, players: {}, batch: [], used: [], swapped: [], qs: [], keys: [], qi: -1, why: null, gameId: null });
     const o = ctx.onEnd;
     ctx.onEnd = r => { game.stop(); ui.hide(); o(r); };

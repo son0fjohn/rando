@@ -105,6 +105,9 @@ export const SIDE_QUEST = {
   id: "sidequest", title: "Side Quest",
   blurb: "the wizard hands out a real-life dare. one player has 3 minutes to do it — everyone films and rates how hard they committed.",
   minPlayers: 3, maxPlayers: 12, length: "~4 min per turn",
+  // picking the quests is the host's own setup: everyone else waits in the
+  // lobby, and the host can back out of it (party.js)
+  hostSetup: ["setup"],
   describe: meta => (meta?.settings?.adult ? "unhinged quests on" : ""),
 
   start(ctx) {
