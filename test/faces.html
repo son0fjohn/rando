@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>faces — check</title>
+<!-- Dev page: every eye style × expression from web/face3.js, flat on a
+     skin disc, plus the iris colors. node test/charturn_shots.mjs
+     <dir> --faces screenshots it. -->
+<script type="importmap">
+{ "imports": { "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js" } }
+</script>
+<style>
+  body { margin: 0; padding: 10px; background: #1b1f3d; color: #e8ebff; font: 12px system-ui, sans-serif; }
+  .row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .row b { width: 28px; }
+  canvas { width: 128px; height: 128px; }
+</style>
+</head>
+<body>
+<div id="g"></div>
+<script type="module">
+import { drawFace, EXPRESSIONS, IRIS_RGB } from "/web/face3.js";
+const g = document.getElementById("g");
+const tile = look => {
+  const cv = document.createElement("canvas"); cv.width = cv.height = 256;
+  const c = cv.getContext("2d");
+  c.fillStyle = "rgb(226,189,173)"; c.beginPath(); c.arc(128, 120, 118, 0, Math.PI * 2); c.fill();
+  drawFace(c, 256, look); return cv;
+};
+const head = document.createElement("div"); head.className = "row"; head.innerHTML = "<b></b>" + EXPRESSIONS.map(e => `<span style="width:128px">${e}</span>`).join("");
+g.append(head);
+for (const style of ["f1", "f2", "f3", "f4", "f5", "f6"]) {
+  const row = document.createElement("div"); row.className = "row"; row.innerHTML = `<b>${style}</b>`;
+  for (const expr of EXPRESSIONS) row.append(tile({ style, iris: "blue", expr }));
+  g.append(row);
+}
+const row = document.createElement("div"); row.className = "row"; row.innerHTML = "<b>iris</b>";
+for (const iris of Object.keys(IRIS_RGB)) row.append(tile({ style: "f1", iris, expr: "neutral" }));
+g.append(row);
+window.__done = true;
+</script>
+</body>
+</html>

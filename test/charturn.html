@@ -9,7 +9,7 @@
      through its idle clip as it turns), the Style screen and a face
      close-up (the static build and lights the Style screen uses) — for a
      few hairstyles. node test/charturn_shots.mjs screenshots it.
-     ?hair=f2,f5,m1  ?angles=8 -->
+     ?hair=f2,f5,m1  ?angles=8  ?scale=2  ?only=close-up -->
 <base href="/web/">
 <script type="importmap">
 { "imports": {
@@ -38,7 +38,9 @@ import * as A from "/web/avatar3.js";
 const q = new URLSearchParams(location.search);
 const HAIRS = (q.get("hair") ?? "f2,f5,m1").split(",");
 const N = +(q.get("angles") ?? 8);
-const LOOK = { skin: "2", hairColor: "brown", face: "f1", iris: "blue", top: "none", bottom: "none", shoes: "none" };
+const BIG = +(q.get("scale") ?? 1); // bigger cells for inspecting details
+const ONLY = q.get("only"); // e.g. only=close-up
+const LOOK = { skin: "2", hairColor: (q.get("hc") ?? "brown"), face: "f1", iris: "blue", top: "none", bottom: "none", shoes: "none" };
 const ZOOMS = [
   // name, builder, canvas w/h, fov, camera (dist, eyeY, lookY), lights
   { name: "map distance", cls: "map", anim: true, w: 120, h: 120, fov: 40, dist: 70, eye: 22, look: 7.5 },
@@ -61,7 +63,9 @@ const info = document.getElementById("info");
 const notes = [];
 const OUTFIT_ZOOM = { name: "Style screen, hoodie + cargo + sneakers", cls: "style", anim: false, outfit: true, w: 150, h: 200, fov: 30, dist: 34, eye: 9, look: 7.2 };
 for (const hair of HAIRS) {
-  for (const z of [...ZOOMS, OUTFIT_ZOOM]) {
+  for (const z0 of [...ZOOMS, OUTFIT_ZOOM]) {
+    if (ONLY && !z0.name.startsWith(ONLY)) continue;
+    const z = { ...z0, w: z0.w * BIG, h: z0.h * BIG };
     const cfg = { ...LOOK, hair, ...(z.outfit ? OUTFIT : {}) };
     let ch;
     try { ch = await (z.anim ? A.makeAnimatedCharacter(cfg) : A.makeHumanCharacter(cfg)); await ch.ready; }

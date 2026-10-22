@@ -10,6 +10,8 @@
 // walking, phase, tick }.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import { celMaterial, setFace } from "./cel.js";
+import { faceTexture, EXPRESSIONS, EYE_Y, EYE_DX, drawFace } from "./face3.js";
 import * as SkeletonUtils from "https://esm.sh/three@0.160.0/examples/jsm/utils/SkeletonUtils.js";
 
 const BASE = "avatar3";
@@ -51,7 +53,7 @@ export const PART_OPTIONS3 = {
 
 export const DEFAULT_AVATAR3 = {
   skin: "1", hair: "f1", hairColor: "black", face: "f1", iris: "current",
-  top: "none", bottom: "none", shoes: "none",
+  top: "none", bottom: "none", shoes: "sneaker-white-stripe",
 };
 
 // old blob configs ({ body, eyes, iris, head }) carry no mappable meaning
@@ -73,22 +75,9 @@ const loader = new GLTFLoader();
 let templatePromise = null;
 let T = null; // resolved template
 
-// face decal PNGs load independently of the body GLB so 2D thumbs
-// (avatarThumb3) can resolve even in legacy modes that never load the
-// humanoid template. Callers that render a thumb early can await this and
-// re-render (see backend.setAvatarThumb).
-const DECALS = {}; // "face_iris" -> HTMLImageElement
-let decalsPromise = null;
-export function loadFaceDecals() {
-  decalsPromise ??= Promise.all(PART_OPTIONS3.face.flatMap(de => PART_OPTIONS3.iris.map(ir =>
-    new Promise(res => {
-      const im = new Image();
-      im.onload = () => { DECALS[`${de}_${ir}`] = im; res(); };
-      im.onerror = () => res();
-      im.src = `${BASE}/faces/${de}_${ir}.png`;
-    }))));
-  return decalsPromise;
-}
+// faces are drawn in code (face3.js); kept for callers that awaited the
+// old decal PNGs before drawing a thumb
+export function loadFaceDecals() { return Promise.resolve(); }
 
 // The runtime never drives the skeleton (motion is group-level, blob-style),
 // and Tripo's rigs carry mesh-node transforms that make bind-pose skinning
@@ -214,50 +203,358 @@ function analyzeFace(src) {
   ctx.fillStyle = `rgb(${fill[0]},${fill[1]},${fill[2]})`;
   ctx.fillRect(bx, by, bw, bh);
   img.close?.();
-  return { canvas: cv, C, R: sphereR, dir };
+  const frame = faceFrame(sm, wp, darks, C, R, dir);
+  // the symmetric facing, not the eye-cluster guess: the guess sat 6.6°
+  // off on body.glb, so the whole character stood slightly turned
+  return { canvas: cv, C, R: sphereR, dir: frame.dir.clone(), frame };
 }
 
-// classify skin pixels once; tone changes then only rewrite those pixels.
-// KNOWN FLAW (content, not code): the body texture has small skin-colored
-// patches painted onto the tank back — they recolor with the skin because
-// they genuinely are skin-colored. Needs an offline repaint of body.glb's
-// texture; heuristics here misfire (atlas background is also white).
-function buildSkinMask(cv) {
-  const ctx = cv.getContext("2d", { willReadFrequently: true });
-  const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
-  const mask = new Uint8Array(cv.width * cv.height);
-  for (let i = 0, p = 0; i < mask.length; i++, p += 4) {
-    const r = d[p], g = d[p + 1], b = d[p + 2];
-    // strict warmth: the tank/shorts whites carry a slight warm cast in
-    // shadow (r-g ≈ 10-22) and must NOT be treated as skin
-    if (r > 150 && r - g >= 26 && r - g <= 85 && g - b >= 6 && g - b <= 55) mask[i] = 1;
+// FACE_SCALE > 1 draws the features bigger than the baked eyes they replace
+const FACE_SCALE = 1.22;
+// The face's own UV set: every body vertex gets faceUvw = (u, v, weight),
+// a planar projection of its REST position onto the face plane, lined up
+// so the eyes found on the head land on face3's EYE_Y / EYE_DX. It is a
+// vertex attribute, so the face skins with the head bone in every pose;
+// the cel shader composites the face texture through it (cel.js).
+function faceFrame(sm, wp, darks, C0, R, dir0) {
+  const up0 = new THREE.Vector3(0, 1, 0);
+  const v = new THREE.Vector3();
+  // square the frame up on the two eyes: the axis between them is the
+  // head's true left-right, and the head center sits midway between them
+  // (the crown sphere fit and the dark-cluster facing drift sideways a
+  // little, which made the hairline lopsided)
+  let ax = new THREE.Vector3().crossVectors(up0, dir0).normalize(); // viewer's right
+  const eyeL = new THREE.Vector3(), eyeR = new THREE.Vector3();
+  let nl = 0, nr = 0;
+  for (const i of darks) {
+    wp(i, v);
+    const d = v.clone().sub(C0);
+    if (d.dot(dir0) <= 0) continue;
+    if (d.dot(ax) < 0) { eyeL.add(v); nl++; } else { eyeR.add(v); nr++; }
   }
-  return mask;
-}
-
-function recolorCanvas(srcCv, mask, gains) {
-  const out = document.createElement("canvas");
-  out.width = srcCv.width; out.height = srcCv.height;
-  const ctx = out.getContext("2d");
-  ctx.drawImage(srcCv, 0, 0);
-  const id = ctx.getImageData(0, 0, out.width, out.height);
-  const d = id.data;
-  for (let i = 0, p = 0; i < mask.length; i++, p += 4) {
-    if (!mask[i]) continue;
-    d[p] = Math.min(255, d[p] * gains[0]);
-    d[p + 1] = Math.min(255, d[p + 1] * gains[1]);
-    d[p + 2] = Math.min(255, d[p + 2] * gains[2]);
+  const C = C0.clone();
+  let dir = dir0.clone();
+  if (nl > 3 && nr > 3) {
+    eyeL.divideScalar(nl); eyeR.divideScalar(nr);
+    const across = eyeR.clone().sub(eyeL).setY(0);
+    if (across.lengthSq() > 1e-10) {
+      ax = across.normalize();
+      dir = new THREE.Vector3().crossVectors(ax, up0).normalize();
+      const mid = eyeL.clone().add(eyeR).multiplyScalar(0.5);
+      C.addScaledVector(ax, mid.clone().sub(C).dot(ax));
+    }
   }
-  ctx.putImageData(id, 0, 0);
-  return out;
+  // then refine on the skull's own mirror symmetry: the eye clusters
+  // aren't exact (one can pick up more brow or lash than the other), and a
+  // few degrees of yaw tilt the hairline visibly to one side
+  {
+    const pts = [];
+    for (let i = 0; i < sm.geometry.attributes.position.count; i += 1) {
+      wp(i, v);
+      const d = v.clone().sub(C);
+      if (d.length() < 1.3 * R && d.y > -0.3 * R) pts.push(d);
+    }
+    const cell = R * 0.08, hash = new Map();
+    const hk = (x, y, z) => `${Math.round(x / cell)},${Math.round(y / cell)},${Math.round(z / cell)}`;
+    for (const q of pts) { const k = hk(q.x, q.y, q.z); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(q); }
+    const nearD = (x, y, z) => {
+      let bd = cell * cell * 4;
+      const cx = Math.round(x / cell), cy = Math.round(y / cell), cz = Math.round(z / cell);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+        for (const q of hash.get(`${cx + a},${cy + b},${cz + c}`) ?? []) {
+          const dd = (q.x - x) ** 2 + (q.y - y) ** 2 + (q.z - z) ** 2;
+          if (dd < bd) bd = dd;
+        }
+      }
+      return bd;
+    };
+    const cost = (yaw, off) => {
+      const n = new THREE.Vector3(ax.x, 0, ax.z).applyAxisAngle(up0, yaw);
+      let sum = 0;
+      for (let k = 0; k < pts.length; k += 2) {
+        const q = pts[k];
+        const t = 2 * (q.dot(n) - off);
+        sum += nearD(q.x - t * n.x, q.y - t * n.y, q.z - t * n.z);
+      }
+      return sum;
+    };
+    let best = [0, 0], bc = cost(0, 0);
+    for (let yd = -24; yd <= 24; yd += 2) for (let o = -0.12; o <= 0.121; o += 0.03) {
+      const c = cost(yd * Math.PI / 180, o * R);
+      if (c < bc) { bc = c; best = [yd * Math.PI / 180, o * R]; }
+    }
+    const [y0, o0] = best;
+    for (let yd = -2; yd <= 2; yd += 0.5) for (let o = -0.03; o <= 0.031; o += 0.01) {
+      const c = cost(y0 + yd * Math.PI / 180, o0 + o * R);
+      if (c < bc) { bc = c; best = [y0 + yd * Math.PI / 180, o0 + o * R]; }
+    }
+    ax.applyAxisAngle(up0, best[0]).setY(0).normalize();
+    C.addScaledVector(ax, best[1]);
+    dir = new THREE.Vector3().crossVectors(ax, up0).normalize();
+    if (dir.dot(dir0) < 0) { dir.negate(); ax.negate(); }
+  }
+  const ay = new THREE.Vector3().crossVectors(dir, ax).normalize();
+  const as = [], bs = [];
+  for (const i of darks) {
+    wp(i, v).sub(C);
+    if (v.dot(dir) <= 0) continue;
+    as.push(v.dot(ax)); bs.push(v.dot(ay));
+  }
+  const med = a => [...a].sort((x, y) => x - y)[a.length >> 1] ?? 0;
+  const left = as.filter(a => a < 0), right = as.filter(a => a > 0);
+  const sep = Math.max(R * 0.35, med(right) - med(left));
+  const pct = (a, q) => [...a].sort((x, y) => x - y)[Math.floor(a.length * q)] ?? 0;
+  const eyeB = pct(bs, 0.6); // upper half of the dark cluster: eyes, not mouth
+  const eyeA = (med(right) + med(left)) / 2;
+  const unit = sep / (2 * EYE_DX) * FACE_SCALE; // world units per face canvas
+  const pos = sm.geometry.attributes.position;
+  const nrm = sm.geometry.attributes.normal;
+  const NM = new THREE.Matrix3().getNormalMatrix(sm.matrixWorld);
+  const nv = new THREE.Vector3();
+  const out = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    // facing weight: the side of the head never takes a stretched eye
+    const facing = nrm ? nv.fromBufferAttribute(nrm, i).applyMatrix3(NM).normalize().dot(dir) : 1;
+    wp(i, v).sub(C);
+    const depth = v.dot(dir) / R, dist = v.length() / R;
+    const a = v.dot(ax), b = v.dot(ay);
+    out[i * 3] = 0.5 + (a - eyeA) / unit;
+    out[i * 3 + 1] = 1 - (EYE_Y - (b - eyeB) / unit); // texture v (flipY)
+    const w = THREE.MathUtils.smoothstep(depth, 0.15, 0.45) *
+      THREE.MathUtils.smoothstep(facing, 0.25, 0.55) *
+      (1 - THREE.MathUtils.smoothstep(dist, 1.25, 1.45));
+    out[i * 3 + 2] = w;
+  }
+  sm.geometry.setAttribute("faceUvw", new THREE.BufferAttribute(out, 3));
+  shapeBody(sm, wp, { C, R, dir, ax, ay, eyeB, unit });
+  return { sep, unit, eyeA, eyeB, dir, C };
 }
 
-const texFromCanvas = cv => {
-  const t = new THREE.CanvasTexture(cv);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.flipY = false;
-  return t;
-};
+// the scalp's edge, as a height above the eyes by how far round the head
+// you are (depth: 1 = straight ahead, 0 = above the ear, -1 = the back):
+// high across the forehead, a short temple, just over the ear, then down
+// behind it to the nape. Piecewise linear between knots.
+function hairline(depth, f) {
+  const K = [[-1, -0.66 * f.R], [-0.62, -0.6 * f.R], [-0.42, -0.36 * f.R], [-0.22, 0.1 * f.R],
+    [0.15, 0.14 * f.R], [0.45, 0.2 * f.R], [0.68, 0.23 * f.unit], [1, 0.27 * f.unit]];
+  for (let k = 1; k < K.length; k++) {
+    if (depth <= K[k][0]) {
+      const t = (depth - K[k - 1][0]) / (K[k][0] - K[k - 1][0]);
+      return K[k - 1][1] + (K[k][1] - K[k - 1][1]) * Math.max(0, t);
+    }
+  }
+  return K[K.length - 1][1];
+}
+
+// Body regions + proportions, done once on the template mesh (so every
+// pose and clip keeps them):
+// - bodyRgn = (scalp, skin, tank, shorts) weights. The cel shader paints
+//   those regions flat (skin tone, hair color, the base tank and shorts),
+//   which replaces the baked texture's painted hairline, seams and stray
+//   skin-colored patches on the tank. Hem lines follow body height, the
+//   hairline follows the face frame.
+// - limbs and torso 12% slimmer: each vertex moves toward its bones' axes
+//   (blended by skin weight, so joints stay continuous); hands 18% bigger
+//   about the wrist. Bind-pose edit: the skeleton and clips are untouched.
+const SLIM = 0.12, HAND = 1.18;
+function shapeBody(sm, wp, f) {
+  const geo = sm.geometry;
+  const pos = geo.attributes.position;
+  const sIdx = geo.attributes.skinIndex, sWt = geo.attributes.skinWeight;
+  const bones = sm.skeleton?.bones ?? [];
+  const n = pos.count;
+  const P = new Float32Array(n * 3);
+  const v = new THREE.Vector3();
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    wp(i, v); P[i * 3] = v.x; P[i * 3 + 1] = v.y; P[i * 3 + 2] = v.z;
+    minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+  }
+  const H = maxY - minY;
+  const lat = i => (P[i * 3] - f.C.x) * f.ax.x + (P[i * 3 + 2] - f.C.z) * f.ax.z;
+  const yn = i => (P[i * 3 + 1] - minY) / H;
+  // joint -> kind
+  const kindOf = (j, i) => {
+    const nm = bones[j]?.name ?? "";
+    if (/Head_2/.test(nm)) return "head";
+    if (/Head_/.test(nm)) return "neck";
+    if (/Spine|Root/.test(nm)) return "torso";
+    if (/0_(Left|Right)_Limb/.test(nm)) return "arm";
+    if (/1_(Left|Right)_Limb/.test(nm)) return "leg";
+    return Math.abs(lat(i)) > 0.055 * H ? "arm" : "torso";
+  };
+  const kw = new Float32Array(n * 5); // head, neck, torso, arm, leg weights
+  const K = { head: 0, neck: 1, torso: 2, arm: 3, leg: 4 };
+  const domJ = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    let best = 0, bw = -1;
+    for (let c = 0; c < 4; c++) {
+      const j = sIdx ? sIdx.getComponent(i, c) : 0, w = sWt ? sWt.getComponent(i, c) : 0;
+      if (w <= 0) continue;
+      kw[i * 5 + K[kindOf(j, i)]] += w;
+      if (w > bw) { bw = w; best = j; }
+    }
+    domJ[i] = best;
+  }
+  // regions
+  const rgn = new Float32Array(n * 4);
+  const ss = THREE.MathUtils.smoothstep;
+  const WAIST = 0.468, HEM = 0.31, NECKLINE = 0.668, SLEEVE = 0.548;
+  for (let i = 0; i < n; i++) {
+    const y = yn(i);
+    const torso = kw[i * 5 + 2], leg = kw[i * 5 + 4], arm = kw[i * 5 + 3], head = kw[i * 5];
+    rgn[i * 4 + 1] = 1; // skin everywhere underneath
+    const notArm = 1 - ss(arm, 0.4, 0.6);
+    // soft ramps (not steps): the shader cuts at the 0.5 iso-line, which
+    // then runs smoothly through triangles instead of zig-zagging on edges
+    const band = (x, e, wd) => ss(x, e - wd, e + wd);
+    // (not "torso + leg": Tripo's weights bleed the resting hands' bones
+    // into the thighs, which chewed the hem into spikes)
+    const body = notArm * (1 - ss(head + kw[i * 5 + 1], 0.4, 0.6));
+    // the base tee: torso up to the neck, plus short sleeves on the arms
+    // (neck weights reach down onto the chest on this rig: the neckline is
+    // cut by height, neck weights only clear the neck itself)
+    const neck = 1 - ss(head + kw[i * 5 + 1], 0.4, 0.6) * band(y, 0.64, 0.008);
+    const armCut = THREE.MathUtils.lerp(1, band(y, SLEEVE, 0.012), ss(arm, 0.4, 0.6)); // sleeves
+    rgn[i * 4 + 2] = neck * armCut * band(y, WAIST, 0.012) * (1 - band(y, NECKLINE, 0.01));
+    rgn[i * 4 + 3] = body * (1 - band(y, WAIST, 0.012)) * band(y, HEM, 0.03);
+    // scalp: anything on the skull above a hairline that sits high on the
+    // forehead, above the ears at the sides and drops to the nape
+    v.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).sub(f.C);
+    if (v.length() < 1.35 * f.R && v.dot(f.ay) > -0.75 * f.R) {
+      const depth = v.dot(f.dir) / v.length(), b = v.dot(f.ay);
+      const line = f.eyeB + hairline(depth, f);
+      // stored as a signed distance (0.5 = on the line, 1 R = 0.5 units) so
+      // the shader can move the cut: lower while hair is on, so gaps
+      // between strands show hair color, not forehead
+      rgn[i * 4] = THREE.MathUtils.clamp(0.5 + (b - line) / f.R * 0.5, 0, 1);
+    }
+  }
+  geo.setAttribute("bodyRgn", new THREE.BufferAttribute(rgn, 4));
+  // feet (inside any shoe): hidden while shoes are worn, see cel.js uHide
+  const foot = new Float32Array(n);
+  for (let i = 0; i < n; i++) foot[i] = kw[i * 5 + 4] * (1 - ss(yn(i), 0.095, 0.115));
+  geo.setAttribute("footW", new THREE.BufferAttribute(foot, 1));
+  // slimming: per joint group, the principal axis through its centroid
+  const groups = new Map(); // joint -> { c, axis }
+  const byJ = new Map();
+  for (let i = 0; i < n; i++) { if (!byJ.has(domJ[i])) byJ.set(domJ[i], []); byJ.get(domJ[i]).push(i); }
+  for (const [j, ids] of byJ) {
+    if (ids.length < 20) continue;
+    const c = new THREE.Vector3();
+    for (const i of ids) c.add(v.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]));
+    c.divideScalar(ids.length);
+    // power iteration on the covariance for the main axis
+    const cov = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (const i of ids) {
+      const d = [P[i * 3] - c.x, P[i * 3 + 1] - c.y, P[i * 3 + 2] - c.z];
+      for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) cov[r * 3 + q] += d[r] * d[q];
+    }
+    let a = new THREE.Vector3(0, 1, 0);
+    for (let it = 0; it < 24; it++) {
+      a = new THREE.Vector3(cov[0] * a.x + cov[1] * a.y + cov[2] * a.z,
+        cov[3] * a.x + cov[4] * a.y + cov[5] * a.z, cov[6] * a.x + cov[7] * a.y + cov[8] * a.z).normalize();
+    }
+    // the torso slims about a vertical axis (its main axis is the width)
+    const k = kindOf(j, ids[0]);
+    if (k === "torso") a.set(0, 1, 0);
+    groups.set(j, { c, a, k });
+  }
+  // wrists: per side, the arm vertices just above the hand
+  const HANDY = 0.445;
+  const wrist = { [-1]: new THREE.Vector3(), [1]: new THREE.Vector3() }, wc = { [-1]: 0, [1]: 0 };
+  for (let i = 0; i < n; i++) {
+    const y = yn(i);
+    if (kw[i * 5 + 3] < 0.6 || y < HANDY - 0.012 || y > HANDY + 0.012) continue;
+    const sd = Math.sign(lat(i)) || 1;
+    wrist[sd].add(v.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2])); wc[sd]++;
+  }
+  for (const sd of [-1, 1]) if (wc[sd]) wrist[sd].divideScalar(wc[sd]);
+  const inv = sm.matrixWorld.clone().invert();
+  const d = new THREE.Vector3(), off = new THREE.Vector3(), p = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    p.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
+    off.set(0, 0, 0);
+    const y = yn(i);
+    const isHand = kw[i * 5 + 3] > 0.5 && y < HANDY;
+    const slimmable = 1 - kw[i * 5] - kw[i * 5 + 1]; // not head/neck
+    if (slimmable > 0.01) {
+      for (let c = 0; c < 4; c++) {
+        const w = sWt ? sWt.getComponent(i, c) : 0;
+        const g = w > 0 && groups.get(sIdx.getComponent(i, c));
+        if (!g || g.k === "head" || g.k === "neck") continue;
+        // feet and hands keep their size (sneakers + hands are the chunky bits)
+        if (g.k === "leg" && y < 0.11) continue;
+        if (isHand) continue;
+        d.copy(p).sub(g.c);
+        d.sub(g.a.clone().multiplyScalar(d.dot(g.a))); // perpendicular part
+        off.addScaledVector(d, -SLIM * w);
+      }
+    }
+    if (kw[i * 5 + 3] > 0.3 && y < HANDY + 0.01 && wc[Math.sign(lat(i)) || 1]) {
+      const t = ss(y, HANDY + 0.01, HANDY - 0.03); // 0 at the wrist -> 1 in the palm
+      const wr = wrist[Math.sign(lat(i)) || 1];
+      off.add(d.copy(p).sub(wr).multiplyScalar((HAND - 1) * t));
+    }
+    p.add(off).applyMatrix4(inv);
+    pos.setXYZ(i, p.x, p.y, p.z);
+  }
+  pos.needsUpdate = true;
+  smoothNormals(geo);
+  geo.computeBoundingBox(); geo.computeBoundingSphere();
+}
+
+// area-weighted normals, welded across UV seams (vertices that share a
+// position share a normal): no shading creases along texture seams, and
+// the reshaped limbs shade like their new shape
+function smoothNormals(geo) {
+  const pos = geo.attributes.position, n = pos.count;
+  const key = new Int32Array(n), ids = new Map();
+  const q = 1e5 / (geo.boundingSphere?.radius || 1);
+  for (let i = 0; i < n; i++) {
+    const k = `${Math.round(pos.getX(i) * q)},${Math.round(pos.getY(i) * q)},${Math.round(pos.getZ(i) * q)}`;
+    if (!ids.has(k)) ids.set(k, ids.size);
+    key[i] = ids.get(k);
+  }
+  const acc = new Float32Array(ids.size * 3);
+  const idx = geo.index ? geo.index.array : null;
+  const tris = (idx ? idx.length : n) / 3;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let t = 0; t < tris; t++) {
+    const i0 = idx ? idx[t * 3] : t * 3, i1 = idx ? idx[t * 3 + 1] : t * 3 + 1, i2 = idx ? idx[t * 3 + 2] : t * 3 + 2;
+    a.fromBufferAttribute(pos, i0); b.fromBufferAttribute(pos, i1); c.fromBufferAttribute(pos, i2);
+    b.sub(a); c.sub(a); b.cross(c); // area-weighted face normal
+    for (const i of [i0, i1, i2]) {
+      acc[key[i] * 3] += b.x; acc[key[i] * 3 + 1] += b.y; acc[key[i] * 3 + 2] += b.z;
+    }
+  }
+  // then relax them over welded neighbors: Tripo surfaces are lumpy, and
+  // a 3-step toon ramp turns every lump into a blotch
+  const nb = Array.from({ length: ids.size }, () => new Set());
+  for (let t = 0; t < tris; t++) {
+    const k = [0, 1, 2].map(e => key[idx ? idx[t * 3 + e] : t * 3 + e]);
+    for (const x of k) for (const y of k) if (x !== y) nb[x].add(y);
+  }
+  let cur = acc;
+  for (let it = 0; it < 4; it++) {
+    const nx = new Float32Array(cur.length);
+    for (let k = 0; k < ids.size; k++) {
+      a.set(cur[k * 3], cur[k * 3 + 1], cur[k * 3 + 2]).normalize();
+      for (const m of nb[k]) {
+        b.set(cur[m * 3], cur[m * 3 + 1], cur[m * 3 + 2]).normalize();
+        a.addScaledVector(b, 0.6 / nb[k].size);
+      }
+      nx[k * 3] = a.x; nx[k * 3 + 1] = a.y; nx[k * 3 + 2] = a.z;
+    }
+    cur = nx;
+  }
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    a.set(cur[key[i] * 3], cur[key[i] * 3 + 1], cur[key[i] * 3 + 2]).normalize();
+    out[i * 3] = a.x; out[i * 3 + 1] = a.y; out[i * 3 + 2] = a.z;
+  }
+  geo.setAttribute("normal", new THREE.BufferAttribute(out, 3));
+}
 
 // flatten any PBR into the world's matte look, keep the map
 export function matteify(root) {
@@ -269,6 +566,35 @@ export function matteify(root) {
     o.frustumCulled = false;
   });
 }
+
+// every character piece gets the shared cel material (keeps its map)
+function celify(root) {
+  root.traverse(o => {
+    if (!o.isMesh && !o.isSkinnedMesh) return;
+    o.material = celMaterial({ map: o.material.map ?? null });
+    o.frustumCulled = false;
+  });
+}
+
+// the face texture for a config + expression (shared, cache-owned)
+const faceFor = (cfg, expr = "neutral") => faceTexture({
+  style: cfg.face, iris: cfg.iris, expr,
+  brow: cfg.hair === "none" ? [70, 52, 46] : HAIR_RGB[cfg.hairColor],
+});
+
+const srgb = c => new THREE.Color().setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace);
+// the base layer, painted flat by the cel shader (see shapeBody)
+const BASE_TANK = [244, 241, 232], BASE_SHORTS = [62, 70, 104];
+const paintFor = cfg => ({
+  skin: srgb(SKIN_RGB[cfg.skin] ?? SKIN_BASE),
+  scalp: srgb((HAIR_RGB[cfg.hairColor] ?? HAIR_RGB.black).map(c => c * 0.82)),
+  tank: srgb(BASE_TANK), shorts: srgb(BASE_SHORTS),
+  // with hair on, the scalp reaches 0.12 R lower (see bodyRgn)
+  scalpCut: cfg.hair === "none" ? 0.5 : 0.44,
+  // body under worn clothes isn't drawn at all, so it can never poke
+  // through a sleeve, a waistband or a shoe (x tee, y shorts, z feet)
+  hide: [cfg.top !== "none", cfg.bottom !== "none", cfg.shoes !== "none"],
+});
 
 export function loadHumanTemplate() {
   if (templatePromise) return templatePromise;
@@ -288,6 +614,8 @@ export function loadHumanTemplate() {
       const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -yaw);
       face.dir.applyQuaternion(q);
       face.C.applyQuaternion(q);
+      face.frame.C.applyQuaternion(q);
+      face.frame.dir.applyQuaternion(q);
     }
     src.updateWorldMatrix(true, true);
     const srcBox = new THREE.Box3().setFromObject(src);
@@ -309,17 +637,18 @@ export function loadHumanTemplate() {
     const off = new THREE.Vector3(
       -(box2.min.x + box2.max.x) / 2, -box2.min.y, -(box2.min.z + box2.max.z) / 2);
     fit.position.copy(off);
-    let skinMask = null;
-    if (face) skinMask = buildSkinMask(face.canvas);
-    await loadFaceDecals(); // all 36 face decal PNGs, ready for sync assembly
+    // the head in the fitted (world) frame, for fitting hair and hats
+    const head = face && {
+      C: face.frame.C.clone().multiplyScalar(s).add(off),
+      dir: face.frame.dir.clone(),
+      R: face.R * s, unit: face.frame.unit * s,
+      eyeY: face.frame.C.y * s + off.y + face.frame.eyeB * s,
+    };
     T = {
-      fit, face, skinMask, decals: DECALS,
+      fit, face, head,
       fitScale: s, fitOffset: off, yaw, srcCenter,
-      skinTex: {},          // tone -> THREE.Texture
-      pieces: {},           // "cat/id" -> template scene (matte)
+      pieces: {},           // "cat/id" -> template scene (cel)
       pieceLoads: {},       // in-flight piece loads
-      hairCv: {},           // style -> { canvas, base }  (neutral texture)
-      hairTex: {},          // "style_color" -> THREE.Texture
     };
     return T;
   })();
@@ -357,16 +686,6 @@ function cropTris(root, dropFn) {
 // drop triangles whose vertices sit entirely above yLimit (root frame)
 const cropAboveY = (root, yLimit) => cropTris(root, v => v.y > yLimit);
 
-// tone textures bake lazily (2048² recolor is real CPU work on phones)
-function getSkinTex(tone) {
-  if (!T.face || !T.skinMask) return null;
-  if (!T.skinTex[tone]) {
-    const gains = SKIN_RGB[tone].map((t, i) => t / SKIN_BASE[i]);
-    T.skinTex[tone] = texFromCanvas(recolorCanvas(T.face.canvas, T.skinMask, gains));
-  }
-  return T.skinTex[tone];
-}
-
 function pieceUrl(cat, id) {
   const sub = { hair: "hair", top: "tops", bottom: "bottoms", shoes: "shoes" }[cat];
   return `${BASE}/${sub}/${id}.glb`;
@@ -378,7 +697,7 @@ function loadPiece(cat, id) {
   if (T.pieces[key]) return Promise.resolve(T.pieces[key]);
   if (!T.pieceLoads[key]) {
     T.pieceLoads[key] = loader.loadAsync(pieceUrl(cat, id)).then(g => {
-      matteify(g.scene);
+      celify(g.scene);
       // segmentation left some bottoms with hidden inner surfaces reaching
       // the chest (invisible on the source model, visible worn) — crop any
       // face fully above the waistline of the shared source frame
@@ -393,27 +712,8 @@ function loadPiece(cat, id) {
           v.y < trim.yBelow && v.dot(f) > trim.front &&
           Math.abs(v.dot(s)) < trim.halfWidth);
       }
-      if (cat === "hair") {
-        // remember the neutral texture canvas + its median color once
-        let map = null;
-        g.scene.traverse(o => { if (!map && o.material?.map?.image) map = o.material.map; });
-        if (map) {
-          const im = map.image;
-          const cv = document.createElement("canvas");
-          const sc = Math.min(1, 1024 / im.width);
-          cv.width = Math.round(im.width * sc);
-          cv.height = Math.round(im.height * sc);
-          const ctx = cv.getContext("2d", { willReadFrequently: true });
-          ctx.drawImage(im, 0, 0, cv.width, cv.height);
-          const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
-          const rs = [], gs = [], bs = [];
-          for (let p = 0; p < d.length; p += 16) {
-            rs.push(d[p]); gs.push(d[p + 1]); bs.push(d[p + 2]);
-          }
-          const med = a => a.sort((x, y) => x - y)[a.length >> 1];
-          T.hairCv[id] = { canvas: cv, base: [med(rs), med(gs), med(bs)] };
-        }
-      }
+      if (cat === "hair") fitHair(g.scene, key);
+      if (cat === "shoes") chunkyShoes(g.scene, key);
       T.pieces[key] = g.scene;
       delete T.pieceLoads[key];
       return g.scene;
@@ -422,73 +722,105 @@ function loadPiece(cat, id) {
   return T.pieceLoads[key];
 }
 
-function hairTexture(style, color) {
-  const key = `${style}_${color}`;
-  if (T.hairTex[key]) return T.hairTex[key];
-  const rec = T.hairCv[style];
-  if (!rec) return null;
-  const target = HAIR_RGB[color];
-  const gains = target.map((t, i) => t / Math.max(8, rec.base[i]));
-  const all = new Uint8Array(rec.canvas.width * rec.canvas.height).fill(1);
-  T.hairTex[key] = texFromCanvas(recolorCanvas(rec.canvas, all, gains));
-  return T.hairTex[key];
+// hair is one flat code tint (the cel shader shades it): Tripo's hair
+// textures carry baked skin, holes and seams, and a texture recolor
+// drifted between builds. Double-sided, so any hole in the shell shows
+// hair from the inside rather than the background.
+function tintHair(root, color) {
+  const c = srgb(HAIR_RGB[color] ?? HAIR_RGB.black);
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    o.material.map = null;
+    o.material.color.copy(c);
+    o.material.side = THREE.DoubleSide;
+    o.material.needsUpdate = true;
+  });
 }
 
-// single curved patch carrying the whole face decal, aimed at the face.
-// texture/geometry/material are per-build GPU resources — they register in
-// `owned` so rebuild()/dispose() can free them. `face` defaults to the
-// static template's analysis; the animated template passes its own (the
-// rigged export re-bakes the atlas, so face position/UVs differ).
-function facePatch(cfg, owned, face = T.face) {
-  const img = T.decals[`${cfg.face}_${cfg.iris}`];
-  if (!img || !face) return null;
-  const cv = document.createElement("canvas");
-  cv.width = 256; cv.height = 256;
-  const ctx = cv.getContext("2d");
-  // inset the decal source 14% per side: the offline extraction leaves ear
-  // stroke fragments at the extreme edges (9% still let them peek through
-  // beside the eyes on f1/f2)
-  const ix = img.width * 0.14;
-  const sw = img.width - ix * 2;
-  const ar = sw / img.height;
-  const w = 236, h = Math.min(210, w / ar);
-  ctx.drawImage(img, ix, 0, sw, img.height, (256 - w) / 2, (256 - h) / 2, w, h);
-  // ear strokes reach further inboard than any safe crop (they'd take the
-  // eye corners with them) — erase pale FLESH-toned pixels in the outer
-  // bands. The r-g floor keeps pure-white eye highlights (r≈g≈b) safe;
-  // connectivity tricks don't work here because the decals carry a
-  // semi-opaque skin-tone backing that connects every feature.
-  const id = ctx.getImageData(0, 0, 256, 256);
-  const px = id.data;
-  const band = Math.round(256 * 0.27);
-  for (let y = 0; y < 256; y++) {
-    for (let x = 0; x < 256; x++) {
-      if (x >= band && x < 256 - band) continue;
-      const p = (y * 256 + x) * 4;
-      if (px[p + 3] === 0) continue;
-      const r = px[p], g = px[p + 1], b = px[p + 2];
-      if (r > 165 && g > 105 && b > 95 && r - b < 110 &&
-          Math.max(r, g, b) - Math.min(r, g, b) < 85) {
-        px[p + 3] = 0;
-      }
-    }
+// Chunky sneakers: each shoe grows 18% wider/longer and 12% taller about
+// its own sole center, sole kept on the ground. Once per shoe template.
+const SHOE_GROW = [1.18, 1.12];
+function chunkyShoes(scene, key) {
+  const jig = attachWrapper(scene, key);
+  jig.updateWorldMatrix(true, true);
+  const v = new THREE.Vector3();
+  const pts = [];
+  jig.traverse(o => {
+    if (!o.isMesh) return;
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) pts.push([o, i, v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).clone()]);
+  });
+  const side = { [-1]: { c: new THREE.Vector3(), n: 0, minY: Infinity }, [1]: { c: new THREE.Vector3(), n: 0, minY: Infinity } };
+  for (const [, , p] of pts) {
+    const sd = side[p.x < 0 ? -1 : 1];
+    sd.c.add(p); sd.n++; sd.minY = Math.min(sd.minY, p.y);
   }
-  ctx.putImageData(id, 0, 0);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const angH = 0.62, angV = 0.44;
-  // 1.05: hug the skull — at 1.12 the decal visibly floated clear of the
-  // head silhouette in profile views
-  const geo = new THREE.SphereGeometry(face.R * 1.05, 24, 24,
-    Math.PI / 2 - angH, angH * 2, Math.PI / 2 - angV, angV * 2);
-  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-    map: tex, transparent: true, alphaTest: 0.03, side: THREE.FrontSide }));
-  owned.push(tex, geo, mesh.material);
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), face.dir);
-  const holder = new THREE.Group();
-  holder.position.copy(face.C);
-  holder.add(mesh);
-  return holder;
+  for (const k of [-1, 1]) if (side[k].n) side[k].c.divideScalar(side[k].n);
+  const touched = new Set(), invs = new Map();
+  for (const [o, i, p] of pts) {
+    if (!invs.has(o)) invs.set(o, o.matrixWorld.clone().invert());
+    const sd = side[p.x < 0 ? -1 : 1];
+    p.x = sd.c.x + (p.x - sd.c.x) * SHOE_GROW[0];
+    p.z = sd.c.z + (p.z - sd.c.z) * SHOE_GROW[0];
+    p.y = sd.minY + (p.y - sd.minY) * SHOE_GROW[1];
+    p.applyMatrix4(invs.get(o));
+    o.geometry.attributes.position.setXYZ(i, p.x, p.y, p.z);
+    touched.add(o.geometry);
+  }
+  for (const g of touched) { g.attributes.position.needsUpdate = true; g.computeBoundingBox(); g.computeBoundingSphere(); }
+}
+
+// Fit a hair piece to the head once, on its shared template geometry:
+// - drop the face/skull shell some generations include (triangles lying
+//   on the face below the hairline);
+// - fold any fringe that hangs past the brows back up above the eyes;
+// - pull the shell in toward the scalp (snug: no gap at the temples).
+//   The scalp underneath is painted the hair color, so a little overlap
+//   never shows skin.
+function fitHair(scene, key) {
+  const h = T.head;
+  if (!h) return;
+  const jig = attachWrapper(scene, key);
+  jig.updateWorldMatrix(true, true);
+  const up = new THREE.Vector3(0, 1, 0);
+  const ax = new THREE.Vector3().crossVectors(up, h.dir).normalize();
+  const browY = h.eyeY + 0.135 * h.unit; // just over the lash line
+  const v = new THREE.Vector3(), d = new THREE.Vector3();
+  jig.traverse(o => {
+    if (!o.isMesh) return;
+    const geo = o.geometry, pos = geo.attributes.position, n = pos.count;
+    const inv = o.matrixWorld.clone().invert();
+    const onFace = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      d.copy(v).sub(h.C);
+      const dist = d.length(), depth = d.dot(h.dir) / Math.max(1e-6, dist);
+      const lat = Math.abs(d.dot(ax));
+      onFace[i] = depth > 0.25 && v.y < browY + 0.05 * h.R && dist < 1.12 * h.R ? 1 : 0;
+      // fringe: in front of the face, below the brows -> folded up
+      if (depth > 0.35 && lat < 0.8 * h.R && v.y < browY && v.y > h.eyeY - 0.9 * h.R) {
+        v.y = browY - (browY - v.y) * 0.12;
+      }
+      // snug: above the ears, shells float off the skull
+      if (v.y > h.eyeY - 0.25 * h.R && dist > 1.02 * h.R) {
+        d.copy(v).sub(h.C);
+        const dd = d.length();
+        v.copy(h.C).addScaledVector(d, (1.02 * h.R + (dd - 1.02 * h.R) * 0.8) / dd);
+      }
+      v.applyMatrix4(inv);
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    pos.needsUpdate = true;
+    const idx = geo.index ? Array.from(geo.index.array) : [...Array(n).keys()];
+    const kept = [];
+    for (let t = 0; t < idx.length; t += 3) {
+      if (onFace[idx[t]] && onFace[idx[t + 1]] && onFace[idx[t + 2]]) continue;
+      kept.push(idx[t], idx[t + 1], idx[t + 2]);
+    }
+    geo.setIndex(kept);
+    geo.computeVertexNormals();
+    geo.computeBoundingBox(); geo.computeBoundingSphere();
+  });
 }
 
 // per-style correction table (raw garment-frame units; pieces are
@@ -497,7 +829,7 @@ function facePatch(cfg, owned, face = T.face) {
 // fringe hangs to the nose — clip the central fringe triangles below brow
 // height in the raw frame (raw "front" is the +T.yaw direction).
 const PIECE_LIFT = { "hair/f2": 0.02 };
-const PIECE_YAW = { "hair/f5": Math.PI };
+const PIECE_YAW = {};
 const PIECE_TRIM = { "hair/f2": { yBelow: 0.335, front: 0.03, halfWidth: 0.12 } };
 
 function attachWrapper(scene, pieceKey) {
@@ -535,18 +867,20 @@ function buildHumanApi(cfg) {
 
   // settles once this build's attachments have loaded (or failed)
   let ready = Promise.resolve();
+  let bodyMats = [], expr = "neutral";
   const rebuild = () => {
     const myEpoch = ++epoch;
     disposeOwned();
     group.clear();
+    bodyMats = [];
     // body (static clone of the template) — swap in the tone texture.
     // castShadow is set HERE, not just by the world at spawn: rebuild()
     // replaces the meshes, so spawn-time flags are lost on outfit changes.
     const body = T.fit.clone(true);
     body.traverse(o => {
       if (o.isMesh || o.isSkinnedMesh) {
-        o.material = new THREE.MeshLambertMaterial({
-          map: getSkinTex(cfg.skin) ?? o.material.map ?? null });
+        o.material = celMaterial({ face: faceFor(cfg, expr), paint: paintFor(cfg) });
+        bodyMats.push(o.material);
         o.frustumCulled = false;
         o.castShadow = true;
         o.userData.part = "body";
@@ -554,17 +888,6 @@ function buildHumanApi(cfg) {
       }
     });
     group.add(body);
-    // face decal rides inside the body's source frame (bone-space ≈ source
-    // frame at rest since we bob the whole group, not the bones)
-    const fp = facePatch(cfg, owned);
-    if (fp) {
-      const wrap = new THREE.Group();
-      wrap.scale.setScalar(T.fitScale);
-      wrap.position.copy(T.fitOffset);
-      wrap.add(fp);
-      fp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.part = "face"; } });
-      group.add(wrap);
-    }
     // attachments — async-load then attach if this build is still current
     const want = [];
     if (cfg.hair !== "none") want.push(["hair", cfg.hair]);
@@ -575,10 +898,7 @@ function buildHumanApi(cfg) {
       loadPiece(cat, id).then(scene => {
         if (disposed || myEpoch !== epoch) return;
         const wrap = attachWrapper(scene, `${cat}/${id}`);
-        if (cat === "hair") {
-          const tex = hairTexture(id, cfg.hairColor);
-          if (tex) wrap.traverse(o => { if (o.isMesh) { o.material.map = tex; o.material.needsUpdate = true; } });
-        }
+        if (cat === "hair") tintHair(wrap, cfg.hairColor);
         wrap.traverse(o => {
           if (o.isMesh) { o.castShadow = true; o.userData.part = cat; owned.push(o.material); }
         });
@@ -595,6 +915,12 @@ function buildHumanApi(cfg) {
       cfg = normalizeAvatar3({ ...cfg, ...next });
       rebuild();
     },
+    // swap the face texture: neutral, smile, smirk, surprised, wink, laugh
+    setExpression(name) {
+      expr = EXPRESSIONS.includes(name) || name === "blink" ? name : "neutral";
+      for (const m of bodyMats) setFace(m, faceFor(cfg, expr));
+    },
+    get expression() { return expr; },
     dispose() {
       disposed = true;
       epoch++;          // orphan any in-flight attachment loads
@@ -630,7 +956,7 @@ let AT = null; // { scene, clips: {idle, walk}, bodyMesh }
 export function loadAnimTemplate() {
   if (animPromise) return animPromise;
   animPromise = (async () => {
-    await loadHumanTemplate(); // skin masks / decals / piece cache
+    await loadHumanTemplate(); // head frame / piece cache
     const [gi, gw] = await Promise.all([
       loader.loadAsync(`${BASE}/anims/idle.glb`),
       loader.loadAsync(`${BASE}/anims/walk.glb`),
@@ -644,12 +970,10 @@ export function loadAnimTemplate() {
     // face-erase/skin-mask coordinates don't apply. Run the same analysis
     // on THIS texture.
     const face = analyzeFace(scene);
-    const skinMask = face ? buildSkinMask(face.canvas) : null;
     AT = {
       scene,
       clips: { idle: gi.animations[0] ?? null, walk: gw.animations[0] ?? null },
-      bodyMesh, face, skinMask,
-      skinTex: {}, // tone -> texture, lazy (same recolor as the static path)
+      bodyMesh, face,
     };
     return AT;
   })();
@@ -660,7 +984,7 @@ export function loadAnimTemplate() {
 // mesh and bind it to the body's skeleton. Both inputs must have live
 // world matrices; the garment geometry is rebuilt in the body's LOCAL
 // (bind) frame so the skinning math matches the body exactly.
-function skinToBody(garmentMesh, bodySkinned) {
+function skinToBody(garmentMesh, bodySkinned, rigidBone = -1) {
   const gGeo = garmentMesh.geometry.clone();
   const gPos = gGeo.attributes.position;
   const bGeo = bodySkinned.geometry;
@@ -704,8 +1028,9 @@ function skinToBody(garmentMesh, bodySkinned) {
   const wt = new Float32Array(gPos.count * 4);
   for (let i = 0; i < gPos.count; i++) {
     v.fromBufferAttribute(gPos, i).applyMatrix4(garmentMesh.matrixWorld);
-    const n = nearest(v.x, v.y, v.z);
-    if (n >= 0) {
+    const n = rigidBone >= 0 ? -1 : nearest(v.x, v.y, v.z);
+    if (rigidBone >= 0) { idx[i * 4] = rigidBone; wt[i * 4] = 1; }
+    else if (n >= 0) {
       for (let c = 0; c < 4; c++) {
         idx[i * 4 + c] = bIdx.getComponent(n, c);
         wt[i * 4 + c] = bWt.getComponent(n, c);
@@ -721,15 +1046,6 @@ function skinToBody(garmentMesh, bodySkinned) {
   sm.frustumCulled = false;
   sm.castShadow = true;
   return sm; // caller binds: sm.bind(skeleton, bindMatrix) + parents it
-}
-
-function getAnimSkinTex(tone) {
-  if (!AT?.face || !AT.skinMask) return null;
-  if (!AT.skinTex[tone]) {
-    const gains = SKIN_RGB[tone].map((t, i) => t / SKIN_BASE[i]);
-    AT.skinTex[tone] = texFromCanvas(recolorCanvas(AT.face.canvas, AT.skinMask, gains));
-  }
-  return AT.skinTex[tone];
 }
 
 function buildAnimApi(cfg) {
@@ -753,6 +1069,7 @@ function buildAnimApi(cfg) {
 
   let bodySkinned = null;
   rig.traverse(o => { if (o.isSkinnedMesh && !bodySkinned) bodySkinned = o; });
+  const headBone = bodySkinned.skeleton.bones.findIndex(b => /Head_2/.test(b.name));
 
   // Tripo rigs carry wild mesh-node transforms: a static Box3 measure is
   // off by orders of magnitude vs what the skinning pipeline renders.
@@ -803,6 +1120,7 @@ function buildAnimApi(cfg) {
   const headLift = animFaceY - staticFaceY + 0.3;
 
   let ready = Promise.resolve();
+  let bodyMat = null, expr = "neutral";
   const rebuild = () => {
     const myEpoch = ++epoch;
     disposeOwned();
@@ -812,22 +1130,11 @@ function buildAnimApi(cfg) {
       if (c.userData.attachment) c.parent.remove(c);
     }
     if (bodySkinned) {
-      bodySkinned.material = new THREE.MeshLambertMaterial({
-        map: getAnimSkinTex(cfg.skin) ?? bodySkinned.material.map ?? null });
+      bodySkinned.material = bodyMat = celMaterial({ face: faceFor(cfg, expr), paint: paintFor(cfg) });
       bodySkinned.frustumCulled = false;
       bodySkinned.castShadow = true;
       bodySkinned.userData.part = "body";
       owned.push(bodySkinned.material);
-    }
-    // face decal rides the fit frame (rest-pose aligned; head motion in the
-    // idle clip is small — known approximation, review before default-on)
-    const fp = facePatch(cfg, owned, AT.face);
-    if (fp) {
-      const wrap = new THREE.Group();
-      wrap.userData.attachment = true;
-      wrap.add(fp);
-      fp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.part = "face"; } });
-      fit.add(wrap);
     }
     const want = [];
     if (cfg.hair !== "none") want.push(["hair", cfg.hair]);
@@ -838,10 +1145,7 @@ function buildAnimApi(cfg) {
       loadPiece(cat, id).then(scene => {
         if (disposed || myEpoch !== epoch) return;
         const wrap = attachWrapper(scene, `${cat}/${id}`);
-        if (cat === "hair") {
-          const tex = hairTexture(id, cfg.hairColor);
-          if (tex) wrap.traverse(o => { if (o.isMesh) { o.material.map = tex; o.material.needsUpdate = true; } });
-        }
+        if (cat === "hair") tintHair(wrap, cfg.hairColor);
         // position the wrap inside fit (shares the static template's
         // source-frame math), then convert each mesh to a skinned copy
         // attachWrapper output is already WORLD-fitted (static template
@@ -856,7 +1160,9 @@ function buildAnimApi(cfg) {
         wrap.traverse(o => {
           if (!o.isMesh) return;
           owned.push(o.material);
-          const sm = skinToBody(o, bodySkinned);
+          // hair and headwear ride the head bone rigidly (nearest-vertex
+          // weights let long hair pick up chest and arm bones and smear)
+          const sm = skinToBody(o, bodySkinned, cat === "hair" ? headBone : -1);
           owned.push(sm.geometry);
           sm.material = o.material;
           skinned.push(sm);
@@ -899,6 +1205,11 @@ function buildAnimApi(cfg) {
       cfg = normalizeAvatar3({ ...cfg, ...next });
       rebuild();
     },
+    setExpression(name) {
+      expr = EXPRESSIONS.includes(name) || name === "blink" ? name : "neutral";
+      setFace(bodyMat, faceFor(cfg, expr));
+    },
+    get expression() { return expr; },
     dispose() {
       disposed = true;
       epoch++;
@@ -939,8 +1250,8 @@ export function makeHumanCharacterSync(rawCfg) {
   return T ? buildHumanApi(normalizeAvatar3(rawCfg)) : null;
 }
 
-// 2D identity thumb for chat headers / cards: skin-tone disc + face decal.
-// Synchronous; returns a neutral placeholder until decals are loaded.
+// 2D identity thumb for chat headers / cards: skin-tone disc, hair cap and
+// the drawn face. Synchronous.
 export function avatarThumb3(rawCfg, size = 128) {
   const cfg = normalizeAvatar3(rawCfg);
   const cv = document.createElement("canvas");
@@ -958,11 +1269,13 @@ export function avatarThumb3(rawCfg, size = 128) {
     g.arc(size / 2, size / 2 - size * 0.04, size * 0.43, Math.PI * 1.05, Math.PI * 1.95);
     g.fill();
   }
-  const img = DECALS[`${cfg.face}_${cfg.iris}`];
-  if (img) {
-    const ar = img.width / img.height;
-    const w = size * 0.62, h = w / ar;
-    g.drawImage(img, (size - w) / 2, size * 0.44 - h / 2, w, h);
-  }
+  // the same face the 3D head wears, scaled so its eyes fill the disc
+  g.save();
+  g.translate(size / 2, size * 0.5);
+  const fs = size * 1.15;
+  g.translate(-fs / 2, -fs * EYE_Y);
+  drawFace(g, fs, { style: cfg.face, iris: cfg.iris, expr: "smile",
+    brow: cfg.hair === "none" ? [70, 52, 46] : HAIR_RGB[cfg.hairColor] });
+  g.restore();
   return cv.toDataURL();
 }
