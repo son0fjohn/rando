@@ -11,6 +11,9 @@
      backend -> BroadcastChannel multiplayer, so tabs form a real party -->
 <script type="importmap">
 { "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js",
   "/web/backend.js": "/test/stubs/backend_bc.js",
   "/web/fx.js": "/test/stubs/fx.js",
   "/web/avatar3.js": "/test/stubs/avatar3.js",
@@ -19,6 +22,7 @@
 } }
 </script>
 <!--INDEX_CSS-->
+<link rel="stylesheet" href="theme.css">
 <style> body { margin:0; background:#222; min-height:100vh; } </style>
 </head>
 <body>
@@ -35,6 +39,18 @@
   import { party } from "/web/party.js";
   party.init();
   window.party = party;
+  // ?coinhook: the coin ledger, against the stub's localStorage "server" (the
+  // same calls backend.js makes against Supabase)
+  if (new URLSearchParams(location.search).has("coinhook")) {
+    const { createClient } = await import("/test/stubs/supabase.js");
+    const { places } = await import("/web/partyset.js");
+    const sb = createClient(), rpc = async (f, a) => { const { data, error } = await sb.rpc(f, a); if (error) throw error; return data; };
+    party.hooks.coins = {
+      reportGame: ({ session, set, idx, game, results }) => rpc("report_game", { p_session: session, p_set: set, p_idx: idx, p_game: game, p_ranking: places(results).map(p => ({ id: p.id, place: p.place })) }),
+      confirmGame: ({ session, set, idx }) => rpc("confirm_game", { p_session: session, p_set: set, p_idx: idx }),
+      partyCoins: async ({ session, set }) => (await rpc("my_party_coins", { p_session: session, p_set: set })) ?? 0,
+    };
+  }
   window.__ready = true;
 </script>
 </body>

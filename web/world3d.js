@@ -184,6 +184,9 @@ export const world3d = {
   target: new THREE.Vector3(0, 0, 0),
   followPos: null,
   observing: false,            // true after a pan: camera roams free
+  homePos: null,               // explore mode (invisible): where "back to me"
+  exploreR: null,              // returns, and how far you can pan from it
+  paused: false,               // a full-screen screen covers the map: don't draw it
   player: null, playerShadow: null,
   remoteGroup: null,
   zoneRings: new THREE.Group(),
@@ -1998,6 +2001,30 @@ export const world3d = {
     this.camGoal = { ...this.CAM_DEFAULT };
   },
 
+  // explore mode: while invisible you can look around within radiusM metres
+  // of your real location (read on this phone, never sent); null turns it off
+  setExplore(lat, lng, radiusM = 1500) {
+    if (lat == null || lng == null) { this.homePos = null; this.exploreR = null; return; }
+    this.homePos = geoPos(lat, lng);
+    this.exploreR = radiusM * GEO_SCALE;
+    this.clampTarget();
+    this.needsRender = true;
+  },
+  clampTarget() {
+    if (this.homePos && this.exploreR) {
+      const dx = this.target.x - this.homePos.x, dz = this.target.z - this.homePos.z, d = Math.hypot(dx, dz);
+      if (d > this.exploreR) { this.target.x = this.homePos.x + dx / d * this.exploreR; this.target.z = this.homePos.z + dz / d * this.exploreR; }
+    }
+    this.target.x = Math.max(-1100, Math.min(1100, this.target.x));
+    this.target.z = Math.max(-1100, Math.min(1100, this.target.z));
+  },
+  // how far the camera has wandered from where it would rest (world units)
+  awayFromHome() {
+    const goal = this.followPos ?? this.homePos ?? new THREE.Vector3(0, 0, 0);
+    return Math.hypot(this.target.x - goal.x, this.target.z - goal.z);
+  },
+  setPaused(on) { this.paused = !!on; if (!on) this.needsRender = true; },
+
   // One-finger drag PANS (free observer); two fingers pinch-zoom, twist to
   // rotate, move vertically together to tilt. Desktop: drag pans, wheel
   // zooms, right-click or Ctrl+drag orbits. Recenter returns to follow.
@@ -2095,8 +2122,7 @@ export const world3d = {
         const sin = Math.sin(this.cam.theta), cos = Math.cos(this.cam.theta);
         this.target.x += (-cos * dx - sin * dy) * k;
         this.target.z += (sin * dx - cos * dy) * k;
-        this.target.x = Math.max(-1100, Math.min(1100, this.target.x));
-        this.target.z = Math.max(-1100, Math.min(1100, this.target.z));
+        this.clampTarget();
         this.applyCamera();
       }
     });
@@ -2130,6 +2156,8 @@ export const world3d = {
   lastT: 0,
 
   tick() {
+    // covered by a full-screen screen (party room, style): nothing to draw
+    if (this.paused) { this.lastT = performance.now() / 1000; return; }
     const t = performance.now() / 1000;
     const dt = Math.min(0.2, t - this.lastT || 0.016);
     this.lastT = t;
@@ -2195,7 +2223,7 @@ export const world3d = {
 
     // glide the camera target home — unless the user is roaming free
     if (!this.observing) {
-      const goal = this.followPos ?? new THREE.Vector3(0, 0, 0);
+      const goal = this.followPos ?? this.homePos ?? new THREE.Vector3(0, 0, 0);
       if (this.target.distanceTo(goal) > 0.5) {
         this.target.lerp(goal, 0.18);
         this.applyCamera();

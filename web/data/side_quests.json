@@ -1,0 +1,310 @@
+{
+  "_readme": [
+    "Side Quest's quest pool. This file is the ONLY place quests live — edit it directly.",
+    "Each quest: id (permanent — never reuse or renumber; to retire one, delete it and add its id to _retired), text, category ('anywhere' | 'strangers' | 'unhinged'), level ('mild' | 'spicy' | 'unhinged').",
+    "The host's setup screen groups quests by category. 'unhinged' quests only appear when the party allows 18+ content.",
+    "To add one: append it to its group with the next unused number for its category-level."
+  ],
+  "_retired": [],
+  "categories": [
+    {
+      "id": "anywhere",
+      "label": "anywhere",
+      "hint": "do it right here"
+    },
+    {
+      "id": "strangers",
+      "label": "strangers",
+      "hint": "out in public, with people you don't know"
+    },
+    {
+      "id": "unhinged",
+      "label": "unhinged",
+      "hint": "18+ parties only"
+    }
+  ],
+  "quests": [
+    {
+      "id": "sq-anywhere-mild-01",
+      "text": "Pretend you're a tour guide and give the room a tour of the room",
+      "category": "anywhere",
+      "level": "mild"
+    },
+    {
+      "id": "sq-anywhere-mild-02",
+      "text": "Pretend you're a waiter and take everyone's imaginary orders",
+      "category": "anywhere",
+      "level": "mild"
+    },
+    {
+      "id": "sq-anywhere-mild-03",
+      "text": "Yell a countdown from 10 and then do nothing at the end",
+      "category": "anywhere",
+      "level": "mild"
+    },
+    {
+      "id": "sq-anywhere-mild-04",
+      "text": "Crash out and throw a tantrum in COMPLETE SILENCE",
+      "category": "anywhere",
+      "level": "mild"
+    },
+    {
+      "id": "sq-anywhere-mild-05",
+      "text": "Have a silent \"phone call\" with your hand while keeping a serious face, then start screaming silently into it",
+      "category": "anywhere",
+      "level": "mild"
+    },
+    {
+      "id": "sq-anywhere-mild-06",
+      "text": "Shadow box a random object",
+      "category": "anywhere",
+      "level": "mild"
+    },
+    {
+      "id": "sq-anywhere-mild-07",
+      "text": "Pretend you're a business executive on the phone booking a meeting professionally to play Minecraft at 3pm",
+      "category": "anywhere",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-01",
+      "text": "Act like a dog until someone pets you",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-02",
+      "text": "Ask a stranger to take a video of you and start barking",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-03",
+      "text": "Go up to a stranger and ask if they want to see something cool",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-04",
+      "text": "Ask someone if you could get their email",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-05",
+      "text": "Get a hug from a stranger",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-06",
+      "text": "Make someone your wallpaper and ask them to take the pic",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-07",
+      "text": "Race someone",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-08",
+      "text": "Ask a stranger what they think your job is and agree with whatever they say",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-09",
+      "text": "Ask a random person what they think your name is and agree with whatever they say",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-10",
+      "text": "Ask someone to rate your villain laugh, then do a crazy laugh",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-11",
+      "text": "Ask a stranger if they can record a video with you to send to their mom so she's not worried",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-12",
+      "text": "Rap or sing a song to a random stranger, a cappella",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-13",
+      "text": "Ask a stranger: would you rather poop a pineapple or pee a grape",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-14",
+      "text": "Go up to a stranger and give them a lecture on any subject you know",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-15",
+      "text": "Hold a door for someone from way too far away, keep waiting, then close the door and walk in once they arrive",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-16",
+      "text": "Narrate your own life in third person while talking to a stranger",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-17",
+      "text": "Try to trade any item you have on you with a stranger",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-18",
+      "text": "Talk to a stranger, order, or ask for directions in baby talk",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-19",
+      "text": "Ask someone for directions, then go the opposite way",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-20",
+      "text": "Talk to someone as a completely different person: new name, job, and backstory",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-21",
+      "text": "Order or talk to someone in a silly made-up accent",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-22",
+      "text": "Airdrop a selfie to everyone nearby",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-spicy-01",
+      "text": "Take a selfie with a stranger and caption it \"hard launch 😝\"",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-02",
+      "text": "Get someone to give you a piggyback",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-03",
+      "text": "Give someone a piggyback",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-04",
+      "text": "Tell a stranger your friend thinks they're cute, do the same with another stranger, then bring them together",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-05",
+      "text": "Wingman for a random stranger: \"My friend over there thought you were cute\"",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-06",
+      "text": "Ask someone to film you, then go propose to a random person",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-07",
+      "text": "Pretend you're conducting a job interview with a stranger: \"So you're here for the role of my girlfriend/boyfriend. What do you bring to the table?\"",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-08",
+      "text": "Call a friend or family member, say you're passing the phone to your girlfriend/boyfriend, and hand the phone to a stranger",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-09",
+      "text": "Put in AirPods and have your friend control your conversation with a stranger",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-10",
+      "text": "Walk up to someone and have a conversation with yourself in two different voices",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-11",
+      "text": "Ask a stranger: would you rather be extremely attractive with constant diarrhea, or hideous and never have diarrhea",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-12",
+      "text": "Get on a stranger's IG story captioned \"Reply if you think they're cute\"",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-13",
+      "text": "Pretend you're on the phone with your grandma and say \"I think you're too old to be getting implants\"",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-14",
+      "text": "Fake a breakup fight on the phone, loudly",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-strangers-spicy-15",
+      "text": "SPRINT to the nearest bathroom yelling \"oh my gosh oh my gosh I'm gonna go\"",
+      "category": "strangers",
+      "level": "spicy"
+    },
+    {
+      "id": "sq-unhinged-unhinged-01",
+      "text": "Get whipped on the butt with a friend's belt in public",
+      "category": "unhinged",
+      "level": "unhinged"
+    },
+    {
+      "id": "sq-unhinged-unhinged-02",
+      "text": "Let the person on your left post a story from your account",
+      "category": "unhinged",
+      "level": "unhinged"
+    },
+    {
+      "id": "sq-unhinged-unhinged-03",
+      "text": "Film yourself running backwards, reverse it, and post it to your story captioned \"training for the marathon\"",
+      "category": "unhinged",
+      "level": "unhinged"
+    }
+  ]
+}

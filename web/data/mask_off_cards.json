@@ -1,0 +1,28 @@
+{
+  "draft": true,
+  "note": "DRAFT pool for Mask Off: more cards are coming. Original cards only. Ids are permanent: never renumber or reuse one. Levels escalate during a game: 1 fun, 2 personal, 3 deep.",
+  "levels": { "1": "fun", "2": "personal", "3": "deep" },
+  "cards": [
+    { "id": "mo-001", "level": 1, "text": "What's the most embarrassing thing on your phone right now?" },
+    { "id": "mo-002", "level": 1, "text": "What's a lie you tell all the time?" },
+    { "id": "mo-003", "level": 1, "text": "Who in this room would you call to bail you out of jail?" },
+    { "id": "mo-004", "level": 1, "text": "What's your most toxic trait that you secretly like?" },
+    { "id": "mo-005", "level": 1, "text": "What's the pettiest reason you've unfollowed someone?" },
+    { "id": "mo-006", "level": 1, "text": "What's the worst gift you've ever received, and did you pretend to like it?" },
+    { "id": "mo-007", "level": 1, "text": "What's a celebrity you'd embarrass yourself for?" },
+    { "id": "mo-008", "level": 2, "text": "What's your first impression of the person to your right?" },
+    { "id": "mo-009", "level": 2, "text": "What's something you've never told your parents?" },
+    { "id": "mo-010", "level": 2, "text": "When was the last time you cried, and why?" },
+    { "id": "mo-011", "level": 2, "text": "What's a red flag you ignored because you liked someone?" },
+    { "id": "mo-012", "level": 2, "text": "What's the worst thing you've done that nobody found out about?" },
+    { "id": "mo-013", "level": 2, "text": "Who was the last person you stalked online?" },
+    { "id": "mo-014", "level": 2, "text": "What do people get wrong about you?" },
+    { "id": "mo-015", "level": 3, "text": "What's something you're still not over?" },
+    { "id": "mo-016", "level": 3, "text": "What's a fear you've never said out loud?" },
+    { "id": "mo-017", "level": 3, "text": "What do you want people to say about you when you're not in the room?" },
+    { "id": "mo-018", "level": 3, "text": "What's the biggest risk you've ever taken?" },
+    { "id": "mo-019", "level": 3, "text": "When did you last feel truly lonely?" },
+    { "id": "mo-020", "level": 3, "text": "What's something you're proud of that nobody knows about?" },
+    { "id": "mo-021", "level": 3, "text": "What would you do with your life if you knew nobody would judge you?" }
+  ]
+}

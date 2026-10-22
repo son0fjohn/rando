@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>diary fit</title>
+<!-- Dev/test page: Secret Diary answers on the open diary (diarypage.js) —
+     writing and reading spreads with the longest answers, in the real CSS.
+     node test/diary_fit.mjs drives it. ?diary=css|sprite pins the drawing. -->
+<base href="/web/">
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<!--INDEX_CSS-->
+<link rel="stylesheet" href="theme.css">
+<style> html { display:block; } body { width:100%; margin:0; background:#222; height:auto; overflow:auto; display:block; } #game-panel { position:static; padding:8px 4px; width:100%; box-sizing:border-box; } #game-panel .stage { width:100%; max-width:420px; box-sizing:border-box; margin:0 auto; } </style>
+</head>
+<body>
+<div id="game-panel" class="stage-wrap"><div class="stage sd-writing" style="--dc:#e63946"><div class="sd-batch" id="cases"></div></div></div>
+<script type="module">
+  import { spreadHtml, paintSpreads, fitAll, bindSpread, ANSWER_MAX } from "/web/diarypage.js";
+  import { diaryMode } from "/web/diary3d.js";
+  const q = new URLSearchParams(location.search);
+  const cases = JSON.parse(q.get("cases") || "[]");
+  const root = document.getElementById("cases");
+  root.innerHTML = cases.map((c, k) => `<div class="sd-q written" data-case="${k}"><div class="sd-prompt">${c.label}</div>${spreadHtml({ hex: c.hex ?? "#e63946", text: c.text, edit: c.edit ? { k } : null })}</div>`).join("");
+  root.querySelectorAll(".sd-spread").forEach(sp => bindSpread(sp));
+  fitAll(root);
+  const { kit } = await diaryMode();
+  paintSpreads(root, kit);
+  fitAll(root);
+  await document.fonts.ready;
+  window.ANSWER_MAX = ANSWER_MAX;
+  window.__ready = true;
+</script>
+</body>
+</html>

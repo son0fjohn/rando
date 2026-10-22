@@ -1467,6 +1467,49 @@
   @keyframes ag-in-r { from { transform:translateX(60%); opacity:0 } to { transform:none; opacity:1 } }
   @keyframes ag-pop { from { transform:scale(.7); opacity:0 } to { transform:none; opacity:1 } }
   @keyframes ag-win { 0% { transform:scale(1); background:transparent } 35% { transform:scale(1.06); background:#ffd60a } 100% { transform:scale(1.03); background:rgba(53,208,122,.18) } }
+  /* gallery steps: a full-screen room, no card. The room keeps the backdrop's
+     portrait shape (centred column on wide screens) so the painting and the
+     plaques always land on the wall, whatever the phone. */
+  #game-panel.ag-full { top:0; bottom:0; max-height:none; overflow:hidden; padding:0; background:#16120e; }
+  #game-layer:has(#game-panel.ag-full) #game-hud, #game-layer:has(#game-panel.ag-full) #game-feed { z-index:2; }
+  .ag-room.ag-scene { position:absolute; top:0; bottom:0; left:50%; transform:translateX(-50%); width:min(100%, 56.25vh); width:min(100%, 56.25dvh);
+    aspect-ratio:auto; margin:0; border-radius:0; background-position:center top; background-size:cover; }
+  .ag-room .ag-hang { left:27%; top:20%; width:46%; }
+  .ag-room .ag-bubble { left:42%; right:3%; width:auto; bottom:24%; font-size:13px; padding:9px 12px; }
+  .ag-pill { position:absolute; left:50%; top:66px; transform:translateX(-50%); z-index:3; max-width:92%; box-sizing:border-box; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    background:rgba(20,16,12,.74); color:#f3e7c9; font:700 12px -apple-system,"Segoe UI",Helvetica,sans-serif; letter-spacing:.03em; border-radius:999px; padding:6px 12px; pointer-events:none; }
+  .ag-pill b { color:#ffd60a; }
+  #game-panel.ag-full .ag-skip { position:absolute; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); margin:0; z-index:4; background:rgba(20,16,12,.74); color:#f3e7c9; border-color:transparent; }
+  /* the two titles: brass wall plaques under the painting */
+  .ag-plaques { position:absolute; left:5%; right:5%; top:44.5%; display:flex; gap:4%; align-items:stretch; z-index:2; }
+  /* both plaques take the taller one's height; short titles sit centred */
+  .ag-pl { position:relative; flex:1 1 0; min-width:0; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; font:inherit; color:#2a2620; text-align:center; cursor:pointer;
+    background:linear-gradient(#fbf6ea,#efe5cd); border:3px solid #b8902f; border-radius:3px; padding:9px 8px 11px;
+    box-shadow:0 1px 0 rgba(255,255,255,.55) inset, 0 8px 12px rgba(40,30,15,.35); transition:transform .2s, opacity .25s, filter .25s, box-shadow .25s; -webkit-tap-highlight-color:transparent; }
+  div.ag-pl { cursor:default; }
+  .ag-pl-eye { display:block; font:800 9px -apple-system,"Segoe UI",Helvetica,sans-serif; letter-spacing:.18em; text-transform:uppercase; color:#9a7d3a; margin-bottom:4px; }
+  .ag-pl-t { display:block; font-family:Georgia,"Times New Roman",serif; font-style:italic; font-size:14.5px; line-height:1.3; overflow-wrap:anywhere; }
+  .ag-pl-by { display:block; font:600 11px -apple-system,"Segoe UI",Helvetica,sans-serif; color:#7a6a4a; margin-top:5px; }
+  .ag-pl-n { display:block; font:800 11.5px -apple-system,"Segoe UI",Helvetica,sans-serif; margin-top:3px; } .ag-pl-n b { color:#1c7a3c; }
+  .ag-pl-dot { display:none; position:absolute; top:-9px; right:-9px; width:22px; height:22px; border-radius:50%; background:#d0192b; box-shadow:0 2px 4px rgba(0,0,0,.35), 0 0 0 2px #fff; animation:ag-pop .25s both; }
+  .ag-pl-tag, .ag-pl-win { display:none; position:absolute; left:50%; bottom:-24px; transform:translateX(-50%); white-space:nowrap; font:800 11px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal;
+    color:#fff; background:#d0192b; border-radius:999px; padding:2px 9px; }
+  .ag-pl-win { display:block; background:#b8902f; }
+  .ag-room.picked .ag-pl:not(.on) { opacity:.5; filter:saturate(.5); }
+  .ag-pl.on { transform:translateY(-3px); box-shadow:0 0 40px 10px rgba(255,236,170,.55), 0 10px 16px rgba(40,30,15,.4); }
+  .ag-pl.on .ag-pl-dot, .ag-pl.on .ag-pl-tag { display:block; }
+  .ag-pl.win { animation:ag-plwin .7s .2s both; box-shadow:0 0 40px 10px rgba(255,236,170,.6), 0 10px 16px rgba(40,30,15,.4); }
+  .ag-pl.lose { opacity:.6; filter:saturate(.6); }
+  @keyframes ag-plwin { 0% { transform:none } 45% { transform:scale(1.08) } 100% { transform:translateY(-3px) } }
+  /* each plaque has its own cloth; the dealer pulls them off one by one right
+     after the painting's (plaque I at 0.9 s, plaque II at 1.35 s) */
+  .ag-pl-cloth { position:absolute; left:-8%; top:-14%; width:116%; height:128%; object-fit:fill; pointer-events:none; z-index:3; transform-origin:50% 0;
+    filter:drop-shadow(0 6px 6px rgba(0,0,0,.25)); transition:transform .6s cubic-bezier(.4,0,.2,1), opacity .6s ease; }
+  .ag-room.revealed .ag-pl-cloth { transform:translateY(-130%) rotate(-5deg); opacity:0; }
+  .ag-room.ag-anim .ag-pl:nth-child(1) .ag-pl-cloth { transition-delay:.9s; }
+  .ag-room.ag-anim .ag-pl:nth-child(2) .ag-pl-cloth { transition-delay:1.35s; }
+  .ag-room.covered .ag-pl > :not(.ag-pl-cloth) { visibility:hidden; }
+  .ag-room.ag-anim .ag-bubble { animation-delay:1.7s; }
 
   /* ===== house party: shared kit ===== */
   /* placeholder avatar — deterministic hue per player id, no generated art */
@@ -1620,28 +1663,195 @@
   .sd-tabs button { flex:1; border:1px solid #c7c7cf; background:#fff; color:#1c1c1e; border-radius:10px; padding:7px 0; font-size:14px; font-weight:800; cursor:pointer; }
   .sd-tabs button.done { background:#efe6c7; border-color:#c8a94a; }
   .sd-tabs button.cur { background:#1c1c1e; border-color:#1c1c1e; color:#fff; }
-
-  /* ===== Today's Mission ===== */
-  .tm-card { position:relative; border-radius:16px; overflow:hidden; background:#1b1430 center/cover no-repeat;
-    padding:18px 16px 20px; color:#fff; margin:8px 0; min-height:170px; display:flex; flex-direction:column; justify-content:center; }
-  .tm-card::after { content:""; position:absolute; inset:0; background:linear-gradient(170deg,rgba(18,10,36,.55),rgba(18,10,36,.82)); }
-  .tm-card > * { position:relative; z-index:1; }
-  .tm-kicker { font-size:11px; font-weight:900; letter-spacing:.2em; color:#ffd60a; }
-  .tm-task { font-size:20px; font-weight:800; line-height:1.25; margin-top:8px; text-shadow:0 2px 10px rgba(0,0,0,.5); }
-  .tm-for { font-size:12px; color:#c9d2e2; margin-top:10px; }
-  .tm-watch { background:#f0f0f4; border-radius:12px; padding:10px 12px; margin:6px 0; font-size:14px; line-height:1.4; }
-  .tm-hand { display:flex; flex-direction:column; gap:8px; margin:6px 0; }
-  .tm-pick { border:none; padding:0; background:none; border-radius:16px; cursor:pointer; text-align:left; font:inherit; }
-  .tm-pick .tm-card { margin:0; min-height:0; padding:14px 14px 16px; outline:3px solid transparent; transition:outline-color .15s, transform .15s; }
-  .tm-pick .tm-task { font-size:16px; margin-top:6px; }
-  .tm-pick.on .tm-card { outline-color:#ffd60a; transform:scale(1.015); }
-  .tm-rate { background:#f0f0f4; border-radius:14px; padding:12px 14px; margin:8px 0; }
-  .tm-rate-val { text-align:center; } .tm-rate-val b { font-size:40px; font-weight:900; font-variant-numeric:tabular-nums; } .tm-rate-val span { font-size:15px; color:#5b6b80; font-weight:700; margin-left:3px; }
-  .tm-rate input[type=range] { width:100%; margin:8px 0 2px; accent-color:#7a3cff; height:28px; }
-  .tm-rate-ends { display:flex; justify-content:space-between; font-size:10.5px; color:#8a94a4; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
-  .tm-rate-label { text-align:center; font-weight:800; font-size:15px; color:#7a3cff; margin-top:6px; }
-  .tm-spec { position:relative; height:12px; border-radius:999px; margin:12px 0 4px; background:linear-gradient(90deg,#b22a3a,#e0a030 45%,#1c7a3c 75%,#7a3cff); }
-  .tm-spec i { position:absolute; top:50%; width:20px; height:20px; border-radius:50%; background:#fff; border:3px solid #1c1c1e; transform:translate(-50%,-50%); box-shadow:0 2px 6px rgba(0,0,0,.3); }
+  /* batch diary: deal, answer-all, one-at-a-time reveal */
+  .sd-qn { flex:none; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%;
+    background:#1c1c1e; color:#fff; font-size:12px; font-weight:800; font-style:normal; }
+  .sd-size { display:flex; align-items:center; gap:10px; margin:0 0 8px; font-size:13px; font-weight:700; color:#49566a; }
+  .sd-size span { flex:1; }
+  .sd-size button { width:38px; height:38px; border-radius:50%; border:1px solid #c7c7cf; background:#fff; color:#1c1c1e; font-size:20px; font-weight:800; line-height:1; cursor:pointer; }
+  .sd-size button:disabled { opacity:.35; }
+  .sd-size b { min-width:20px; text-align:center; font-size:20px; color:#1c1c1e; }
+  .sd-deck { display:flex; flex-direction:column; gap:6px; }
+  .sd-card { display:flex; align-items:center; gap:9px; background:#fffdf4; border:1px solid #e4dcc0; border-left:4px solid #c8a94a; border-radius:10px; padding:8px 8px 8px 10px; }
+  .sd-card.yesno { border-left-color:#7a3cff; background:#f6f1ff; border-color:#ddd0f7; }
+  .sd-ctext { flex:1; min-width:0; font-size:14.5px; font-weight:700; line-height:1.35; }
+  .sd-ctext .sd-pills { margin-bottom:3px; }
+  .sd-swap { flex:none; border:1px solid #c7c7cf; background:#fff; color:#1c1c1e; border-radius:999px; padding:8px 12px; font-size:12.5px; font-weight:800; cursor:pointer; }
+  .sd-swap:disabled { opacity:.4; }
+  .sd-batch { display:flex; flex-direction:column; gap:10px; margin:4px 0 6px; }
+  .sd-q { background:#fff; border:1px solid #e1e1e6; border-radius:12px; padding:9px 10px 10px; }
+  .sd-qhead { display:flex; align-items:center; gap:7px; }
+  .sd-qhead .sd-pills { margin:0; }
+  .sd-q .sd-prompt { margin:6px 0 8px; font-size:15.5px; }
+  .sd-in { width:100%; box-sizing:border-box; border:1px solid #d5d5da; border-radius:10px; padding:11px 12px; font-size:16px; background:#fff; color:#1c1c1e; }
+  .sd-in:focus { outline:2px solid #0a84ff; outline-offset:0; border-color:#0a84ff; }
+  .sd-yn.small { margin:0; gap:8px; }
+  .sd-yn.small button { padding:13px 8px; font-size:16px; border-radius:12px; transition:opacity .15s, transform .15s; }
+  .sd-yn.small:has(.on) button:not(.on) { opacity:.3; }
+  .sd-yn.small button.on { transform:scale(1.03); box-shadow:0 0 0 3px #1c1c1e; }
+  #game-panel.stage-wrap.sd-answering { padding-bottom:0; }
+  .sd-foot { position:sticky; bottom:0; margin:8px -16px -18px; padding:10px 16px calc(14px + env(safe-area-inset-bottom)); background:rgba(245,245,247,.97);
+    border-top:1px solid #e1e1e6; border-radius:0 0 18px 18px; box-shadow:0 -6px 16px rgba(8,11,16,.08); }
+  .sd-match { background:#fff; border:1px solid #e1e1e6; border-radius:12px; padding:7px; gap:7px; margin:8px 0; }
+  .sd-match .sd-entry { margin:0; }
+  .sd-match:has(.sd-entry.mine) { background:transparent; border-style:dashed; }
+  .sd-entry.mine { border:none; background:transparent; color:#5b6b80; }
+  .sd-mine { float:right; margin-left:8px; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-style:normal; color:#8a94a4; }
+  .sd-foot .pt-btn.pt-primary { margin-top:6px; }
+  .sd-prog { font-size:13px; color:#49566a; text-align:center; } .sd-prog b { color:#1c1c1e; }
+  .sd-qcount { font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#8a94a4; text-align:center; margin:0 0 4px; }
+  .sd-prompt.big { font-size:19px; line-height:1.35; padding:12px 13px; margin:0 0 10px; }
+  .sd-sel { width:100%; border:1px solid #c7c7cf; border-radius:10px; padding:10px; font-size:16px; background:#fff; color:#1c1c1e; }
+  .sd-pop { opacity:0; animation:sd-pop .35s ease-out forwards; }
+  @keyframes sd-pop { from { opacity:0; transform:translateY(6px) scale(.98); } to { opacity:1; transform:none; } }
+  @media (prefers-reduced-motion: reduce) { .sd-pop { animation:none; opacity:1; } }
+  /* --- Secret Diary: diaries (web/diary3d.js draws them: live 3D, sprites or CSS) --- */
+  .stage.sd-writing { border-top:6px solid var(--dc); }
+  .sd-mydiary { display:flex; align-items:center; gap:10px; margin:0 0 6px; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#5b6b80; }
+  .sd-writing .sd-q { border-left:4px solid var(--dc); padding:9px 0 10px; }
+  .sd-writing .sd-q > :not(.sd-spread) { margin-left:10px; margin-right:10px; }
+  .sd-writing .sd-q .sd-spread { width:100%; margin:6px 0 2px; }
+  .sd-writing .sd-q .sd-yn.small { margin-top:4px; }
+  /* the diaries take (nearly) the whole width while you write */
+  #game-panel.sd-answering { padding-left:4px; padding-right:4px; }
+  .stage.sd-writing { padding-left:8px; padding-right:8px; }
+  .stage.sd-writing .sd-foot { margin-left:-8px; margin-right:-8px; }
+  .sd-shelf-wrap { margin:4px 0 8px; }
+  .sd-shelf { position:relative; display:grid; grid-template-columns:repeat(var(--cols,3), 1fr); gap:10px 8px; }
+  .sd-shelf-gl { position:absolute; left:0; top:0; pointer-events:none; z-index:0; }
+  .sd-dcell { position:relative; z-index:1; aspect-ratio:5/6; max-height:156px; width:100%; padding:0; border:none; background:transparent; color:#1c1c1e; cursor:pointer;
+    border-bottom:7px solid #a77b4f; border-radius:0 0 3px 3px; box-shadow:0 5px 6px -4px rgba(60,35,10,.55); -webkit-tap-highlight-color:transparent; }
+  .sd-dvis { position:absolute; top:4%; left:50%; height:80%; aspect-ratio:1; transform:translateX(-50%); pointer-events:none; }
+  .sd-dvis img { position:absolute; left:0; top:0; width:100%; height:100%; }
+  .sd-dvis .sd-dlock { width:auto; height:auto; }
+  .sd-dtext { position:absolute; left:16%; right:17%; top:25%; height:33%; display:flex; align-items:center; justify-content:center; overflow:hidden;
+    font:italic 600 10px/1.2 "Segoe Print","Bradley Hand","Comic Sans MS",cursive; color:#2a2440; text-align:center; word-break:break-word; opacity:0; transition:opacity .35s .1s; pointer-events:none; }
+  .sd-dtext { align-items:safe center; overflow-wrap:anywhere; }
+  .sd-dtext.more { align-items:flex-start; -webkit-mask-image:linear-gradient(#000 62%, transparent 96%); mask-image:linear-gradient(#000 62%, transparent 96%); }
+  .sd-dcell.open .sd-dtext { opacity:1; }
+  .sd-dnum { position:absolute; left:2px; top:2px; z-index:2; width:24px; height:24px; border-radius:50%; box-sizing:border-box; background:#1c1c1e;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.35); }
+  /* each diary color has its own shape, drawn in that color with a white edge:
+     a second cue for colorblind players, readable on every color */
+  .sd-sym { width:16px; height:16px; display:inline-block; vertical-align:-3px; overflow:visible; }
+  .sd-sym path { fill:var(--dc); stroke:#fff; stroke-width:1.1px; paint-order:stroke; stroke-linejoin:round; }
+  .sd-dnum .sd-sym { width:15px; height:15px; }
+  .sd-mydiary { flex-wrap:wrap; }
+  .sd-mydiary .sd-sym { margin-left:4px; }
+  .sd-mydiary small { flex-basis:100%; font-size:11px; font-weight:600; letter-spacing:0; text-transform:none; color:#8a94a4; }
+  .sd-dyours { position:absolute; right:2px; top:3px; z-index:2; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#8a94a4; }
+  .sd-dcell:not(.open) { cursor:default; }
+  .sd-dcell.open:active { transform:scale(.97); }
+  .sd-hint { text-align:center; font-size:12px; color:#8a94a4; margin:6px 0 0; }
+  .sd-pager { display:flex; align-items:center; justify-content:center; gap:14px; margin:8px 0 0; font-size:13px; font-weight:700; color:#49566a; }
+  .sd-pager button { width:40px; height:34px; border-radius:10px; border:1px solid #c7c7cf; background:#fff; color:#1c1c1e; font-size:20px; line-height:1; cursor:pointer; }
+  .sd-pager button:disabled { opacity:.3; }
+  /* sprite / CSS diaries: the closed diary + lock, swapped for the open one */
+  .sd-dclosed, .sd-cdiary, .sd-dlock, .sd-clock { transition:opacity .2s; }
+  .sd-dopen, .sd-copen { opacity:0; }
+  .sd-dcell.open .sd-dclosed, .sd-dcell.open .sd-cdiary { opacity:0; }
+  .sd-dcell.open .sd-dopen, .sd-dcell.open .sd-copen { opacity:1; animation:sd-openpop .3s cubic-bezier(.3,1.6,.5,1); }
+  .sd-dcell.shake .sd-dlock, .sd-dcell.shake .sd-clock { animation:sd-shake .42s linear; }
+  .sd-dcell.click .sd-dlock, .sd-dcell.click .sd-clock { transform:scale(1.15); }
+  .sd-dcell.drop .sd-dlock, .sd-dcell.drop .sd-clock { transition:transform .58s cubic-bezier(.5,0,.9,.5), opacity .58s; transform:translateY(150%) rotate(-55deg); opacity:0; }
+  .sd-dcell.open .sd-dlock, .sd-dcell.open .sd-clock { opacity:0; }
+  @keyframes sd-shake { 0%,100% { rotate:0deg; } 15% { rotate:-14deg; } 35% { rotate:12deg; } 55% { rotate:-9deg; } 75% { rotate:5deg; } }
+  @keyframes sd-openpop { from { transform:scale(.7); } to { transform:none; } }
+  .sd-cdiary { position:absolute; left:26%; right:22%; top:8%; bottom:8%; border-radius:3px 7px 7px 3px; background:var(--dc);
+    box-shadow:inset 7px 0 0 rgba(0,0,0,.22), inset -3px 0 0 rgba(255,255,255,.18), 2px 3px 6px rgba(0,0,0,.3); }
+  .sd-cdiary::after { content:""; position:absolute; right:-7%; top:40%; width:20%; height:20%; border-radius:2px; background:var(--dc); filter:brightness(.8); }
+  .sd-clock { position:absolute; left:66%; top:42%; width:20%; height:22%; border-radius:3px; background:linear-gradient(#e2c45a, #a68323); box-shadow:0 1px 2px rgba(0,0,0,.4); transform-origin:50% 0; }
+  .sd-clock::before { content:""; position:absolute; left:18%; right:18%; bottom:92%; height:55%; border:3px solid #8f8f96; border-bottom:none; border-radius:999px 999px 0 0; }
+  .sd-copen { position:absolute; left:12%; right:13%; top:23%; bottom:29%; border-radius:3px; border-bottom:5px solid var(--dc);
+    background:linear-gradient(90deg, #f3ead6 0 48%, #d9ccb0 49% 51%, #f3ead6 52%); box-shadow:0 3px 5px rgba(0,0,0,.25); }
+  .sd-dlock { transform-origin:50% 10%; }
+  .sd-clock { transform-origin:50% 10%; }
+  /* YES / NO stamps: on your page while answering, inside each opened diary in the reveal */
+  .sd-stamp { display:inline-block; font:900 22px/1 system-ui,sans-serif; letter-spacing:.1em; padding:5px 12px 4px; border:3px solid currentColor; border-radius:7px;
+    transform:rotate(-9deg); background:rgba(255,255,255,.35); }
+  .stage .sd-stamp.yes { color:#1c7a3c; } .stage .sd-stamp.no { color:#b22a3a; }
+  .stage .sd-stamp.blur { color:#5b6b80; filter:blur(4px); }
+  .sd-stamp.stamped { animation:sd-stamp .32s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes sd-stamp { from { opacity:0; transform:rotate(-9deg) scale(1.9); } to { opacity:1; transform:rotate(-9deg) scale(1); } }
+  .sd-ynpage { border-radius:8px; border:1px solid #e4dcc0; border-left:5px solid var(--dc,#c8a94a); padding:8px 10px 10px;
+    background:repeating-linear-gradient(180deg, #fffdf4 0 21px, #e8eef6 21px 22px); }
+  .sd-stamp-slot { min-height:48px; display:flex; align-items:center; justify-content:center; margin:2px 0 8px; }
+  .sd-stamp-hint { font-size:12px; font-weight:700; color:#8a94a4; border:2px dashed #c7c7cf; border-radius:8px; padding:8px 14px; }
+  .sd-dstamp { position:absolute; left:16%; right:17%; top:25%; height:33%; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; }
+  .sd-dstamp .sd-stamp { font-size:12px; padding:3px 6px 2px; border-width:2px; border-radius:4px; }
+  .sd-dcell.open .sd-dstamp { opacity:1; }
+  .sd-dcell.open .sd-dstamp .sd-stamp { animation:sd-stamp .32s cubic-bezier(.3,1.6,.5,1) .15s both; }
+  .sd-shelf.yn .sd-dcell { cursor:default; }
+  .sd-shelf.settled .sd-stamp, .sd-shelf.settled .sd-dopen, .sd-shelf.settled .sd-copen { animation:none !important; }
+  .sd-shelf.settled .sd-dtext { transition:none; }
+  .sd-count.sealed, .sd-softnote.sealed { visibility:hidden; }
+  .sd-picks.sealed { opacity:.35; pointer-events:none; }
+  /* points after each question: earned this round, running total, a board that reorders */
+  .sd-pts, .stage .st-body .sd-pts { list-style:none; padding:0; margin:8px 0 12px; display:flex; flex-direction:column; gap:6px; }
+  .sd-pt-row { display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #e1e1e6; border-radius:12px; padding:6px 12px 6px 8px;
+    transition:transform .65s cubic-bezier(.3,1.25,.5,1); position:relative; }
+  .sd-pt-name { flex:1; min-width:0; font-size:15px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sd-pt-name small { font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#8a94a4; }
+  .sd-pt-delta { font-size:15px; font-weight:900; color:#1c7a3c; animation:sd-pop .35s ease-out .2s both; }
+  .sd-pt-delta.zero { color:#a0a7b4; }
+  .sd-pt-total { min-width:38px; text-align:right; font-size:22px; font-weight:900; font-variant-numeric:tabular-nums; color:#1c1c1e; transition:color .3s; }
+  .sd-pt-row.up .sd-pt-total { color:#0a84ff; }
+  @media (prefers-reduced-motion: reduce) { .sd-pt-row { transition:none; } .sd-stamp.stamped, .sd-dcell.open .sd-dstamp .sd-stamp, .sd-pt-delta { animation:none; } }
+  /* matching under the shelf: sealed until the first unlock */
+  .sd-matchlist.sealed .sd-entry { color:transparent; text-shadow:0 0 7px rgba(28,28,30,.45); }
+  .sd-matchlist.sealed .sd-who, .sd-matchlist.sealed .sd-sel { opacity:.35; pointer-events:none; }
+  .sd-rowhead { display:flex; align-items:flex-start; gap:8px; flex:1 1 100%; }
+  .sd-rowhead .sd-entry { flex:1; min-width:0; margin:0; }
+  .sd-dsw { flex:none; width:24px; height:30px; margin-top:4px; border-radius:2px 4px 4px 2px; background:#1c1c1e; display:flex; align-items:center; justify-content:center;
+    box-shadow:inset 4px 0 0 var(--dc); }
+  .sd-dsw .sd-sym { width:14px; height:14px; margin-left:3px; }
+  /* tap a diary: read it big */
+  .sd-zoom { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+    padding:20px 16px calc(20px + env(safe-area-inset-bottom)); background:rgba(12,12,16,.78); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); animation:sd-fade .18s ease-out; }
+  @keyframes sd-fade { from { opacity:0; } }
+  .sd-zcard { position:relative; width:min(96vw, 620px); }
+  .sd-zcard .sd-spread { width:100%; margin:0; }
+  .sd-zcard .sd-dnum { left:4px; top:4px; }
+  /* the open diary, big: answers are written on (and read off) its two pages.
+     The 3D still is cropped to the book (diary3d "spread", 600x380); the CSS
+     book below draws the same shape when 3D can't run. Text areas are % of it. */
+  .sd-spread { position:relative; width:calc(100% + 32px); margin:6px -16px 2px; aspect-ratio:600/380; -webkit-tap-highlight-color:transparent; }
+  .sd-sp-vis { position:absolute; inset:0; pointer-events:none; }
+  .sd-sp-vis img { position:absolute; inset:0; width:100%; height:100%; }
+  .sd-spread.has-img .sd-sp-book { display:none; }
+  .sd-sp-book { position:absolute; left:1%; right:1%; top:5%; bottom:4%; border-radius:4px 4px 8px 8px; background:var(--dc); box-shadow:inset 0 -6px 0 rgba(0,0,0,.18), 0 6px 14px rgba(0,0,0,.25); }
+  .sd-sp-book::before, .sd-sp-book::after { content:""; position:absolute; top:-1%; bottom:7%; background:linear-gradient(90deg, #e9e2cf, #f6f1e2 70%, #ddd4bd); box-shadow:inset 0 -5px 0 #cfc5ab; }
+  .sd-sp-book::before { left:6%; right:50.5%; border-radius:3px 1px 2px 4px; }
+  .sd-sp-book::after { left:49.5%; right:6%; border-radius:1px 3px 4px 2px; background:linear-gradient(270deg, #e9e2cf, #f6f1e2 70%, #ddd4bd); }
+  .sd-sp-text { position:absolute; left:10.5%; right:12.5%; top:9.5%; bottom:21.5%; overflow:hidden; }
+  .sd-sp-flow { height:100%; box-sizing:border-box; padding:2px 0 3px; column-count:2; column-gap:6.5%; column-fill:auto; text-align:left;
+    font:italic 600 18px/1.25 "Segoe Print","Bradley Hand","Comic Sans MS",cursive; color:#2a2440; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;
+    transition:transform .22s cubic-bezier(.3,.7,.3,1); outline:none; caret-color:#2a2440; -webkit-user-select:text; user-select:text; cursor:text; }
+  .sd-sp-flow:not(.sd-in) { cursor:default; }
+  .sd-sp-flow:empty::before { content:attr(data-ph); color:#9a8fae; }
+  .sd-sp-flow.sd-in { width:auto; border:none; border-radius:0; padding:0; background:transparent; }
+  .sd-sp-flow.sd-in:focus { outline:none; }
+  .sd-spread:focus-within { filter:drop-shadow(0 0 6px color-mix(in srgb, var(--dc) 60%, #fff)); }
+  .sd-sp-turn { position:absolute; bottom:2%; z-index:2; width:30px; height:30px; padding:0; border-radius:50%; border:2px solid #2a2440; background:#fffdf4;
+    color:#2a2440 !important; font-size:12px; line-height:1; cursor:pointer; box-shadow:0 2px 0 #2a2440; animation:sd-nudge 1.4s ease-in-out infinite; }
+  .sd-sp-turn.next { right:9%; } .sd-sp-turn.prev { left:9%; }
+  .sd-sp-turn:active { transform:translateY(2px); box-shadow:none; }
+  @keyframes sd-nudge { 50% { translate:2px 0; } }
+  .sd-sp-turn.prev { animation-direction:reverse; }
+  .sd-sp-pg { position:absolute; left:50%; bottom:3%; transform:translateX(-50%); font:700 11px/1 system-ui,sans-serif; color:#6b6080; background:#fffdf4cc; padding:2px 6px; border-radius:999px; }
+  .sd-spread.turned::after { content:""; position:absolute; left:50%; right:9%; top:6%; bottom:19%; transform-origin:0 50%; pointer-events:none;
+    background:linear-gradient(90deg, #d9cfb6, #fbf7ea 40%, #e8dfc8); border-radius:0 3px 3px 0; animation:sd-flip .26s ease-in forwards; }
+  @keyframes sd-flip { from { transform:scaleX(1); opacity:1; } to { transform:scaleX(0); opacity:.4; } }
+  .sd-spread.yn .sd-sp-stamp { position:absolute; left:52%; right:12.5%; top:9.5%; bottom:21.5%; display:flex; align-items:center; justify-content:center; }
+  .sd-spread.yn .sd-stamp { font-size:30px; padding:7px 16px 6px; border-width:4px; }
+  .sd-chars { text-align:right; font:700 12px/1 system-ui,sans-serif; color:#8a94a4; margin:2px 4px 0; font-variant-numeric:tabular-nums; }
+  .sd-chars.near { color:#b22a3a; }
+  @media (prefers-reduced-motion: reduce) { .sd-sp-turn, .sd-spread.turned::after { animation:none; } .sd-sp-flow { transition:none; } }
+  .sd-zoom .sd-who { justify-content:center; max-width:360px; }
+  .sd-zoom .sd-sel { max-width:360px; }
+  .sd-zoom .sd-hint { color:#c7c7cf; }
+  .sd-zoom .pt-btn.sd-zclose { width:auto; margin:0; padding:10px 18px; border-radius:12px; background:#fff; color:#1c1c1e; border:none; }
+  @media (prefers-reduced-motion: reduce) { .sd-dcell.shake .sd-dlock, .sd-dcell.shake .sd-clock, .sd-dcell.open .sd-dopen, .sd-dcell.open .sd-copen, .sd-zoom { animation:none; } }
 
   /* ===== Humiliation Ritual ===== */
   .hr-stage { position:relative; border-radius:14px; overflow:hidden; background:#241a2e center/cover no-repeat;
@@ -1704,34 +1914,56 @@
   .mh-roster .rm.hunter { background:#b22a3a; color:#fff; } .mh-roster .rm.out { opacity:.5; text-decoration:line-through; }
 
 </style>
+<!-- Y2K console theme: tokens, pixel fonts, components (after the base styles so it wins) -->
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
   <div class="frame">
     <div id="bubble-layer"></div>
 
+    <!-- top-right: friends + the match chat, when there's something to show -->
     <div id="side-actions">
-      <button id="open-toggle" class="icon-btn" type="button" hidden title="Go open">&#128065;</button>
       <button id="friends-btn" class="icon-btn" type="button" hidden title="Friends">&#128101;</button>
-      <button id="match-btn" class="icon-btn" type="button" hidden title="Match me">&#127922;</button>
       <button id="chat-pill" class="icon-btn" type="button" hidden title="Chat">&#128172;</button>
-      <button id="recenter" class="icon-btn" type="button" hidden aria-label="Recenter on your character" title="Recenter">&#9678;</button>
-      <button id="rooms-btn" class="icon-btn rooms" type="button" title="Rooms &amp; quests">&#127922;</button>
-      <button id="party-btn" class="icon-btn party" type="button" title="House party">&#127968;</button>
     </div>
 
     <div id="zone-chip">
       <div>&#128205; <span id="zone-name">&hellip;</span></div>
       <div class="zone-sub">positions updated <span id="zmin">&ndash;</span> min ago</div>
       <div class="zone-sub" id="who-near">&hellip;</div>
-      <div class="zone-sub" id="auth-status" hidden></div>
-      <div class="zone-sub" style="opacity:.65">roads &copy; OpenStreetMap contributors</div>
     </div>
+    <div id="osm-credit">roads &copy; OpenStreetMap contributors</div>
 
-    <button id="outfit-btn" type="button" hidden>Style</button>
-    <div id="outfit-sheet" hidden>
-      <p class="os-title">CUSTOMIZE YOUR RANDO <span class="os-note">mix anything &middot; colors, parts, extras</span></p>
+    <!-- the bottom bar: explore / host a party / style. Pull it down to
+         refresh nearby parties and people. -->
+    <div id="navbar" hidden>
+      <div id="nav-refresh" aria-hidden="true"><i></i></div>
+      <button id="nav-explore" class="nav-tab on" type="button" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12 1.5a10.5 10.5 0 1 1 0 21 10.5 10.5 0 0 1 0-21zm4.6 5.9-6.3 2.9-2.9 6.3 6.3-2.9 2.9-6.3zM12 10.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z"/></svg>
+        <span class="nav-lbl">Explore</span></button>
+      <button id="nav-host" class="nav-tab" type="button" aria-label="Host a party">
+        <span class="nav-ring"><svg viewBox="0 0 22 20" aria-hidden="true"><path d="M11 1L21 10H19V19H3V10H1Z"/><path d="M15 2h2v4h-2z"/><path class="nh-win" d="M6 11h3v3H6zM13 11h3v3h-3z"/><path class="nh-door" d="M9.5 15h3v4h-3z"/></svg><i></i><i></i><i></i></span>
+        <span class="nav-lbl">Host</span></button>
+      <button id="nav-style" class="nav-tab" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.2 2.5 2.6 5.1a1.2 1.2 0 0 0-.6 1.6l1.6 3.6c.3.6 1 .8 1.6.5L6 10.3V20a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 20v-9.7l.8.5c.6.3 1.3.1 1.6-.5L22 6.7a1.2 1.2 0 0 0-.6-1.6l-5.6-2.6c-.6 1.8-2 3-3.8 3s-3.2-1.2-3.8-3z"/></svg>
+        <span class="nav-lbl">Style</span></button>
+    </div>
+    <button id="nav-backtome" class="y-btn small dim" type="button" hidden>&#9678; Back to me</button>
+    <div id="npc-dlg"></div>
+    <div id="party-card" hidden></div>
+
+    <!-- style: your character, big, with the cosmetic slots under it -->
+    <div id="style-screen" hidden>
+      <div class="ss-top">
+        <button id="style-close" class="y-btn small dim" type="button" aria-label="Back to the map">&#9664; map</button>
+        <b>style</b>
+        <span id="style-coins" class="ss-coins" title="your coins"></span>
+        <span id="style-mute"></span>
+      </div>
+      <div id="style-view"><small>drag to spin · pinch to zoom</small></div>
       <div id="outfit-tabs"></div>
       <div id="outfit-grid"></div>
+      <div class="ss-account" id="auth-status" hidden></div>
     </div>
 
     <div id="friends-panel" hidden>
@@ -1763,7 +1995,8 @@
       <div class="hc-title">Welcome to Itaewon</div>
       <div class="hc-line">&#127747; Glowing venue names are the meet-up spots</div>
       <div class="hc-line">&#128172; Tap someone with a blue name to say hi</div>
-      <div class="hc-line">&#128065; Go open (the eye) so people can find you</div>
+      <div class="hc-line">&#128065; Tap the eye (bottom left) so people can find you</div>
+      <div class="hc-line">&#127968; Host a party from the big button</div>
       <button id="hint-got" type="button">Got it</button>
     </div>
 

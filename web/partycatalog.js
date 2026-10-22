@@ -1,4 +1,4 @@
-// The five house-party games, in play order.
+// The six house-party games, in play order.
 //
 // Each entry is { id, title, blurb, minPlayers, maxPlayers, length, start(ctx) }.
 // `start` gets the ctx party.js builds (room, me, humans, seed, isHost, party,
@@ -8,14 +8,16 @@
 // Every game is offered to every party; the host picks.
 import { ART_GALLERY } from "./artgallery.js";
 import { SECRET_DIARY } from "./hpgames/secretdiary.js";
-import { TODAYS_MISSION } from "./hpgames/mission.js";
+import { MASK_OFF } from "./hpgames/maskoff.js";
 import { HUMILIATION_RITUAL } from "./hpgames/ritual.js";
+import { SIDE_QUEST } from "./hpgames/sidequest.js";
 import { MANHUNT_GAME } from "./hpgames/manhunt.js";
 
 export const PARTY_CATALOG = [
   SECRET_DIARY,
-  TODAYS_MISSION,
+  MASK_OFF,
   HUMILIATION_RITUAL,
+  SIDE_QUEST,
   ART_GALLERY,
   MANHUNT_GAME,
 ];

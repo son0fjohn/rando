@@ -2,13 +2,18 @@
   "_readme": [
     "Secret Diary prompt pool. This file is the ONLY place prompts live — edit it directly.",
     "Each prompt: id (stable, never reuse or renumber — prompt logs reference it), text, type ('written' | 'yesno'), level ('mild' | 'spicy' | 'unhinged').",
-    "To add one: append it to its group with the next unused number for its type-level (look at the last id in that group). To retire one: delete it — its id stays dead, never reuse it.",
+    "To add one: append it to its group with the next unused number for its type-level (check _retired too). To reword one, edit its text and keep its id — it's still the same question. To retire one: delete it and add its id to _retired — a retired id is never reused. Moving one to another level is the one exception to keeping its id (ids name their level): retire the old id, add it under the new level.",
     "'yesno' prompts are statements a player answers yes or no to about themselves."
+  ],
+  "_retired": [
+    "w-mild-25",
+    "w-spicy-20",
+    "w-spicy-21"
   ],
   "prompts": [
     {
       "id": "w-mild-01",
-      "text": "My first impression of someone here",
+      "text": "My first impression of",
       "type": "written",
       "level": "mild"
     },
@@ -20,31 +25,37 @@
     },
     {
       "id": "w-mild-03",
-      "text": "If I were stuck on an island for 30 years, who from here I'm bringing",
+      "text": "If I were trapped on an island for 30 years, who am I bringing with me",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-04",
-      "text": "The person I noticed first tonight",
+      "text": "The person you noticed first tonight",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-05",
-      "text": "How many people here I could beat in a fight",
+      "text": "The number of people here you could beat in a fight",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-06",
-      "text": "Who here I'd eat first in a survival situation",
+      "text": "Who here would you eat first in a survival situation?",
+      "type": "written",
+      "level": "mild"
+    },
+    {
+      "id": "w-mild-14",
+      "text": "Your most embarrassing childhood crush?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-07",
-      "text": "How people in high school would have described me",
+      "text": "How would your high school classmates describe you back in high school?",
       "type": "written",
       "level": "mild"
     },
@@ -62,37 +73,31 @@
     },
     {
       "id": "w-mild-10",
-      "text": "Who here I'd trust to help me hide a body",
+      "text": "Who here could I trust hiding a body with?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-11",
-      "text": "The worst thing I've done in school",
+      "text": "The worst thing you've done in school?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-12",
-      "text": "The weirdest thing I've talked to ChatGPT about",
+      "text": "Weirdest thing I've talked to ChatGPT about?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-13",
-      "text": "My longest-running celebrity or internet crush",
-      "type": "written",
-      "level": "mild"
-    },
-    {
-      "id": "w-mild-14",
-      "text": "My most embarrassing childhood crush",
+      "text": "Longest ongoing internet/celebrity crush?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-15",
-      "text": "The most cringe thing I've done",
+      "text": "Most cringe thing you've done",
       "type": "written",
       "level": "mild"
     },
@@ -116,193 +121,181 @@
     },
     {
       "id": "w-mild-19",
-      "text": "Who here would snitch first",
+      "text": "Who here would snitch first?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-20",
-      "text": "Whose outfit here I'd swap with",
+      "text": "Whose outfit would you swap with here?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-21",
-      "text": "Who here I'd room with",
+      "text": "Who would you room with here?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-22",
-      "text": "Who here has showered the least this month",
+      "text": "Who do you think showered the least amount of times this month?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-23",
-      "text": "Who here is the biggest green flag",
+      "text": "Who here is the greatest green flag?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-24",
-      "text": "Who here I'd most let date my sibling",
-      "type": "written",
-      "level": "mild"
-    },
-    {
-      "id": "w-mild-25",
-      "text": "Who are the 3 worst people in the world",
+      "text": "Person you'd most let date a sibling?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-26",
-      "text": "What's your favorite word",
+      "text": "What's your favorite word?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-27",
-      "text": "What's your snap score",
+      "text": "What's your snap score?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-28",
-      "text": "What celebrity would you make the president",
+      "text": "What celebrity would you make the president?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-mild-29",
-      "text": "Who is the most attractive athlete",
+      "text": "Who is the most attractive athlete?",
       "type": "written",
       "level": "mild"
     },
     {
       "id": "w-spicy-01",
-      "text": "If I had to kiss someone here, who",
+      "text": "Person here I have to kiss if I had to",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-02",
-      "text": "The most unethical thing I've done",
+      "text": "Most unethical thing you've done",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-03",
-      "text": "The most down bad thing I've done",
+      "text": "Most downbad thing you've done",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-04",
-      "text": "The most illegal thing I've done",
+      "text": "The most illegal thing you've done",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-05",
-      "text": "The craziest thing I've done drunk",
+      "text": "Craziest thing I've done drunk",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-06",
-      "text": "What I'm secretly into",
+      "text": "What are you secretly into?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-07",
-      "text": "My biggest regret",
+      "text": "Your biggest regret?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-08",
-      "text": "The most questionable person I've kissed",
+      "text": "The most questionable person you've ever kissed?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-09",
-      "text": "The most delusional I've been about someone",
+      "text": "Most delusional I've been about someone",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-10",
-      "text": "The last person I stalked on IG",
+      "text": "The most recent person I've stalked on IG",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-11",
-      "text": "The worst reason someone rejected me or broke up with me",
+      "text": "Worst reason someone rejected/broke up with me",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-12",
-      "text": "Whose parents here I'd date",
+      "text": "Whose parents here do you think you would want to date?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-13",
-      "text": "Who here I'd bring home to meet my parents",
+      "text": "Who here would I bring home to meet my parents?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-14",
-      "text": "Who here I'd never bring home to meet my parents",
+      "text": "Who here would I not bring home to meet my parents?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-15",
-      "text": "My biggest red flag",
+      "text": "What's your greatest red flag?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-16",
-      "text": "Who here is the biggest red flag",
+      "text": "Who here is the greatest red flag?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-17",
-      "text": "The most disappointing thing I've done to my parents",
+      "text": "The most disappointing thing I've done to my parents?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-18",
-      "text": "Who here I'd least let date my sibling",
+      "text": "Person you'd least let date a sibling?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-spicy-19",
-      "text": "A memory I'd erase from my head",
-      "type": "written",
-      "level": "spicy"
-    },
-    {
-      "id": "w-spicy-20",
-      "text": "What is the most disturbing thought you've had",
+      "text": "A memory you'd like to erase from your head?",
       "type": "written",
       "level": "spicy"
     },
     {
       "id": "w-unhinged-01",
-      "text": "The most toxic thing I've done in a relationship",
+      "text": "The most toxic thing you've done in a relationship",
       "type": "written",
       "level": "unhinged"
     },
@@ -314,25 +307,31 @@
     },
     {
       "id": "w-unhinged-03",
-      "text": "Who here looks like they have daddy issues",
+      "text": "Who here looks like they have daddy issues?",
       "type": "written",
       "level": "unhinged"
     },
     {
       "id": "w-unhinged-04",
-      "text": "Who here looks like they have mommy issues",
+      "text": "Who here looks like they have mommy issues?",
       "type": "written",
       "level": "unhinged"
     },
     {
       "id": "w-unhinged-05",
-      "text": "Who here has shot their shot with the most people",
+      "text": "Who here do you think has shot their shot with the most amount of people?",
+      "type": "written",
+      "level": "unhinged"
+    },
+    {
+      "id": "w-unhinged-06",
+      "text": "What is the most disturbing thought you've had",
       "type": "written",
       "level": "unhinged"
     },
     {
       "id": "yn-mild-01",
-      "text": "I've gone over 3 days without showering",
+      "text": "I've gone over 3 days without showering before",
       "type": "yesno",
       "level": "mild"
     },
@@ -344,25 +343,25 @@
     },
     {
       "id": "yn-spicy-02",
-      "text": "I've asked for someone's number right after meeting them",
+      "text": "Have asked for someone you just met's number before?",
       "type": "yesno",
       "level": "spicy"
     },
     {
       "id": "yn-spicy-03",
-      "text": "I've been ghosted in the last month",
+      "text": "Have you been ghosted in the last month",
       "type": "yesno",
       "level": "spicy"
     },
     {
       "id": "yn-spicy-04",
-      "text": "I've ghosted someone in the last month",
+      "text": "Have you ghosted someone in the last month?",
       "type": "yesno",
       "level": "spicy"
     },
     {
       "id": "yn-spicy-05",
-      "text": "I've had a secret crush this month",
+      "text": "Have you had a secret crush this month?",
       "type": "yesno",
       "level": "spicy"
     },
@@ -386,49 +385,49 @@
     },
     {
       "id": "yn-spicy-09",
-      "text": "I've had a crush on someone in this room",
+      "text": "Have you had a crush on someone in this room?",
       "type": "yesno",
       "level": "spicy"
     },
     {
       "id": "yn-spicy-10",
-      "text": "I've made out with someone in the last week",
+      "text": "Made out with someone in the last week?",
       "type": "yesno",
       "level": "spicy"
     },
     {
       "id": "yn-spicy-11",
-      "text": "I've drunk texted an ex",
+      "text": "Have you ever drunk texted an ex?",
       "type": "yesno",
       "level": "spicy"
     },
     {
       "id": "yn-spicy-12",
-      "text": "I've gotten back with an ex",
+      "text": "Have you gotten back with an ex?",
       "type": "yesno",
       "level": "spicy"
     },
     {
       "id": "yn-unhinged-01",
-      "text": "I've dated someone just because I was lonely",
+      "text": "Have dated someone just because you were lonely?",
       "type": "yesno",
       "level": "unhinged"
     },
     {
       "id": "yn-unhinged-02",
-      "text": "I've cheated before",
+      "text": "Have cheated before?",
       "type": "yesno",
       "level": "unhinged"
     },
     {
       "id": "yn-unhinged-03",
-      "text": "I've lied about being single",
+      "text": "Have you lied about being single?",
       "type": "yesno",
       "level": "unhinged"
     },
     {
       "id": "yn-unhinged-04",
-      "text": "I've made a fake account to stalk someone",
+      "text": "Have you made a fake account to stalk someone?",
       "type": "yesno",
       "level": "unhinged"
     },

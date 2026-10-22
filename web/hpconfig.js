@@ -7,10 +7,11 @@
 
 // ---------------------------------------------------------------- flags
 export const FLAGS = {
-  // Public parties (a browsable directory of nearby parties) are OFF for this
-  // pass. With this false, parties are code/link only and nothing is
-  // announced to the shared directory.
-  PUBLIC_PARTIES: false,
+  // Public parties: the host can pick "public" when throwing a party; it's
+  // then listed nearby and shown on the map as a neon house in its ZONE
+  // (never the host's spot). Invite-only stays the default. false hides the
+  // choice: every party is code/link only and nothing is announced.
+  PUBLIC_PARTIES: true,
   // Spicy prompts are OFF by default. Flipping this to true serves the spicy
   // entries alongside the mild ones in every pool.
   SPICY: false,
@@ -25,6 +26,30 @@ export const PARTY = {
   CAP_MAX: 12,
   CAP_DEFAULT: 6,
   NAME_MAX: 28,
+  // a party is a SET of games: the host picks each one from the TV, everyone
+  // comes back to the room between them, and after the last the party
+  // results (podium) — then a new set, or the end of the party
+  GAMES_PER_SET: 3,
+};
+
+// The room leaderboard: each completed game turns into party points by
+// finishing place (ties share a place), so a 100-point game and a 6-point
+// game count the same. Everyone who finished gets at least the last value.
+export const LEADERBOARD = {
+  PLACE_POINTS: [100, 80, 65, 50, 40, 30, 25, 20],
+};
+
+// Coins: the earned currency (separate from future paid gems). These are the
+// numbers the SERVER uses (supabase/migrations/013_coins_shop.sql repeats
+// them; that copy is the one that counts — keep the two in step). The app
+// only uses these to label things.
+export const COINS = {
+  PLACE: [30, 20, 12],        // 1st, 2nd, 3rd in a completed game
+  FINISH: 5,                  // everyone else who finished it
+  HOST_SET: 50,               // the host, when a set of 3 completes...
+  HOST_MIN_PLAYERS: 4,        // ...with at least 4 players in all 3 games
+  DAILY_CAP: 300,             // most coins one player can earn per day (UTC)
+  HOST_DAILY_CAP: 3,          // most host rewards one player can get per day
 };
 
 // ---------------------------------------------------------------- game settings
@@ -32,100 +57,93 @@ export const DIARY = {
   // The prompt pool is a separate, editable JSON file: web/data/diary_prompts.json
   // ({ id, text, type: "written" | "yesno", level: "mild" | "spicy" | "unhinged" }).
   POOL_URL: "data/diary_prompts.json",
-  ROUNDS: 6,                     // one prompt per round
   LEVELS: ["mild", "spicy", "unhinged"],
   // Default max level when the host never touches the setting. Unhinged is
   // never a default and needs the party's 18+ setting on.
   DEFAULT_MAX: { public: "mild", private: "spicy" },
-  // Escalation: the cap for round r is min(this, host max).
-  // Rounds 1-2 mild, 3-4 up to spicy, 5+ up to the host's max.
-  CURVE: [{ upTo: 2, cap: "mild" }, { upTo: 4, cap: "spicy" }, { upTo: Infinity, cap: "max" }],
-  // Inside a round's cap, how often to serve the cap level itself rather than
-  // something milder — so the curve is felt, but not every prompt is maxed.
+  // A game is one batch: the host deals BATCH questions (BATCH_MIN..BATCH_MAX),
+  // everyone answers them all at once, then they're revealed one at a time.
+  BATCH: 5, BATCH_MIN: 3, BATCH_MAX: 8,
+  // Escalation inside a batch: the cap for a card at position i of n is set
+  // by how far through the batch it is, never above the host's max. Cards
+  // are then sorted mild -> spicy -> unhinged so the reveal escalates.
+  CURVE: [{ upTo: 0.4, cap: "mild" }, { upTo: 0.8, cap: "spicy" }, { upTo: Infinity, cap: "max" }],
+  // Inside a card's cap, how often to serve the cap level itself rather than
+  // something milder — so the curve is felt, but not every card is maxed.
   CAP_BIAS: 0.6,
-  // Roughly 1 in 3 rounds is yes/no: one yes/no slot in each block of 3.
-  YESNO_EVERY: 3,
-  PREVIEW_MS: 5000,              // host sees the prompt first, with Skip
-  WRITE_MS: 90000,               // written: answer window
-  YESNO_MS: 20000,               // yes/no: tap window
-  GUESS_MS: 60000,               // matching / guessing window
+  // About 1 card in 3 is yes/no, when there are yes/no prompts left at the level.
+  YESNO_SHARE: 1 / 3,
+  DEAL_MS: 90000,                // host's deal screen; sends by itself after this
+  ANSWER_MS_PER_Q: 45000,        // answer window: 45 s per question, one clock for the batch (5 -> 3:45)
+  GUESS_MS: 45000,               // each question's matching / guessing window
+  GUESS_MS_PER_EXTRA: 5000,      // + this per written answer beyond 6 (big rooms)
+  GUESS_MS_MAX: 75000,
+  POINTS_MS: 6000,               // the points screen after each question (the host can skip it)
+  MORE_MS: 30000,                // the host's "+30s": once per phase (per question while guessing)
+  URGENT_MS: 10000,              // the last 10 s: the countdown goes red and ticks softly
+  // Diary colors: one per player for a whole batch. When the host sends the
+  // batch, every player is dealt a color (no two alike in the room) and keeps
+  // it for the writing diary and every reveal in that batch, so you can track
+  // a color from question to question and work out whose it is. Nobody picks
+  // one, nothing ever shows which color is whose, and the next batch
+  // reshuffles them. 12 colors (the party cap) that differ in brightness as
+  // well as hue, each with its own shape on the diary for colorblind players.
+  // One model, tinted in code.
+  COLORS: ["#e63946", "#ffd23f", "#1d3a8a", "#8ecae6", "#2a9d8f", "#a7e163",
+           "#6a1b9a", "#ff8fab", "#f77f00", "#5c3a21", "#f4f1e8", "#2b2d42"],
+  // shape per color, same order (see .sd-sym in index.html)
+  SHAPES: ["circle", "star", "square", "triangle", "diamond", "plus",
+           "heart", "flower", "bolt", "moon", "ring", "cross"],
 };
-export const MISSION = {
-  // How missions reach players. The host picks per game in the lobby:
-  //   quick  — the game deals one mission card each, straight into play
-  //   choose — everyone is offered CHOICES cards and picks the one they'll do
-  MODES: ["quick", "choose"],
-  DEFAULT_MODE: "quick",
-  CHOICES: 3,
-  PICK_MS: 45000,
-  // the room rates each attempt on a 0..SCALE spectrum; points = average
-  // rating as a share of MAX_PTS
-  SCALE: 10,
-  MAX_PTS: 100,
-  // labels shown under the slider, low to high
-  LABELS: ["didn't even try", "half-hearted", "got it done", "nailed it", "legendary"],
+// Mask Off: a truth card flips up for one player (fair pick), they answer out
+// loud, everyone else rates their honesty 1-5 (1 = mask on, totally fake;
+// 5 = mask off, totally real). One tap locks a rating; the turn ends when all
+// have rated, or at TALK_MS. Skipping the card scores 0 and skips the rating.
+export const MASKOFF = {
+  POOL_URL: "data/mask_off_cards.json",
+  TALK_MS: 2 * 60 * 1000,
+  STARS: 5,
+  POINTS_PER_STAR: 20,          // points = average x this (5 = 100)
+  // the reveal: average below SUS -> the mask stays on (MASK ON), below OFF ->
+  // it cracks (SUS), from OFF up -> it shatters (MASK OFF)
+  SUS: 2.5, OFF: 3.5,
+  // cards escalate through the game: the first LEVEL_SPLIT[0] share of the
+  // turns draws level 1, up to LEVEL_SPLIT[1] level 2, the rest level 3
+  LEVEL_SPLIT: [1 / 3, 2 / 3],
 };
 
 export const RITUAL = {
-  // guesses are judged automatically by the answer matcher, so the performer
-  // never has to read a feed. For guesses shouted out loud, the performer
-  // gets one big "someone said it" button.
-  ACT_MS: 90000,
+  // charades: the performer acts, everyone else types guesses, and the
+  // performer taps the right one in the live feed. Close guesses are only
+  // highlighted for the performer; the performer always decides.
+  POOL_URL: "data/ritual_prompts.json",
+  ACT_MS: 60000,
+  // a correct guess at second t of ACT_MS pays the guesser
+  // GUESS_PTS + GUESS_SPEED * (1 - t/ACT_MS) and the performer
+  // PERFORM_PTS + PERFORM_SPEED * (1 - t/ACT_MS). Nobody gets it: 0 for all.
+  GUESS_PTS: 100, GUESS_SPEED: 100,
+  PERFORM_PTS: 50, PERFORM_SPEED: 50,
 };
 
-// ---------------------------------------------------------------- prompt pools
-// Shape: { text, spice: "mild" | "spicy" }
-// (Secret Diary's pool is NOT here — it lives in web/data/diary_prompts.json.)
+// Side Quest: the wizard hands out a real-life dare, one player does it, the
+// room rates how hard they committed. Points = average stars x POINTS_PER_STAR.
+export const SIDEQUEST = {
+  POOL_URL: "data/side_quests.json",
+  DO_MS: 3 * 60 * 1000,        // the quest's timer; the room rates during it, and the turn ends early once all have
+  STARS: 5,
+  POINTS_PER_STAR: 20,         // 5 stars = 100
+  MAX_TURNS: 30,
+  WIZARD_3D: false,            // the 3D wizard (wizard3d.js): on once web/models/wizard/wizard.glb is in
+};
 
-/* ======================= DRAFT — NEEDS CURATION =======================
- * Today's Mission. Absurd task, done in the next couple of minutes, in view
- * of the room. HARD RULE: a mission may only embarrass the player who drew
- * it. Nothing that requires touching, naming, ranking, or using another
- * person — bystanders are never the joke and never the prop.
- * ===================================================================== */
-export const MISSION_PROMPTS = [
-  { text: "Deliver a 20-second TED talk on something in this room nobody asked about.", spice: "mild" },
-  { text: "Narrate everything you do like a nature documentary until the timer ends.", spice: "mild" },
-  { text: "Convince the room you've just returned from space. Stay in character.", spice: "mild" },
-  { text: "Do your best impression of your own phone's notification sound, repeatedly, with feeling.", spice: "mild" },
-  { text: "Invent and demonstrate a signature dance move. Name it.", spice: "mild" },
-  { text: "Give an emotional acceptance speech for an award you just made up.", spice: "mild" },
-  { text: "Walk across the room as if the floor were lava, but stay dignified.", spice: "mild" },
-  { text: "Read the nearest text out loud — label, screen, anything — as dramatic poetry.", spice: "mild" },
-  { text: "Become a sports commentator for the next 30 seconds of absolutely nothing.", spice: "mild" },
-  { text: "Perform a one-person interpretive dance of your day.", spice: "mild" },
-  { text: "Sing your last text message as an opera.", spice: "mild" },
-  { text: "Do a full catwalk strut, turn, and pose. Commit completely.", spice: "mild" },
-  { text: "Deliver a villain monologue explaining your evil plan for this party.", spice: "spicy" },
-  { text: "Loudly apologise to an inanimate object for something you did to it.", spice: "spicy" },
-];
+// Who goes next (Side Quest, Humiliation Ritual): random but fair. Everyone
+// starts at weight START; each turn a player isn't picked their weight grows
+// by GROW, and the one picked drops to FLOOR — never 0, so nobody is ever
+// safe, but a repeat right away is rare.
+export const PICKER = { START: 1, GROW: 1, FLOOR: 0.25 };
 
-/* ======================= DRAFT — NEEDS CURATION =======================
- * Humiliation Ritual. Charades-style: one performer acts it out in public
- * while everyone else types guesses. Must be ACTABLE without props and
- * GUESSABLE in a word or two — the typed guess has to be able to match.
- * `answer` is what guesses are checked against; `alt` are accepted variants.
- * ===================================================================== */
-export const RITUAL_PROMPTS = [
-  { text: "A penguin realising it has lost its egg", answer: "penguin", alt: ["lost penguin", "sad penguin"], spice: "mild" },
-  { text: "Someone discovering their phone is at 1%", answer: "low battery", alt: ["phone dying", "1 percent", "battery"], spice: "mild" },
-  { text: "A vending machine eating your money", answer: "vending machine", alt: ["vending", "machine ate money"], spice: "mild" },
-  { text: "A cat knocking things off a table, one by one", answer: "cat", alt: ["cat knocking things", "annoying cat"], spice: "mild" },
-  { text: "Trying to look busy when your boss walks past", answer: "looking busy", alt: ["pretending to work", "boss walking by"], spice: "mild" },
-  { text: "An inflatable tube man outside a car dealership", answer: "tube man", alt: ["inflatable man", "air dancer", "wacky waving man"], spice: "mild" },
-  { text: "Waking up and immediately regretting last night", answer: "hangover", alt: ["regret", "hungover"], spice: "mild" },
-  { text: "A GPS telling you to make a U-turn, repeatedly", answer: "gps", alt: ["u turn", "navigation", "make a u-turn"], spice: "mild" },
-  { text: "Getting dragged by a dog that is much stronger than you", answer: "walking a dog", alt: ["dog walk", "strong dog", "dog pulling"], spice: "mild" },
-  { text: "Someone who has just walked into a glass door", answer: "glass door", alt: ["walked into glass", "sliding door"], spice: "mild" },
-  { text: "A broken robot slowly powering down", answer: "robot", alt: ["broken robot", "robot shutting down"], spice: "mild" },
-  { text: "Trying to fold a fitted bedsheet", answer: "folding a sheet", alt: ["fitted sheet", "laundry", "folding laundry"], spice: "mild" },
-  { text: "Realising mid-wave that they weren't waving at you", answer: "awkward wave", alt: ["wrong wave", "waving at nobody"], spice: "spicy" },
-];
+// (Humiliation Ritual's pool lives in web/data/ritual_prompts.json.)
 
-// serve a pool, filtered by the spice flag
-export function pool(list, { spicy = FLAGS.SPICY } = {}) {
-  return list.filter(p => spicy || p.spice === "mild");
-}
 
 // ---------------------------------------------------------------- Manhunt geo
 /* ======================= PLACEHOLDER COORDINATES =======================

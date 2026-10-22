@@ -6,6 +6,9 @@ import { world3d, ARCH_NPC_DEFS } from "./world3d.js";
 import { lobby } from "./lobby.js";
 import { rooms } from "./rooms.js";
 import { party } from "./party.js";
+import { sfx } from "./fx.js";
+import { typeDialog, muteButton } from "./retro.js";
+import { mountCharView } from "./charview.js";
 import {
   PART_OPTIONS3, DEFAULT_AVATAR3, normalizeAvatar3, avatarThumb3,
   SKIN_RGB, HAIR_RGB, IRIS3_HEX, loadFaceDecals,
@@ -94,10 +97,10 @@ async function refreshStatus() {
   }
   statusEl.hidden = false;
   statusEl.innerHTML = "";
-  statusEl.append("you: " + (profile ? profile.handle : "(no profile)") + " · ");
+  statusEl.append("Signed in as " + (profile ? profile.handle : "(no profile)") + " · ");
   const edit = document.createElement("a");
   edit.href = "#";
-  edit.textContent = "name";
+  edit.textContent = "change name";
   edit.addEventListener("click", e => {
     e.preventDefault();
     nickname.show(profile ? profile.handle : "");
@@ -118,9 +121,48 @@ async function refreshStatus() {
   }
   presence.onSignedIn();
   // demo build: identity for rooms/quests (avatar fills in when it loads)
+  // (rooms.init() — the NPC raid lobbies — stays off: raids aren't available)
   rooms.me = { id: session.user.id, handle: profile ? profile.handle : "rando", avatar: rooms.me?.avatar ?? avatar.mine };
-  if (!rooms._inited) { rooms._inited = true; rooms.init(); }
-  if (!party._inited) { party._inited = true; party.init(); }
+  if (!party._inited) {
+    party._inited = true;
+    // party rooms ask the server-side truth: friends come only from verified
+    // meetups; reports go to an insert-only table (migrations/012_reports)
+    party.hooks.isFriend = id => friends.list.some(f => f.friend_id === id);
+    party.hooks.report = async (id, reason, ctx) => {
+      const { error } = await sb.from("reports").insert({ reported: id, reason, context: ctx ?? {} });
+      if (error) console.warn("[rando] report failed", error.message);
+      return !error;
+    };
+    // a public party's map beacon sits in the host's ZONE (the same on-device
+    // snap presence uses), never at the host's position: parties are often
+    // at someone's home
+    // coins: the host reports each completed game, every player confirms
+    // they played it; the server pays only when both agree (migrations/013)
+    party.hooks.coins = {
+      reportGame: async ({ session, set, idx, game, results }) => {
+        const { places } = await import("./partyset.js");
+        const ranking = places(results).map(p => ({ id: p.id, place: p.place }));
+        const { data, error } = await sb.rpc("report_game", { p_session: session, p_set: set, p_idx: idx, p_game: game, p_ranking: ranking });
+        if (error) throw error;
+        return data;
+      },
+      confirmGame: async ({ session, set, idx }) => {
+        const { data, error } = await sb.rpc("confirm_game", { p_session: session, p_set: set, p_idx: idx });
+        if (error) throw error;
+        return data;
+      },
+      partyCoins: async ({ session, set }) => {
+        const { data, error } = await sb.rpc("my_party_coins", { p_session: session, p_set: set });
+        if (error) throw error;
+        return data ?? 0;
+      },
+    };
+    party.hooks.beaconZone = async () => {
+      const z = presence.myZone ?? await presence.resolveZone();
+      return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;
+    };
+    party.init();
+  }
 }
 
 // ===================== nickname =====================
@@ -245,10 +287,11 @@ const HEARTBEAT_MS = 20 * 60 * 1000; // keeps presence row from going stale
 const SNAP_MAX_METERS = 3000;        // fixed-zone radius; beyond it -> auto zone
 const CELL_DEG = 0.02;               // ~2.2km coarse grid for auto zones
 
-const openBtn = document.getElementById("open-toggle");
 const zoneNameEl = document.getElementById("zone-name");
 const zminEl = document.getElementById("zmin");
-const recenterBtn = document.getElementById("recenter");
+const navbar = document.getElementById("navbar");
+const exploreBtn = document.getElementById("nav-explore");
+const backBtn = document.getElementById("nav-backtome");
 
 // on-device coordinate read, shared by zone resolution, encounter
 // proximity confirm and house-party joins; ?devlat=&devlng= lets any of
@@ -297,14 +340,17 @@ export const presence = {
         .from("presence").select("zone_id").eq("user_id", session.user.id).maybeSingle();
       this.myZone = mine ? this.zones.find(z => z.id === mine.zone_id) ?? null : null;
       this.renderToggle();
+      if (!this.myZone) explore.enter();
       this.startPolling();
     } catch (e) {
       console.warn("[rando] sign-in restore failed (world stays browsable):", e);
       this.renderToggle();
+      if (!this.myZone) explore.enter();
     }
   },
 
   onSignedOut() {
+    explore.leave();
     clearInterval(this.pollTimer);
     clearInterval(this.heartbeatTimer);
     this.pollTimer = this.heartbeatTimer = null;
@@ -363,6 +409,7 @@ export const presence = {
       .upsert({ user_id: session.user.id, zone_id: zone.id });
     if (error) throw error;
     this.myZone = zone;
+    explore.leave();
     this.renderToggle();
     this.startPolling();
     await this.refreshWorld();
@@ -376,9 +423,11 @@ export const presence = {
     await sb.from("presence").delete().eq("user_id", session.user.id);
     clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
+    const last = this.myZone;
     this.myZone = null;
     this.renderToggle();
     await this.refreshWorld();
+    explore.enter(last);
   },
 
   async heartbeat() {
@@ -483,25 +532,58 @@ export const presence = {
     zminEl.textContent = String(Math.round((Date.now() - this.lastFetch) / 60000));
   },
 
+  // the bar's left button: hidden (exploring) or visible on the map
   renderToggle() {
     const signedOut = statusEl.hidden;
-    openBtn.hidden = signedOut;
-    recenterBtn.hidden = signedOut;
+    navbar.hidden = signedOut;
     if (signedOut) return;
-    if (this.myZone) {
-      openBtn.classList.add("is-open");
-      openBtn.title = "You're open · " + this.myZone.name + " — tap to go invisible";
-      zoneNameEl.textContent = this.myZone.name;
-    } else {
-      openBtn.classList.remove("is-open");
-      openBtn.title = "Go open";
-      zoneNameEl.textContent = "invisible";
-    }
+    const open = !!this.myZone;
+    exploreBtn.classList.toggle("seen", open);
+    exploreBtn.classList.toggle("on", !open);           // the active tab while you're exploring
+    exploreBtn.setAttribute("aria-pressed", String(!open));
+    exploreBtn.title = open ? `You're visible · ${this.myZone.name} — tap to hide and explore` : "You're hidden and exploring — tap to be visible";
+    zoneNameEl.textContent = open ? this.myZone.name : "hidden · exploring";
   },
 };
 
-openBtn.addEventListener("click", async () => {
-  openBtn.disabled = true;
+// ===================== explore (invisible) =====================
+// While you're hidden nobody sees you, and the map is yours to pan around —
+// within ~1.5 km of where you really are. That spot is read ON this phone
+// (only if location is already allowed; never prompts on its own) and never
+// leaves it; without it, your last zone or the station is home.
+const EXPLORE_M = 1500;
+const explore = {
+  marker: null,
+  async enter(lastZone = null) {
+    let home = lastZone ? { lat: lastZone.lat, lng: lastZone.lng } : null;
+    try {
+      const devOk = params.get("devlat") && params.get("devlng");
+      const st = devOk ? null : await navigator.permissions?.query({ name: "geolocation" });
+      if (devOk || st?.state === "granted") home = await readDeviceCoords();
+    } catch { /* no permission: keep the fallback */ }
+    if (presence.myZone) return;              // went visible meanwhile
+    home ??= { lat: 37.5346, lng: 126.9946 };
+    world3d.setExplore(home.lat, home.lng, EXPLORE_M);
+    world3d.recenter();
+    if (!this.marker) {
+      this.marker = document.createElement("div");
+      this.marker.className = "bubble-anchor";
+      this.marker.innerHTML = `<div class="tag ghost">you · hidden</div>`;
+      bubbleLayer.appendChild(this.marker);
+      world3d.anchor(this.marker, () => world3d.homePos ? world3d.homePos.clone().setY(world3d.homePos.y + 4) : null);
+    }
+  },
+  leave() {
+    world3d.setExplore(null);
+    this.marker?.remove(); this.marker = null;
+    backBtn.hidden = true;
+  },
+};
+
+exploreBtn.addEventListener("click", async () => {
+  if (nav.swallow()) return;
+  exploreBtn.disabled = true;
+  sfx.confirm();
   try {
     if (presence.myZone) await presence.goClosed();
     else await presence.goOpen();
@@ -509,9 +591,16 @@ openBtn.addEventListener("click", async () => {
   } catch (e) {
     alert(e.message || String(e));
   } finally {
-    openBtn.disabled = false;
+    exploreBtn.disabled = false;
   }
 });
+// "back to me" shows once you've panned away from home
+world3d.tickHooks.push(() => {
+  const away = !presence.myZone && world3d.homePos && world3d.observing && world3d.awayFromHome() > 40;
+  if (backBtn.hidden === !away) return;
+  backBtn.hidden = !away;
+});
+backBtn.addEventListener("click", () => { sfx.back(); world3d.recenter(); backBtn.hidden = true; });
 
 // ===================== matching =====================
 // Explicit "match me" tap -> zone-scoped queue -> server-side pairing.
@@ -520,7 +609,6 @@ openBtn.addEventListener("click", async () => {
 
 const MATCH_POLL_MS = 4000;
 
-const matchBtn = document.getElementById("match-btn");
 const matchCard = document.getElementById("match-card");
 const mcHandle = document.getElementById("mc-handle");
 const mcDismiss = document.getElementById("mc-dismiss");
@@ -612,15 +700,6 @@ export const matching = {
   },
 
   renderButton() {
-    const canMatch = !!presence.myZone && !statusEl.hidden;
-    matchBtn.hidden = !canMatch || !!this.activeMatch;
-    if (this.queued) {
-      matchBtn.title = "Looking for someone nearby… tap to cancel";
-      matchBtn.classList.add("is-waiting");
-    } else {
-      matchBtn.title = "Match me";
-      matchBtn.classList.remove("is-waiting");
-    }
     // matched: show the chat icon (unless the panel is already open)
     const pill = document.getElementById("chat-pill");
     const panelOpen = !document.getElementById("chat-panel").hidden;
@@ -628,18 +707,6 @@ export const matching = {
     if (!pill.hidden) pill.title = "Chat · " + this.partner.handle;
   },
 };
-
-matchBtn.addEventListener("click", async () => {
-  matchBtn.disabled = true;
-  try {
-    if (matching.queued) await matching.cancel();
-    else await matching.request();
-  } catch (e) {
-    alert(e.message || String(e));
-  } finally {
-    matchBtn.disabled = false;
-  }
-});
 
 mcDismiss.addEventListener("click", () => { matchCard.hidden = true; });
 
@@ -1048,8 +1115,15 @@ const npcYes = document.getElementById("npc-yes");
 const npcNo = document.getElementById("npc-no");
 npcYes.addEventListener("click", () => archQuests.accept());
 npcNo.addEventListener("click", () => { npcCard.hidden = true; archQuests.pending = null; });
-// demo build: tapping an NPC goes to the raid-lobby flow (rooms.js)
-world3d.onArchNpcTap = (def) => rooms.onNpcTap(def);
+// tapping an NPC: they say hi in a DS-style dialog box. Raids are off, so
+// that's all that happens.
+const npcDlgHost = document.getElementById("npc-dlg");
+let npcDlg = null;
+world3d.onArchNpcTap = def => {
+  npcDlg?.close();
+  sfx.cursor();
+  npcDlg = typeDialog(npcDlgHost, { name: def.name, text: "Wassup! Raids aren't available right now.", blip: () => sfx.blip(), onClose: () => { npcDlg = null; } });
+};
 archQuests.start();
 const _closePanel = chat.closePanel.bind(chat);
 chat.closePanel = function () {
@@ -1263,6 +1337,7 @@ const TABS = [
   { key: "top", label: "Top" },
   { key: "bottom", label: "Bottom" },
   { key: "shoes", label: "Shoes" },
+  { key: "shop", label: "Shop" },
 ];
 const rgbCss = a => `rgb(${a[0]},${a[1]},${a[2]})`;
 // option tile art: category -> value -> image url (prep-generated crops)
@@ -1274,8 +1349,7 @@ const OPTION_ICON = {
   shoes: v => `avatar3/icons/shoe_${v}.jpg`,
 };
 
-const outfitBtn = document.getElementById("outfit-btn");
-const outfitSheet = document.getElementById("outfit-sheet");
+const styleScreen = document.getElementById("style-screen");
 const outfitGrid = document.getElementById("outfit-grid");
 
 export const avatar = {
@@ -1289,7 +1363,6 @@ export const avatar = {
     this.mine = normalizeAvatar(data && data.avatar);
     if (rooms.me) rooms.me.avatar = this.mine;
     this.applyOwn();
-    outfitBtn.hidden = false;
   },
 
   applyOwn() {
@@ -1303,16 +1376,29 @@ export const avatar = {
   },
 
   async pick(key, value) {
+    // a shop item you don't own: go to it in the shop instead
+    const it = wallet.itemFor(key, value);
+    if (it && !wallet.owns(it.id) && this.mine[key] !== value) { this.tab = "shop"; this.focus = it.id; sfx.cursor(); this.renderGrid(); return; }
+    const prev = this.mine;
     this.mine = { ...this.mine, [key]: value };
     if (rooms.me) rooms.me.avatar = this.mine;
     this.applyOwn();
     this.renderGrid();
+    styleView.view?.setAvatar(this.mine);
+    sfx.cursor();
     const { data: { session } } = await sb.auth.getSession();
-    await sb.from("profiles").update({ avatar: this.mine }).eq("id", session.user.id);
+    const { error } = await sb.from("profiles").update({ avatar: this.mine }).eq("id", session.user.id);
+    if (error) {
+      // the server only lets you wear shop items you own
+      console.warn("[rando] outfit not saved:", error.message);
+      this.mine = prev; if (rooms.me) rooms.me.avatar = prev;
+      this.applyOwn(); this.renderGrid(); styleView.view?.setAvatar(prev);
+    }
   },
 
   renderGrid() {
     if (!TABS.some(t => t.key === this.tab)) this.tab = "skin";
+    wallet.paint();
 
     const tabsEl = document.getElementById("outfit-tabs");
     tabsEl.innerHTML = "";
@@ -1321,11 +1407,13 @@ export const avatar = {
       b.type = "button";
       b.className = "look-tab" + (this.tab === t.key ? " active" : "");
       b.textContent = t.label;
-      b.addEventListener("click", () => { this.tab = t.key; this.renderGrid(); });
+      b.addEventListener("click", () => { this.tab = t.key; sfx.cursor(); this.renderGrid(); });
       tabsEl.appendChild(b);
     }
 
     outfitGrid.innerHTML = "";
+    outfitGrid.classList.toggle("shop", this.tab === "shop");
+    if (this.tab === "shop") { wallet.renderShop(outfitGrid); return; }
     const swatch = this.tab === "skin" ? v => rgbCss(SKIN_RGB[v])
       : this.tab === "hairColor" ? v => rgbCss(HAIR_RGB[v])
       : this.tab === "iris" ? v => IRIS3_HEX[v] : null;
@@ -1353,19 +1441,97 @@ export const avatar = {
         img.alt = value;
         b.appendChild(img);
       }
+      // shop items: a lock and the price until you own them
+      const it = wallet.itemFor(this.tab, value);
+      if (it && !wallet.owns(it.id)) { b.classList.add("locked"); b.insertAdjacentHTML("beforeend", `<span class="lock-tag"><i class="coin"></i>${it.price}</span>`); }
       b.addEventListener("click", () => this.pick(this.tab, value));
       outfitGrid.appendChild(b);
     }
   },
 };
 
-outfitBtn.addEventListener("click", () => {
-  avatar.renderGrid();
-  outfitSheet.hidden = !outfitSheet.hidden;
-});
-document.addEventListener("keydown", e => {
-  if (e.key === "Escape") outfitSheet.hidden = true;
-});
+// ===================== coins + shop =====================
+// Coins are earned in house parties and spent in the shop. The balance, the
+// shop and what you own all live on the server (migrations/013); this only
+// shows them and asks the server to buy. Never trusts its own numbers.
+export const wallet = {
+  coins: 0,
+  owned: new Set(),
+  items: [],                 // shop_items rows
+  async load() {
+    const [{ data: w }, { data: items }] = await Promise.all([sb.rpc("my_wallet"), sb.from("shop_items").select("*").order("price")]);
+    if (w) { this.coins = w.coins ?? 0; this.owned = new Set(w.owned ?? []); }
+    if (items) this.items = items;
+    this.paint();
+  },
+  itemFor(slot, value) { return this.items.find(i => i.slot === slot && i.value === value) ?? null; },
+  owns(id) { return this.owned.has(id); },
+  paint() {
+    const el = document.getElementById("style-coins");
+    if (el) el.innerHTML = `<i class="coin"></i><b>${this.coins}</b>`;
+  },
+  renderShop(grid) {
+    if (!this.items.length) { grid.innerHTML = `<p class="shop-empty">the shop is closed right now</p>`; return; }
+    grid.innerHTML = this.items.map(it => {
+      const own = this.owns(it.id), wearing = avatar.mine[it.slot] === it.value;
+      const art = OPTION_ICON[it.slot]?.(it.value);
+      const vis = art ? `<img src="${art}" alt="">` : `<span class="shop-swatch" style="background:${it.slot === "hairColor" ? rgbCss(HAIR_RGB[it.value] ?? [128, 128, 128]) : "#555"}"></span>`;
+      return `<div class="shop-item ${own ? "owned" : ""} ${avatar.focus === it.id ? "focus" : ""}" data-item="${it.id}">
+          <div class="shop-vis">${vis}</div><b>${escHtml(it.name)}</b>
+          ${own ? `<button type="button" class="y-btn small ${wearing ? "dim" : "lime"}" data-wear="${it.id}" ${wearing ? "disabled" : ""}>${wearing ? "wearing" : "owned · wear"}</button>`
+                : `<button type="button" class="y-btn small gold" data-buy="${it.id}" ${this.coins < it.price ? "disabled" : ""}><i class="coin"></i>${it.price}</button>`}
+        </div>`;
+    }).join("") + `<p class="shop-note" id="shop-note">earn coins at house parties · ${this.owned.size} owned</p>`;
+    grid.querySelectorAll("[data-buy]").forEach(b => b.onclick = () => this.buy(b.dataset.buy));
+    grid.querySelectorAll("[data-wear]").forEach(b => b.onclick = () => { const it = this.items.find(i => i.id === b.dataset.wear); if (it) avatar.pick(it.slot, it.value); });
+    grid.querySelector(".shop-item.focus")?.scrollIntoView({ block: "nearest" });
+    avatar.focus = null;
+  },
+  async buy(id) {
+    const it = this.items.find(i => i.id === id); if (!it) return;
+    const note = document.getElementById("shop-note");
+    const { data, error } = await sb.rpc("buy_item", { p_item: id });
+    if (error || !data?.ok) { sfx.back(); if (note) note.textContent = data?.why ?? error?.message ?? "couldn't buy that"; return; }
+    this.coins = data.coins ?? this.coins; this.owned = new Set(data.owned ?? [...this.owned, id]);
+    sfx.win(); this.paint();
+    await avatar.pick(it.slot, it.value);                       // put it on straight away
+    const grid = document.getElementById("outfit-grid");
+    if (avatar.tab === "shop") this.renderShop(grid);
+    const card = grid.querySelector(`[data-item="${id}"]`);
+    if (card) { const { coinBurst } = await import("./partyboard.js"); coinBurst(card, 10); }
+  },
+};
+const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ===================== style screen =====================
+// Its own full-screen screen (not on the map), like opening your profile:
+// your character big in the middle (drag to spin, pinch to zoom), the
+// cosmetic slots under it. The map stops drawing while it's open.
+const styleView = {
+  view: null,
+  open() {
+    if (!styleScreen.hidden) return;
+    wallet.load().then(() => avatar.renderGrid()).catch(e => console.warn("[rando] wallet", e));
+    avatar.renderGrid();
+    styleScreen.hidden = false;
+    styleScreen.classList.remove("y-in-wipe"); void styleScreen.offsetWidth; styleScreen.classList.add("y-in-wipe");
+    world3d.setPaused(true);
+    this.view = mountCharView(document.getElementById("style-view"), avatar.mine, { zoom: true, yaw: 0.2 });
+    sfx.open();
+  },
+  close() {
+    if (styleScreen.hidden) return;
+    this.view?.dispose(); this.view = null;
+    document.getElementById("style-view").querySelectorAll("canvas, .cv-spr").forEach(n => n.remove());
+    styleScreen.hidden = true;
+    world3d.setPaused(false);
+    sfx.back();
+  },
+};
+document.getElementById("nav-style").addEventListener("click", () => { if (!nav.swallow()) styleView.open(); });
+document.getElementById("style-close").addEventListener("click", () => styleView.close());
+document.getElementById("style-mute").appendChild(muteButton());
+document.addEventListener("keydown", e => { if (e.key === "Escape") styleView.close(); });
 
 // ===================== public chat =====================
 // Real world-wide public messages: Twitch/Minecraft-style bottom feed +
@@ -1506,14 +1672,70 @@ const _pOnSignedOut = presence.onSignedOut.bind(presence);
 presence.onSignedOut = function () {
   _pOnSignedOut();
   pubchat.onSignedOut();
-  outfitBtn.hidden = true;
-  outfitSheet.hidden = true;
+  styleView.close();
   friends.onSignedOut();
 };
 
-// ===================== ambience & camera chrome =====================
-recenterBtn.addEventListener("click", () => world3d.recenter());
+// ===================== the bottom bar =====================
+// center: host a party (opens the party screen, or your party if you're in
+// one) · left: explore/visible (above) · right: style (above).
+// Pull the bar down to refresh nearby parties and people (the map itself
+// pans, so the gesture lives on the bar).
+const nav = {
+  _swallow: false,
+  // a pull that ended on a button isn't a tap on it
+  swallow() { const s = this._swallow; this._swallow = false; return s; },
+  async refresh() {
+    const spin = document.getElementById("nav-refresh");
+    if (spin.classList.contains("spinning")) return;
+    spin.classList.add("spinning"); sfx.cursor();
+    const t0 = Date.now();
+    try { await Promise.all([presence.refreshWorld(), party.refreshNearby?.()]); } catch (e) { console.warn("[rando] refresh", e); }
+    await new Promise(r => setTimeout(r, Math.max(350, 900 - (Date.now() - t0))));   // long enough to see it spin
+    spin.classList.remove("spinning"); spin.style.removeProperty("--pull");
+    sfx.ping();
+  },
+};
+// Host: the gold ring fills with a little sparkle burst, then the host flow
+// (or, while you're in a party, back to its room) opens
+document.getElementById("nav-host").addEventListener("click", e => {
+  if (nav.swallow()) return;
+  const btn = e.currentTarget, ring = btn.querySelector(".nav-ring");
+  if (btn.classList.contains("tap")) return;
+  sfx.confirm();
+  btn.classList.add("tap");
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!calm) for (let i = 0; i < 8; i++) {
+    const s = document.createElement("b"); s.className = "nav-spark"; s.style.setProperty("--a", `${i * 45}deg`);
+    ring.appendChild(s); setTimeout(() => s.remove(), 600);
+  }
+  setTimeout(() => { btn.classList.remove("tap"); party.togglePanel(true); }, calm ? 120 : 280);
+});
+{
+  let y0 = null, pulled = 0;
+  // the bar sits at the bottom edge, so there's only ~a bar's height to pull
+  // through: 40px does it. Once it's clearly a pull (not a tap on a button),
+  // capture the pointer so a pull that runs off the screen still ends here.
+  let captured = false;
+  navbar.addEventListener("pointerdown", e => { y0 = e.clientY; pulled = 0; captured = false; });
+  window.addEventListener("pointermove", e => {
+    if (y0 === null) return;
+    pulled = Math.max(0, e.clientY - y0);
+    if (pulled > 10 && !captured) { captured = true; try { navbar.setPointerCapture(e.pointerId); } catch {} }
+    if (pulled > 6) document.getElementById("nav-refresh").style.setProperty("--pull", Math.min(1, pulled / 40).toFixed(2));
+  });
+  const end = () => {
+    if (y0 === null) return;
+    y0 = null;
+    const spin = document.getElementById("nav-refresh");
+    if (pulled > 40) { nav._swallow = true; setTimeout(() => { nav._swallow = false; }, 400); nav.refresh(); }
+    else if (!spin.classList.contains("spinning")) spin.style.removeProperty("--pull");
+  };
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+}
 
+// ===================== ambience =====================
 // looping grey NPC bubbles keep the world feeling alive — voiced by the
 // three archetype mascots at their venues (the blob pairs are retired)
 const AMBIENCE = [

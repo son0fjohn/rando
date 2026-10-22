@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>party room sprites — check</title>
+<!-- Dev page: six test characters with different cosmetics, rendered by
+     web/charsprite.js (real avatar3 models, flattened to small classic-RPG
+     sprites) next to their 3D versions, every facing and walk frame, the
+     pixel-figure fallback, and all six standing and walking in the party
+     room at night. node test/charsprite_shots.mjs screenshots it. -->
+<base href="/web/">
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js",
+  "/web/backend.js": "/test/stubs/backend.js"
+} }
+</script>
+<!--INDEX_CSS-->
+<link rel="stylesheet" href="theme.css">
+<style>
+  html, body { display:block; height:auto; overflow:auto; }
+  body { margin:0; padding:16px; background:#141838; color:#f2f4ff; font:14px/1.4 system-ui,sans-serif; }
+  h2 { font-size:15px; margin:14px 0 6px; }
+  .chars { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+  .who { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .who small { color:#9aa3d9; max-width:220px; text-align:center; font-size:11px; }
+  .pair { display:flex; gap:10px; align-items:flex-end; background:#1e2452; padding:8px; }
+  .spr { image-rendering:pixelated; background-repeat:no-repeat; }
+  .sheet { image-rendering:pixelated; background:#2b3270; }
+  #info { white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; color:#9aa3d9; }
+  #room { position:relative; width:528px; height:900px; }
+</style>
+</head>
+<body>
+<div id="info">loading…</div>
+<h2>each character: its 3D self (front) · the room sprite, 6x (down · left · right · up)</h2>
+<div class="chars" id="pairs"></div>
+<h2>full sheets: idle + 2 walk steps, per facing (4x)</h2>
+<div class="chars" id="sheets"></div>
+<h2>fallback pixel figures (if 3D can't render): down · left · up</h2>
+<div class="chars" id="fb"></div>
+<h2>in the room at night: standing and walking (3x)</h2>
+<div id="room"></div>
+<script type="module">
+import { spriteFor, silhouetteFor, SPRITE } from "/web/charsprite.js";
+import { LobbyRoom } from "/web/hplobby.js";
+const { W, H, COLS } = SPRITE;
+const CHARS = [
+  { name: "mina", cfg: { skin: "1", hair: "f2", hairColor: "red", face: "f2", iris: "blue", top: "hoodie-maroon", bottom: "skirt-pleated-black", shoes: "clog-pink" } },
+  { name: "jun", cfg: { skin: "3", hair: "m2", hairColor: "black", face: "f4", iris: "brown", top: "tee-white-graphic", bottom: "cargo-khaki", shoes: "sneaker-white-lowtop" } },
+  { name: "sol", cfg: { skin: "5", hair: "f4", hairColor: "yellow", face: "f6", iris: "green", top: "tee-baggy-black", bottom: "jeans-baggy-blue", shoes: "boot-work-tan" } },
+  { name: "haru", cfg: { skin: "2", hair: "f1", hairColor: "brown", face: "f1", iris: "blue", top: "hoodie-maroon", bottom: "cargo-black", shoes: "sneaker-white-stripe" } },
+  { name: "dee", cfg: { skin: "4", hair: "m3", hairColor: "white", face: "f5", iris: "navy", top: "none", bottom: "track-navy", shoes: "boot-work-tan" } },
+  { name: "bo", cfg: { skin: "3", hair: "m1", hairColor: "black", face: "f3", iris: "brown", top: "tee-white-graphic", bottom: "shorts-green", shoes: "sneaker-hitop-black" } },
+];
+const label = c => Object.entries(c.cfg).filter(([k]) => !["face", "iris"].includes(k)).map(([k, v]) => `${k} ${v}`).join(" · ");
+const frame = (url, row, col, s) => `<div class="spr" style="width:${W * s}px;height:${H * s}px;background-image:url(${url});background-size:${W * COLS * s}px ${H * 3 * s}px;background-position:${-col * W * s}px ${-row * H * s}px"></div>`;
+const info = document.getElementById("info");
+const t0 = performance.now();
+const out = [];
+for (const c of CHARS) {
+  const t = performance.now();
+  const sh = await spriteFor(c.cfg);
+  out.push({ ...c, sh, ms: Math.round(performance.now() - t) });
+  info.textContent = out.map(o => `${o.name}: ${o.sh.fallback ? "FALLBACK" : "3d"}${o.sh.anim ? " + walk rig" : ""} · ${o.ms} ms`).join("\n");
+}
+// the 3D versions (front), lit and textured
+const ref = {};
+{
+  const THREE = await import("three");
+  const A = await import("/web/avatar3.js");
+  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  r.setSize(110, 180); r.outputColorSpace = THREE.SRGBColorSpace;
+  const sc = new THREE.Scene();
+  sc.add(new THREE.AmbientLight(0xffffff, 1.6));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.6); dl.position.set(10, 20, 30); sc.add(dl);
+  const cam = new THREE.OrthographicCamera(-5, 5, 16.2, -0.4, 1, 200); cam.position.set(0, 0, 60);
+  for (const c of CHARS) {
+    const ch = await A.makeHumanCharacter(c.cfg); await ch.ready;
+    sc.add(ch.group); ch.group.rotation.y = 0.3; r.render(sc, cam);
+    ref[c.name] = r.domElement.toDataURL();
+    sc.remove(ch.group); ch.dispose();
+  }
+}
+document.getElementById("pairs").innerHTML = out.map(o => `<div class="who"><div class="pair"><img src="${ref[o.name]}" width="110" height="180">${frame(o.sh.url, 0, 0, 6)}${frame(o.sh.url, 1, 0, 6)}<div style="transform:scaleX(-1)">${frame(o.sh.url, 1, 0, 6)}</div>${frame(o.sh.url, 2, 0, 6)}</div><b>${o.name}</b><small>${label(o)}</small></div>`).join("");
+document.getElementById("sheets").innerHTML = out.map(o => `<div class="who"><img class="sheet" src="${o.sh.url}" width="${W * COLS * 4}" height="${H * 3 * 4}"><b>${o.name}</b></div>`).join("");
+document.getElementById("fb").innerHTML = CHARS.map(c => { const u = silhouetteFor(c.cfg).url; return `<div class="who"><div class="chars">${frame(u, 0, 0, 4)}${frame(u, 1, 0, 4)}${frame(u, 2, 0, 4)}</div><b>${c.name}</b></div>`; }).join("");
+// the room: a stand-in for net.js's Room, the six as local wanderers
+const fakeRoom = { members: [], hostId: "bot-mina", presence: {}, on() {}, off() {}, send() {} };
+const room = new LobbyRoom(document.getElementById("room"), fakeRoom, { id: "me", handle: "me" },
+  { bots: CHARS.map(c => ({ id: `bot-${c.name}`, handle: c.name, avatar: c.cfg })), vibe: "chill" });
+window.__room = room;
+const spots = [[180, 620], [420, 560], [300, 760], [520, 840], [200, 960], [420, 1040]];
+CHARS.forEach((c, i) => setTimeout(() => room.walk(`bot-${c.name}`, spots[i], false), 300 + i * 120));
+info.textContent += `\ntotal ${Math.round(performance.now() - t0)} ms`;
+window.__done = true;
+</script>
+</body>
+</html>

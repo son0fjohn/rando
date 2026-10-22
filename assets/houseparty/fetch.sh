@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pull the four generated house-party assets into web/games/ and downscale
+# Pull the three generated house-party assets still in use into web/games/ and downscale
 # them to shipping sizes. Run from anywhere; paths are resolved from this file.
 #
 # Needed because the build sandbox's egress policy blocks the Higgsfield asset
@@ -12,7 +12,7 @@ WEB="$(cd "$HERE/../../web" && pwd)"
 RAW="$HERE/raw"
 U="https://d8j0ntlcm91z4.cloudfront.net/user_3Ei5h1HOK7Uxrcue448ZmRc0GqQ"
 
-mkdir -p "$RAW" "$WEB/games/mission" "$WEB/games/manhunt" "$WEB/games/ritual"
+mkdir -p "$RAW" "$WEB/games/manhunt" "$WEB/games/ritual"
 
 get () { # get <remote-name> <local-name>
   if [ ! -s "$RAW/$2" ]; then
@@ -21,7 +21,6 @@ get () { # get <remote-name> <local-name>
   fi
 }
 
-get hf_20261003_044027_8ebbe168-6ffc-48ac-89dc-3712706d744a.png mission-card.png
 get hf_20261003_044028_b134e086-90c9-4100-9e30-cf7bc0cdb710.png radar.png
 get hf_20261003_044027_e4873a39-2e2e-41e9-a957-048a6b609abf.png bomb.png
 get hf_20261003_044028_b418264a-bbf8-48fa-ad2e-975e58e60fa4.png ritual-stage.png
@@ -38,7 +37,6 @@ def jpg(src, dst, width, q=74):
     print(dst, f"{width}x{h}")
 
 # backgrounds: sized for a ~420 px panel at 2x, under a dark scrim
-jpg("mission-card.png", "games/mission/card.jpg", 840)
 jpg("ritual-stage.png", "games/ritual/stage.jpg", 840)
 jpg("radar.png",        "games/manhunt/radar.jpg", 720)
 
@@ -54,8 +52,7 @@ print("games/manhunt/bomb.png 128x128")
 PY
 
 echo
-echo "done. now LOOK at them — all four are still unreviewed:"
-echo "  $WEB/games/mission/card.jpg      (must have no baked-in text)"
+echo "done. now LOOK at them — all three are still unreviewed:"
 echo "  $WEB/games/ritual/stage.jpg      (must be an empty stage)"
 echo "  $WEB/games/manhunt/radar.jpg     (must be an empty screen)"
 echo "  $WEB/games/manhunt/bomb.png      (must have clean alpha, no shadow)"

@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<link rel="stylesheet" href="/web/theme.css">
+<style>body { margin: 0; background: #0b0d24; display: grid; gap: 10px; padding: 12px; grid-template-columns: repeat(auto-fill, 220px); } .cell { color: #fff; font: 13px system-ui; } .cell .sq-wizard { margin: 0; }</style>
+</head><body>
+<!-- Side Quest's 3D wizard on its own: one .sq-wizard per mode, the canvas
+     moved between them by test/wizard3d_shots.mjs. ?wizard=dealer|3d -->
+<div class="cell" id="cell"><b id="lbl">idle</b>
+  <div class="sq-wizard idle" id="w"><svg class="sq-wiz-art" viewBox="0 0 16 18"><rect width="16" height="18" fill="#6b3fd6"/></svg>
+    <div class="sq-ball"><div class="sq-swirl"></div><div class="sq-in"></div><i class="sq-shine"></i></div><div class="sq-stand"></div></div>
+</div>
+<script type="module">
+  import { wizardKit } from "/web/wizard3d.js";
+  const k = await wizardKit();
+  window.__wiz = k;
+  window.__mode = m => { const w = document.getElementById("w"); w.className = `sq-wizard ${m}`; document.getElementById("lbl").textContent = m; k?.attach(w, m); };
+  window.__ready = true;
+  if (k) window.__mode("idle");
+</script>
+</body></html>
