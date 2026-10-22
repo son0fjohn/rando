@@ -13,6 +13,7 @@ import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GL
 import { celMaterial, setFace } from "./cel.js";
 import { faceTexture, EXPRESSIONS, EYE_Y, EYE_DX, drawFace } from "./face3.js";
 import * as SkeletonUtils from "https://esm.sh/three@0.160.0/examples/jsm/utils/SkeletonUtils.js";
+import { mergeGeometries } from "https://esm.sh/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js";
 
 const BASE = "avatar3";
 const CHAR_H = 15;
@@ -735,7 +736,7 @@ function loadPiece(cat, id) {
   const key = `${cat}/${id}`;
   if (T.pieces[key]) return Promise.resolve(T.pieces[key]);
   if (!T.pieceLoads[key]) {
-    T.pieceLoads[key] = loader.loadAsync(pieceUrl(cat, id)).then(g => {
+    T.pieceLoads[key] = loader.loadAsync(pieceUrl(cat, id)).then(async g => {
       celify(g.scene);
       // segmentation left some bottoms with hidden inner surfaces reaching
       // the chest (invisible on the source model, visible worn) — crop any
@@ -751,9 +752,17 @@ function loadPiece(cat, id) {
           v.y < trim.yBelow && v.dot(f) > trim.front &&
           Math.abs(v.dot(s)) < trim.halfWidth);
       }
-      if (cat !== "hair") g.scene.traverse(o => { if (o.isMesh) dilateMap(o); });
+      if (cat !== "hair") {
+        // seam dilation at the size each part gets in the merged atlas, one
+        // part per task so the page stays responsive while outfits load
+        const parts = [];
+        g.scene.traverse(o => { if (o.isMesh) parts.push(o); });
+        const cell = parts.length < 2 ? 1024 : Math.min(1024, Math.floor(2048 / Math.ceil(Math.sqrt(parts.length))));
+        for (const o of parts) { dilateMap(o, cell); await new Promise(r => setTimeout(r, 0)); }
+      }
       if (cat === "hair") fitHair(g.scene, key);
       if (cat === "shoes") chunkyShoes(g.scene, key);
+      mergePiece(g.scene, cat === "hair");
       T.pieces[key] = g.scene;
       delete T.pieceLoads[key];
       return g.scene;
@@ -777,15 +786,69 @@ function tintHair(root, color) {
   });
 }
 
+// One mesh per piece: Tripo splits hair and clothes into many parts (up to
+// 20 for a pair of shoes), each its own draw call — ~28 per dressed
+// character. Hair is one flat tint, so its parts just merge; clothes get
+// their textures packed into one atlas (a padded cell each, UVs remapped)
+// and merge into a single textured mesh. Once per piece template.
+function mergePiece(scene, untextured) {
+  scene.updateWorldMatrix(true, true);
+  const meshes = [];
+  scene.traverse(o => { if (o.isMesh) meshes.push(o); });
+  if (meshes.length < 2) return;
+  const n = meshes.length, grid = Math.ceil(Math.sqrt(n));
+  const cell = Math.min(1024, Math.floor(2048 / grid)), pad = 4;
+  let atlas = null, g = null;
+  if (!untextured) {
+    atlas = document.createElement("canvas");
+    atlas.width = atlas.height = grid * cell;
+    g = atlas.getContext("2d");
+  }
+  const inv = new THREE.Matrix4().copy(scene.matrixWorld).invert();
+  const geos = meshes.map((m, k) => {
+    let geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+    if (!geo.attributes.normal) geo.computeVertexNormals();
+    for (const name of Object.keys(geo.attributes)) if (!["position", "normal", "uv"].includes(name)) geo.deleteAttribute(name);
+    if (untextured) { geo.deleteAttribute("uv"); return geo; }
+    const cx = k % grid, cy = Math.floor(k / grid);
+    const img = m.material.map?.image;
+    if (img) g.drawImage(img, cx * cell + pad, cy * cell + pad, cell - 2 * pad, cell - 2 * pad);
+    else { g.fillStyle = "#" + m.material.color.getHexString(); g.fillRect(cx * cell, cy * cell, cell, cell); }
+    const flip = m.material.map?.flipY ?? false;
+    let uv = geo.attributes.uv;
+    if (!uv) { uv = new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 2).fill(0.5), 2); geo.setAttribute("uv", uv); }
+    const s0 = (cell - 2 * pad) / (grid * cell), o = pad / (grid * cell);
+    for (let i = 0; i < uv.count; i++) {
+      const u = Math.min(1, Math.max(0, uv.getX(i)));
+      let v = Math.min(1, Math.max(0, uv.getY(i)));
+      if (flip) v = 1 - v; // the atlas is unflipped (glTF convention)
+      uv.setXY(i, cx / grid + o + u * s0, cy / grid + o + v * s0);
+    }
+    return geo;
+  });
+  const merged = mergeGeometries(geos, false);
+  if (!merged) return; // mismatched attributes: keep the parts
+  let map = null;
+  if (atlas) {
+    map = new THREE.CanvasTexture(atlas);
+    map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; map.anisotropy = 4;
+  }
+  const mesh = new THREE.Mesh(merged, celMaterial({ map }));
+  mesh.frustumCulled = false;
+  for (const m of meshes) { m.parent.remove(m); m.material.map?.dispose(); m.material.dispose(); }
+  scene.add(mesh);
+}
+
 // Texture seams: Tripo atlases leave the background (near-white) right up
 // to each UV island, and filtering/mipmaps bleed it in as white fringes
 // along garment seams. Rasterize the mesh's own UV triangles into a mask
 // and push the island colors a few pixels outward over the background.
 // Once per piece template, at load.
-function dilateMap(mesh) {
+function dilateMap(mesh, size = 1024) {
   const map = mesh.material.map, img = map?.image, uv = mesh.geometry.attributes.uv;
   if (!img || !uv) return;
-  const sc = Math.min(1, 1024 / img.width), W = Math.round(img.width * sc), H = Math.round(img.height * sc);
+  const sc = Math.min(1, size / img.width), W = Math.round(img.width * sc), H = Math.round(img.height * sc);
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
   const g = cv.getContext("2d", { willReadFrequently: true });
   g.drawImage(img, 0, 0, W, H);
@@ -802,24 +865,36 @@ function dilateMap(mesh) {
   m.fill(); m.stroke();
   const id = g.getImageData(0, 0, W, H), px = id.data;
   const mask = m.getImageData(0, 0, W, H).data;
-  let inside = new Uint8Array(W * H);
+  // grow outward ring by ring from the island edges (only the frontier is
+  // visited, so it costs ~ the edge length, not the texture area)
+  const inside = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) inside[i] = mask[i * 4 + 3] > 0 ? 1 : 0;
-  for (let pass = 0; pass < 6; pass++) {
-    const next = inside.slice();
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const i = y * W + x;
+  let front = [];
+  for (let i = 0; i < W * H; i++) {
+    if (inside[i]) continue;
+    const x = i % W, y = (i / W) | 0;
+    if ((x > 0 && inside[i - 1]) || (x < W - 1 && inside[i + 1]) || (y > 0 && inside[i - W]) || (y < H - 1 && inside[i + W])) front.push(i);
+  }
+  for (let pass = 0; pass < 6 && front.length; pass++) {
+    const done = [];
+    for (const i of front) {
       if (inside[i]) continue;
+      const x = i % W;
       let r = 0, gg = 0, b = 0, k = 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const xx = x + dx, yy = y + dy;
-        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
-        const j = yy * W + xx;
-        if (!inside[j]) continue;
+      for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) {
+        if (j < 0 || j >= W * H || inside[j] !== 1) continue;
         r += px[j * 4]; gg += px[j * 4 + 1]; b += px[j * 4 + 2]; k++;
       }
-      if (k) { px[i * 4] = r / k; px[i * 4 + 1] = gg / k; px[i * 4 + 2] = b / k; next[i] = 1; }
+      if (k) { px[i * 4] = r / k; px[i * 4 + 1] = gg / k; px[i * 4 + 2] = b / k; done.push(i); }
     }
-    inside = next;
+    const next = [];
+    for (const i of done) inside[i] = 2; // filled this pass (a source from the next)
+    for (const i of done) {
+      inside[i] = 1;
+      const x = i % W;
+      for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) if (j >= 0 && j < W * H && !inside[j]) next.push(j);
+    }
+    front = next;
   }
   g.putImageData(id, 0, 0);
   const tex = new THREE.CanvasTexture(cv);
@@ -1524,6 +1599,9 @@ export function pieceThumb(cat, id, { hairColor = "brown", size = 160 } = {}) {
       const el = cat === "shoes" ? 0.55 : 0.12;
       cam.position.set(c.x, c.y + r * 4 * el, c.z + r / Math.tan(15 * Math.PI / 180));
       cam.lookAt(c);
+      // compile off the main thread where the GPU allows (parallel shader
+      // compile): the first thumbnail used to stall the page for seconds
+      await thumbR.compileAsync?.(scene, cam);
       thumbR.render(scene, cam);
       const url = thumbR.domElement.toDataURL("image/png");
       wrap.traverse(o => { if (o.isMesh) o.material.dispose(); });

@@ -13,7 +13,7 @@
 // style screen); the box's own CSS paints the backdrop.
 import { spriteFor, silhouetteFor } from "./charsprite.js";
 
-export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, stage = false, onSwap = null } = {}) {
+export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, stage = false, onSwap = null, onReady = null } = {}) {
   let disposed = false, api = null, pending = avatar, walking = false;
   const sprite = sh => { if (!disposed && box.isConnected && !box.querySelector("canvas")) { box.querySelector(".cv-spr")?.remove(); box.insertAdjacentHTML("afterbegin", `<div class="cv-spr" style="background-image:url(${sh.url})"></div>`); } };
   sprite(silhouetteFor(avatar));
@@ -84,6 +84,8 @@ export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, sta
       renderer.setSize(W, H); cam.aspect = W / H; cam.updateProjectionMatrix();
     }) : null;
     ro?.observe(box);
+    await renderer.compileAsync?.(scene, cam); // no first-frame shader stall
+    if (disposed || !box.isConnected) { ch.dispose?.(); renderer.dispose(); return; }
     const t0 = performance.now();
     const tick = () => {
       if (disposed || !box.isConnected) { api.dispose(); return; }
@@ -121,6 +123,7 @@ export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, sta
     };
     if (pending !== shown) api.swap(pending);
     tick();
+    onReady?.();
   }
 }
 

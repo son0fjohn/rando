@@ -1493,7 +1493,7 @@ export const avatar = {
           const b = document.createElement("button");
           b.type = "button"; b.className = "fit-tile"; b.dataset.fit = f.id;
           b.innerHTML = `<span class="fit-art">${["top", "bottom", "shoes"].map(k => `<img alt="" data-k="${k}" src="${OPTION_ICON[k](f[k])}">`).join("")}</span><b>${f.name}</b>`;
-          for (const k of ["top", "bottom", "shoes"]) pieceThumb(k, f[k], { size: 96 }).then(url => { const im = b.querySelector(`[data-k="${k}"]`); if (im) im.src = url; }).catch(() => {});
+          for (const k of ["top", "bottom", "shoes"]) styleView.ready.then(() => pieceThumb(k, f[k], { size: 96 })).then(url => { const im = b.querySelector(`[data-k="${k}"]`); if (im) im.src = url; }).catch(() => {});
           b.addEventListener("click", () => {
             this.draft = { ...(this.draft ?? this.mine), top: f.top, bottom: f.bottom, shoes: f.shoes };
             styleView.view?.setAvatar(this.draft);
@@ -1528,7 +1528,8 @@ export const avatar = {
           img.src = OPTION_ICON[slot]?.(value) ?? "";
           img.onerror = () => { img.style.visibility = "hidden"; };
           b.appendChild(img);
-          pieceThumb(slot, value, { hairColor: look.hairColor })
+          // 3D thumbnails once the stage's character is up (they queue)
+          styleView.ready.then(() => pieceThumb(slot, value, { hairColor: look.hairColor }))
             .then(url => { img.style.visibility = ""; img.src = url; b.classList.add("thumb3d"); })
             .catch(() => {});
         }
@@ -1620,15 +1621,17 @@ const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "
 // stops drawing while it's open.
 const styleView = {
   view: null,
+  ready: Promise.resolve(), // settles when the stage's character is drawing
   open() {
     if (!styleScreen.hidden) return;
+    this.ready = new Promise(res => { this._ready = res; setTimeout(res, 2500); });
     avatar.draft = { ...avatar.mine };
     wallet.load().then(() => avatar.renderGrid()).catch(e => console.warn("[rando] wallet", e));
     avatar.renderGrid();
     styleScreen.hidden = false;
     styleScreen.classList.remove("y-in-wipe"); void styleScreen.offsetWidth; styleScreen.classList.add("y-in-wipe");
     world3d.setPaused(true);
-    this.view = mountCharView(document.getElementById("style-view"), avatar.draft, { zoom: true, yaw: 0.2, stage: true });
+    this.view = mountCharView(document.getElementById("style-view"), avatar.draft, { zoom: true, yaw: 0.2, stage: true, onReady: () => this._ready?.() });
     this.setPreview("idle");
     sfx.open();
   },

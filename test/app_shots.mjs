@@ -58,7 +58,7 @@ async function shot(pg, name, note) {
 async function tap(pg, ...sels) {
   for (const s of sels) {
     const el = pg.locator(s).first();
-    if (await el.count() && await el.isVisible()) { await el.click(); return s; }
+    if (await el.count() && await el.isVisible()) { await el.click({ timeout: 120000 }); return s; } // software GL can stall the page for a while
   }
   throw new Error(`none of ${sels.join(", ")} is visible`);
 }
