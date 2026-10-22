@@ -20,6 +20,7 @@ import { serve } from "./appserve.mjs";
 const args = process.argv.slice(2);
 const OUT = args.find(a => !a.startsWith("--") && !["sidequest", "ritual", "party"].includes(a));
 if (!OUT) { console.error("usage: node test/games_rec.mjs <dir> [sidequest|ritual|party ...]"); process.exit(2); }
+const WIZARD = process.env.WIZARD ? `&wizard=${process.env.WIZARD}` : "";   // WIZARD=dealer: the 3D wizard on the dealer's rig
 const SCENES = args.filter(a => ["sidequest", "ritual", "party"].includes(a));
 if (!SCENES.length) SCENES.push("sidequest", "ritual", "party");
 await mkdir(OUT, { recursive: true });
@@ -100,8 +101,9 @@ async function phones(names, { coins = false } = {}) {
   const open = async (name, qs = "") => {
     const pg = await newWindow(ctx);
     pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
+    pg.on("console", m => { if (/\[wizard3d\]/.test(m.text())) log(`    [${name}] ${m.text()}`); });
     if (process.env.DEBUG_REC) pg.on("console", m => { if (/\[party\]|coin/i.test(m.text())) log(`    [${name}] ${m.text()}`); });
-    await pg.goto(`${base}/test/hpparty.html?me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}${coins ? "&coinhook=1" : ""}${qs}`);
+    await pg.goto(`${base}/test/hpparty.html?me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}${coins ? "&coinhook=1" : ""}${WIZARD}${qs}`);
     await pg.waitForFunction(() => window.__ready);
     pg.label = name;
     return pg;

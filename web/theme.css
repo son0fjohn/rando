@@ -837,3 +837,10 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .ss-coins { border: 1px solid rgba(255,200,77,.55); clip-path: none; border-radius: 999px; padding: 6px 12px; background: rgba(255,200,77,.12); }
 .ss-coins b { font: 700 15px/18px var(--f-sys); }
 .pt-picker .pt-btn { clip-path: none; border: 1px solid var(--g-line); border-radius: 12px; background: rgba(255,255,255,.08); }
+
+/* Side Quest: the 3D wizard (wizard3d.js) draws behind the HTML crystal ball;
+   the pixel wizard hides only once a 3D frame is up */
+.sq-wizard .sq-w3d { position: absolute; left: -24px; top: -6px; width: calc(100% + 48px); height: calc(100% - 4px); pointer-events: none; }
+.sq-wizard.w3d-on .sq-wiz-art { visibility: hidden; }
+.sq-wizard.w3d-on .sq-ball { bottom: 30px; width: 88px; height: 88px; }
+.sq-wizard.w3d-on .sq-stand { display: none; }

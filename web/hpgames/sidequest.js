@@ -90,6 +90,14 @@ const wizardHtml = (inBall = "", cls = "") => `<div class="sq-wizard ${cls}">
     <div class="sq-ball"><div class="sq-swirl"></div><div class="sq-in">${inBall}</div><i class="sq-shine"></i></div>
     <div class="sq-stand"></div>
   </div>`;
+// the 3D wizard (wizard3d.js) when this phone can draw it; until it has drawn
+// a frame (or if it never can) the pixel one above stays
+let wizP = null;
+const wizKit = () => wizP ??= import("./../wizard3d.js").then(m => m.wizardKit()).catch(() => null);
+const dress = (mode, then) => {
+  const el = $("game-panel")?.querySelector(".sq-wizard");
+  if (el) wizKit().then(k => { if (k && el.isConnected) { k.attach(el, mode); then?.(k); } });
+};
 const cardHtml = (q, cls = "") => `<div class="sq-card ${cls}"><div class="sq-kicker">SIDE QUEST:</div><div class="sq-text">${esc(q?.text ?? "…")}</div>${q?.level && q.level !== "mild" ? `<em class="sq-lv ${esc(q.level)}">${esc(q.level)}</em>` : ""}</div>`;
 const starsHtml = (fill, cls = "") => `<div class="sq-stars ${cls}" style="--fill:${Math.max(0, Math.min(1, fill)) * 100}%"><span class="sq-st-bg">${"★".repeat(STARS)}</span><span class="sq-st-fg">${"★".repeat(STARS)}</span></div>`;
 
@@ -111,7 +119,7 @@ export const SIDE_QUEST = {
     const AVAIL = questsFor(POOL, meta);
     const cats = CATS.filter(c => AVAIL.some(q => q.category === c.id));
     let lastHud = 0, lastTurn = null, myVote = null, giveUpArmed = 0, openCats = new Set(), spinTok = 0, dlg = null;
-    trash.add(() => { myVote = null; dlg?.close(); dlg = null; });
+    trash.add(() => { myVote = null; dlg?.close(); dlg = null; wizP?.then(k => k?.detach()); });
 
     const turn = s => s.turn ?? null;
     const isMe = s => turn(s)?.who === ctx.me.id;
@@ -250,7 +258,7 @@ export const SIDE_QUEST = {
       let t = 0, d = 60, i = Math.floor(Math.random() * ids.length);
       while (t + d < SPIN_LAND_MS) { steps.push([t, ids[i++ % ids.length]]); t += d; d *= 1.16; }
       steps.push([SPIN_LAND_MS, target]);
-      const landed = () => { el.closest(".sq-wizard")?.classList.add("landed"); $("sq-who")?.classList.add("on"); };
+      const landed = () => { el.closest(".sq-wizard")?.classList.add("landed"); $("sq-who")?.classList.add("on"); wizP?.then(k => { k?.setMode("landed"); k?.nod(); }); };
       if (elapsed >= SPIN_LAND_MS) { show(target); landed(); return; }
       for (const [at, id] of steps) {
         if (at < elapsed) continue;
@@ -283,6 +291,7 @@ export const SIDE_QUEST = {
         if (!ui.once(`su:${isHost ? 1 : 0}:${[...off].sort().join(",")}:${turns}:${[...openCats].join(",")}:${n}`, () => {})) return;
         if (!isHost) {
           ui.stage("Side Quest", wizardHtml("", "idle") + `<p class="ab-sub">the host is choosing tonight's quests…</p>`, "the wizard awaits");
+          dress("idle");
           return;
         }
         const on = AVAIL.filter(q => !off.has(q.id)).length;
@@ -318,13 +327,15 @@ export const SIDE_QUEST = {
         ui.stage("", wizardHtml("", "glow") + `<div class="sq-dlg-host" id="sq-dlg"></div>${hostSkip(ctx)}`, `turn ${t?.no ?? ""}`);
         dlg?.close();
         dlg = typeDialog($("sq-dlg"), { name: "WIZARD", text: WIZARD_LINE, blip: () => sfx.blip(), sticky: true, cls: "sq-dlg" });
+        dress("glow");
         bindHostSkip(game);
 
       } else if (s.phase === "quest") {
         if (!ui.once(`q:${s.ti}`, () => {})) return;
         const elapsed = QUEST_MS - s.left;
         ui.stage("", wizardHtml("", "swirl") + `<div class="sq-card-slot" id="sq-slot"></div>${hostSkip(ctx)}`, `turn ${t?.no ?? ""}`);
-        const put = () => { const el = $("sq-slot"); if (el && !el.firstChild) { el.innerHTML = cardHtml(t.quest, "pop"); sfx.ping(); } };
+        const put = () => { const el = $("sq-slot"); if (el && !el.firstChild) { el.innerHTML = cardHtml(t.quest, "pop"); sfx.ping(); wizP?.then(k => k?.nod()); } };
+        dress("swirl");
         if (elapsed >= SWIRL_MS) put(); else setTimeout(put, SWIRL_MS - elapsed);
         bindHostSkip(game);
 
@@ -333,6 +344,7 @@ export const SIDE_QUEST = {
         ui.stage("", cardHtml(t.quest, "small") + wizardHtml(`<div class="sq-reel" id="sq-reel"></div>`, "spin")
           + `<div class="sq-who" id="sq-who">${isMe(s) ? "it's YOU!" : `${esc(who)}!`}</div>${hostSkip(ctx)}`, "who's it going to be…");
         const ids = P.filter(p => !p.gone).map(p => p.id);
+        dress("spin");
         spin($("sq-reel"), ids.length ? ids : [t.who], t.who, SPIN_MS - s.left);
         bindHostSkip(game);
 
