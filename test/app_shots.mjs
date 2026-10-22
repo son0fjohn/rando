@@ -138,6 +138,8 @@ if (await A.locator("#style-screen").count()) {
   await shot(A, "06b-style-top", "style: the Top slot, a new top on, the character updates");
 }
 await A.evaluate(() => { const x = document.querySelector("#style-close"); if (x) x.click(); else document.getElementById("outfit-sheet").hidden = true; });
+await sleep(400);
+await A.evaluate(() => document.querySelector('#ss-ask:not([hidden]) [data-ask="discard"]')?.click()); // tried a top on: leave without saving
 await sleep(600);
 
 // host a party
