@@ -126,8 +126,7 @@ export const RITUAL = {
 // room rates how hard they committed. Points = average stars x POINTS_PER_STAR.
 export const SIDEQUEST = {
   POOL_URL: "data/side_quests.json",
-  DO_MS: 3 * 60 * 1000,        // the quest's timer
-  VOTE_MS: 30000,              // rating closes this long after Done at the latest
+  DO_MS: 3 * 60 * 1000,        // the quest's timer; the room rates during it, and the turn ends early once all have
   STARS: 5,
   POINTS_PER_STAR: 20,         // 5 stars = 100
   MAX_TURNS: 30,
