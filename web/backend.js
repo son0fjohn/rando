@@ -97,10 +97,10 @@ async function refreshStatus() {
   }
   statusEl.hidden = false;
   statusEl.innerHTML = "";
-  statusEl.append("you: " + (profile ? profile.handle : "(no profile)") + " · ");
+  statusEl.append("Signed in as " + (profile ? profile.handle : "(no profile)") + " · ");
   const edit = document.createElement("a");
   edit.href = "#";
-  edit.textContent = "name";
+  edit.textContent = "change name";
   edit.addEventListener("click", e => {
     e.preventDefault();
     nickname.show(profile ? profile.handle : "");
@@ -539,8 +539,8 @@ export const presence = {
     if (signedOut) return;
     const open = !!this.myZone;
     exploreBtn.classList.toggle("seen", open);
+    exploreBtn.classList.toggle("on", !open);           // the active tab while you're exploring
     exploreBtn.setAttribute("aria-pressed", String(!open));
-    exploreBtn.querySelector(".nav-lbl").textContent = open ? "visible" : "hidden";
     exploreBtn.title = open ? `You're visible · ${this.myZone.name} — tap to hide and explore` : "You're hidden and exploring — tap to be visible";
     zoneNameEl.textContent = open ? this.myZone.name : "hidden · exploring";
   },
