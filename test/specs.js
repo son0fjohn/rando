@@ -701,7 +701,10 @@ group("Side Quest (4 players)");
   t.input(host, "sq-turns", { n: 3 });
   t.input(host, "sq-go");
   adv(2000);
-  ok(t.s.phase === "wizard" && t.s.turns === 3, "start: the wizard appears; the host's 3 turns stick");
+  ok(t.s.phase === "spin" && t.s.turns === 3, "start: the wizard's ball spins first; the host's 3 turns stick");
+  ok(!!t.s.turn.who && t.s.turn.quest === null, "the player is picked first, before any quest is drawn");
+  const picked = t.s.turn.who;
+  ok(waitPhase(t, "quest", 10000) && !!t.s.turn.quest && t.s.turn.who === picked, "then the ball reveals their quest (same player)");
   const q0 = t.s.turn.quest;
   ok(q0.category === "anywhere" && q0.id !== SQ.quests[0].id || q0.id === one.id, "the quest comes from what's switched on");
   ok(waitPhase(t, "do", 20000), "the ball reveals the quest, spins and lands; the timer starts");
@@ -762,7 +765,8 @@ group("Side Quest (4 players)");
   for (const c of ["anywhere", "strangers"]) t.input(t.host.me.id, "sq-cat", { cat: c, on: false });
   t.input(t.host.me.id, "sq-go");
   adv(2000);
-  ok(t.s.turn?.quest.level === "unhinged", "an 18+ party can play unhinged quests only");
+  waitPhase(t, "quest", 10000);
+  ok(t.s.turn?.quest?.level === "unhinged", "an 18+ party can play unhinged quests only");
   // this one doesn't play out: stop it, or it keeps running (and drawing
   // into the shared game panel) under every spec after it
   for (const c of t.clients) c.game?.stop();
