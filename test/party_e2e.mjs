@@ -213,6 +213,33 @@ try {
   ok(!(await B.locator("#pt-board:visible, .pt-board:visible").count()), "no high-score board in the room");
 
   // ------------------------------------------------------------------ Humiliation Ritual
+  head("The host backs out of a setup screen, and ends a game mid-way");
+  await A.click("#pt-vote");
+  ok(await A.locator("#pt-picker-back").isVisible(), "the game votes sheet has a Back button");
+  await A.click("#pt-picker-back");
+  ok(await until(A, () => document.getElementById("pt-picker")?.hidden), "Back closes it, nothing started");
+  await startGame(A, "sidequest");
+  ok(await until(A, () => !!document.getElementById("sq-go") && !document.getElementById("hp-back").hidden), "Side Quest's quest picking: the host gets Back (top-left)");
+  ok(await until(B, () => document.body.classList.contains("hp-setup-wait")) && !(await B.locator("#game-layer:visible").count()), "…while everyone else stays in the lobby");
+  await shot(A, "07b-setup-back");
+  await A.click("#hp-back");
+  ok(await until(A, () => !window.party.current.launched && !document.getElementById("party-panel").hidden), "Back: the host is in the lobby, nothing started");
+  ok(await until(B, () => !window.party.current.launched && !document.body.classList.contains("hp-setup-wait")), "…and nothing changed for the others");
+  ok(!(await B.locator(".pt-toast").count()), "no 'ended' toast for backing out");
+  await startGame(A, "mask_off");
+  ok(await until(A, () => window.__game?.s?.phase === "talk", null, 20000), "Mask Off is under way");
+  ok(await A.locator("#hp-end").isVisible() && !(await B.locator("#hp-end:visible").count()) && !(await C.locator("#hp-end:visible").count()), "only the host has End game");
+  await A.click("#hp-end");
+  ok(await until(A, () => /End this game for everyone\?/.test(document.getElementById("hp-end-ask")?.textContent ?? "")), "it asks first: 'End this game for everyone?'");
+  await shot(A, "07c-end-confirm");
+  await A.click("#hp-ask-no");
+  ok(await until(A, () => !document.getElementById("hp-end-ask") && window.party.current.launched), "Cancel: the game goes on");
+  await A.click("#hp-end"); await A.click("#hp-ask-yes");
+  ok(await until(B, () => !window.party.current.launched && /The host ended the game/.test(document.querySelector(".pt-toast")?.textContent ?? ""), null, 10000), "End game: everyone is back in the lobby with 'The host ended the game.'");
+  await shot(B, "07d-ended-toast");
+  ok(await until(C, () => !window.party.current.launched && document.getElementById("game-layer").hidden), "…on every phone");
+  ok(await until(B, () => /Game 2 of 3/.test(document.getElementById("pt-next")?.textContent ?? "")), "an ended game isn't one of the 3: still Game 2 of 3");
+
   head("Humiliation Ritual — charades: guesses feed the performer, who taps the right one");
   await startGame(A, "ritual");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");

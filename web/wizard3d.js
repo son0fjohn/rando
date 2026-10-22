@@ -51,7 +51,19 @@ class Wizard {
     o.position.set(-c.x, -box.min.y, -c.z);
     this.body = new THREE.Group(); this.body.add(o); this.body.scale.setScalar(1 / size.y);
     this.root = new THREE.Group(); this.root.add(this.body);
-    o.traverse(m => { if (m.isMesh) { m.frustumCulled = false; if (m.material) m.material.envMapIntensity = 0; } });
+    // soft cel shading: his own textures through a 4-step toon ramp, lit
+    // like the players' characters (hemisphere + key + a coloured rim)
+    const ramp = new THREE.DataTexture(new Uint8Array([110, 110, 110, 255, 165, 165, 165, 255, 215, 215, 215, 255, 255, 255, 255, 255]), 4, 1, THREE.RGBAFormat);
+    ramp.minFilter = ramp.magFilter = THREE.NearestFilter; ramp.generateMipmaps = false; ramp.needsUpdate = true;
+    o.traverse(m => {
+      if (!m.isMesh) return;
+      m.frustumCulled = false;
+      const src = m.material;
+      if (!src || Array.isArray(src)) return;
+      m.material = new THREE.MeshToonMaterial({ map: src.map ?? null, color: src.color ?? 0xffffff, gradientMap: ramp,
+        transparent: !!src.transparent, alphaTest: src.alphaTest ?? 0, side: src.side });
+      src.dispose?.();
+    });
 
     const bone = re => { let b = null; o.traverse(n => { if (!b && n.isBone && re.test(n.name)) b = n; }); return b; };
     this.bones = { head: bone(/^head$/i), neck: bone(/^neck$/i),
@@ -61,11 +73,13 @@ class Wizard {
 
     this.scene = new THREE.Scene();
     this.scene.add(this.root);
-    this.scene.add(new THREE.HemisphereLight(0xdfe4ff, 0x3a2a5a, 1.6));
-    const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(1.2, 2, 2.5); this.scene.add(key);
+    this.scene.add(new THREE.HemisphereLight(0xdfe4ff, 0x3a2a5a, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(1.4, 2, 2.4); this.scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9a7bff, 0.9); rim.position.set(-1.6, 1.4, -1.8); this.scene.add(rim);
     this.ballLight = new THREE.PointLight(0xb08cff, 0, 1.4); this.ballLight.position.set(0, 0.3, 0.45); this.scene.add(this.ballLight);
+    // a slight three-quarter view from a little above, so he reads as 3D
     this.camera = new THREE.PerspectiveCamera(26, 1, 0.05, 20);
-    this.camera.position.set(0, 0.62, 2.55); this.camera.lookAt(0, 0.5, 0);
+    this.camera.position.set(0.62, 0.8, 2.48); this.camera.lookAt(0, 0.49, 0);
 
     this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
@@ -151,7 +165,7 @@ class Wizard {
     const p = (now - this.nodAt) / 700;
     if (p >= 0 && p < 1) this.turn(B.head ?? B.neck, Math.sin(p * Math.PI) * 0.26, 0, 0);
     // the ball lights his face from below while it's busy
-    const glow = this.mode === "swirl" ? 2.2 : this.mode === "landed" ? 1.8 : WAVING.has(this.mode) ? 1.3 : 0.5;
+    const glow = this.mode === "swirl" ? 1.1 : this.mode === "landed" ? 0.9 : WAVING.has(this.mode) ? 0.7 : 0.25;
     this.ballLight.intensity += (glow * (0.85 + 0.15 * Math.sin(t * 6)) - this.ballLight.intensity) * Math.min(1, dt * 5);
 
     this.renderer.render(this.scene, this.camera);

@@ -1,8 +1,9 @@
 // Side Quest (3+) — a wizard fortune teller hands out real-life dares.
 //
-// Each turn the wizard's crystal ball reveals a quest, then spins through
-// everyone's faces and lands on whoever has to do it (random but fair — see
-// fairpick.js). They get 3 minutes, out in the world, while the others film
+// Each turn the wizard's crystal ball first spins through everyone's faces
+// and lands on whoever is up (random but fair — see fairpick.js): "[name],
+// the spirits have chosen you...". Then it swirls again and reveals their
+// quest. They get 3 minutes, out in the world, while the others film
 // on their own phones. Rating opens the moment the turn starts: everyone
 // watching taps 1-5 stars ("how hard did they commit?") as soon as they've
 // seen enough, and one tap locks it in. The turn ends once everyone has
@@ -29,15 +30,14 @@ const params = new URLSearchParams(location.search);
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
 
 const SETUP_MS = 5 * 60 * 1000;   // nobody taps Start: go with what's on
-const WIZARD_MS = 4200;
+const SPIN_MS = 6800;
+const SPIN_LAND_MS = 3200;        // of SPIN_MS: faces flick past, it lands, the wizard names them, a beat
 const QUEST_MS = 5600;
-const SWIRL_MS = 1700;            // of QUEST_MS: the ball swirls, then the card
-const SPIN_MS = 5200;
-const SPIN_LAND_MS = 3200;        // of SPIN_MS: faces flick past, then it lands
+const SWIRL_MS = 1700;            // of QUEST_MS: the ball swirls again, then the card
 const RESULT_MS = 8000;
 const END_MS = 22000;
 const STARS = SIDEQUEST.STARS, PPS = SIDEQUEST.POINTS_PER_STAR;
-const WIZARD_LINE = "The spirits have chosen your quest...";
+const chosenLine = name => `${name}, the spirits have chosen you...`;
 
 // ---------------------------------------------------------------- the pool
 let POOL = null, CATS = [];
@@ -105,6 +105,9 @@ export const SIDE_QUEST = {
   id: "sidequest", title: "Side Quest",
   blurb: "the wizard hands out a real-life dare. one player has 3 minutes to do it — everyone films and rates how hard they committed.",
   minPlayers: 3, maxPlayers: 12, length: "~4 min per turn",
+  // picking the quests is the host's own setup: everyone else waits in the
+  // lobby, and the host can back out of it (party.js)
+  hostSetup: ["setup"],
   describe: meta => (meta?.settings?.adult ? "unhinged quests on" : ""),
 
   start(ctx) {
@@ -127,10 +130,10 @@ export const SIDE_QUEST = {
     const avatarOf = id => room.members.find(m => m.id === id)?.avatar ?? ctx.humans.find(h => h.id === id)?.avatar ?? {};
 
     const rounds = new Rounds([
-      { name: "setup", ms: SETUP_MS, done: s => !!s.setup.go, next: s => { begin(s); return "wizard"; } },
-      { name: "wizard", ms: WIZARD_MS, enter: s => deal(s), next: () => "quest" },
-      { name: "quest", ms: QUEST_MS, next: () => "spin" },
-      { name: "spin", ms: SPIN_MS, next: () => "do" },
+      { name: "setup", ms: SETUP_MS, done: s => !!s.setup.go, next: s => { begin(s); return "spin"; } },
+      // first who (the ball lands on a face), then what (it swirls up the quest)
+      { name: "spin", ms: SPIN_MS, enter: s => pick(s), next: () => "quest" },
+      { name: "quest", ms: QUEST_MS, enter: s => deal(s), next: () => "do" },
       {
         // the quest and the rating at once: done when they give up, or when
         // everyone watching has rated (the timer is only the backstop)
@@ -138,12 +141,12 @@ export const SIDE_QUEST = {
         done: s => turn(s)?.status === "gaveup" || (voters(s).length > 0 && voters(s).every(p => turn(s)?.votes[p.id] !== undefined)),
         next: s => { const t = turn(s); if (t && !t.status) t.status = voters(s).every(p => t.votes[p.id] !== undefined) ? "rated" : "timeup"; tally(s); return "result"; },
       },
-      { name: "result", ms: RESULT_MS, next: s => (s.ti + 1 < s.turns ? (s.ti++, "wizard") : "end") },
+      { name: "result", ms: RESULT_MS, next: s => (s.ti + 1 < s.turns ? (s.ti++, "spin") : "end") },
       { name: "end", ms: END_MS, next: () => null },
     ], {
       onPhase: name => {
         ui.resetKey();
-        if (name === "wizard") sfx.open();
+        if (name === "spin") sfx.open();
         if (name === "quest") sfx.whoosh();
         if (name === "do") { sfx.now(); buzz([30, 40, 30]); }
         if (name === "result") sfx.pop();
@@ -167,7 +170,7 @@ export const SIDE_QUEST = {
         syncGone(s, room);
         const t = turn(s);
         // the player on the quest left: skip the turn, nobody scores it
-        if (t && s.players[t.who]?.gone && ["wizard", "quest", "spin", "do"].includes(s.phase)) {
+        if (t && s.players[t.who]?.gone && ["spin", "quest", "do"].includes(s.phase)) {
           t.skipped = true; t.pts = 0;
           rounds.enter(s, "result");
           return;
@@ -221,15 +224,21 @@ export const SIDE_QUEST = {
       s.turns = s.setup.turns ?? Math.max(1, active(s).length);
       s.ti = 0;
     }
-    // a new turn: the next quest off the deck, and the fair pick of who does it
+    // a new turn: first the fair pick of who's up…
+    function pick(s) {
+      const { id, weights } = fairPick(s.weights, active(s).map(p => p.id), game.rng);
+      s.weights = weights;
+      s.turn = { no: s.ti + 1, quest: null, who: id, status: null, doneAt: 0, votes: {}, avg: null, n: 0, pts: 0, skipped: false };
+    }
+    // …then their quest, the next one off the deck
     function deal(s) {
+      const t = turn(s);
+      if (!t || t.quest) return;
       if (!s.deck.length) s.deck = shuffle(game.rng, (enabled(s).length ? enabled(s) : AVAIL).map(q => q.id));
       const qid = s.deck.shift();
       const q = AVAIL.find(x => x.id === qid) ?? AVAIL[0];
-      const { id, weights } = fairPick(s.weights, active(s).map(p => p.id), game.rng);
-      s.weights = weights;
       s.used.push(q.id);
-      s.turn = { no: s.ti + 1, quest: { id: q.id, text: q.text, category: q.category, level: q.level }, who: id, status: null, doneAt: 0, votes: {}, avg: null, n: 0, pts: 0, skipped: false };
+      t.quest = { id: q.id, text: q.text, category: q.category, level: q.level };
     }
     // the stars -> points; giving up is 0 and nobody votes
     function tally(s) {
@@ -247,7 +256,7 @@ export const SIDE_QUEST = {
     }
 
     // ---- the face reel: flick through everyone, slow down, land on `target`
-    function spin(el, ids, target, elapsed) {
+    function spin(el, ids, target, elapsed, onLand) {
       const tok = ++spinTok;
       if (!el || !ids.length) return;
       const faces = new Map(ids.map(id => { const f = spriteFace(avatarOf(id), 3); f.dataset.id = id; return [id, f]; }));
@@ -258,7 +267,7 @@ export const SIDE_QUEST = {
       let t = 0, d = 60, i = Math.floor(Math.random() * ids.length);
       while (t + d < SPIN_LAND_MS) { steps.push([t, ids[i++ % ids.length]]); t += d; d *= 1.16; }
       steps.push([SPIN_LAND_MS, target]);
-      const landed = () => { el.closest(".sq-wizard")?.classList.add("landed"); $("sq-who")?.classList.add("on"); wizP?.then(k => { k?.setMode("landed"); k?.nod(); }); };
+      const landed = () => { el.closest(".sq-wizard")?.classList.add("landed"); onLand?.(); wizP?.then(k => { k?.setMode("landed"); k?.nod(); }); };
       if (elapsed >= SPIN_LAND_MS) { show(target); landed(); return; }
       for (const [at, id] of steps) {
         if (at < elapsed) continue;
@@ -276,7 +285,7 @@ export const SIDE_QUEST = {
     function renderSQ(s) {
       // per-turn local state resets on every phone, keyed off the state
       const tk = `${s.ti}:${s.phase}`;
-      if (tk !== lastTurn) { lastTurn = tk; if (s.phase !== "do") myVote = null; giveUpArmed = 0; if (s.phase !== "wizard") { dlg?.close(); dlg = null; } }
+      if (tk !== lastTurn) { lastTurn = tk; if (s.phase !== "do") myVote = null; giveUpArmed = 0; dlg?.close(); dlg = null; }
       const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
@@ -322,30 +331,29 @@ export const SIDE_QUEST = {
         return;
       }
 
-      if (s.phase === "wizard") {
-        if (!ui.once(`w:${s.ti}`, () => {})) return;
-        ui.stage("", wizardHtml("", "glow") + `<div class="sq-dlg-host" id="sq-dlg"></div>${hostSkip(ctx)}`, `turn ${t?.no ?? ""}`);
-        dlg?.close();
-        dlg = typeDialog($("sq-dlg"), { name: "WIZARD", text: WIZARD_LINE, blip: () => sfx.blip(), sticky: true, cls: "sq-dlg" });
-        dress("glow");
+      if (s.phase === "spin") {
+        // 1. who: the ball spins through everyone's faces and lands on them;
+        // the wizard names them, and a beat for everyone to react
+        if (!ui.once(`s:${s.ti}`, () => {})) return;
+        ui.stage("", wizardHtml(`<div class="sq-reel" id="sq-reel"></div>`, "spin")
+          + `<div class="sq-dlg-host" id="sq-dlg"></div>${hostSkip(ctx)}`, `turn ${t?.no ?? ""} · who's it going to be…`);
+        const ids = P.filter(p => !p.gone).map(p => p.id);
+        const name = s.players?.[t.who]?.handle ?? "you";
+        dress("spin");
+        spin($("sq-reel"), ids.length ? ids : [t.who], t.who, SPIN_MS - s.left, () => {
+          if (dlg || !$("sq-dlg")) return;
+          dlg = typeDialog($("sq-dlg"), { name: "WIZARD", text: chosenLine(name), blip: () => sfx.blip(), sticky: true, cls: "sq-dlg" });
+        });
         bindHostSkip(game);
 
       } else if (s.phase === "quest") {
-        if (!ui.once(`q:${s.ti}`, () => {})) return;
+        // 2. what: the ball swirls again and the quest card comes up
+        if (!ui.once(`q:${s.ti}:${t?.quest ? 1 : 0}`, () => {})) return;
         const elapsed = QUEST_MS - s.left;
-        ui.stage("", wizardHtml("", "swirl") + `<div class="sq-card-slot" id="sq-slot"></div>${hostSkip(ctx)}`, `turn ${t?.no ?? ""}`);
-        const put = () => { const el = $("sq-slot"); if (el && !el.firstChild) { el.innerHTML = cardHtml(t.quest, "pop"); sfx.ping(); wizP?.then(k => k?.nod()); } };
+        ui.stage(isMe(s) ? "your quest" : `${esc(who)}'s quest`, wizardHtml("", "swirl") + `<div class="sq-card-slot" id="sq-slot"></div>${hostSkip(ctx)}`, `turn ${t?.no ?? ""}`);
+        const put = () => { const el = $("sq-slot"); if (el && !el.firstChild && t.quest) { el.innerHTML = cardHtml(t.quest, "pop"); sfx.ping(); wizP?.then(k => k?.nod()); } };
         dress("swirl");
         if (elapsed >= SWIRL_MS) put(); else setTimeout(put, SWIRL_MS - elapsed);
-        bindHostSkip(game);
-
-      } else if (s.phase === "spin") {
-        if (!ui.once(`s:${s.ti}`, () => {})) return;
-        ui.stage("", cardHtml(t.quest, "small") + wizardHtml(`<div class="sq-reel" id="sq-reel"></div>`, "spin")
-          + `<div class="sq-who" id="sq-who">${isMe(s) ? "it's YOU!" : `${esc(who)}!`}</div>${hostSkip(ctx)}`, "who's it going to be…");
-        const ids = P.filter(p => !p.gone).map(p => p.id);
-        dress("spin");
-        spin($("sq-reel"), ids.length ? ids : [t.who], t.who, SPIN_MS - s.left);
         bindHostSkip(game);
 
       } else if (s.phase === "do") {
@@ -391,7 +399,7 @@ export const SIDE_QUEST = {
         if (!ui.once(`r:${s.ti}`, () => {})) return;
         const board = P.slice().sort((a, b) => b.score - a.score).map(p => `<li class="${p.id === t.who ? "me" : ""}"><b>${esc(p.handle)}</b><span>${p.score}</span></li>`).join("");
         if (t.skipped) {
-          ui.stage(`${esc(who)} left`, cardHtml(t.quest, "small") + `<p class="ab-sub">nobody scores this one</p><ol class="sq-board">${board}</ol>${hostSkip(ctx)}`, "no verdict");
+          ui.stage(`${esc(who)} left`, (t.quest ? cardHtml(t.quest, "small") : "") + `<p class="ab-sub">nobody scores this one</p><ol class="sq-board">${board}</ol>${hostSkip(ctx)}`, "no verdict");
         } else if (t.status === "gaveup") {
           ui.stage(`${esc(who)} gave up`, cardHtml(t.quest, "small") + `<div class="sq-stamp">GAVE UP</div>${starsHtml(0)}<div class="mh-big">+0</div>
             <ol class="sq-board">${board}</ol>${hostSkip(ctx)}`, "the verdict");

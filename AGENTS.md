@@ -69,6 +69,7 @@ node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
 node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]   # Side Quest's 3D wizard: loads, fits, every mode + the nod
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
+node test/charturn_shots.mjs <dir> [--hair=none,f2,f5,m1]   # the player character turned 360° at map / Style / close-up zoom, animated close-up, with an outfit
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
 node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|party]   # phones playing Side Quest / Mask Off (+ each reveal frame by frame) / a Ritual turn / a full 3-game set + shop, recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)

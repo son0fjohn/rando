@@ -50,7 +50,10 @@ GLB to ship (under `https://d8j0ntlcm91z4.cloudfront.net/user_3Ei5h1HOK7Uxrcue44
 
 ## In the app
 
-`web/wizard3d.js` draws the model on its rest pose; all motion is in code: a
+`web/wizard3d.js` draws the model with soft cel shading (his own base-color
+texture through a 4-step toon ramp; hemisphere + key + a violet rim light,
+like the players' characters), from a slight three-quarter angle a little
+above. It draws the model on its rest pose; all motion is in code: a
 slow sway, the beard bobbing with a sleepy head bob, his forearms rising and
 falling in turn over the ball while it glows / swirls / spins, and a nod when
 the quest card appears and when the reel lands. The ball follows his palms
@@ -66,6 +69,11 @@ It's off until the model is in: `SIDEQUEST.WIZARD_3D` in `hpconfig.js`.
 the model; `node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]`
 checks it loads, fits the frame, hides the pixel wizard, and shoots every mode.
 
-To finish: download the GLB above (the dev sandbox's network policy blocks
-`d8j0ntlcm91z4.cloudfront.net`), save it as `web/models/wizard/wizard.glb`,
-run `node test/wizard3d_shots.mjs <dir> --model=3d`, and set `WIZARD_3D: true`.
+The model: one skinned mesh, 18,976 triangles, 11,435 vertices, 24 joints.
+As delivered it's 7.8 MB (three 2K textures); `scripts/fetch_wizard.sh`
+ships it at 1.07 MB (textures at 1024 px WebP, geometry untouched;
+checked: it renders the same).
+
+To finish: run `scripts/fetch_wizard.sh` somewhere that can reach
+`d8j0ntlcm91z4.cloudfront.net` (the dev sandbox's network policy blocks it),
+then `node test/wizard3d_shots.mjs <dir> --model=3d`, and set `WIZARD_3D: true`.

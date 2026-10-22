@@ -154,6 +154,17 @@ async function sidequest() {
   await sleep(800);
   await A.click("#sq-go");
   for (let turn = 1; turn <= 2; turn++) {
+    // first who: the ball lands on a face and the wizard names them; then what
+    await phaseIs(A, "spin", 40000);
+    const whoId = (await stateOn(A)).turn.who;
+    const picked = P.list.find(pg => idOf(pg) === whoId);
+    const other = P.list.find(pg => pg !== picked);
+    await until(other, () => !!document.querySelector("#sq-dlg .y-dlg.done"), null, 15000);
+    if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-1-player-reveal.png") }), await picked.screenshot({ path: join(OUT, "sidequest-2-player-reveal-chosen.png") });
+    await phaseIs(A, "quest", 15000);
+    await until(other, () => !!document.querySelector("#sq-slot .sq-card"), null, 10000);
+    await sleep(700);
+    if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-3-quest-reveal.png") });
     await phaseIs(A, "do", 40000);
     const s = await stateOn(A);
     const perf = P.list.find(pg => idOf(pg) === s.turn.who);
