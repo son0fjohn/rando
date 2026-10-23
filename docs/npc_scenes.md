@@ -108,8 +108,8 @@ scene passes it a mood:
 - **Glow:** a bright pass + two blur passes at half resolution: only what's
   near white blooms (candle flames, the crystal ball, lanterns, the window),
   not the lit surfaces.
-- **Render:** the 3D layer is drawn at ~0.42× CSS pixels (capped at 380 px
-  wide) and upscaled nearest; then a warm grade, a limited palette with a
+- **Render:** the 3D layer is drawn at 0.5× CSS pixels like the world map
+  (capped at 400 px wide, never below 0.36×) and upscaled nearest; then a warm grade, a limited palette with a
   4×4 ordered dither, a vignette and a faint grain. The UI is DOM on top and
   stays sharp.
 - **Low-poly helpers:** flat-shaded Lambert, ambient occlusion baked into
@@ -117,7 +117,7 @@ scene passes it a mood:
   glTF PBR swapped for Lambert.
 - **Ambient life:** dust motes, flickering lights, a breathing camera.
 - **Performance:** a weak phone (≤3 GB or ≤4 cores, or `?retro=low`) gets
-  0.75× the resolution and no bloom or grain; if frames still run slow for a
+  0.8× the resolution and no bloom or grain; if frames still run slow for a
   few seconds the kit drops the bloom, then the resolution, by itself.
 
 `web/sqnook.js` is the pilot: the wizard's nook at night (draped violet

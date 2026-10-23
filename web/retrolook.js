@@ -28,7 +28,7 @@ export { THREE };
 
 // a mood: everything a scene can set (defaults are a neutral night)
 export const DEFAULT_MOOD = {
-  scale: 0.42, maxW: 380,                         // internal resolution: a fraction of CSS px, capped
+  scale: 0.5, maxW: 400,                          // internal resolution: a fraction of CSS px (the map's 0.5), capped
   bg: 0x0c0a1a,
   fog: { color: 0x1a1430, near: 4, far: 12 },
   ambient: { sky: 0x3a3060, ground: 0x140c18, intensity: 0.55 },
@@ -93,7 +93,9 @@ export async function retroStage(host, mood = {}) {
   const probe = document.createElement("canvas");
   if (!(probe.getContext("webgl2") || probe.getContext("webgl"))) throw new Error("no WebGL");
   let tier = retroTier();
-  let scale = tier === "low" ? M.scale * 0.75 : M.scale, bloomOn = tier !== "low" && !!M.bloom;
+  // never below ~0.36: under that a face in the scene turns to mush
+  const FLOOR = 0.36;
+  let scale = Math.max(FLOOR, tier === "low" ? M.scale * 0.8 : M.scale), bloomOn = tier !== "low" && !!M.bloom;
 
   const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: "low-power" });
   renderer.setPixelRatio(1);
@@ -134,7 +136,7 @@ export async function retroStage(host, mood = {}) {
   function resize() {
     const r = host.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const w = Math.max(64, Math.round(Math.min(r.width * scale, M.maxW * (tier === "low" ? 0.8 : 1))));
+    const w = Math.max(64, Math.round(Math.min(r.width * scale, M.maxW)));
     const h = Math.max(64, Math.round(w * r.height / r.width));
     camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
     if (w === W && h === H) return;          // setting a canvas's size clears it: only on a real change
@@ -169,7 +171,7 @@ export async function retroStage(host, mood = {}) {
     frames++;
     if (dt > 0.034) slow++;
     if (frames >= 90) {
-      if (slow > 45) { if (bloomOn) bloomOn = false; else if (scale > 0.26) { scale *= 0.8; resize(); } }
+      if (slow > 45) { if (bloomOn) bloomOn = false; else if (scale > FLOOR) { scale = Math.max(FLOOR, scale * 0.85); resize(); } }
       frames = 0; slow = 0;
     }
     if (!paused) raf = requestAnimationFrame(draw);

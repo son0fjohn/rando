@@ -24,7 +24,7 @@ const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)
 
 // the nook's mood: candle amber against deep violet and a cool moonlit teal
 export const NOOK_MOOD = {
-  scale: 0.42, maxW: 380,
+  scale: 0.5, maxW: 400,
   bg: 0x0d0918,
   fog: { color: 0x2a1a4c, near: 3.8, far: 10 },
   ambient: { sky: 0x5a44a0, ground: 0x1c1020, intensity: 0.72 },
@@ -70,7 +70,7 @@ function wizardMaterial(fogColor, near, far) {
         float near = smoothstep(0.62, 0.35, vUv.y) * (1.0 - abs(vUv.x - 0.5) * 1.6);
         light += glow * glowAmt * max(near, 0.0) * 1.4;                   // the ball lights his hands, beard and sleeves from below
         col *= light;
-        float f = smoothstep(fogNear, fogFar, vDepth);
+        float f = smoothstep(fogNear, fogFar, vDepth) * 0.45;           // he's the focal point: only a touch of haze
         col = mix(col, pow(fogColor, vec3(2.2)), f);
         gl_FragColor = vec4(col, 1.0);
       }`,
