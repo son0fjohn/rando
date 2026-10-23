@@ -828,6 +828,8 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 #party-panel.pt-behind { pointer-events: none; }
 #party-panel.pt-behind .pt-top, #party-panel.pt-behind .pt-bottom, #party-panel.pt-behind #pt-chat-feed, #party-panel.pt-behind #pt-picker { display: none !important; }
 #party-panel.pt-behind .pt-floor-wrap { filter: brightness(.45) saturate(.85); }
+/* a game's own 3D room (hpkit roomBackdrop) covers the party room: don't draw it */
+body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 .sq-btns.one { grid-template-columns: 1fr; }
 .sq-rate.locked .sq-star:not(.on) { opacity: .45; }
 .stage .sq-star:disabled { cursor: default; }

@@ -149,9 +149,16 @@ export function roomBackdrop(kind) {
   layer.prepend(el);
   let room = null, dead = false;
   import("./retrorooms.js").then(m => m.retroRoom(kind, el))
-    .then(r => { if (dead) { r.dispose(); return; } room = r; requestAnimationFrame(() => el.classList.add("on")); })
+    .then(r => {
+      if (dead) { r.dispose(); return; }
+      room = r;
+      requestAnimationFrame(() => el.classList.add("on"));
+      // once it covers the screen, the party room dimmed behind a game
+      // (backdrop: "room") is out of sight: stop compositing it
+      setTimeout(() => { if (!dead) document.body.classList.add("hp-room3d"); }, 900);
+    })
     .catch(e => console.warn(`[hpkit] no 3D ${kind} room, the backdrop stays:`, e?.message ?? e));
-  trash.add(() => { dead = true; room?.dispose(); el.remove(); });
+  trash.add(() => { dead = true; room?.dispose(); el.remove(); document.body.classList.remove("hp-room3d"); });
 }
 
 // ---------------------------------------------------------------- misc ui
