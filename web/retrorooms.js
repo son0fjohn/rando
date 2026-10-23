@@ -30,6 +30,7 @@ export const MOODS = {
     grade: { tint: [1.07, 0.97, 0.94], sat: 0.95, contrast: 1.08, lift: 0.02 },
   },
   study: {
+    fps: 30,                 // behind the cards: ambient, no need for more
     bg: 0x0a0c18,
     fog: { color: 0x141a34, near: 4, far: 11 },
     ambient: { sky: 0x3a4a80, ground: 0x1a1210, intensity: 0.55 },
@@ -39,6 +40,7 @@ export const MOODS = {
     grade: { tint: [1.05, 0.98, 0.95], sat: 0.92, contrast: 1.06, lift: 0.025 },
   },
   lounge: {
+    fps: 30,
     bg: 0x0c0508,
     fog: { color: 0x2a0c1a, near: 3.5, far: 10 },
     ambient: { sky: 0x4a1830, ground: 0x0e0408, intensity: 0.45 },
