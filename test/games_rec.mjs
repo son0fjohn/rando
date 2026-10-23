@@ -143,6 +143,9 @@ const backInRoom = pg => until(pg, () => !document.getElementById("party-panel")
 async function sidequest() {
   log("\nSide Quest");
   const P = await phones(["alice", "bob", "cy", "dee"]);
+  // the lobby renders everyone's 3D look while they hang out (charrender.js);
+  // four phones doing that in software GL on one CPU take a while
+  await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/charrender.js").then(m => m.warmLooks([])))));
   const casts = await Promise.all(P.list.map(screencast));
   const A = P.host;
   await sleep(1500);
