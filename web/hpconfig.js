@@ -101,15 +101,20 @@ export const DIARY = {
 // have rated, or at TALK_MS. Skipping the card scores 0 and skips the rating.
 export const MASKOFF = {
   POOL_URL: "data/mask_off_cards.json",
-  TALK_MS: 2 * 60 * 1000,
-  STARS: 5,
-  POINTS_PER_STAR: 20,          // points = average x this (5 = 100)
-  // the reveal: average below SUS -> the mask stays on (MASK ON), below OFF ->
-  // it cracks (SUS), from OFF up -> it shatters (MASK OFF)
-  SUS: 2.5, OFF: 3.5,
-  // cards escalate through the game: the first LEVEL_SPLIT[0] share of the
-  // turns draws level 1, up to LEVEL_SPLIT[1] level 2, the rest level 3
-  LEVEL_SPLIT: [1 / 3, 2 / 3],
+  HAND: 5,                      // cards in each private hand
+  LEVELS_DEFAULT: [1, 2],       // light + real; the host can add deep
+  ROUNDS_DEFAULT: 2,            // everyone answers twice
+  MAX_ROUNDS: 3,
+  SETUP_MS: 3 * 60 * 1000,      // nobody taps deal: go with what's set
+  PICK_MS: 4200,                // "[asker] → asking [answerer]"
+  CHOOSE_MS: 30000,             // browse your hand; then a random card plays
+  NUDGE_MS: 10000,              // the gentle nudge, this long before that
+  TALK_MS: 5 * 60 * 1000,       // only a backstop: the answerer taps Done
+  AFTER_MS: 5500,               // "3 people felt this too"
+  END_MS: 20000,
+  // "Go deeper": the follow-ups, in turn; at most DEEPER_MAX per answer
+  DEEPER: ["What happened after?", "How did that change you?", "What did that feel like?", "Do you still think about it?", "Who was there with you?", "What would you tell them now?"],
+  DEEPER_MAX: 2,
 };
 
 export const RITUAL = {

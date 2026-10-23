@@ -6,7 +6,7 @@ import * as CONFIG from "/web/hpconfig.js";
 import { promptLog } from "/web/hplog.js";
 import { HUMILIATION_RITUAL, judge, ritualPool, ritualPromptsFor, ritualPoints, PICK_MS, OPEN_MS } from "/web/hpgames/ritual.js";
 import { SIDE_QUEST, questPool, questsFor, questPoints } from "/web/hpgames/sidequest.js";
-import { MASK_OFF, maskPool, levelFor, maskVerdict, maskPoints } from "/web/hpgames/maskoff.js";
+import { MASK_OFF, maskPool, pickAnswerer, pickAsker } from "/web/hpgames/maskoff.js";
 import { fairPick, chances } from "/web/fairpick.js";
 import { newSet, places, addGame, addPartial, standings, fullParticipants, nextGameNo } from "/web/partyset.js";
 import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
@@ -836,83 +836,165 @@ group("Side Quest (4 players)");
   ui.hide();
 }
 
-group("Mask Off — the card pool (draft)");
+group("Mask Off — the deck");
 {
   const ids = MO.map(c => c.id);
-  ok(MO.length === 21, `21 cards in the draft pool (${MO.length})`);
-  ok(new Set(ids).size === ids.length && ids.every(id => /^mo-\d{3}$/.test(id)), "every card has its own permanent id");
-  ok([1, 2, 3].every(l => MO.filter(c => c.level === l).length === 7), "7 cards per level: fun, personal, deep");
-  ok(!MO.some(c => /mission/i.test(c.text)), "no leftover dare cards");
-  ok(levelFor(0, 9) === 1 && levelFor(3, 9) === 2 && levelFor(8, 9) === 3, "cards escalate: level 1, then 2, then 3 through the game");
-  ok(maskVerdict(1) === "on" && maskVerdict(2.4) === "on" && maskVerdict(3) === "sus" && maskVerdict(3.5) === "off" && maskVerdict(5) === "off",
-    "the reveal: 1-2 MASK ON, 3 SUS, 4-5 MASK OFF");
-  ok(maskPoints(4.5) === 90 && maskPoints(0) === 0, "points = average × 20");
+  const deck = await (await fetch("/web/data/mask_off_cards.json")).json();
+  ok(MO.length === 70, `70 cards (${MO.length})`);
+  ok([[1, 22], [2, 24], [3, 24]].every(([l, n]) => MO.filter(c => c.level === l).length === n), "22 light, 24 real, 24 deep");
+  ok(new Set(ids).size === ids.length && ids.every(id => /^mo-[123]\d\d$/.test(id)), "every card has its own permanent id");
+  ok(deck.retired?.length === 21 && !deck.retired.some(id => ids.includes(id)), "the old cards' ids are retired, never reused");
+  ok(MO.find(c => c.id === "mo-101")?.text === "What's something that always makes you feel like a kid again?"
+    && MO.find(c => c.id === "mo-224")?.text === "What's something you've stopped telling people because they don't get it?"
+    && MO.find(c => c.id === "mo-324")?.text === "What would it take for you to feel truly at peace?", "the supplied deck, in order");
+  ok(!MO.some(c => /\bmask (on|off)\b|honesty|\brate\b/i.test(c.text)), "no leftover cards from the old game");
+  // the turn picking: everyone asked equally, never the asker
+  const rng = (() => { let x = 7; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
+  const asked = {}, P = ["a", "b", "c", "d"];
+  let w = {}, last = null, ai = 0, self = 0;
+  for (let i = 0; i < 12; i++) {
+    const who = pickAnswerer(asked, w, P, last, rng); w = who.weights; last = who.id;
+    asked[who.id] = (asked[who.id] ?? 0) + 1;
+    const ask = pickAsker(P, ai, who.id); ai = ask.next;
+    if (ask.id === who.id) self++;
+  }
+  ok(P.every(id => asked[id] === 3), `12 turns over 4 players: everyone answers 3 times (${P.map(id => asked[id]).join(" ")})`);
+  ok(self === 0, "nobody is ever asking themselves");
 }
 
-group("Mask Off (4 players)");
+// through the setup and into turn 1 (4 players unless said otherwise)
+function moTable(n = 4, setup = []) {
+  const t = seatTable(MASK_OFF, n);
+  adv(500);
+  for (const [k, v] of setup) t.input("p1", k, v);
+  adv(400);
+  t.input("p1", "mo-go");
+  return t;
+}
+
+group("Mask Off — the host's setup");
 {
   const t = seatTable(MASK_OFF, 4);
   adv(500);
-  ok(t.s.phase === "pick" && t.s.turns === 8, `default length: everyone twice (4 players, ${t.s.turns} turns)`);
-  ok(t.s.turn?.card.level === 1, "the first card is level 1 (fun)");
-  ok(waitPhase(t, "talk", 10000), "the pick lands and the card flips up");
-  ok(t.s.left > MASKOFF.TALK_MS - 1500, "a 2-minute clock");
-  const who = t.s.turn.who, voters = Object.keys(t.s.players).filter(x => x !== who);
-  t.input(who, "rate", { v: 5 });
-  t.input(voters[0], "rate", { v: 5 }); t.input(voters[1], "rate", { v: 4 }); t.input(voters[1], "rate", { v: 1 });
-  t.input(voters[2], "rate", { v: 0 });
+  ok(t.s.phase === "setup" && MASK_OFF.hostSetup.includes("setup"), "opens on the host's setup screen (Back like every setup)");
+  ok(t.s.setup.levels.join() === "1,2" && t.s.setup.rounds === 2, "default: light + real, everyone answers twice");
+  t.input("p2", "mo-lv", { l: 3, on: true }); t.input("p2", "mo-go");
   adv(400);
-  ok(t.s.phase === "talk" && t.s.turn.votes[voters[0]] === 5, "rating opens with the card");
-  ok(t.s.turn.votes[who] === undefined, "you can't rate your own honesty");
-  ok(t.s.turn.votes[voters[1]] === 4, "one tap locks a rating in");
-  ok(t.s.turn.votes[voters[2]] === undefined, "ratings are 1-5");
-  const left = t.s.left;
-  t.input(voters[2], "rate", { v: 3 });
-  ok(waitPhase(t, "reveal", 3000), "everyone has rated: the turn ends at once");
-  ok(left > MASKOFF.TALK_MS - 10000, `…with most of the clock left (${Math.round(left / 1000)} s)`);
-  ok(t.s.turn.avg === 4 && t.s.turn.pts === 80 && t.s.turn.verdict === "off" && t.s.players[who].score === 80, `average 4 → MASK OFF, 80 points (got ${t.s.turn.verdict}, ${t.s.turn.pts})`);
+  ok(t.s.phase === "setup" && t.s.setup.levels.join() === "1,2", "only the host can change the deck or deal");
+  t.input("p1", "mo-lv", { l: 3, on: true }); t.input("p1", "mo-lv", { l: 1, on: false });
+  adv(400);
+  ok(t.s.setup.levels.join() === "2,3", "the host picks the levels (real + deep)");
+  t.input("p1", "mo-lv", { l: 2, on: false }); t.input("p1", "mo-lv", { l: 3, on: false });
+  adv(400);
+  ok(t.s.setup.levels.join() === "3", "at least one level stays in");
+  t.input("p1", "mo-rounds", { n: 1 }); t.input("p1", "mo-rounds", { n: 9 });
+  adv(400);
+  ok(t.s.setup.rounds === 1, "the host sets the rounds (1-3)");
+  t.input("p1", "mo-go");
+  ok(waitPhase(t, "pick", 3000), "deal → the first turn");
+  ok(t.s.turns === 4, `everyone once: 4 turns (${t.s.turns})`);
+  const hands = Object.values(t.s.hands), all = hands.flat();
+  ok(hands.length === 4 && hands.every(h => h.length === 5), "everyone is dealt a hand of 5");
+  ok(new Set(all).size === all.length, "no card is in two hands");
+  ok(all.every(id => MO.find(c => c.id === id)?.level === 3), "every card is from the chosen level");
+  ok(all.every(x => typeof x === "string" && /^mo-\d{3}$/.test(x)), "hands are card ids only: no card text in the state until it's asked");
+}
 
-  ok(waitPhase(t, "talk", 20000), "next turn");
-  const w2 = t.s.turn.who, before = t.s.players[w2].score, other = Object.keys(t.s.players).find(x => x !== w2);
-  t.input(other, "rate", { v: 5 });
+group("Mask Off — a turn: ask, answer, same, go deeper");
+{
+  const t = moTable(4);
+  ok(waitPhase(t, "pick", 3000), "the app picks who's asking whom");
+  const { asker, who } = t.s.turn;
+  ok(asker && who && asker !== who, `${asker} → asking ${who}`);
+  ok(waitPhase(t, "choose", 6000), "the asker picks from their hand");
+  ok(t.s.left > MASKOFF.CHOOSE_MS - 1000, "a 30-second pick");
+  const hand = t.s.hands[asker].slice(), other = Object.keys(t.s.players).find(id => id !== asker);
+  t.input(other, "ask", { id: t.s.hands[other]?.[0] ?? hand[0] });
+  t.input(asker, "ask", { id: MO.find(c => !hand.includes(c.id)).id });
+  adv(400);
+  ok(t.s.phase === "choose" && !t.s.turn.card, "only the asker, and only a card from their own hand");
+  t.input(asker, "ask", { id: hand[2] });
+  ok(waitPhase(t, "talk", 3000), "they tap one: it flips up for everyone");
+  ok(t.s.turn.card.id === hand[2] && !t.s.hands[asker].includes(hand[2]) && !t.s.turn.auto, "the card leaves their hand");
+  const L = Object.keys(t.s.players).filter(id => id !== who);
+  t.input(L[0], "same");
+  adv(400);
+  ok(t.s.turn.same === 0, "nobody can tap Same before the answer starts");
+  t.input(L[0], "answer");
+  adv(400);
+  ok(!t.s.turn.status, "only the answerer can start the answer");
+  t.input(who, "answer");
+  adv(400);
+  ok(t.s.turn.status === "answering", "Answer: the mask comes off");
+  t.input(L[0], "same"); t.input(L[0], "same"); t.input(L[1], "same"); t.input(who, "same");
+  adv(400);
+  ok(t.s.turn.same === 2, `Same: one each, never the answerer's own (${t.s.turn.same})`);
+  ok(L.filter(id => id !== asker).every(id => !JSON.stringify(t.s.turn).includes(id)), "only the count is in the state, never who tapped");
+  t.input(L[2], "deeper"); t.input(L[1], "deeper");
+  adv(400);
+  ok(t.s.turn.deeper?.text === MASKOFF.DEEPER[0] && t.s.turn.deepers === 1, "Go deeper: one gentle follow-up at a time");
+  t.input(L[2], "deeper-take");
   adv(300);
-  t.input(other, "pass");
+  ok(!t.s.turn.deeper.state, "only the answerer takes it or passes");
+  t.input(who, "deeper-take");
   adv(300);
-  ok(t.s.phase === "talk", "only the player answering can skip");
-  t.input(w2, "pass");
-  ok(waitPhase(t, "reveal", 3000), "skip → straight to the reveal");
-  ok(t.s.turn.pts === 0 && t.s.turn.n === 0 && t.s.turn.verdict === null && t.s.players[w2].score === before, "skipping scores 0 and skips the rating");
+  ok(t.s.turn.deeper.state === "took", "they take it");
+  t.input(L[1], "deeper"); adv(300); t.input(who, "deeper-pass"); adv(300); t.input(L[0], "deeper"); adv(300);
+  ok(t.s.turn.deepers === MASKOFF.DEEPER_MAX && t.s.turn.deeper.state === "passed", `…or pass it; at most ${MASKOFF.DEEPER_MAX} per answer`);
+  t.input(who, "done");
+  ok(waitPhase(t, "after", 3000), "Done ends the turn");
+  ok(t.s.hands[asker].length === 5, "the asker's hand refills to 5");
+  ok(t.s.players[who].score === 1 && t.s.sameTotal === 2, "an answer counts (no points beyond that); the Same taps add up");
+  // a pass
+  ok(waitPhase(t, "choose", 12000), "next turn");
+  const t2 = t.s.turn;
+  t.input(t2.asker, "ask", { id: t.s.hands[t2.asker][0] });
+  ok(waitPhase(t, "talk", 3000), "asked");
+  const before = t.s.players[t2.who].score;
+  t.input(t2.who, "pass");
+  ok(waitPhase(t, "after", 3000) && t.s.turn.status === "passed", "Pass: the mask stays on, the turn moves on");
+  ok(t.s.players[t2.who].score === before && t.s.turn.same === 0, "no penalty, nothing counted");
+  // the clock picks a card
+  ok(waitPhase(t, "choose", 12000), "next turn");
+  const a3 = t.s.turn.asker, h3 = t.s.hands[a3].slice();
+  ok(waitPhase(t, "talk", MASKOFF.CHOOSE_MS + 2000), "nobody taps: after 30 s…");
+  ok(t.s.turn.auto && h3.includes(t.s.turn.card.id), "…a random card from their hand is played");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
 
-  ok(waitPhase(t, "talk", 20000), "next turn");
-  const w3 = t.s.turn.who, r3 = Object.keys(t.s.players).filter(x => x !== w3);
-  t.input(r3[0], "rate", { v: 1 }); t.input(r3[1], "rate", { v: 2 });
-  adv(1000);
-  ok(t.s.phase === "talk", "not everyone has rated: the turn waits");
-  ok(waitPhase(t, "reveal", MASKOFF.TALK_MS + 2000), "the 2-minute timer ends the turn");
-  ok(t.s.turn.n === 2 && t.s.turn.verdict === "on" && t.s.turn.pts === 30, `the ratings that came in count (1 and 2 → MASK ON, ${t.s.turn.pts})`);
-  const levels = [];
-  while (t.s.phase !== "end" && !t.allEnded()) { if (t.s.phase === "talk" && !levels[t.s.ti]) levels[t.s.ti] = t.s.turn.card.level; adv(2000); }
-  ok(levels.slice(3, 6).every(l => l === 2) && levels.slice(6).every(l => l === 3) && levels.length === 8, `the cards escalate: fun, then personal, then deep (turns 4-8: ${levels.slice(3).join(" ")})`);
-  ok(runOut(t), "all 8 turns play out and the game ends");
+group("Mask Off — a whole game");
+{
+  const t = moTable(4, [["mo-lv", { l: 3, on: true }]]);
+  const asked = {}, cards = [];
+  let self = 0;
+  while (!t.allEnded()) {
+    const q = t.s?.turn;
+    if (!q) { adv(1000); continue; }
+    if (t.s.phase === "choose" && !q.card) { if (q.asker === q.who) self++; t.input(q.asker, "ask", { id: t.s.hands[q.asker][0] }); }
+    if (t.s?.phase === "talk" && !q._seen) {
+      q._seen = true; asked[q.who] = (asked[q.who] ?? 0) + 1; cards.push(q.card.id);
+      t.input(q.who, q.who === "p4" ? "pass" : "answer");
+    }
+    if (t.s?.phase === "talk" && q.status === "answering") t.input(q.who, "done");
+    adv(1000);
+  }
+  ok(cards.length === 8 && Object.values(asked).every(n => n === 2), `everyone answers twice: 8 turns (${Object.values(asked).join(" ")})`);
+  ok(self === 0, "nobody ever asks themselves");
+  ok(new Set(cards).size === cards.length, "no card comes round twice");
+  const r = t.host.results;
+  ok(r?.completed, "it completes: one of the party's 3 games");
+  ok(r.players.every(p => p.score === (p.id === "p4" ? 0 : 1)), "no winner: everyone who answered gets the same (p4 only passed)");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 {
-  const t = seatTable(MASK_OFF, 3, { options: { rounds: "1" } });
-  adv(500);
-  ok(t.s.turns === 3, "the host's setting sticks: everyone once (3 turns)");
-  ok(waitPhase(t, "talk", 10000), "into the first card");
+  const t = moTable(3);
+  ok(waitPhase(t, "talk", 50000), "into the first card");
+  t.input(t.s.turn.who, "answer");
+  adv(400);
   t.drop(t.s.turn.who);
   adv(3000);
-  ok(t.s.turn.left && t.s.phase !== "talk", "the player answering leaves: the turn is skipped, nobody waits");
-  ok(runOut(t), "and the game still finishes");
-}
-{
-  const t = seatTable(MASK_OFF, 5);
-  adv(500);
-  const counts = {};
-  while (!t.allEnded()) { if (t.s?.phase === "talk" && t.s.turn && !t.s.turn._seen) { t.s.turn._seen = true; counts[t.s.turn.who] = (counts[t.s.turn.who] ?? 0) + 1; for (const p of Object.keys(t.s.players)) if (p !== t.s.turn.who) t.input(p, "rate", { v: 3 }); } adv(1000); }
-  const n = Object.values(counts);
-  ok(Object.keys(counts).length === 5 && Math.max(...n) - Math.min(...n) <= 2, `the fair picker spreads 10 turns over 5 players (${n.join(" ")})`);
+  ok(t.s.phase !== "talk", "the answerer leaves: the turn ends, nobody waits");
+  ok(runOut(t, 60 * 60 * 1000), "and the game still finishes (nobody taps: every turn runs to its backstop)");
 }
 
 group("The party set: 3 games, places, standings");
@@ -946,23 +1028,24 @@ group("The party set: 3 games, places, standings");
 
 group("The host's controls: End game anytime, Back out of a setup screen");
 {
-  const t = seatTable(MASK_OFF, 4);
-  adv(500);
-  ok(waitPhase(t, "talk", 10000), "a Mask Off turn is on");
-  const who = t.s.turn.who, raters = Object.keys(t.s.players).filter(x => x !== who);
-  raters.forEach(id => t.input(id, "rate", { v: 5 }));
-  ok(waitPhase(t, "reveal", 4000) && t.s.players[who].score === 100, "someone has scored");
+  const t = moTable(4);
+  ok(waitPhase(t, "choose", 10000), "a Mask Off turn is on");
+  const { asker, who } = t.s.turn;
+  t.input(asker, "ask", { id: t.s.hands[asker][0] });
+  ok(waitPhase(t, "talk", 3000), "asked");
+  t.input(who, "answer"); adv(300); t.input(who, "done");
+  ok(waitPhase(t, "after", 4000) && t.s.players[who].score === 1, "someone has answered");
   const guest = t.clients.find(c => !c.room.isHost);
   guest.game.endByHost();
   adv(300);
-  ok(!guest.ended && t.s?.phase === "reveal", "a player can't end the game");
+  ok(!guest.ended && t.s?.phase === "after", "a player can't end the game");
   t.host.game.endByHost();
   adv(300);
   ok(t.clients.every(c => c.ended), "the host ends it: everyone is out at once");
   const r = t.host.results, rg = guest.results;
   ok(r?.ended && !r.completed && rg?.ended && !rg.completed, "it counts as ended, not completed (no coins, not one of the 3)");
-  ok(r.players.find(p => p.id === who)?.score === 100, "the standings so far go with it, for the party board");
-  ok(t.clients.every(c => c.game.s === null), "every phone drops the game's state (answers, votes, timers)");
+  ok(r.players.find(p => p.id === who)?.score === 1, "the standings so far go with it, for the party board");
+  ok(t.clients.every(c => c.game.s === null), "every phone drops the game's state (hands, cards, timers)");
 }
 {
   const t = seatTable(SIDE_QUEST, 4);
@@ -971,7 +1054,7 @@ group("The host's controls: End game anytime, Back out of a setup screen");
   t.host.game.endByHost({ backout: true });
   adv(300);
   ok(t.clients.every(c => c.ended && c.results?.backout && !c.results.completed), "Back: out of the setup, nothing started, nothing counted");
-  ok(SECRET_DIARY.hostSetup.includes("deal"), "Secret Diary's deal is a host setup screen too");
+  ok(SECRET_DIARY.hostSetup.includes("deal") && MASK_OFF.hostSetup.includes("setup"), "Secret Diary's deal and Mask Off's deck are host setup screens too");
 }
 
 }
