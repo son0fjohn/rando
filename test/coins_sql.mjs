@@ -106,9 +106,12 @@ for (let k = 2; k < mild; k++) seen.add((await draw(3, R, `turnkey${String(k).pa
 ok(seen.size === mild, `no prompt comes up twice in a room until all ${mild} mild ones have (${seen.size})`);
 ok([...seen].every(id => POOL.find(p => p.id === id).level === "mild"), "a mild party only ever draws mild prompts");
 ok(!!(await draw(3, R, "turnkey9999"))?.id, "once the pool is used up, the room starts over");
-let spicy = false;
-for (let k = 0; k < 40 && !spicy; k++) { const d = await draw(4, `party-sp-${k}`, "turnkey0001", "spicy"); spicy = POOL.find(p => p.id === d.id).level === "spicy"; }
-ok(spicy, "a spicy party can draw the spicy prompts");
+// a room deals every prompt once before any repeats, so as many draws as a
+// spicy party has prompts must include the spicy ones (no luck involved)
+const upToSpicy = POOL.filter(p => p.level !== "unhinged");
+const spicyDraws = [];
+for (let k = 0; k < upToSpicy.length; k++) spicyDraws.push((await draw(4, "party-sp", `turnkey${String(k).padStart(4, "0")}`, "spicy")).id);
+ok(spicyDraws.some(id => POOL.find(p => p.id === id).level === "spicy"), "a spicy party can draw the spicy prompts");
 ok((await err(draw(0, R, "turnkey0001")))?.includes("sign in"), "you have to be signed in");
 ok((await err(draw(1, R, "turnkey0001", "extreme")))?.includes("level"), "only known levels");
 ok((await err(draw(1, R, "x")))?.includes("bad turn") && (await err(draw(1, "bad room!", "turnkey0001")))?.includes("bad turn"), "turn and room ids are checked");
