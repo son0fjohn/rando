@@ -2,8 +2,10 @@
 // UI (test/hpparty.html, real characters), for review:
 //   sidequest  4 phones: the host's setup, the wizard + crystal ball, a full
 //              turn (timer, Done, star votes, points) and a Give-up turn
-//   ritual     3 phones: one full charades turn — the performer's prompt and
-//              live guess feed, a guesser typing, the performer tapping it
+//   ritual     3 phones: one full charades turn — the clown juggles, catches
+//              a capsule in his mouth, holds it up, opens it (the slip on the
+//              performer's phone, peek/wink/shhh on a guesser's), the live
+//              guess feed, a guesser typing, the performer tapping it
 //   maskoff    4 phones: two Mask Off turns — the pick, the truth card, the
 //              room rating honesty, the mask reveal (MASK OFF, then MASK ON)
 //   party      4 phones: a full set of 3 games (skipped through) ending on the
@@ -48,8 +50,11 @@ async function screencast(pg) {
   return { frames, stop: () => cdp.send("Page.stopScreencast").catch(() => {}) };
 }
 // write each phone's frames on a shared timeline [t0, t1], then put them side by side
-async function writeScene(name, casts) {
+// from: drop what came before this moment (epoch seconds), keeping the frame
+// that was on screen then
+async function writeScene(name, casts, { from = 0 } = {}) {
   await Promise.all(casts.map(c => c.stop()));
+  if (from) for (const c of casts) { const k = c.frames.findLastIndex(f => f.t <= from); if (k > 0) c.frames.splice(0, k); if (c.frames[0] && c.frames[0].t < from) c.frames[0].t = from; }
   const all = casts.flatMap(c => c.frames.map(f => f.t));
   if (!all.length) return;
   const t0 = Math.min(...all), t1 = Math.max(...all) + 0.5;
@@ -96,8 +101,8 @@ async function newWindow(ctx) {
   await pg.setViewportSize({ width: 390, height: 844 });
   return pg;
 }
-async function phones(names, { coins = false } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
+async function phones(names, { coins = false, dpr = 2, qs: extra = {} } = {}) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: dpr, hasTouch: true });
   await ctx.addInitScript(() => { try { localStorage.setItem("rando-hint-v1", "1"); } catch {} });
   const pages = {};
   const open = async (name, qs = "") => {
@@ -116,7 +121,7 @@ async function phones(names, { coins = false } = {}) {
   await host.click("#pt-create");
   await until(host, () => /^[A-Z0-9]{4}$/.test(document.getElementById("pt-code-chip")?.textContent ?? ""));
   const code = (await host.locator("#pt-code-chip").innerText()).trim();
-  for (const n of names.slice(1)) pages[n] = await open(n, `&party=${code}`);
+  for (const n of names.slice(1)) pages[n] = await open(n, `&party=${code}${extra[n] ?? ""}`);
   await until(host, n => document.querySelectorAll(".lr-av").length === n, names.length, 30000);
   return { ctx, pages, list: names.map(n => pages[n]), host };
 }
@@ -289,31 +294,48 @@ async function filmReveal(snap, name) {
 // ---------------------------------------------------------------- Humiliation Ritual
 async function ritual() {
   log("\nHumiliation Ritual");
-  const P = await phones(["alice", "bob", "cy"]);
+  // 1x pixels: three phones drawing the 3D clown in software GL on one CPU
+  // fall behind the game at 2x
+  // (and cy, filmed only if the clown picks cy, keeps the 2D capsules)
+  const P = await phones(["alice", "bob", "cy"], { dpr: 1, qs: { cy: "&clown=2d" } });
   const A = P.host;
   await sleep(1000);
+  // film every phone from the start: the clown's juggle, the mouth catch,
+  // the capsule with the name, the gacha open — then keep the performer's
+  // and one guesser's side by side
+  const all = new Map();
+  // load the clown on every phone first (three software-GL phones on one CPU
+  // load him slowly; a real phone takes a moment)
+  log(`  clown ready: ${(await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/clown3d.js").then(m => m.clownKit()).then(k => !!k))))).join(", ")}`);
+  for (const pg of P.list) all.set(pg, await screencast(pg));
   await queue(A, "ritual");
-  await phaseIs(A, "prep", 15000);
+  await until(A, () => !document.getElementById("game-layer").hidden, null, 20000);
+  const from = Date.now() / 1000 - 0.3;
+  await phaseIs(A, "pick", 15000);
   const s = await stateOn(A);
   const perf = P.list.find(pg => idOf(pg) === s.turn.performer);
-  const [g1, g2] = P.list.filter(pg => pg !== perf);
-  // record the performer and one guesser, side by side
-  const casts = [await screencast(perf), await screencast(g1)];
-  log(`  performer: ${perf.label} — ${s.turn.prompt}`);
-  await phaseIs(A, "act", 15000);
+  const [g1, g2] = P.list.filter(pg => pg !== perf);    // g1: alice or bob, drawing the 3D clown
+  log(`  performer: ${perf.label} (the state carries no prompt: ${!JSON.stringify(s).includes("prompt")})`);
+  await phaseIs(A, "act", 20000);
+  const prompt = await perf.locator(".hr-card .hr-prompt").textContent();
+  log(`  the performer's phone shows: ${prompt}`);
   await sleep(2500);
   const wrong = ["a horse", "sneezing", "swimming"];
   for (const w of wrong.slice(0, 2)) { await g1.fill("#gp-in", w); await g1.press("#gp-in", "Enter"); await sleep(1600); }
   await g2.fill("#gp-in", "crying baby"); await g2.press("#gp-in", "Enter"); await sleep(1800);
-  const word = s.turn.prompt.split(/[\s-]+/).slice(-1)[0].toLowerCase();
+  const word = prompt.split(/[\s-]+/).slice(-1)[0].toLowerCase();
   await g1.fill("#gp-in", word); await g1.press("#gp-in", "Enter"); await sleep(1800);       // close
-  await g2.fill("#gp-in", s.turn.prompt.toLowerCase()); await g2.press("#gp-in", "Enter"); await sleep(2500);   // right
-  await perf.locator("#hr-feed .hr-g.match").first().click();
+  await g2.fill("#gp-in", prompt.toLowerCase()); await g2.press("#gp-in", "Enter"); await sleep(2500);   // right
+  const feed = await perf.evaluate(() => [...document.querySelectorAll("#hr-feed .hr-g")].map(b => `${b.className.replace("hr-g", "").trim() || "-"}: ${b.querySelector("span")?.textContent}`));
+  log(`  the performer's feed: ${feed.join(" | ")}`);
+  await perf.locator("#hr-feed .hr-g.match").first().click({ timeout: 5000 }).catch(e => log(`  (no right guess to tap: ${e.message.split("\n")[0]})`));
   await phaseIs(A, "result", 8000);
-  await sleep(7500);
-  await writeScene("ritual", casts);
+  await sleep(1500);
   const r = (await stateOn(A)).turn;
-  log(`  ${r.won ? `got it: +${r.pts} guesser, +${r.perfPts} performer in ${r.secs}s` : "nobody got it"}`);
+  await sleep(6000);
+  await writeScene("ritual", [all.get(perf), all.get(g1)], { from });
+  await all.get(g2).stop();
+  log(`  ${r.won ? `got it: +${r.pts} guesser, +${r.perfPts} performer in ${r.secs}s; revealed "${r.answer}"` : "nobody got it"}`);
   await P.ctx.close();
 }
 
@@ -336,11 +358,15 @@ async function partySet() {
       for (const pg of P.list) {
         if (await pg.locator('[data-honest="4"]:not([disabled])').count()) await pg.locator('[data-honest="4"]').click().catch(() => {});
         if (await pg.locator('[data-star="4"]').count()) await pg.locator('[data-star="4"]').click().catch(() => {});
-        if (game === "ritual" && s.phase === "act" && await pg.locator("#gp-in").count()) { await pg.fill("#gp-in", s.turn.prompt).catch(() => {}); await pg.press("#gp-in", "Enter").catch(() => {}); }
+        if (game === "ritual" && s.phase === "act" && await pg.locator("#gp-in").count()) {
+          // the prompt is only on the performer's phone
+          const said = await Promise.all(P.list.map(x => x.locator(".hr-card .hr-prompt").textContent({ timeout: 300 }).catch(() => null))).then(a => a.find(Boolean));
+          if (said) { await pg.fill("#gp-in", said).catch(() => {}); await pg.press("#gp-in", "Enter").catch(() => {}); }
+        }
         if (await pg.locator("#hr-feed .hr-g.match").count()) await pg.locator("#hr-feed .hr-g.match").first().click().catch(() => {});
       }
       await sleep(1100);
-      if (["pick", "reveal", "prep", "wizard", "quest", "spin", "result"].includes(s.phase) || (["do", "talk"].includes(s.phase) && i % 3 === 2)) await skip(A);
+      if (["pick", "open", "reveal", "prep", "wizard", "quest", "spin", "result"].includes(s.phase) || (["do", "talk"].includes(s.phase) && i % 3 === 2)) await skip(A);
     }
     await sleep(3000);
     await skip(A);

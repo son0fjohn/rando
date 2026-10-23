@@ -158,6 +158,13 @@ async function refreshStatus() {
         return data ?? 0;
       },
     };
+    // Humiliation Ritual: the performer's phone asks for its own prompt; the
+    // server hands it to that phone only (migrations/015_ritual_prompts)
+    party.hooks.ritualDraw = async ({ room, turn, level }) => {
+      const { data, error } = await sb.rpc("ritual_draw", { p_room: room, p_turn: turn, p_level: level });
+      if (error) throw error;
+      return data;
+    };
     party.hooks.beaconZone = async () => {
       const z = presence.myZone ?? await presence.resolveZone();
       return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;

@@ -42,7 +42,10 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   someone: 3D card, wave, report, block), `web/hpkit.js` (round machine, results screen, cleanup),
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots; its
   `finish()` hands the final standings to the party),
-  `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/wizard3d.js`
+  `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/clown3d.js`
+  (Humiliation Ritual's 3D clown host: juggles gacha capsules with the
+  players' faces, mouth catch, gacha open / peek-wink-shhh, bow;
+  `web/models/clown/`, see `docs/clown_assets.md`), `web/wizard3d.js`
   (Side Quest's 3D wizard over the pixel one, `web/models/wizard/`;
   `SIDEQUEST.WIZARD_3D`, see `docs/wizard_assets.md`), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors, party/coin/game numbers),
@@ -58,6 +61,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   off the open diary's pages: auto-fit, page turns, the 150-character limit).
 - **Migrations:** `supabase/migrations/`, applied by hand with
   `scripts/apply_migration.py` (needs `SUPABASE_ACCESS_TOKEN` in `.env`).
+- **Ritual prompts:** `015_ritual_prompts.sql`: `ritual_draw()` deals the
+  performer's phone its prompt; the prompts mirror
+  `web/data/ritual_prompts.json` (the SQL test checks they match).
 - **Coins and the shop:** `013_coins_shop.sql`. Balances, payouts and purchases
   happen only in SQL functions (`report_game`, `confirm_game`, `buy_item`);
   the client only displays them.
@@ -67,13 +73,14 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 ```
 npm ci && npx playwright install chromium   # once
 npm run serve              # http://localhost:8743
-npm test                   # logic suites: all games + "you + 3 bots", then the coin SQL in PGlite (≈1 min)
-npm run test:sql           # just the coin/shop migration, run in an embedded Postgres
+npm test                   # logic suites: all games + "you + 3 bots", then the coin + ritual SQL in PGlite (≈1 min)
+npm run test:sql           # just the coin/shop + ritual_draw migrations, run in an embedded Postgres
 npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Diary, through the real UI (≈5 min)
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
 node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]   # Side Quest's 3D wizard: loads, fits, every mode + the nod
+node test/clown3d_shots.mjs <dir> [--only=juggle,toss,open,peek,bow]   # the Ritual's 3D clown: loads, budget, bones, wink texture, every beat
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
 node test/charturn_shots.mjs <dir> [--hair=none,f2,m1] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
 node test/combos_shots.mjs <dir>       # every top × bottom (idle + walk) and hairstyle × top, for clipping
@@ -177,9 +184,13 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
 - Mask Off's cards are exactly the supplied (draft) list, escalating
   level 1 → 2 → 3 over a game (`levelFor()`). Answers are spoken out loud,
   never typed, sent or stored.
-- Humiliation Ritual: only the performer's phone shows the prompt, and only
-  the performer decides which guess is right; the close-guess matcher is a
-  hint, never a verdict.
+- Humiliation Ritual: the prompt only ever reaches the performer's phone. That
+  phone draws it (`ritual_draw`, server-side; offline: from the pool on that
+  phone); the host's game state never carries a prompt or a prompt id, and
+  the answer is revealed only after the turn, sent by the performer's phone.
+  Only the performer decides which guess is right; the close-guess matcher
+  runs on the performer's phone and is a hint, never a verdict. New or edited
+  prompts need a migration that upserts them into `ritual_prompts` too.
 
 ### Correctness
 - Any user-provided text rendered with `innerHTML` goes through `esc()`.

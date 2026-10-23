@@ -13,6 +13,8 @@
 //             localStorage so every tab of the context shares one "server"
 //             (the real SQL is tested by test/coins_sql.mjs); ?coins=N starts
 //             you with N coins
+//   ritual    ritual_draw (migrations/015): a prompt for the caller only, no
+//             repeats per room on this phone (the real SQL: test/coins_sql.mjs)
 import { StubChannel } from "./bcchannel.js";
 
 const q = new URLSearchParams(location.search);
@@ -160,7 +162,23 @@ class Query {
   }
 }
 
+const RITUAL_POOL = await fetch(new URL("../../web/data/ritual_prompts.json", import.meta.url)).then(r => r.json()).then(j => j.prompts).catch(() => []);
+const ritualDraws = new Map();     // `${room}|${turn}` -> prompt (this phone's draws only)
 const RPC = {
+  ritual_draw: ({ p_room, p_turn, p_level }) => {
+    const lv = ["mild", "spicy", "unhinged"].indexOf(p_level);
+    if (lv < 0) throw new Error("bad level");
+    const key = `${p_room}|${p_turn}`;
+    if (!ritualDraws.has(key)) {
+      const used = new Set([...ritualDraws].filter(([k]) => k.startsWith(`${p_room}|`)).map(([, p]) => p.id));
+      const ok = RITUAL_POOL.filter(p => ["mild", "spicy", "unhinged"].indexOf(p.level) <= lv);
+      const fresh = ok.filter(p => !used.has(p.id));
+      const pool = fresh.length ? fresh : ok;
+      ritualDraws.set(key, pool[Math.floor(Math.random() * pool.length)]);
+    }
+    const p = ritualDraws.get(key);
+    return p ? { id: p.id, text: p.text } : null;
+  },
   get_world: () => [
     ...strangers.map(s => ({ ...s, is_self: false })),
     ...db.presence.filter(p => p.user_id === myId).map(p => ({ user_id: myId, handle, avatar: myAvatar, zone_id: p.zone_id, is_self: true })),

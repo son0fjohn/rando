@@ -4,7 +4,7 @@ import { installClock, seatTable } from "/test/harness.js";
 import { SECRET_DIARY, diaryPool, maxLevelFor, capAt, yesnoTarget, countLine, shelfPages } from "/web/hpgames/secretdiary.js";
 import * as CONFIG from "/web/hpconfig.js";
 import { promptLog } from "/web/hplog.js";
-import { HUMILIATION_RITUAL, judge, ritualPool, ritualPromptsFor, ritualPoints } from "/web/hpgames/ritual.js";
+import { HUMILIATION_RITUAL, judge, ritualPool, ritualPromptsFor, ritualPoints, PICK_MS, OPEN_MS } from "/web/hpgames/ritual.js";
 import { SIDE_QUEST, questPool, questsFor, questPoints } from "/web/hpgames/sidequest.js";
 import { MASK_OFF, maskPool, levelFor, maskVerdict, maskPoints } from "/web/hpgames/maskoff.js";
 import { fairPick, chances } from "/web/fairpick.js";
@@ -41,6 +41,8 @@ function runOut(t, maxMs = 25 * 60 * 1000) {
   return t.allEnded();
 }
 // advance until the host state reaches `phase` (or give up)
+// let promises settle (the faked clock doesn't run them; the page must yield)
+const settle = async () => { for (let i = 0; i < 20; i++) await null; };
 function waitPhase(t, phase, maxMs = 5 * 60 * 1000) {
   let spent = 0;
   while (t.s?.phase !== phase && spent < maxMs) { adv(STEP); spent += STEP; }
@@ -637,20 +639,34 @@ group("Humiliation Ritual — the close-guess hint (the performer still decides)
 
 group("Humiliation Ritual (4 players)");
 {
-  const t = seatTable(HUMILIATION_RITUAL, 4);
+  // the server stand-in: who asked, for which turn, and what it dealt them
+  const asked = [];
+  const SECRET = HR_POOL.find(p => p.text === "Kid throwing a tantrum");
+  const t = seatTable(HUMILIATION_RITUAL, 4, { drawPrompt: async (args, me) => { asked.push({ ...args, me }); return { id: SECRET.id, text: SECRET.text }; } });
+  const leaks = () => [...Object.keys(t.s.players)].some(id => { const j = JSON.stringify(t.stateOf(id) ?? {}); return HR_POOL.some(p => j.includes(p.text) || j.includes(p.id)); });
   adv(500);
   ok(t.s.turns === 4, "default: everyone performs once (4 turns)");
+  ok(t.s.phase === "pick", "each turn opens with the clown's pick");
   const r0 = t.s.turn, perf = r0.performer;
-  ok(!!perf && r0.prompt && HR_POOL.some(p => p.text === r0.prompt), "a performer is picked and dealt a prompt from the pool");
-  ok(waitPhase(t, "act"), "prep rolls into acting");
+  ok(!!perf && /^[0-9a-f]{24}$/.test(r0.key), "a performer is picked, and the turn gets a random key");
+  ok(Array.isArray(r0.cast) && r0.cast.length === 4 && r0.cast.includes(perf), "the clown juggles everyone's capsules (up to 5), the performer's among them");
+  ok(!("prompt" in r0) && !r0.answer && !leaks(), "the synced state carries no prompt and no prompt id, on any phone");
+  for (let i = 0; i < 6; i++) { adv(400); await settle(); }
+  ok(asked.length === 1 && asked[0].me === perf && asked[0].turn === r0.key && asked[0].room === "party-TEST" && asked[0].level === "spicy",
+    `only the performer's phone asks the server for the prompt (${asked.map(a => a.me).join(",")} for ${asked[0]?.level})`);
+  ok(waitPhase(t, "open") && !leaks(), "the clown opens the capsule; still nothing in the state");
+  ok(waitPhase(t, "act"), "then the acting starts");
   const [g1, g2] = Object.keys(t.s.players).filter(x => x !== perf);
   t.input(g1, "guess", { text: "completely wrong" });
-  t.input(g2, "guess", { text: r0.prompt });
+  t.input(g2, "guess", { text: "a toddler having a meltdown" });
   t.input(perf, "guess", { text: "me me me" });
+  t.input(perf, "answer", { key: r0.key, text: "spoiler" });
+  t.input(g1, "answer", { key: r0.key, text: "spoiler" });
   adv(600);
   ok(t.s.turn.guesses.length === 2, "guesses reach the performer's feed; the performer can't guess");
-  ok(t.s.turn.guesses.find(g => g.by === g2).hint === "match" && t.s.turn.guesses.find(g => g.by === g1).hint === "wrong", "each guess carries its hint");
-  ok(t.s.phase === "act" && !t.s.turn.won, "a right guess does NOT end the turn by itself — the performer decides");
+  ok(t.s.turn.guesses.every(g => !("hint" in g)), "the host adds no hints (it doesn't know the answer); the performer's phone works them out");
+  ok(!t.s.turn.answer && !leaks(), "nobody can reveal the answer mid-turn, not even the performer");
+  ok(t.s.phase === "act" && !t.s.turn.won, "a guess does NOT end the turn by itself — the performer decides");
   const right = t.s.turn.guesses.find(g => g.by === g2);
   t.input(g1, "pick", { gid: right.gid });
   adv(400);
@@ -659,9 +675,16 @@ group("Humiliation Ritual (4 players)");
   adv(2000);
   ok(t.s.turn.won?.by === g2 && t.s.phase === "result", "the performer taps the right guess and the turn ends");
   ok(t.s.players[g2].score > t.s.players[perf].score && t.s.players[perf].score > 0 && t.s.players[g1].score === 0, `the guesser scores more than the performer (${t.s.players[g2].score} vs ${t.s.players[perf].score}); nobody else scores`);
+  for (let i = 0; i < 5; i++) adv(400);
+  ok(t.s.turn.answer === SECRET.text, `once it's over, the performer's phone reveals it to everyone ("${t.s.turn.answer}")`);
+  t.input(g1, "answer", { key: r0.key, text: "fake" });
+  adv(400);
+  ok(t.s.turn.answer === SECRET.text, "and only the performer's answer counts");
 
   // nobody gets it: time runs out, nobody scores, the answer is shown
   ok(waitPhase(t, "act"), "the next performer is up");
+  await settle();
+  ok(asked.length === 2 && asked[1].me === t.s.turn.performer && asked[1].turn === t.s.turn.key && asked[1].turn !== r0.key, "the next performer's phone asks for theirs, for the new turn");
   const before = Object.fromEntries(Object.values(t.s.players).map(p => [p.id, p.score]));
   ok(waitPhase(t, "result", RITUAL.ACT_MS + 5000), "time runs out");
   ok(!t.s.turn.won && Object.values(t.s.players).every(p => p.score === before[p.id]), "nobody scores when time runs out");
@@ -669,13 +692,20 @@ group("Humiliation Ritual (4 players)");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 {
+  // no server hook (the offline pages): the performer's own phone draws it
   const t = seatTable(HUMILIATION_RITUAL, 3, { options: { rounds: "2" } });
   adv(500);
   ok(t.s.turns === 6, "the host can set everyone twice (3 players: 6 turns)");
-  ok(waitPhase(t, "act"), "into the act");
-  t.drop(t.s.turn.performer);
+  await settle();
+  ok(waitPhase(t, "result", PICK_MS + OPEN_MS + RITUAL.ACT_MS + 5000), "with no server, a turn still plays out");
+  for (let i = 0; i < 5; i++) adv(400);
+  ok(HR_POOL.some(p => p.text === t.s.turn.answer), `…the performer's phone drew from the pool and reveals it at the end ("${t.s.turn.answer}")`);
+  ok(waitPhase(t, "act"), "into the next act");
+  const gone = t.s.turn.performer;
+  t.drop(gone);
   adv(4000);
   ok(t.s.turn.skipped === true || t.s.phase !== "act", "a performer who leaves ends their turn, nobody waits");
+  ok(!t.s.turn.answer, "…and their prompt stays a secret");
   ok(runOut(t), "and the game still finishes");
 }
 

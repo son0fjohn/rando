@@ -105,7 +105,10 @@ export const party = {
   //   snapped on the phone; a public party's beacon goes there
   //   coins: { reportGame(g), confirmGame(g), partyCoins(set) } — the
   //   server-side coin ledger (migrations/013); null = no coins here
-  hooks: { isFriend: null, report: null, beaconZone: null, coins: null },
+  //   ritualDraw({ room, turn, level }) -> { id, text }: Humiliation Ritual's
+  //   prompt, drawn on the server and sent to the calling (performer's) phone
+  //   only (migrations/015); null = the performer's phone draws it itself
+  hooks: { isFriend: null, report: null, beaconZone: null, coins: null, ritualDraw: null },
   _view: null,
   _inited: false,
 
@@ -356,6 +359,7 @@ export const party = {
       room: c.room, me: this.me, humans, seed: m.seed, isHost: () => c.room.isHost, party: c.meta,
       options: { ...defaultsFor(g), ...(m.options ?? {}) },
       session: c.session,
+      drawPrompt: this.hooks.ritualDraw,
       onEnd: results => this._onGameEnd(c, results),
       // host, from a game's results: run it again straight away (a new batch,
       // and anyone who joined meanwhile is in)

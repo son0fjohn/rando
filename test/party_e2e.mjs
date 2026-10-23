@@ -240,32 +240,49 @@ try {
   ok(await until(C, () => !window.party.current.launched && document.getElementById("game-layer").hidden), "…on every phone");
   ok(await until(B, () => /Game 2 of 3/.test(document.getElementById("pt-next")?.textContent ?? "")), "an ended game isn't one of the 3: still Game 2 of 3");
 
-  head("Humiliation Ritual — charades: guesses feed the performer, who taps the right one");
+  head("Humiliation Ritual — the clown picks, only the performer gets the prompt, guesses feed the performer");
   await startGame(A, "ritual");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");
+  ok(await until(B, () => !!document.querySelector("#hr-show .hr-caps") && document.querySelectorAll("#hr-caps .hr-cap").length === 3, null, 8000), "the clown's show: everyone's capsule is up (3 players)");
+  const upLine = await C.waitForFunction(() => { const t = document.querySelector("#hr-dlg .y-dlg")?.textContent ?? ""; return /you're up!/.test(t) && t; }, null, { timeout: 12000 }).then(h => h.jsonValue()).catch(() => "");
+  ok(!!upLine, "the clown holds one up: \"[Name], you're up!\"");
+  const upName = upLine.replace(/, you're up!.*/, "").trim();
+  // the opening: a slip with the prompt on the performer's phone, "shhh" on the others
   let performer = null;
-  for (let i = 0; i < 10 && !performer; i++) {
-    for (const pg of [A, B, C]) if (await pg.locator("#hr-feed").count()) { performer = pg; break; }
-    if (!performer) await sleep(900);
+  for (let i = 0; i < 12 && !performer; i++) {
+    for (const pg of [A, B, C]) if (await pg.locator(".hr-slip").count()) { performer = pg; break; }
+    if (!performer) await sleep(500);
   }
-  ok(!!performer, "one phone becomes the performer, with the ACT IT OUT card");
+  ok(!!performer, "the capsule opens: one phone gets the slip");
   if (performer) {
     const guessers = [A, B, C].filter(pg => pg !== performer);
+    ok(await until(performer, () => /ACT IT OUT/.test(document.querySelector(".hr-slip .hr-kick")?.textContent ?? "") && (document.querySelector("#hr-slip-p")?.textContent ?? "").length > 1, null, 6000), "…ACT IT OUT, and the prompt");
+    const slip = await text(performer, "#hr-slip-p");
+    const perfName = new URL(performer.url()).searchParams.get("me");
+    ok(perfName === upName, `the performer is the one the clown named (${upName})`);
+    ok((await Promise.all(guessers.map(pg => pg.locator(".hr-slip, .hr-card").count()))).every(n => n === 0) && (await Promise.all(guessers.map(pg => pg.locator(".hr-shh").count()))).every(n => n === 1),
+      "everyone else gets the clown's \"shhh\", no slip");
+    await shot(performer, "08a-ritual-slip");
+    await shot(guessers[0], "08b-ritual-shh");
+    // the prompt never reaches another phone: not in the synced game state, not in the page
+    const leak = await Promise.all(guessers.map(pg => pg.evaluate(t => JSON.stringify(window.__game?.s ?? {}).includes(t) || document.body.innerText.includes(t), slip)));
+    ok(leak.every(x => !x), "the prompt is in no other phone's game state or page");
+    ok(await until(performer, () => !!document.querySelector("#hr-feed"), null, 8000), "then the acting: the performer gets the feed");
     const prompt = await text(performer, ".hr-prompt");
-    ok(/ACT IT OUT/.test(await text(performer, ".hr-kick")) && prompt.length > 1, `only the performer sees the prompt (${prompt})`);
+    ok(/ACT IT OUT/.test(await text(performer, ".hr-kick")) && prompt === slip, `only the performer sees the prompt (${prompt})`);
     ok((await Promise.all(guessers.map(pg => pg.locator(".hr-card").count()))).every(n => n === 0), "the guessers don't");
-    ok(/Guess what they're doing/.test(await stageTitle(guessers[0])), "the guessers see 'Guess what they're doing!' and a text box");
+    ok(await until(guessers[0], () => /Guess what they're doing/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "the guessers see 'Guess what they're doing!' and a text box");
     await guessers[0].fill("#gp-in", "a broken toaster");
     await guessers[0].click("#game-panel .gp-form button");
     await guessers[1].fill("#gp-in", prompt.toLowerCase());
     await guessers[1].click("#game-panel .gp-form button");
     ok(await until(performer, () => document.querySelectorAll("#hr-feed .hr-g").length === 2), "both guesses land in the performer's live feed");
-    ok(await performer.locator("#hr-feed .hr-g.match").count() === 1, "the right one is highlighted for the performer");
+    ok(await performer.locator("#hr-feed .hr-g.match").count() === 1, "the right one is highlighted for the performer (worked out on the performer's phone)");
     ok(!(await guessers[0].locator("#gp-in").isDisabled()), "you can keep guessing after one");
     await shot(performer, "08-ritual-performer");
     await shot(guessers[0], "09-ritual-guesser");
     await performer.locator("#hr-feed .hr-g.match").click();
-    ok(await until(guessers[0], () => /got it/.test(document.querySelector("#game-panel h2")?.textContent ?? "") && !!document.querySelector(".hr-reveal")), "the performer's tap ends the turn; the answer is revealed big");
+    ok(await until(guessers[0], t => /got it/.test(document.querySelector("#game-panel h2")?.textContent ?? "") && document.querySelector(".hr-reveal b")?.textContent === t, prompt), "the performer's tap ends the turn; the performer's phone reveals the answer, big");
   }
   ok(await A.evaluate(() => !document.getElementById("party-panel").hidden && document.getElementById("party-panel").classList.contains("pt-behind")), "the ritual is played over the party room (dimmed), not the map");
   ok(await skipUntil(A, A, t => /Humiliation Ritual/.test(t), 25), "the ritual plays through to results");
