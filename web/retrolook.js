@@ -374,11 +374,21 @@ export function mirrorDom(stage, root, { selector = "img", distance = 3, materia
   camera.add(layer);
   const cards = new Map(), texOf = new Map();
   const geo = new THREE.PlaneGeometry(1, 1);
+  // a detached copy of the image: three sizes a texture from img.width, which
+  // on a laid-out <img> is its CSS width, not the picture's
   const tex = img => {
     const src = img.currentSrc || img.src;
     if (!src || !img.complete || !img.naturalWidth) return null;
-    if (!texOf.has(src)) { const t = new THREE.Texture(img); t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; texOf.set(src, t); }
-    return texOf.get(src);
+    if (!texOf.has(src)) {
+      const t = new THREE.Texture();
+      t.colorSpace = THREE.SRGBColorSpace;
+      texOf.set(src, t);
+      const copy = new Image();
+      copy.onload = () => { t.image = copy; t.needsUpdate = true; t.ready = true; };
+      copy.src = src;
+    }
+    const t = texOf.get(src);
+    return t.ready ? t : null;
   };
   function chain(el) {
     // opacity, rotation and scale from the element up to the root
