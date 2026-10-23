@@ -134,13 +134,15 @@ export async function retroStage(host, mood = {}) {
   function resize() {
     const r = host.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    W = Math.max(64, Math.round(Math.min(r.width * scale, M.maxW * (tier === "low" ? 0.8 : 1))));
-    H = Math.max(64, Math.round(W * r.height / r.width));
+    const w = Math.max(64, Math.round(Math.min(r.width * scale, M.maxW * (tier === "low" ? 0.8 : 1))));
+    const h = Math.max(64, Math.round(w * r.height / r.width));
+    camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
+    if (w === W && h === H) return;          // setting a canvas's size clears it: only on a real change
+    W = w; H = h;
     renderer.setSize(W, H, false);
     rtScene.setSize(W, H);
     rtA.setSize(W >> 1, H >> 1); rtB.setSize(W >> 1, H >> 1);
     finalM.uniforms.res.value.set(W, H);
-    camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
   }
   const ro = new ResizeObserver(resize); ro.observe(host);
   resize();

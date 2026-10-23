@@ -1252,7 +1252,6 @@ body.hp-setup-wait #game-layer { display: none !important; }
    behind the UI; once it's drawing, the painted parlour and its 2D wizard
    step aside */
 .sq-3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-.sq-3d .retro-canvas { opacity: 0; animation: sq-3d-in .6s ease-out .05s forwards; }
-@keyframes sq-3d-in { to { opacity: 1 } }
-.sq-room.r3d { background-image: none !important; background-color: #0d0918; }
-.sq-room.r3d .sq-group { visibility: hidden; }
+.sq-3d .retro-canvas { transition: opacity .6s ease-out; }
+.sq-room .sq-group { transition: opacity .6s ease-out; }
+.sq-room.r3d .sq-group { opacity: 0; pointer-events: none; }

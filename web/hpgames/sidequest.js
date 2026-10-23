@@ -129,7 +129,16 @@ export const SIDE_QUEST = {
     function mount3d() {
       const el = $("sq-3d");
       if (!NOOK_ON || !el) return;
-      loadNook().then(n => { const at = $("sq-3d"); if (!n || !at) return; n.attach(at); room$()?.classList.add("r3d"); n.setPose(lastPose, { bump: false }); n.orb(lastOrb); if (lastFace) n.face(lastFace); });
+      loadNook().then(n => {
+        const at = $("sq-3d");
+        if (!n || !at) return;
+        // the first time: cross-fade from the painted parlour into the nook
+        const cv = n.stage.canvas;
+        cv.style.opacity = "0";
+        n.attach(at);
+        n.setPose(lastPose, { bump: false }); n.orb(lastOrb); if (lastFace) n.face(lastFace);
+        requestAnimationFrame(() => requestAnimationFrame(() => { cv.style.opacity = ""; room$()?.classList.add("r3d"); }));
+      });
     }
     let lastPose = "wizard_idle", lastOrb = "idle", lastFace = null;
     trash.add(() => { myVote = null; looks.clear(); nookP?.then(n => n?.dispose()); nook = null; nookP = null; });
