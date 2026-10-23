@@ -75,7 +75,7 @@ async function phone(name, qs = "") {
 const shot = async (pg, name) => { if (SHOTS) await pg.screenshot({ path: join(SHOTS, `${name}.png`) }); };
 const text = (pg, sel) => pg.locator(sel).first().innerText().catch(() => "");
 const until = async (pg, fn, arg, ms = 15000) => pg.waitForFunction(fn, arg, { timeout: ms }).then(() => true).catch(() => false);
-const stageTitle = pg => text(pg, "#game-panel .stage h2, #game-panel .hp-res-title");
+const stageTitle = pg => text(pg, "#game-panel .stage h2, #game-panel .hp-res-title, #game-panel .np-title");
 // the host starts a game from the votes list
 const startGame = async (pg, id) => { await pg.click("#pt-vote"); await pg.click(`[data-game="${id}"] .pv-t > b`); };   // the title: the row middle can be an option chip
 // the host taps "skip ahead" until `done(title)` holds on `watch`
@@ -244,7 +244,7 @@ try {
   await startGame(A, "ritual");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");
   ok(await until(B, () => !!document.querySelector("#hr-show .hr-caps") && document.querySelectorAll("#hr-caps .hr-cap").length === 3, null, 8000), "the clown's show: everyone's capsule is up (3 players)");
-  const upLine = await C.waitForFunction(() => { const t = document.querySelector("#hr-dlg .y-dlg")?.textContent ?? ""; return /you're up!/.test(t) && t; }, null, { timeout: 12000 }).then(h => h.jsonValue()).catch(() => "");
+  const upLine = await C.waitForFunction(() => { const t = document.querySelector(".hr-room #np-bubble.on")?.textContent ?? ""; return /you're up!/.test(t) && t; }, null, { timeout: 12000 }).then(h => h.jsonValue()).catch(() => "");
   ok(!!upLine, "the clown holds one up: \"[Name], you're up!\"");
   const upName = upLine.replace(/, you're up!.*/, "").trim();
   // the opening: a slip with the prompt on the performer's phone, "shhh" on the others

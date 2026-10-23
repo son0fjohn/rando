@@ -22,13 +22,13 @@ import { chromium } from "playwright";
 import { serve } from "./appserve.mjs";
 
 const args = process.argv.slice(2);
-const OUT = args.find(a => !a.startsWith("--") && !["sidequest", "ritual", "maskoff", "party"].includes(a));
+const OUT = args.find(a => !a.startsWith("--") && !["sidequest", "ritual", "maskoff", "artgallery", "party"].includes(a));
 if (!OUT) { console.error("usage: node test/games_rec.mjs <dir> [sidequest|ritual|party ...]"); process.exit(2); }
-const WIZARD = process.env.WIZARD ? `&wizard=${process.env.WIZARD}` : "";   // WIZARD=dealer: the 3D wizard on the dealer's rig
-const SCENES = args.filter(a => ["sidequest", "ritual", "maskoff", "party"].includes(a));
-if (!SCENES.length) SCENES.push("sidequest", "ritual", "maskoff", "party");
+const SCENES = args.filter(a => ["sidequest", "ritual", "maskoff", "artgallery", "party"].includes(a));
+if (!SCENES.length) SCENES.push("sidequest", "ritual", "maskoff", "artgallery", "party");
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve({ realAvatars: true });
+const ROOT = new URL("..", import.meta.url).pathname;
 const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const browser = await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, args: ["--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -108,9 +108,9 @@ async function phones(names, { coins = false, dpr = 2, qs: extra = {} } = {}) {
   const open = async (name, qs = "") => {
     const pg = await newWindow(ctx);
     pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
-    pg.on("console", m => { if (/\[wizard3d\]/.test(m.text())) log(`    [${name}] ${m.text()}`); });
+    pg.on("console", m => { if (/\[charrender\]/.test(m.text())) log(`    [${name}] ${m.text()}`); });
     if (process.env.DEBUG_REC) pg.on("console", m => { if (/\[party\]|coin/i.test(m.text())) log(`    [${name}] ${m.text()}`); });
-    await pg.goto(`${base}/test/hpparty.html?me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}${coins ? "&coinhook=1" : ""}${WIZARD}${qs}`);
+    await pg.goto(`${base}/test/hpparty.html?me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}${coins ? "&coinhook=1" : ""}${qs}`);
     await pg.waitForFunction(() => window.__ready);
     pg.label = name;
     return pg;
@@ -143,6 +143,9 @@ const backInRoom = pg => until(pg, () => !document.getElementById("party-panel")
 async function sidequest() {
   log("\nSide Quest");
   const P = await phones(["alice", "bob", "cy", "dee"]);
+  // the lobby renders everyone's 3D look while they hang out (charrender.js);
+  // four phones doing that in software GL on one CPU take a while
+  await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/charrender.js").then(m => m.warmLooks([])))));
   const casts = await Promise.all(P.list.map(screencast));
   const A = P.host;
   await sleep(1500);
@@ -164,10 +167,10 @@ async function sidequest() {
     const whoId = (await stateOn(A)).turn.who;
     const picked = P.list.find(pg => idOf(pg) === whoId);
     const other = P.list.find(pg => pg !== picked);
-    await until(other, () => !!document.querySelector("#sq-dlg .y-dlg.done"), null, 15000);
+    await until(other, () => { const b = document.querySelector(".sq-room #np-bubble.on"); return b && !b.querySelector(".np-rest")?.textContent; }, null, 15000);
     if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-1-player-reveal.png") }), await picked.screenshot({ path: join(OUT, "sidequest-2-player-reveal-chosen.png") });
     await phaseIs(A, "quest", 15000);
-    await until(other, () => !!document.querySelector("#sq-slot .sq-card"), null, 10000);
+    await until(other, () => !!document.querySelector("#sq-wall .sq-card"), null, 10000);
     await sleep(700);
     if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-3-quest-reveal.png") });
     await phaseIs(A, "do", 40000);
@@ -294,19 +297,15 @@ async function filmReveal(snap, name) {
 // ---------------------------------------------------------------- Humiliation Ritual
 async function ritual() {
   log("\nHumiliation Ritual");
-  // 1x pixels: three phones drawing the 3D clown in software GL on one CPU
-  // fall behind the game at 2x
-  // (and cy, filmed only if the clown picks cy, keeps the 2D capsules)
-  const P = await phones(["alice", "bob", "cy"], { dpr: 1, qs: { cy: "&clown=2d" } });
+  const P = await phones(["alice", "bob", "cy"]);
   const A = P.host;
   await sleep(1000);
-  // film every phone from the start: the clown's juggle, the mouth catch,
-  // the capsule with the name, the gacha open — then keep the performer's
-  // and one guesser's side by side
+  // film every phone from the start (the clown's pick, the capsule, the
+  // open), then keep the performer's and one guesser's side by side
   const all = new Map();
-  // load the clown on every phone first (three software-GL phones on one CPU
-  // load him slowly; a real phone takes a moment)
-  log(`  clown ready: ${(await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/clown3d.js").then(m => m.clownKit()).then(k => !!k))))).join(", ")}`);
+  // the lobby renders everyone's 3D look while they hang out (charrender.js)
+  await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/charrender.js").then(m => m.warmLooks([])))));
+  await sleep(6000);
   for (const pg of P.list) all.set(pg, await screencast(pg));
   await queue(A, "ritual");
   await until(A, () => !document.getElementById("game-layer").hidden, null, 20000);
@@ -314,7 +313,7 @@ async function ritual() {
   await phaseIs(A, "pick", 15000);
   const s = await stateOn(A);
   const perf = P.list.find(pg => idOf(pg) === s.turn.performer);
-  const [g1, g2] = P.list.filter(pg => pg !== perf);    // g1: alice or bob, drawing the 3D clown
+  const [g1, g2] = P.list.filter(pg => pg !== perf);
   log(`  performer: ${perf.label} (the state carries no prompt: ${!JSON.stringify(s).includes("prompt")})`);
   await phaseIs(A, "act", 20000);
   const prompt = await perf.locator(".hr-card .hr-prompt").textContent();
@@ -336,6 +335,47 @@ async function ritual() {
   await writeScene("ritual", [all.get(perf), all.get(g1)], { from });
   await all.get(g2).stop();
   log(`  ${r.won ? `got it: +${r.pts} guesser, +${r.perfPts} performer in ${r.secs}s; revealed "${r.answer}"` : "nobody got it"}`);
+  await P.ctx.close();
+}
+
+// ---------------------------------------------------------------- Art Gallery
+// the template the NPC scenes follow: one piece, from the cover to the
+// result, on a voter's phone and a writer's side by side
+async function artgallery() {
+  log("\nArt Gallery");
+  const P = await phones(["alice", "bob", "cy"]);
+  const A = P.host;
+  await sleep(1000);
+  const all = new Map();
+  for (const pg of P.list) all.set(pg, await screencast(pg));
+  await queue(A, "artgallery");
+  for (const [k, pg] of P.list.entries()) for (let i = 0; i < 3; i++) {
+    await until(pg, () => !!document.getElementById("ag-file"));
+    await pg.setInputFiles("#ag-file", join(ROOT, `web/games/captions/c${(k * 3 + i) % 8}.jpg`));
+    await sleep(400);
+  }
+  await phaseIs(A, "title", 30000);
+  for (const pg of P.list) for (let n = 0; n < 6; n++) {
+    await until(pg, () => /title this piece|titles locked|nothing to title/.test(document.querySelector("#game-panel h2")?.textContent ?? "") || !!document.querySelector(".ag-room"));
+    const t = await pg.locator("#game-panel h2").first().innerText().catch(() => "");
+    if (!/title this piece/.test(t)) break;
+    await until(pg, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
+    await pg.fill("#gp-in", ["a sad little sandwich", "my landlord at 3am", "the vibes were off", "museum of regret", "self portrait, monday", "do not perceive me"][(n + pg.label.length) % 6]);
+    await pg.click("#game-panel .gp-form button");
+    await until(pg, t => (document.querySelector("#game-panel h2")?.textContent ?? "") !== t, t, 5000);
+  }
+  await until(A, () => !!document.querySelector(".ag-room.covered"), null, 30000);
+  const from = Date.now() / 1000 - 0.2;
+  let voter = null;
+  for (let i = 0; i < 40 && !voter; i++) { for (const pg of P.list) if (await pg.locator(".ag-pl[data-v]").count() === 2) voter = pg; if (!voter) await sleep(250); }
+  const writer = P.list.find(pg => pg !== voter);
+  await sleep(2500);
+  if (voter) await voter.locator('.ag-pl[data-v="1"]').click().catch(() => {});
+  await until(A, () => document.querySelectorAll(".ag-room .ag-pl-n").length === 2, null, 30000);
+  await sleep(4500);
+  await writeScene("artgallery", [all.get(voter ?? P.list[1]), all.get(writer)], { from });
+  for (const [pg, c] of all) if (pg !== voter && pg !== writer) await c.stop();
+  log(`  one piece: the voter (${voter?.label}) and a writer (${writer.label})`);
   await P.ctx.close();
 }
 
@@ -406,7 +446,7 @@ async function partySet() {
 }
 
 for (const s of SCENES) {
-  try { await ({ sidequest, ritual, maskoff, party: partySet })[s](); }
+  try { await ({ sidequest, ritual, maskoff, artgallery, party: partySet })[s](); }
   catch (e) { errors.push(`${s}: ${e.message}`); console.log(`  ✗ ${s}: ${e.message}`); }
 }
 if (errors.length) console.log("page errors:\n" + errors.slice(0, 20).join("\n"));

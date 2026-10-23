@@ -1,12 +1,16 @@
 // Humiliation Ritual (3+) — charades, in public.
 //
-// The host is a 3D clown (clown3d.js). Each turn he juggles gacha capsules
-// with the players' faces on them, tosses one high, catches it in his mouth,
-// spits it into his hands and holds it up: "[Name], you're up!" (picked
-// random-but-fair, see fairpick.js). Then he twists it open. On the
-// performer's phone a slip unrolls out of it: ACT IT OUT, and the prompt. On
-// everyone else's he peeks inside, gasps, winks and goes "shhh", and the
-// guess box appears: type guesses, as many as you like, for 60 seconds.
+// The host is a clown on a circus stage, built like the Art Gallery
+// (npcscene.js): a painted backdrop, the clown as pose cutouts, props as
+// cutouts, the UI in the room. Each turn he picks the performer (random but
+// fair, see fairpick.js): he cranks a big gacha machine, the performer's
+// capsule (their own 3D head inside, charrender.js) pops out of the chute,
+// he catches it and holds it up: "[Name], you're up!". Then he cracks it
+// open. On the performer's phone the slip unrolls
+// out of it and flies up to become their ACT IT OUT card. On everyone
+// else's he peeks inside, winks and goes "shhh", the capsule stays shut,
+// and the guess box appears: type guesses, as many as you like, for 60
+// seconds. The performer's 3D character takes the stage while they act.
 //
 // The prompt only ever reaches the performer's phone. That phone asks the
 // server for it (ritual_draw, migrations/015_ritual_prompts.sql) when its
@@ -31,8 +35,8 @@ import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
 import { RITUAL } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash } from "./../hpkit.js";
-import { typeDialog } from "./../retro.js";
-import { spriteFace } from "./../partyboard.js";
+import { at, posesHtml, setPose, Beats, arcTo, flyFrom, confetti, say, hush } from "./../npcscene.js";
+import { renderLook } from "./../charrender.js";
 import { fairPick } from "./../fairpick.js";
 import { maxLevelFor } from "./secretdiary.js";
 
@@ -40,11 +44,12 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
 
-// the clown's pick: juggle, toss one high, mouth catch, spit, hold it up
-export const PICK_MS = 7800;
-export const TOSS_AT = 3200;   // the chosen capsule goes up
-export const SHOW_AT = 5600;   // ...and is held up to the camera: "[Name], you're up!"
-// he twists it open: the slip for the performer, peek/wink/shhh for the rest
+// the clown's pick: he cranks the machine, the chosen capsule comes out,
+// he catches it and holds it up to the camera
+export const PICK_MS = 7000;
+export const TOSS_AT = 2300;   // the chosen capsule pops out of the chute
+export const SHOW_AT = 3600;   // ...and is held up to the camera: "[Name], you're up!"
+// he cracks it open: the slip for the performer, peek/wink/shhh for the rest
 export const OPEN_MS = 3800;
 const ACT_MS = RITUAL.ACT_MS;
 const CAST_MAX = 5;          // capsules in the air at once
@@ -138,24 +143,27 @@ const turnKey = () => {
   return [...b].map(x => x.toString(16).padStart(2, "0")).join("");
 };
 
-// the clown, lazily: a failure here never stops the game (the 2D capsules stay)
-let clownP = null;
-const clownKit = () => clownP ??= import("./../clown3d.js").then(m => m.clownKit()).catch(e => { console.warn("[ritual] no 3D clown:", e?.message ?? e); return null; });
-
-// a gacha capsule in HTML: the face and the name (the 2D fallback, and the
-// big one held up when there's no 3D)
-const capHue = id => { let h = 7; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
-function capsuleEl(p, cls = "") {
-  const el = document.createElement("div");
-  el.className = `hr-cap ${cls}`;
-  el.style.setProperty("--cap-h", capHue(p.id));
-  el.innerHTML = `<i class="hr-cap-top"></i><i class="hr-cap-bot"></i><b class="hr-cap-name"></b>`;
-  el.querySelector(".hr-cap-name").textContent = p.handle ?? "?";
-  const f = spriteFace(p.avatar ?? {}, 2);
-  f.classList.add("hr-cap-face");
-  el.querySelector(".hr-cap-top").after(f);
-  return el;
-}
+// ---------------------------------------------------------------- the stage
+// in the units of the NPC group (760 x 900): the clown's pose cutouts are
+// 600x800 canvases standing on the floor line (y 900); the gacha machine
+// stands on its drum to his right-hand side (screen left), its dial right
+// under his hand in the "twist" pose. Every landmark below was measured on
+// the pose cutouts (pose units, + the clown's offset).
+const ART = "games/ritual/";
+const G = { w: 760, h: 900 };
+const CX = 160, CY = 100;                                   // the clown's canvas in the group
+const P = (x, y) => [x + CX, y + CY];
+const POSES = ["clown_idle", "clown_twist", "clown_catch", "clown_hold", "clown_open", "clown_peek", "clown_shh"];
+const CAP = [192, 221];                                     // a capsule, as he holds it (capsule.webp at .457)
+const HOLD = P(300, 371);                                   // its centre in the "hold" pose
+const CATCH = P(294, 446);                                  // resting in his cupped hands in "catch"
+const CUP = [200 + CX, 328 + CY, 202, 124];                 // the open cup in "open"
+const LID = P(301, 273);                                    // the lid's centre, still on the cup
+const DIAL = [140, 416, 88, 88], CHUTE = [184, 596];
+// the players' capsules in the machine's globe, front row (centres)
+const GLOBE = [[92, 316], [143, 339], [195, 316], [246, 339], [292, 313]];
+const capHtml = (id, cls, style) => `<div class="hr-cap ${cls}" data-id="${esc(id)}" style="${style}"><img class="hr-cap-base" src="${ART}capsule.webp" alt=""><img class="hr-cap-head" alt=""><img class="hr-cap-gloss" src="${ART}capsule_top.webp" alt=""></div>`;
+const box = ([x, y], [w, h]) => at(G, x - w / 2, y - h / 2, w, h);
 
 export const HUMILIATION_RITUAL = {
   id: "ritual", title: "Humiliation Ritual",
@@ -182,7 +190,8 @@ export const HUMILIATION_RITUAL = {
     const meta = ctx.party ?? {};
     const PROMPTS = ritualPromptsFor(POOL, meta);
     const PER = Math.max(1, Math.min(3, +(ctx.options?.rounds ?? 1) || 1));
-    let lastHud = 0, mine = [], beatTok = 0, dlg = null;
+    let lastHud = 0, mine = [], sceneTi = null, uiKey = null;
+    const beats = new Beats(), looks = new Map();
     // what only this phone knows: the prompt it drew for its own turn(s)
     const secrets = new Map();      // turn key -> { id, text } | null while drawing
     const drawnHere = new Set();    // prompt ids this phone drew (offline draws avoid repeats)
@@ -190,7 +199,7 @@ export const HUMILIATION_RITUAL = {
     // the host's phone deals the bots' prompts itself (bots only exist in the
     // offline demo); kept in memory, never in the synced state
     const botSecrets = new Map();
-    trash.add(() => { mine = []; secrets.clear(); botSecrets.clear(); beatTok++; dlg?.close(); dlg = null; clownP?.then(k => k?.detach()); });
+    trash.add(() => { mine = []; secrets.clear(); botSecrets.clear(); looks.clear(); });
 
     // the performer's own phone draws the prompt: from the server when the
     // party has one (only this phone is sent it), else from the pool here
@@ -211,8 +220,6 @@ export const HUMILIATION_RITUAL = {
       }
       return secrets.get(r.key);
     }
-
-    clownKit();     // load the clown while the first pick gets going
 
     // ui.prompt locks its input after one submit — and it does so AFTER
     // calling our onSubmit, so this has to run on the next tick. This game
@@ -246,7 +253,7 @@ export const HUMILIATION_RITUAL = {
         s.players = {};
         for (const h of ctx.humans) s.players[h.id] = seat(h.id, h.handle, false);
         for (const b of makeBots(BOTS_N, game.rng, new Set(Object.keys(s.players))))
-          s.players[b.id] = seat(b.id, b.handle, true);
+          s.players[b.id] = seat(b.id, b.handle, true, b.avatar);
         s.turns = Object.keys(s.players).length * PER;
         s.ti = 0; s.weights = {}; s.turn = null;
         rounds.enter(s, "pick");
@@ -308,12 +315,13 @@ export const HUMILIATION_RITUAL = {
 
     // tests: the current turn's prompt, if THIS phone knows it (its own, or a bot's it dealt)
     game.knownPrompt = () => { const r = turn(game.s ?? {}); return r ? (secrets.get(r.key) ?? botSecrets.get(r.key))?.text ?? null : null; };
-    const seat = (id, handle, isBot) => ({ id, handle, isBot, score: 0, gone: false });
+    const seat = (id, handle, isBot, avatar = null) => ({ id, handle, isBot, score: 0, gone: false, ...(isBot && avatar ? { avatar } : {}) });
     const BOT_NOISE = ["a horse?", "driving", "cooking", "swimming", "falling over", "a baby", "waiting for a bus", "crying", "eating soup", "a tree", "sneezing", "very confused", "boxing", "a chicken"];
     const botNoise = rng => BOT_NOISE[Math.floor(rng() * BOT_NOISE.length)];
 
-    // the next turn: a fair pick of the performer, and the capsules the clown
-    // juggles (up to 5 players, the performer among them). No prompt here.
+    // the next turn: a fair pick of the performer, and the capsules in the
+    // clown's gacha machine (up to 5 players, the performer among them). No
+    // prompt here.
     function deal(s) {
       const ids = active(s).map(x => x.id);
       const { id, weights } = fairPick(s.weights, ids, game.rng);
@@ -346,80 +354,179 @@ export const HUMILIATION_RITUAL = {
     }
 
     // ---- the clown's show (every phone plays it from the synced clock) ----
-    const person = (s, id) => ({ id, handle: s.players[id]?.handle ?? "?", avatar: ctx.humans.find(h => h.id === id)?.avatar ?? room.members?.find(m => m.id === id)?.avatar ?? {} });
-    const castOf = (s, r) => (r.cast ?? [r.performer]).map(id => person(s, id));
-    // the 3D clown's capsules cycle through everyone still here
-    const everyoneOf = (s, r) => { const ids = active(s).map(p => p.id); return [...(r.cast ?? []), ...ids.filter(id => !(r.cast ?? []).includes(id))].map(id => person(s, id)); };
-    // the beats of the clown's show run off the synced game clock (s.left),
-    // checked on every render: a stall on the host's phone (say, the 3D
-    // model loading) holds the show too, instead of running ahead of it
-    let beats = null;      // { key: turn:phase, fired: Set }
-    function beat(key, ms, elapsed, fn) {
-      const bk = `${game.s?.ti}:${game.s?.phase}`;
-      if (beats?.key !== bk) beats = { key: bk, fired: new Set() };
-      if (beats.fired.has(key) || elapsed < ms) return;
-      beats.fired.add(key);
-      fn(elapsed - ms > 600);
-    }
-    const kitAt = (name, elapsed, chosen) => clownP?.then(k => { if (k?.shown) k.sync(name, elapsed, { chosen }); });
-    function showPick(s, r, elapsed, built) {
-      const el = $("hr-show"), cast = castOf(s, r), who = cast.find(p => p.id === r.performer) ?? cast[0];
-      if (!el) return;
-      if (built) {
-        const tok = ++beatTok;
-        // 2D capsules (hidden once the 3D clown draws)
-        $("hr-caps").replaceChildren(...cast.map((p, i) => { const c = capsuleEl(p); c.style.setProperty("--i", i); c.style.setProperty("--n", cast.length); if (p.id === r.performer) c.classList.add("chosen"); return c; }));
-        el.className = "hr-show b-juggle";
-        clownKit().then(k => { if (k && tok === beatTok && el.isConnected) { k.attach(el); k.setCast(everyoneOf(s, r)); k.beat("juggle", 0, { chosen: who.id }); } });
-      }
-      if (elapsed < TOSS_AT) kitAt("juggle", elapsed, who.id);
-      else kitAt("toss", elapsed - TOSS_AT, who.id);
-      beat("toss", TOSS_AT, elapsed, late => {
-        el.className = "hr-show b-toss";
-        if (!late) { sfx.whoosh(); }
+    const avatarOf = (s, id) => s?.players?.[id]?.avatar ?? ctx.humans.find(h => h.id === id)?.avatar ?? room.members?.find(m => m.id === id)?.avatar ?? {};
+    // everyone's own 3D character, rendered once: heads for the capsules,
+    // the full body for the performer on stage
+    const lookOf = (s, id, frame = "head") => {
+      const k = `${frame}:${id}`;
+      if (!looks.has(k)) { looks.set(k, null); renderLook(avatarOf(s, id), { frame }).then(u => { if (looks.has(k)) { looks.set(k, u); paint(); } }); }
+      return looks.get(k);
+    };
+    function paint() {
+      const s = game.s;
+      if (!s) return;
+      document.querySelectorAll(".hr-room .hr-cap[data-id]").forEach(c => {
+        const u = lookOf(s, c.dataset.id), im = c.querySelector(".hr-cap-head");
+        if (u && im && im.getAttribute("src") !== u) im.src = u;
       });
-      beat("gulp", TOSS_AT + 1100, elapsed, late => { if (!late) sfx.gulp(); });
-      beat("show", SHOW_AT, elapsed, late => {
-        el.className = "hr-show b-present";
-        const host = $("hr-dlg");
-        if (host && !dlg) dlg = typeDialog(host, { name: "CLOWN", text: `${who.handle}, you're up!`, blip: () => sfx.blip(), sticky: true, cls: "hr-dlg" });
-        if (late) dlg?.skip();
-        else { sfx.chime(); if (who.id === ctx.me.id) buzz([60, 40, 120]); }
+      const st = $("hr-star");
+      if (st?.dataset.id) { const u = lookOf(s, st.dataset.id, "full"); if (u && st.getAttribute("src") !== u) st.src = u; }
+    }
+
+    function sceneHtml(s, r) {
+      const cast = r.cast ?? [r.performer];
+      const caps = cast.map((id, i) => capHtml(id, `in-globe ${id === r.performer ? "chosen" : ""}`, `${box(GLOBE[i % GLOBE.length], CAP)};--s:.3`)).join("");
+      return `<div class="np-room hr-room" style="background-image:url(${ART}stage.jpg)">
+        <div class="np-pill" id="np-pill"></div>
+        <h2 class="np-title" id="np-title"></h2>
+        <div class="np-group hr-group" id="hr-show">
+          <img class="np-prop hr-pedestal" src="${ART}pedestal.webp" alt="" style="${at(G, 0, 671, 371, 221)}">
+          <img class="np-prop hr-machine" src="${ART}gacha.webp" alt="" style="${at(G, 19, 31, 331, 640)}">
+          <img class="np-prop hr-dial" id="hr-dial" src="${ART}dial.webp" alt="" style="${at(G, ...DIAL)}">
+          <img class="hr-star" id="hr-star" data-id="${esc(r.performer)}" alt="" style="${at(G, 0, 300, 380, 570)}">
+          <div class="np-npc" id="hr-npc" style="${at(G, CX, CY, 600, 800)}"><div class="np-body">${posesHtml(ART, POSES, "clown_idle")}</div></div>
+          <div class="hr-caps" id="hr-caps">${caps}</div>
+          ${capHtml(r.performer, "hero", `${box(CHUTE, CAP)};--s:.42`)}
+          <img class="hr-lid" id="hr-lid" src="${ART}capsule_top.webp" alt="" style="${box(LID, [192, 130])}">
+          <i class="hr-cup" id="hr-cup" style="${at(G, ...CUP)}"></i>
+        </div>
+        <div class="np-bubble hr-bubble" id="np-bubble"></div>
+        ${r.performer === ctx.me.id ? "" : `<div class="np-bubble hr-shh" id="hr-shh" aria-hidden="true">shhh…</div>`}
+        <div class="hr-wall" id="hr-wall"></div>
+        <div class="hr-ui" id="hr-ui"></div>
+        ${hostSkip(ctx)}
+      </div>`;
+    }
+    // built once per turn, then patched beat by beat: the capsule he catches
+    // is the one he opens, and the performer's slip is their card all turn
+    function scene(s, r) {
+      if (sceneTi === s.ti && $("hr-npc")) return false;
+      sceneTi = s.ti; uiKey = null;
+      ui.panel(sceneHtml(s, r), "np-full");
+      bindHostSkip(game);
+      paint();
+      return true;
+    }
+    const pkOf = s => `${s.ti}:${s.phase}`;
+    const pose = (name, opts) => setPose($("hr-npc"), name, opts);
+    const bump = () => { const n = $("hr-npc"); if (n) { n.classList.remove("np-bump"); void n.offsetWidth; n.classList.add("np-bump"); } };
+    const top = pill => { const p = $("np-pill"); if (p && p._v !== pill) { p._v = pill; p.innerHTML = pill; } };
+    const title = t => { const h = $("np-title"); if (h && h.textContent !== t) h.textContent = t; };
+    const plaque = (key, html) => {
+      if (uiKey === key) return false;
+      uiKey = key;
+      const u = $("hr-ui");
+      if (u) u.innerHTML = html ? `<div class="np-plaque hr-plaque enter">${html}</div>` : "";
+      return true;
+    };
+    const heroEl = () => $("hr-show")?.querySelector(".hr-cap.hero");
+    const place = (el, x, y, rot = 0, sc = 1) => {
+      el.style.left = `${((x - CAP[0] / 2) / G.w * 100).toFixed(3)}%`; el.style.top = `${((y - CAP[1] / 2) / G.h * 100).toFixed(3)}%`;
+      el.style.transform = `rotate(${rot.toFixed(1)}deg) scale(${sc})`;
+    };
+    // the capsule in his hands, held up: the pose has the cup and the grip,
+    // the capsule shows the head inside its dome
+    const hold = el => { if (!el) return; el.classList.remove("gone"); el.classList.add("out", "inhand"); place(el, ...HOLD); };
+    const caught = el => { if (!el) return; el.classList.add("out"); place(el, ...CATCH); };
+    // the lid pops off and bounces away across the floor
+    function popLid(fly) {
+      const lid = $("hr-lid");
+      if (!lid) return;
+      lid.className = "hr-lid on";
+      lid.style.cssText = box(LID, [192, 130]);
+      if (!fly) { lid.classList.add("land"); return; }
+      arcTo(lid, G, LID, [LID[0] + 230, 850], { ms: 820, peak: 170, spin: 400 }).then(() => lid.classList.add("land"));
+    }
+    const burst = () => confetti($("hr-show"), { x: `${(CUP[0] + CUP[2] / 2) / G.w * 100}%`, y: `${(CUP[1] + 20) / G.h * 100}%` });
+
+    // ---- the pick: he cranks the gacha machine. (A juggling version was
+    // tried first: with two drawn frames the hands snap and the capsules
+    // teleport between palms, so it read as a flipbook, not a juggle.)
+    function gachaBeats(s, r, elapsed) {
+      const pk = pkOf(s), hero = heroEl();
+      // anticipation: he steps to the machine and grabs the dial; action: two
+      // full turns, the globe rattling, a click a quarter turn
+      beats.at("grab", pk, 250, elapsed, late => { pose("clown_twist"); if (!late) sfx.cursor(); });
+      beats.at("crank", pk, 500, elapsed, late => {
+        $("hr-dial")?.classList.add("turn");
+        $("hr-caps")?.classList.add("shake");
+        if (!late) for (let i = 0; i < 8; i++) setTimeout(() => { if ($("hr-dial")) sfx.tick(); }, 120 + i * 200);
+      });
+      beats.at("bump1", pk, 1100, elapsed, () => bump());
+      // the performer's capsule drops out of the globe into the works…
+      beats.at("drop", pk, TOSS_AT - 300, elapsed, () => { $("hr-caps")?.classList.remove("shake"); $("hr-caps")?.querySelector(".chosen")?.classList.add("drop"); });
+      // …hands ready (he lets go of the dial and cups them)…
+      beats.at("ready", pk, TOSS_AT - 150, elapsed, () => pose("clown_catch"));
+      // …and it pops out of the chute, on a real arc, into his hands
+      beats.at("out", pk, TOSS_AT, elapsed, late => {
+        if (!hero) return;
+        if (late) { caught(hero); return; }
+        hero.classList.add("out");
+        sfx.stamp();
+        arcTo(hero, G, CHUTE, CATCH, { ms: 650, peak: 150, spin: 360, scale: [0.42, 1] })
+          .then(() => { if (hero.isConnected && pkOf(game.s ?? {}) === pk) { bump(); sfx.pop(); buzz(30); } });
       });
     }
-    function showOpen(s, r, elapsed, perf, built) {
-      const el = $("hr-show"), cast = castOf(s, r), who = cast.find(p => p.id === r.performer) ?? cast[0];
-      if (!el) return;
-      const name = perf ? "open" : "peek";
-      if (built) {
-        const tok = ++beatTok;
-        $("hr-caps").replaceChildren(capsuleEl(who, "chosen"));
-        el.className = `hr-show b-present ${perf ? "b-open" : "b-peek"}`;
-        clownKit().then(k => { if (k && tok === beatTok && el.isConnected) { k.attach(el); k.setCast(everyoneOf(s, r)); k.beat(name, OPEN_MS - (game.s?.left ?? OPEN_MS), { chosen: who.id }); } });
+
+    function showPick(s, r, elapsed, fresh) {
+      const pk = pkOf(s), name = s.players?.[r.performer]?.handle ?? "?";
+      if (fresh || uiKey !== pk) { plaque(pk, ""); title(""); top(`turn <b>${r.no}</b> · who's it going to be…`); }
+      gachaBeats(s, r, elapsed);
+      // hold: up to the camera, their head in the dome, and he names them
+      beats.at("show", pk, SHOW_AT, elapsed, late => {
+        pose("clown_hold");
+        hold(heroEl());
+        $("hr-caps")?.classList.add("away");
+        top(`turn <b>${r.no}</b> · <b>${esc(name)}</b>`);
+        say($("np-bubble"), `${name}, you're up!`, { blip: late ? null : () => sfx.blip() });
+        if (!late) { sfx.chime(); if (r.performer === ctx.me.id) buzz([60, 40, 120]); }
+      });
+    }
+
+    // the performer's slip: rises out of the cup, unrolls on the way and lands
+    // as their card on the wall, where it stays for the turn
+    function slip(r, fly) {
+      const w = $("hr-wall");
+      if (!w) return null;
+      let c = w.querySelector(".hr-slip");
+      if (!c) {
+        w.innerHTML = `<div class="hr-slip"><div class="hr-kick">ACT IT OUT</div><div class="hr-prompt" id="hr-slip-p">…</div><p class="hr-note">only you can see this · no talking, no spelling</p></div>`;
+        c = w.firstChild;
+        if (fly) { c.classList.add("unroll"); flyFrom(c, $("hr-cup")?.getBoundingClientRect(), { ms: 1100, tilt: 85 }); }
       }
-      kitAt(name, elapsed, who.id);
+      const sp = $("hr-slip-p"), t = secrets.get(r.key)?.text ?? "";
+      if (sp && sp.dataset.t !== t) { sp.dataset.t = t; sp.textContent = t || "…"; }
+      return c;
+    }
+
+    function showOpen(s, r, elapsed, perf, fresh) {
+      const pk = pkOf(s), who = s.players?.[r.performer]?.handle ?? "?";
+      if (fresh || uiKey !== pk) {
+        plaque(pk, "");
+        hush($("np-bubble"));
+        pose("clown_hold", { bump: false });
+        hold(heroEl());
+        $("hr-caps")?.classList.add("away");
+        top(perf ? "only <b>you</b> can see this" : `<b>${esc(who)}</b> is up · get ready to guess`);
+      }
       if (perf) {
-        beat("pop", 700, elapsed, late => { el.classList.add("popped"); if (!late) { sfx.gacha(); buzz([30, 30, 60]); confetti(el); } });
-        beat("slip", 800, elapsed, () => el.classList.add("slip-out"));
+        // anticipation (a squeeze), action (he cracks it, the lid flies), the slip
+        beats.at("wind", pk, 300, elapsed, late => { bump(); if (!late) sfx.cursor(); });
+        beats.at("crack", pk, 700, elapsed, late => {
+          pose("clown_open");
+          heroEl()?.classList.add("gone");
+          popLid(!late);
+          if (!late) { sfx.gacha(); buzz([30, 30, 60]); burst(); }
+        });
+        beats.at("slip", pk, 850, elapsed, late => slip(r, !late));
+        slip(r, false);
       } else {
-        beat("gasp", 1300, elapsed, late => { el.classList.add("gasp"); if (!late) sfx.cursor(); });
-        beat("shh", 1800, elapsed, () => el.classList.add("shh"));
+        // he peeks in (only he sees it), a gasp, then a wink: "shhh"
+        beats.at("peek", pk, 400, elapsed, late => { pose("clown_peek"); heroEl()?.classList.add("gone"); if (!late) sfx.cursor(); });
+        beats.at("gasp", pk, 1300, elapsed, late => { bump(); if (!late) sfx.pop(); });
+        beats.at("shh", pk, 1800, elapsed, late => { pose("clown_shh"); $("hr-shh")?.classList.add("on"); if (!late) sfx.whoosh(); });
       }
     }
-    function confetti(el) {
-      if (matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-      const box = document.createElement("div");
-      box.className = "hr-confetti";
-      const C = ["#ffc83d", "#ff5d8a", "#3ee0d0", "#ffffff", "#ff8a3d"];
-      for (let i = 0; i < 28; i++) {
-        const b = document.createElement("i");
-        b.style.cssText = `--x:${(Math.random() * 2 - 1) * 140}px;--y:${-60 - Math.random() * 140}px;--r:${Math.random() * 720 - 360}deg;background:${C[i % C.length]};animation-delay:${Math.random() * 80}ms`;
-        box.appendChild(b);
-      }
-      el.appendChild(box);
-      setTimeout(() => box.remove(), 1600);
-    }
-    const stageHtml = extra => `<div class="hr-show" id="hr-show"><div class="hr-caps" id="hr-caps"></div>${extra}</div><div class="hr-dlg-host" id="hr-dlg"></div>`;
 
     // ---- render ----
     let lastTurn = null;
@@ -428,10 +535,9 @@ export const HUMILIATION_RITUAL = {
       if (tk !== lastTurn) {
         // per-phase local state resets on every phone, keyed off the state
         if (lastTurn?.split(":")[0] !== String(s.ti)) mine = [];
-        lastTurn = tk; beatTok++; dlg?.close(); dlg = null;
-        if (!["pick", "open"].includes(s.phase)) clownP?.then(k => k?.detach());
+        lastTurn = tk;
       }
-      const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
+      const now = performance.now(); if (now - lastHud < 100) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
       const r = turn(s);
@@ -441,39 +547,47 @@ export const HUMILIATION_RITUAL = {
       if (!r && s.phase !== "end") return;
       // the performer's phone fetches its prompt as soon as it's picked
       const secret = r && isPerformer(s) ? mySecret(r) : null;
+      // render everyone's look early: the capsules need them by the toss
+      if (r) for (const id of r.cast ?? [r.performer]) lookOf(s, id);
+      if (r && ["act", "result"].includes(s.phase)) lookOf(s, r.performer, "full");
+
+      if (s.phase === "end") {
+        if (!ui.once("end", () => {})) return;
+        sceneTi = null;
+        showResults(P, { title: "Humiliation Ritual", sub: "final scores", note: `right guess: ${RITUAL.GUESS_PTS}-${RITUAL.GUESS_PTS + RITUAL.GUESS_SPEED} · performer: ${RITUAL.PERFORM_PTS}-${RITUAL.PERFORM_PTS + RITUAL.PERFORM_SPEED} · faster = more` },
+          `<img class="hr-end-clown" src="${ART}clown_hold.webp" alt=""><p class="ab-sub">back to the party in a moment</p>${hostSkip(ctx)}`);
+        bindHostSkip(game);
+        return;
+      }
+
+      const fresh = scene(s, r);
+      const pk = pkOf(s);
 
       if (s.phase === "pick") {
-        const built = ui.once(`k:${s.ti}`, () => {
-          ui.stage("", stageHtml("") + `${hostSkip(ctx)}`, `turn ${r.no} · who's it going to be…`);
-          bindHostSkip(game);
-        });
-        showPick(s, r, PICK_MS - s.left, built);
+        showPick(s, r, PICK_MS - s.left, fresh);
 
       } else if (s.phase === "open") {
-        const perf = isPerformer(s);
-        const built = ui.once(`o:${s.ti}:${perf ? 1 : 0}`, () => {});
-        if (built) {
-          ui.stage("", stageHtml(perf
-            ? `<div class="hr-slip" id="hr-slip"><div class="hr-kick">ACT IT OUT</div><div class="hr-prompt" id="hr-slip-p"></div></div>`
-            : `<div class="hr-shh" aria-hidden="true">shhh…</div>`)
-            + (perf ? `<p class="ab-sub">only you can see this. no talking, no spelling.</p>` : `<p class="ab-sub">${esc(who)} is about to perform. get ready to guess!</p>`) + hostSkip(ctx),
-          perf ? "only you can see this" : `${esc(who)} is up`);
-          bindHostSkip(game);
-        }
-        showOpen(s, r, OPEN_MS - s.left, perf, built);
-        const sp = $("hr-slip-p");
-        if (sp) { const t = secret?.text ?? ""; if (sp.dataset.t !== t) { sp.dataset.t = t; sp.textContent = t || "…"; } }
+        showOpen(s, r, OPEN_MS - s.left, isPerformer(s), fresh);
 
       } else if (s.phase === "act") {
         const gs = r.guesses ?? [];
+        if (fresh || !String(uiKey).startsWith(pk)) {
+          // the performer takes the stage: their own character, in the spot
+          pose("clown_idle", { bump: !fresh });
+          hush($("np-bubble"));
+          $("hr-shh")?.classList.remove("on");
+          heroEl()?.classList.add("gone");
+          $("hr-caps")?.classList.add("away");
+          $("hr-show")?.classList.add("acting");
+          paint();
+        }
         if (isPerformer(s)) {
-          // PERFORMER: the prompt, the clock, and the live feed to tap. Hints
-          // are worked out here, from this phone's own copy of the prompt.
-          if (ui.once(`a:${s.ti}:perf:${secret ? 1 : 0}`, () => {})) {
-            ui.stage("", `<div class="hr-card small"><div class="hr-kick">ACT IT OUT</div><div class="hr-prompt">${secret ? esc(secret.text) : "…"}</div></div>
-              <div class="hr-clock" id="hr-clock">${ui.clock(s.left)}</div>
-              <div class="rl-h">tap the right guess</div>
-              <div class="hr-feed" id="hr-feed"></div>${hostSkip(ctx)}`, "acting");
+          // PERFORMER: their card stays up, the clock, the live feed to tap.
+          // Hints are worked out here, from this phone's own copy of the prompt.
+          slip(r, false)?.classList.add("hr-card", "small");
+          top(`<b>act it out</b> · tap the right guess`);
+          if (plaque(`${pk}|perf`, `<div class="hr-plq-top"><span>tap the right guess</span><span class="np-clock hr-clock" id="hr-clock">${ui.clock(s.left)}</span></div>
+              <div class="hr-feed" id="hr-feed"></div>`)) {
             $("hr-feed").onclick = e => {
               const b = e.target.closest("[data-gid]");
               if (!b || b.disabled) return;
@@ -481,7 +595,6 @@ export const HUMILIATION_RITUAL = {
               $("hr-feed").querySelectorAll("[data-gid]").forEach(x => { x.disabled = true; });
               b.classList.add("picked");
             };
-            bindHostSkip(game);
           }
           const feed = $("hr-feed");
           const sig = `${r.n ?? 0}:${r.won?.gid ?? ""}:${secret ? 1 : 0}`;
@@ -495,17 +608,14 @@ export const HUMILIATION_RITUAL = {
           }
         } else {
           // GUESSER. The key leaves out everyone else's guesses: a guess
-          // arriving from anyone else must NOT rebuild this panel, or it
+          // arriving from anyone else must NOT rebuild this plaque, or it
           // would wipe what this player is halfway through typing. My own
           // list is patched in place.
-          if (ui.once(`a:${s.ti}:g`, () => {})) {
-            ui.stage("Guess what they're doing!", `<div class="hr-up"><b>${esc(who)}</b><span>is performing</span></div>
-              <div class="hr-clock" id="hr-clock">${ui.clock(s.left)}</div>
+          title("Guess what they're doing!");
+          top(`<b>${esc(who)}</b> is performing`);
+          plaque(`${pk}|g`, `<div class="hr-plq-top"><span><b>${esc(who)}</b> taps the right one</span><span class="np-clock hr-clock" id="hr-clock">${ui.clock(s.left)}</span></div>
               ${ui.prompt("your guess…", text => { mine.push(text); game.input("guess", { text }); sfx.tick(); setTimeout(reopen, 0); }, { maxlength: GUESS_MAX, submitLabel: "guess" })}
-              <div class="hr-mine" id="hr-mine"></div>
-              <p class="ab-sub">${esc(who)} taps the right one — first right guess wins</p>${hostSkip(ctx)}`, "guessing");
-            bindHostSkip(game);
-          }
+              <div class="hr-mine" id="hr-mine"></div>`);
           const el = $("hr-mine");
           const sig = `${mine.length}`;
           if (el && el.dataset.sig !== sig) { el.dataset.sig = sig; el.innerHTML = mine.slice().reverse().slice(0, 8).map(t => `<span>${esc(t)}</span>`).join(""); }
@@ -520,31 +630,36 @@ export const HUMILIATION_RITUAL = {
           answered.set(r.key, Date.now());
           game.input("answer", { key: r.key, text: secret.text });
         }
-        if (!ui.once(`r:${s.ti}:${r.answer ? 1 : 0}`, () => {})) return;
+        const key = `${pk}|${r.answer ? 1 : 0}`;
+        if (uiKey === key) return;
+        const first = !String(uiKey).startsWith(pk);
+        const g = r.won ? s.players[r.won.by] : null;
         const board = P.slice().sort((a, b) => b.score - a.score).map(p => `<li class="${r.won && (p.id === r.won.by || p.id === r.performer) ? "me" : ""}"><b>${esc(p.handle)}</b><span>${p.score}</span></li>`).join("");
-        const reveal = r.skipped
-          ? `<div class="hr-reveal"><small>the prompt stays a secret</small><b>🤫</b></div>`
-          : `<div class="hr-reveal ${r.answer ? "" : "waiting"}"><small>it was</small><b>${r.answer ? esc(r.answer) : "…"}</b></div>`;
+        title(r.skipped ? `${who} left` : r.won ? `${g?.handle ?? "?"} got it!` : "time's up!");
+        top(r.skipped ? "nobody scores this turn" : r.won ? `“${esc(r.won.text)}” · ${r.secs}s` : "nobody got it — no points this turn");
+        $("hr-shh")?.classList.remove("on");
+        const w = $("hr-wall");
         if (r.skipped) {
-          ui.stage(`${esc(who)} left`, reveal + `<p class="ab-sub">nobody scores this turn</p><ol class="sq-board">${board}</ol>${hostSkip(ctx)}`, "no verdict");
-        } else if (r.won) {
-          const g = s.players[r.won.by];
-          ui.stage(`${esc(g?.handle ?? "?")} got it!`, reveal + `<p class="hr-said">“${esc(r.won.text)}” · ${r.secs}s</p>
-            <div class="hr-pts"><span><b>${esc(g?.handle ?? "?")}</b> +${r.pts}</span><span><b>${esc(who)}</b> +${r.perfPts}</span></div>
-            <ol class="sq-board">${board}</ol>${hostSkip(ctx)}`, "got it");
+          pose("clown_shh");
+          if (w) w.innerHTML = `<div class="hr-reveal"><small>the prompt stays a secret</small><b>🤫</b></div>`;
+        } else if (!r.answer) {
+          // the capsule's back in his hands, waiting for the performer's phone
+          if (first) { pose("clown_hold"); const h = heroEl(); if (h) { h.classList.remove("gone"); hold(h); } }
+          if (w) w.innerHTML = `<div class="hr-reveal waiting"><small>it was</small><b>…</b></div>`;
         } else {
-          ui.stage("time's up!", reveal + `<p class="ab-sub">nobody got it — no points this turn</p><ol class="sq-board">${board}</ol>${hostSkip(ctx)}`, "nobody got it");
+          // the reveal: he cracks it open for everyone and the answer flies up
+          pose("clown_open");
+          heroEl()?.classList.add("gone");
+          const fly = !first || s.left > RESULT_MS - 1500;
+          popLid(fly);
+          if (w) {
+            w.innerHTML = `<div class="hr-reveal"><small>it was</small><b>${esc(r.answer)}</b></div>`;
+            if (fly) { flyFrom(w.firstChild, $("hr-cup")?.getBoundingClientRect(), { ms: 900, tilt: 80 }); sfx.gacha(); if (r.won) burst(); }
+          }
         }
-        bindHostSkip(game);
-
-      } else if (s.phase === "end") {
-        if (!ui.once("end", () => {})) return;
-        showResults(P, { title: "Humiliation Ritual", sub: "final scores", note: `right guess: ${RITUAL.GUESS_PTS}-${RITUAL.GUESS_PTS + RITUAL.GUESS_SPEED} · performer: ${RITUAL.PERFORM_PTS}-${RITUAL.PERFORM_PTS + RITUAL.PERFORM_SPEED} · faster = more` },
-          `<div class="hr-show hr-bowing" id="hr-show"><div class="hr-caps" id="hr-caps"></div></div><p class="ab-sub">back to the party in a moment</p>${hostSkip(ctx)}`);
-        bindHostSkip(game);
-        // the clown takes a bow
-        const tok = ++beatTok;
-        clownKit().then(k => { const el = $("hr-show"); if (k && tok === beatTok && el?.isConnected) { k.attach(el); k.beat("bow", 0); } });
+        plaque(key, r.won
+          ? `<div class="hr-pts"><span><b>${esc(g?.handle ?? "?")}</b> +${r.pts}</span><span><b>${esc(who)}</b> +${r.perfPts}</span></div><ol class="sq-board">${board}</ol>`
+          : `<ol class="sq-board">${board}</ol>`);
       }
     }
 
@@ -553,6 +668,6 @@ export const HUMILIATION_RITUAL = {
     trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
     game.start({ phase: "pick", left: PICK_MS, players: {}, turns: 0, ti: 0, weights: {}, turn: null });
     const o = ctx.onEnd;
-    ctx.onEnd = r => { beatTok++; dlg?.close(); dlg = null; clownP?.then(k => k?.detach()); game.stop(); ui.hide(); o(r); };
+    ctx.onEnd = r => { game.stop(); ui.hide(); o(r); };
   },
 };
