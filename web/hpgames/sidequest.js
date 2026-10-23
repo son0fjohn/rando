@@ -121,12 +121,15 @@ export const SIDE_QUEST = {
     // one 3D nook for the whole game, moved into each turn's freshly built scene
     let nook = null, nookP = null;
     const holder = document.createElement("div");
+    // it loads (models, textures, shaders) as soon as the game starts, while
+    // the host picks the quests, so the first spin never waits on it
+    const loadNook = () => NOOK_ON ? (nookP ??= import("./../sqnook.js").then(m => m.sqNook(holder)).then(n => { nook = n; return n; })
+      .catch(e => { console.warn("[sidequest] no 3D nook, the parlour stays:", e?.message ?? e); return null; })) : null;
+    loadNook();
     function mount3d() {
       const el = $("sq-3d");
       if (!NOOK_ON || !el) return;
-      nookP ??= import("./../sqnook.js").then(m => m.sqNook(holder)).then(n => { nook = n; return n; })
-        .catch(e => { console.warn("[sidequest] no 3D nook, the parlour stays:", e?.message ?? e); return null; });
-      nookP.then(n => { const at = $("sq-3d"); if (!n || !at) return; n.attach(at); room$()?.classList.add("r3d"); n.setPose(lastPose, { bump: false }); n.orb(lastOrb); if (lastFace) n.face(lastFace); });
+      loadNook().then(n => { const at = $("sq-3d"); if (!n || !at) return; n.attach(at); room$()?.classList.add("r3d"); n.setPose(lastPose, { bump: false }); n.orb(lastOrb); if (lastFace) n.face(lastFace); });
     }
     let lastPose = "wizard_idle", lastOrb = "idle", lastFace = null;
     trash.add(() => { myVote = null; looks.clear(); nookP?.then(n => n?.dispose()); nook = null; nookP = null; });
