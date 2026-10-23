@@ -94,3 +94,58 @@ constants at the top of `web/hpgames/ritual.js` and `sidequest.js`.
 
 The 3D wizard and clown (`wizard3d.js`, `clown3d.js`, their GLBs and logs)
 are retired; their generation logs are in git history.
+
+## The retro look (pilot: Side Quest's nook)
+
+The game scenes are moving from painted backdrops to small low-poly 3D
+rooms with the world map's feel. `web/retrolook.js` is the shared kit; a
+scene passes it a mood:
+
+- **Lighting:** a warm key, a cool coloured fill/rim, a low ambient tinted to
+  the mood (hemisphere). Nothing neutral white. Point lights for candles and
+  glowing props, with a flicker.
+- **Fog** in the scene's colour, so the back of the room melts away.
+- **Glow:** a bright pass + two blur passes at half resolution: only what's
+  near white blooms (candle flames, the crystal ball, lanterns, the window),
+  not the lit surfaces.
+- **Render:** the 3D layer is drawn at ~0.42× CSS pixels (capped at 380 px
+  wide) and upscaled nearest; then a warm grade, a limited palette with a
+  4×4 ordered dither, a vignette and a faint grain. The UI is DOM on top and
+  stays sharp.
+- **Low-poly helpers:** flat-shaded Lambert, ambient occlusion baked into
+  vertex colours, blob shadows, textures at 256 px max with nearest filtering,
+  glTF PBR swapped for Lambert.
+- **Ambient life:** dust motes, flickering lights, a breathing camera.
+- **Performance:** a weak phone (≤3 GB or ≤4 cores, or `?retro=low`) gets
+  0.75× the resolution and no bloom or grain; if frames still run slow for a
+  few seconds the kit drops the bloom, then the resolution, by itself.
+
+`web/sqnook.js` is the pilot: the wizard's nook at night (draped violet
+fabric, a round window onto the world map's night sky with drifting clouds,
+a potion shelf, a stack of spell books, star lanterns, floating candles, a
+rug), lit by candle amber against violet moonlight. The crystal ball is a
+light source that pulses on the reveals. The wizard is his pose cutouts on
+a card in the room, lit by it in a small shader: candle light from one side,
+a violet rim read off the cutout's edge, the ball's glow from below, the
+fog. Players' 3D looks float in the ball, tinted by its light. If WebGL or
+the models aren't there, the painted parlour stays (`?nook=0` pins it).
+`node test/nook_shots.mjs <dir>` shoots each beat.
+
+### Nook assets
+
+The props are `gpt_image_2_5` images, each with four image inputs: a night
+screenshot of our world map (`c28d4940…`, uploaded), the wizard's front view
+(`950e05d2…`) and the two style references (`913b0391…`, `f132764c…`). They
+were turned into meshes with Tripo H3.1 image-to-3D (no PBR, face limits
+1.5–3k), then the 2048 px textures were cut to 256 px (gltf-transform + sharp,
+geometry untouched: 1.4–2.7k triangles each). One attempt each.
+
+| Asset | Image job | Mesh job | Credits |
+| --- | --- | --- | --- |
+| `nook/shelf.glb` (potion shelf) | `d8739fdc-c8ec-4e44-b49e-8fc4c4fc68e9` | `4f71d886-3720-4ba4-ab48-8d61a35fa668` | 1.5 + 9 |
+| `nook/table.glb` (draped table + ring stand) | `42c46e08-6fcc-4f17-9368-a4dfca2ae8d8` | `1fbd6684-e68b-430c-92ba-fa40f8293671` | 1.5 + 9 |
+| `nook/lantern.glb` (star lantern) | `92cc8ea3-77c4-4954-b388-67f0ae2002cd` | `a45e5ccf-3580-4652-a2a8-12cacbbac930` | 1.5 + 9 |
+| `nook/books.glb` (spell books + candle) | `7857b47d-cc08-4b5e-8339-7f04b1ce95c1` | `e1e4abc7-a7cc-434a-ac82-053d15b2da15` | 1.5 + 9 |
+
+Total: 42 credits. The room itself (drapes, window, rug, candles, the ball)
+is built in code from low-poly primitives.

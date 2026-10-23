@@ -46,7 +46,11 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   (Side Quest's wizard and the Ritual's clown, built like the Art Gallery:
   painted backdrop, NPC pose cutouts, props on gravity arcs, a prop that
   flies up to become the card; art in `web/games/sidequest|ritual/`, see
-  `docs/npc_scenes.md`), `web/charrender.js` (players' own 3D characters as
+  `docs/npc_scenes.md`), `web/retrolook.js` (the retro look kit
+  every game scene's 3D layer uses: mood lights, fog, emissive bloom,
+  low-res nearest upscale, grade + dither + vignette + grain, quality tiers),
+  `web/sqnook.js` (Side Quest's 3D fortune-teller nook on that kit;
+  `SIDEQUEST.NOOK_3D`, `?nook=0` pins the painted parlour), `web/charrender.js` (players' own 3D characters as
   pictures for those scenes, warmed in the lobby), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors, party/coin/game numbers),
   `web/partyset.js` (a party is a set of 3 games: places → party points),
@@ -79,6 +83,7 @@ npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Dia
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
+node test/nook_shots.mjs <dir>       # Side Quest's 3D nook on its own: loads, every beat of a turn
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
 node test/charturn_shots.mjs <dir> [--hair=none,f2,m1] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
 node test/combos_shots.mjs <dir>       # every top × bottom (idle + walk) and hairstyle × top, for clipping
