@@ -1247,3 +1247,11 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .hr-room .sq-board li.me { outline: 1.5px solid #ffc83d; } .hr-room .sq-board li span { color: #ffc83d; }
 .hr-end-clown { display: block; width: 120px; margin: 0 auto -6px; }
 @media (prefers-reduced-motion: reduce) { .hr-caps.shake .in-globe, .hr-slip.unroll > *, .hr-cap.inhand .hr-cap-head { animation: none; } .hr-dial { transition: none; } }
+
+/* Side Quest's 3D nook (sqnook.js): the low-res canvas fills the room
+   behind the UI; once it's drawing, the painted parlour and its 2D wizard
+   step aside */
+.sq-3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.sq-3d .retro-canvas { transition: opacity .6s ease-out; }
+.sq-room .sq-group { transition: opacity .6s ease-out; }
+.sq-room.r3d .sq-group { opacity: 0; pointer-events: none; }

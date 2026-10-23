@@ -70,7 +70,12 @@ const ART = "games/sidequest/";
 const G = { w: 600, h: 1000 };
 const POSES = ["wizard_idle", "wizard_conj", "wizard_rev"];
 const BALL = [205, 472, 190, 190];
+// the nook in 3D (sqnook.js, the retro look kit) when this phone can draw
+// it; until it's up, or if it can't be, the painted parlour below stays.
+// ?nook=0 pins the parlour.
+const NOOK_ON = SIDEQUEST.NOOK_3D && new URLSearchParams(location.search).get("nook") !== "0";
 const sceneHtml = (ctx, pose = "wizard_idle") => `<div class="np-room sq-room" style="background-image:url(${ART}parlour.jpg)">
+    <div class="sq-3d" id="sq-3d"></div>
     <div class="np-pill" id="np-pill"></div>
     <h2 class="np-title" id="np-title"></h2>
     <div class="np-group sq-group">
@@ -113,7 +118,30 @@ export const SIDE_QUEST = {
     let lastHud = 0, lastTurn = null, myVote = null, giveUpArmed = 0, openCats = new Set(), spinTok = 0;
     let sceneTi = null, uiKey = null;
     const beats = new Beats(), looks = new Map();
-    trash.add(() => { myVote = null; looks.clear(); });
+    // one 3D nook for the whole game, moved into each turn's freshly built scene
+    let nook = null, nookP = null;
+    const holder = document.createElement("div");
+    // it loads (models, textures, shaders) as soon as the game starts, while
+    // the host picks the quests, so the first spin never waits on it
+    const loadNook = () => NOOK_ON ? (nookP ??= import("./../sqnook.js").then(m => m.sqNook(holder)).then(n => { nook = n; return n; })
+      .catch(e => { console.warn("[sidequest] no 3D nook, the parlour stays:", e?.message ?? e); return null; })) : null;
+    loadNook();
+    function mount3d() {
+      const el = $("sq-3d");
+      if (!NOOK_ON || !el) return;
+      loadNook().then(n => {
+        const at = $("sq-3d");
+        if (!n || !at) return;
+        // the first time: cross-fade from the painted parlour into the nook
+        const cv = n.stage.canvas;
+        cv.style.opacity = "0";
+        n.attach(at);
+        n.setPose(lastPose, { bump: false }); n.orb(lastOrb); if (lastFace) n.face(lastFace);
+        requestAnimationFrame(() => requestAnimationFrame(() => { cv.style.opacity = ""; room$()?.classList.add("r3d"); }));
+      });
+    }
+    let lastPose = "wizard_idle", lastOrb = "idle", lastFace = null;
+    trash.add(() => { myVote = null; looks.clear(); nookP?.then(n => n?.dispose()); nook = null; nookP = null; });
 
     const turn = s => s.turn ?? null;
     const isMe = s => turn(s)?.who === ctx.me.id;
@@ -259,12 +287,14 @@ export const SIDE_QUEST = {
       sceneTi = s.ti; uiKey = null;
       ui.panel(sceneHtml(ctx), "np-full");
       bindHostSkip(game);
+      if (nook) { nook.attach($("sq-3d")); room$()?.classList.add("r3d"); } else mount3d();
       return true;
     }
-    const pose = (name, opts) => setPose($("sq-npc"), name, opts);
-    const orb = cls => { const o = $("sq-orb"); if (o) o.className = `sq-orb ${cls}`; };
+    const pose = (name, opts) => { lastPose = name; nook?.setPose(name, opts); setPose($("sq-npc"), name, opts); };
+    const orb = cls => { lastOrb = cls; nook?.orb(cls); const o = $("sq-orb"); if (o) o.className = `sq-orb ${cls}`; };
     const face = (s, id, pop = false) => {
       const img = $("sq-face"), url = lookOf(s, id);
+      if (url) { lastFace = url; nook?.face(url, pop); }
       if (!img) return;
       if (url && img.getAttribute("src") !== url) img.src = url;
       img.classList.toggle("none", !url);
@@ -286,7 +316,7 @@ export const SIDE_QUEST = {
       if (!c) {
         w.innerHTML = cardHtml(t.quest);
         c = w.querySelector(".sq-card");
-        if (rise) { const o = $("sq-orb")?.getBoundingClientRect(); flyFrom(c, o && { left: o.left, top: o.top, width: o.width, height: o.height * 0.6 }, { ms: 1000, tilt: 75 }); }
+        if (rise) { const o = nook ? nook.ballRect() : $("sq-orb")?.getBoundingClientRect(); flyFrom(c, o && { left: o.left, top: o.top, width: o.width, height: o.height * 0.6 }, { ms: 1000, tilt: 75 }); }
       }
       c.classList.toggle("small", small);
     }

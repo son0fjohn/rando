@@ -133,6 +133,7 @@ export const SIDEQUEST = {
   STARS: 5,
   POINTS_PER_STAR: 20,         // 5 stars = 100
   MAX_TURNS: 30,
+  NOOK_3D: true,               // the 3D nook (sqnook.js, the retro look kit) over the painted parlour
 };
 
 // Who goes next (Side Quest, Humiliation Ritual): random but fair. Everyone
