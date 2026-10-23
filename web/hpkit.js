@@ -136,6 +136,24 @@ export const trash = {
   },
 };
 
+// ---------------------------------------------------------------- the room behind the cards
+// A game's 3D room (retrorooms.js on the retro look kit) drawn behind its
+// cards, which stay crisp and frosted on top. Loaded lazily; if WebGL or the
+// models aren't there the usual backdrop stays. Gone with the game.
+// ?rooms=0 turns them off.
+export function roomBackdrop(kind) {
+  const layer = $("game-layer");
+  if (!layer || new URLSearchParams(location.search).get("rooms") === "0") return;
+  const el = document.createElement("div");
+  el.className = "game-bg";
+  layer.prepend(el);
+  let room = null, dead = false;
+  import("./retrorooms.js").then(m => m.retroRoom(kind, el))
+    .then(r => { if (dead) { r.dispose(); return; } room = r; requestAnimationFrame(() => el.classList.add("on")); })
+    .catch(e => console.warn(`[hpkit] no 3D ${kind} room, the backdrop stays:`, e?.message ?? e));
+  trash.add(() => { dead = true; room?.dispose(); el.remove(); });
+}
+
 // ---------------------------------------------------------------- misc ui
 export const hostSkip = (ctx, label = "host: skip ahead") =>
   ctx.isHost() ? `<button type="button" class="pt-btn ag-skip" id="hp-skip">${label}</button>` : "";
