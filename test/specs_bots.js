@@ -100,19 +100,25 @@ group("Humiliation Ritual — you + 3 bots");
 
 group("Mask Off — you + 3 bots");
 {
-  const t = seatTable(MASK_OFF, 1, { ids: [ME], options: { rounds: "1" } });
+  const t = seatTable(MASK_OFF, 1, { ids: [ME] });
   adv(500);
-  ok(t.s.phase === "pick" && t.s.turns === 4, "you and the bots: everyone once is 4 turns");
-  let guard = 0, voted = -1;
+  ok(t.s.phase === "setup", "you host: the deck setup");
+  t.input(ME, "mo-rounds", { n: 1 }); adv(300); t.input(ME, "mo-go");
+  let guard = 0;
   const turns = [];
   while (t.s.phase !== "end" && guard++ < 40000) {
     const q = t.s.turn;
-    if (t.s.phase === "talk" && q.who !== ME && voted !== t.s.ti) { t.input(ME, "rate", { v: 4 }); voted = t.s.ti; }
-    if (t.s.phase === "reveal" && turns.length === t.s.ti) turns.push({ who: q.who, status: q.status, n: q.n, pts: q.pts, v: q.verdict });
+    if (q && t.s.phase === "choose" && q.asker === ME && !q.card) t.input(ME, "ask", { id: t.s.hands[ME][0] });
+    if (q && t.s.phase === "talk" && q.who === ME && !q.status) t.input(ME, "answer");
+    if (q && t.s.phase === "talk" && q.who === ME && q.status === "answering") t.input(ME, "done");
+    if (q && t.s.phase === "talk" && q.who !== ME && q.status === "answering") t.input(ME, "same");
+    if (q && t.s.phase === "after" && turns.length === t.s.ti) turns.push({ who: q.who, asker: q.asker, status: q.status, same: q.same });
     adv(200);
   }
-  ok(t.s.phase === "end" && turns.length === 4, `4 turns play out (${turns.map(x => `${x.who.slice(0, 5)}:${x.status}:${x.v}:${x.pts}`).join(" ")})`);
-  ok(turns.every(x => x.status === "skipped" ? x.pts === 0 && x.n === 0 : x.n >= 2 && !!x.v), "bots rate every card; a skip gets no rating");
+  ok(t.s.phase === "end" && turns.length === 4, `4 turns play out (${turns.map(x => `${x.asker.slice(0, 4)}→${x.who.slice(0, 4)}:${x.status}:${x.same}`).join(" ")})`);
+  ok(turns.every(x => x.asker !== x.who) && new Set(turns.map(x => x.who)).size === 4, "everyone is asked once, never by themselves");
+  ok(turns.every(x => ["done", "passed"].includes(x.status)), "the bots ask, answer or pass on their own");
+  ok(t.s.players[ME].score === 1, "you answered: you're in for the coins");
   let spent = 0; while (!t.allEnded() && spent < 120000) { adv(2000); spent += 2000; }
   ok(t.allEnded(), "the game closes out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));

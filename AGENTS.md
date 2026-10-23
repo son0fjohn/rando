@@ -62,7 +62,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/fairpick.js` (random-but-fair "who's next" for Side Quest and the Ritual),
   `web/data/diary_prompts.json` (Secret Diary's prompt pool),
   `web/data/side_quests.json` (Side Quest's quests),
-  `web/data/mask_off_cards.json` (Mask Off's truth cards by level, a draft),
+  `web/data/mask_off_cards.json` (Mask Off's deck: light / real / deep),
   `web/data/ritual_prompts.json` (Humiliation Ritual's charades prompts, a draft), `web/diary3d.js` + `web/models/diary/` (Secret
   Diary's tinted 3D diaries, with sprite and CSS fallbacks; see
   `docs/diary_assets.md`), `web/diarypage.js` (answers written on and read
@@ -95,7 +95,7 @@ node test/combos_shots.mjs <dir>       # every top × bottom (idle + walk) and h
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
-node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party]   # phones playing Side Quest / Mask Off (+ each reveal frame by frame) / a Ritual turn / an Art Gallery piece / a full 3-game set + shop, recorded side by side
+node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party]   # phones playing Side Quest / Mask Off (a full turn, a pass, the end) / a Ritual turn / an Art Gallery piece / a full 3-game set + shop, recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
@@ -130,10 +130,13 @@ keyboard, safe areas) see `docs/dev-stack.md` → device testing.
   disposer with `trash` so it dies when the game or party ends.
 - **Backdrop:** a game def with `backdrop: "room"` (the Ritual, Mask Off) is played
   over the dimmed party room (`#party-panel.pt-behind`) instead of the map.
-- **Ratings (Side Quest, Mask Off):** open as soon as the turn starts, one tap
+- **Ratings (Side Quest):** open as soon as the turn starts, one tap
   locks a rating, and the turn ends once every watcher has rated; the clock
-  only ends it if they haven't. Giving up / skipping the card scores 0 and
-  skips ratings. Mask Off: honesty 1–5, points = average × `MASKOFF.POINTS_PER_STAR`.
+  only ends it if they haven't. Giving up scores 0 and skips ratings.
+- **Mask Off has no scoring:** no ratings, no points, no winner. Everyone who
+  answered at least once scores 1 (so they share first place and the same
+  coins), everyone else 0. Its deck and rounds are the host's setup screen
+  (`hostSetup`), not options in the votes sheet.
 - **Styling:** the page declares `color-scheme: dark`, so any `<button>` with
   no explicit `color` renders white text. Set colors on buttons inside game
   cards (`.stage`).
@@ -189,9 +192,12 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
 - Side Quest's quests are exactly the supplied list; unhinged ones only appear
   when the party's 18+ setting is on (`questsFor()`). Humiliation Ritual's
   prompts go up to `maxLevelFor()` (public parties: mild).
-- Mask Off's cards are exactly the supplied (draft) list, escalating
-  level 1 → 2 → 3 over a game (`levelFor()`). Answers are spoken out loud,
-  never typed, sent or stored.
+- Mask Off's deck is exactly the supplied list (light, real, deep); the host
+  picks the levels (light + real by default). Hands are private: only the
+  asker's own phone ever shows their hand, and hands go in the state as card
+  ids only. No card is dealt twice in a game. Answers are spoken out loud,
+  never typed, sent or stored. "Same" taps are counted, never attributed: the
+  host keeps who tapped to itself and only the count is synced or shown.
 - Humiliation Ritual: the prompt only ever reaches the performer's phone. That
   phone draws it (`ritual_draw`, server-side; offline: from the pool on that
   phone); the host's game state never carries a prompt or a prompt id, and

@@ -13,7 +13,7 @@
 // The host picks the next game from a picker overlay they can open and close
 // at will. Picking QUEUES the game ("up next") — it doesn't need the player
 // minimum to be met yet, so the host can set it up while people arrive. Games
-// can declare options (e.g. Mask Off: everyone once / twice / three times);
+// can declare options (e.g. the Ritual: everyone once / twice);
 // those are set in the picker and travel with the launch. Start is a separate
 // tap, enabled once there are enough players.
 //
@@ -788,7 +788,7 @@ export const party = {
     this._sendMeta();
     this._renderNext(); this._renderPicker();
   },
-  // host: the per-game options (the Ritual's and Mask Off's rounds), chosen in the votes sheet
+  // host: the per-game options (the Ritual's rounds), chosen in the votes sheet
   gameOption(gameId, key, value) {
     const c = this.current; if (!c?.room.isHost) return;
     c.gameOpts = { ...(c.gameOpts ?? {}), [gameId]: { ...(c.gameOpts?.[gameId] ?? {}), [key]: value } };
