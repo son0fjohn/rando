@@ -123,6 +123,7 @@ export const RITUAL = {
   // PERFORM_PTS + PERFORM_SPEED * (1 - t/ACT_MS). Nobody gets it: 0 for all.
   GUESS_PTS: 100, GUESS_SPEED: 100,
   PERFORM_PTS: 50, PERFORM_SPEED: 50,
+  TENT_3D: true,               // the 3D circus tent (retrorooms.js) over the painted stage
 };
 
 // Side Quest: the wizard hands out a real-life dare, one player does it, the

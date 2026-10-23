@@ -56,7 +56,7 @@
 import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
 import { DIARY } from "./../hpconfig.js";
-import { Rounds, syncGone, active, esc, pick, shuffle, showResults, hostSkip, bindHostSkip, trash, tally, avatarHtml } from "./../hpkit.js";
+import { Rounds, syncGone, active, esc, pick, shuffle, showResults, hostSkip, bindHostSkip, trash, tally, avatarHtml, roomBackdrop } from "./../hpkit.js";
 import { ANSWER_MAX, spreadHtml, paintSpreads, fitAll, bindSpread, fitPreview, textOf } from "../diarypage.js";
 import { promptLog } from "./../hplog.js";
 
@@ -162,6 +162,7 @@ export const SECRET_DIARY = {
 
   _start(ctx) {
     ui.show(); ui.theme("chill");
+    roomBackdrop("study");      // a cozy late-night study behind the cards
     const room = ctx.room;
     const session = ctx.session ?? (ctx.session = {});
     session.diaryUsed ??= new Set();

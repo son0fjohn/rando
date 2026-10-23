@@ -20,7 +20,7 @@
 import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
 import { MASKOFF } from "./../hpconfig.js";
-import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash } from "./../hpkit.js";
+import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash, roomBackdrop } from "./../hpkit.js";
 import { fairPick } from "./../fairpick.js";
 import { spriteFace } from "./../partyboard.js";
 
@@ -91,6 +91,7 @@ export const MASK_OFF = {
 
   _start(ctx) {
     ui.show(); ui.theme("chaos");
+    roomBackdrop("lounge");     // a dim, moody lounge behind the cards
     const room = ctx.room;
     const PER = Math.max(1, Math.min(3, +(ctx.options?.rounds ?? 2) || 2));
     let lastHud = 0, lastTurn = null, myVote = null, skipArmed = 0, spinTok = 0, flipped = -1;

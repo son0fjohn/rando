@@ -149,3 +149,46 @@ geometry untouched: 1.4–2.7k triangles each). One attempt each.
 
 Total: 42 credits. The room itself (drapes, window, rug, candles, the ball)
 is built in code from low-poly primitives.
+
+## The other rooms (`web/retrorooms.js`)
+
+The same kit, each with its own mood:
+
+- **Humiliation Ritual: a circus tent at night.** Red-and-cream striped
+  canvas, a round stage, two stage spotlights with soft light cones, string
+  lights, confetti drifting down. The clown, the gacha machine, the capsules
+  and the performer's 3D figure are still the DOM elements whose CSS
+  transitions and gravity arcs run the show, now hidden: every frame
+  `mirrorDom` copies each one's box, rotation, scale and opacity onto a card
+  in the tent, lit by it (`litCardMaterial`: the spotlights' warm key, a blue
+  rim, a warm bounce from the stage). Choreography and timing are unchanged.
+  `RITUAL.TENT_3D`; `?tent=0` pins the painted stage.
+- **Secret Diary: a cozy study / bedroom late at night.** A window with the
+  moon and the map's night sky, moonlight coming in, a desk under a warm lamp,
+  a bed, a bookshelf, posters, fairy lights, floating dust.
+- **Mask Off: a dim lounge.** One pendant light over a red velvet booth,
+  candles on two side tables, deep reds and purples, slow smoke haze.
+
+Secret Diary and Mask Off play on cards, so their room sits behind them
+(`roomBackdrop()` in `hpkit.js`) and the cards stay crisp and frosted on
+top; `?rooms=0` turns the rooms off. `node test/rooms_shots.mjs <dir>`
+shoots each room.
+
+### Room assets
+
+Same pipeline as the nook: `gpt_image_2_5` with image inputs (the night map
+`c28d4940…`, the two style references `913b0391…`/`f132764c…`, plus the
+circus stage `cd2fb916…` for the tent props and the base character render
+`fec42003…` for the study props), Tripo H3.1 image-to-3D without PBR, then
+textures cut to 256 px. One attempt each.
+
+| Asset | Image job | Mesh job | Credits |
+| --- | --- | --- | --- |
+| `rooms/tent/spot.glb` (stage spotlight) | `f2cbc5a1-153f-4da1-bf57-85c158474fcc` | `73c8f092-1b13-4bfd-8587-092fff7c206d` | 1.5 + 9 |
+| `rooms/tent/crates.glb` (circus crates) | `795404e2-c51b-4b8e-9058-198ceee91762` | `cffd8443-4038-463e-aec6-546ab513c9e4` | 1.5 + 9 |
+| `rooms/study/desk.glb` (desk + lamp) | `76e34eda-b135-4d42-a80b-05ea7e896f8d` | `b63cda12-13d7-45a7-bbc2-d1d209476127` | 1.5 + 9 |
+| `rooms/study/bed.glb` (bed + quilt) | `5a63c3f0-4414-4716-9c71-dd2d32be92d0` | `b517cf9d-439d-47e5-b4e4-73727dd56908` | 1.5 + 9 |
+| `rooms/lounge/sofa.glb` (velvet booth) | `2c94a863-6675-420d-978a-513faab09ef0` | `12ce1f6e-f2db-4e31-80e0-a351f8dae9f4` | 1.5 + 9 |
+| `rooms/lounge/sidetable.glb` (side table + candle) | `5a606173-b08d-4d75-89e3-e05998a6d56a` | `417cf732-b355-4feb-abab-a8c16179b1c5` | 1.5 + 9 |
+
+Total: 63 credits.
