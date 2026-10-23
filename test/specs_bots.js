@@ -3,7 +3,7 @@
 // module reads BOTS_N = 3 exactly as it would in the browser.
 import { installClock, seatTable } from "/test/harness.js";
 import { SECRET_DIARY } from "/web/hpgames/secretdiary.js";
-import { HUMILIATION_RITUAL, ritualPool } from "/web/hpgames/ritual.js";
+import { HUMILIATION_RITUAL, ritualPool, judge } from "/web/hpgames/ritual.js";
 import { SIDE_QUEST, questPool } from "/web/hpgames/sidequest.js";
 import { MASK_OFF, maskPool } from "/web/hpgames/maskoff.js";
 import { ART_GALLERY } from "/web/artgallery.js";
@@ -73,17 +73,20 @@ group("Humiliation Ritual — you + 3 bots");
   while (t.s.phase !== "end" && guard++ < 20000) {
     const r = t.s.turn;
     if (t.s.phase === "act" && !r.won) {
+      // what your phone knows: your own prompt, or (offline, bots only) the
+      // bot's prompt it dealt — the synced state never has it
+      const known = t.byId(ME).game.knownPrompt();
       if (r.performer === ME) {
         // you're performing: tap the first guess that's actually right
-        const g = r.guesses.find(g => g.hint === "match");
+        const g = known && r.guesses.find(g => judge(g.text, { answer: known }) === "match");
         if (g) t.input(ME, "pick", { gid: g.gid });
-      } else if (guessedThisTurn !== t.s.ti) {
-        t.input(ME, "guess", { text: r.answer });
+      } else if (guessedThisTurn !== t.s.ti && known) {
+        t.input(ME, "guess", { text: known });
         guessedThisTurn = t.s.ti;
       }
     }
     if (t.s.phase === "result" && outcomes.length === t.s.ti) outcomes.push({ perf: r.performer, won: r.won?.by ?? null });
-    adv(200);
+    adv(200); await null; await null; await null;
   }
   ok(t.s.phase === "end" && outcomes.length === 4, "all four turns play out");
   const botTurns = outcomes.filter(o => o.perf !== ME), mine = outcomes.filter(o => o.perf === ME);

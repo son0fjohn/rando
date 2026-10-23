@@ -1085,3 +1085,54 @@ body.hp-setup-wait #game-layer { display: none !important; }
 #style-screen .fit-tile .fit-art img { width: 42px; height: 60px; object-fit: contain; }
 #style-screen .fit-tile b { font: 600 12px/14px var(--f-sys); }
 #style-screen .fit-tile.selected { border: 2px solid #FFC83D; box-shadow: 0 0 0 3px rgba(255,200,61,.22); }
+
+/* ---------------------------------------------------------------- Humiliation Ritual: the clown's show
+   .hr-show holds the 3D clown's canvas (clown3d.js) over 2D gacha capsules;
+   the capsules hide once the clown has drawn a frame (.c3d-on). */
+.hr-show { position: relative; width: 100%; height: min(46vh, 340px); margin: 0 auto; overflow: visible; }
+.hr-show .hr-c3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hr-caps { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; pointer-events: none; }
+.hr-show.c3d-on .hr-caps { display: none; }
+.hr-cap { --cap-h: 330; position: relative; width: 58px; height: 58px; flex: 0 0 auto; border-radius: 50%; overflow: hidden; border: 3px solid #140c22; box-shadow: 3px 3px 0 #140c22; }
+.hr-cap-top { position: absolute; inset: 0 0 50% 0; background: hsl(var(--cap-h) 60% 88% / .9); }
+.hr-cap-bot { position: absolute; inset: 50% 0 0 0; background: hsl(var(--cap-h) 75% 55%); border-top: 3px solid #fff; }
+.hr-cap .hr-cap-face { position: absolute; left: 50%; top: 2px; transform: translateX(-50%) scale(.9); transform-origin: top center; clip-path: inset(0 0 50% 0); image-rendering: pixelated; }
+.hr-cap-name { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font: 800 10px/12px system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 3px; }
+/* juggling (2D): the capsules bob in turn */
+.hr-show.b-juggle .hr-cap { animation: hr-jug .72s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -.29s); }
+@keyframes hr-jug { from { transform: translateY(28px) rotate(-12deg); } to { transform: translateY(-46px) rotate(12deg); } }
+/* the toss (2D): the others shrink away, the chosen one flies up and comes back big */
+.hr-show.b-toss .hr-cap:not(.chosen), .hr-show.b-present .hr-cap:not(.chosen) { transform: scale(0); opacity: 0; transition: transform .4s, opacity .4s; }
+.hr-show.b-toss .hr-cap.chosen { animation: hr-toss 2.4s cubic-bezier(.3, .7, .4, 1) both; }
+@keyframes hr-toss { 0% { transform: translateY(0); } 40% { transform: translateY(-120px) rotate(540deg); } 60% { transform: translateY(0) scale(.2); } 80% { transform: scale(.2); } 100% { transform: scale(2.2); } }
+.hr-show.b-present .hr-cap.chosen { transform: scale(2.2); }
+.hr-show.b-open.popped .hr-cap-top { transform: translateY(-80px) rotate(-40deg); opacity: 0; transition: transform .5s cubic-bezier(.2, .8, .3, 1), opacity .5s; }
+.hr-show.b-open:not(.popped) .hr-cap.chosen { animation: hr-twist .18s linear infinite alternate; }
+@keyframes hr-twist { from { transform: scale(2.2) rotate(-6deg); } to { transform: scale(2.2) rotate(6deg); } }
+/* the slip with the prompt (performer only) unrolls out of the capsule */
+.hr-slip { position: absolute; left: 50%; bottom: 8%; z-index: 3; width: min(86%, 320px); transform: translateX(-50%) scaleY(0); transform-origin: 50% 0;
+  background: #fffaf0; color: #140c22; border: 3px solid #140c22; box-shadow: 4px 4px 0 #140c22, 0 0 40px rgba(255, 200, 61, .55); padding: 12px 12px 16px; text-align: center;
+  background-image: repeating-linear-gradient(180deg, transparent 0 27px, rgba(20, 12, 34, .07) 27px 28px); }
+.hr-show.slip-out .hr-slip { animation: hr-unroll .55s cubic-bezier(.3, 1.5, .5, 1) both, hr-shake .3s .55s ease-in-out 2; }
+.hr-slip .hr-kick { color: #ff3d7f; }
+.hr-slip .hr-prompt { font: 900 34px/38px system-ui, sans-serif; }
+.hr-slip::after { content: "✦"; position: absolute; right: -10px; top: -14px; font-size: 26px; color: var(--y-gold); animation: hr-spark 1s ease-in-out infinite alternate; }
+@keyframes hr-unroll { from { transform: translateX(-50%) scaleY(0) rotate(-4deg); } to { transform: translateX(-50%) scaleY(1) rotate(0); } }
+@keyframes hr-shake { 0%, 100% { margin-left: 0; } 25% { margin-left: -5px; } 75% { margin-left: 5px; } }
+@keyframes hr-spark { from { transform: scale(.7) rotate(0); opacity: .6; } to { transform: scale(1.2) rotate(40deg); opacity: 1; } }
+/* everyone else: "shhh…" */
+.hr-shh { position: absolute; right: 8%; top: 12%; z-index: 3; padding: 6px 12px; background: #fff; color: #140c22; border: 3px solid #140c22; border-radius: 16px; box-shadow: 3px 3px 0 #140c22;
+  font: 900 18px/20px system-ui, sans-serif; opacity: 0; transform: scale(.4); transition: opacity .2s, transform .25s cubic-bezier(.3, 1.6, .5, 1); }
+.hr-show.shh .hr-shh { opacity: 1; transform: scale(1); }
+.hr-show.gasp:not(.shh)::before { content: "!"; position: absolute; left: 50%; top: 2%; z-index: 3; transform: translateX(-50%); font: 900 44px/1 var(--f-head); color: var(--y-gold); text-shadow: 3px 3px 0 #140c22; animation: y-pop .25s both; }
+.hr-confetti { position: absolute; left: 50%; top: 55%; z-index: 2; pointer-events: none; }
+.hr-confetti i { position: absolute; width: 8px; height: 12px; border-radius: 2px; animation: hr-conf 1.3s cubic-bezier(.2, .7, .4, 1) both; }
+@keyframes hr-conf { from { transform: translate(0, 0) rotate(0); opacity: 1; } to { transform: translate(var(--x), calc(var(--y) + 220px)) rotate(var(--r)); opacity: 0; } }
+.hr-dlg-host { min-height: 58px; margin: 4px 0; }
+.hr-dlg .y-dlg { font: var(--fs-body)/24px var(--f-body); min-height: 0; padding: 10px 14px 18px; }
+.hr-reveal.waiting b { opacity: .5; }
+.stage:has(.hr-show) { background: #1a0d14; color: var(--y-ink); border: var(--y-bw) solid #6e2a44; border-radius: 6px; }
+.stage:has(.hr-show) h2:empty { display: none; }
+.stage:has(.hr-show) .st-sub, .stage:has(.hr-show) .ab-sub { color: #d98aa6; }
+@media (prefers-reduced-motion: reduce) { .hr-show .hr-cap, .hr-show.slip-out .hr-slip, .hr-slip::after { animation: none !important; } .hr-show.slip-out .hr-slip { transform: translateX(-50%) scaleY(1); } }
+.hr-show.hr-bowing { height: 180px; margin-top: -6px; }

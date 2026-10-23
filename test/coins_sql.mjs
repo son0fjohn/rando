@@ -1,5 +1,6 @@
 // The coin and shop rules, run for real: supabase/migrations/013_coins_shop.sql
-// (+ 014_mask_off.sql)
+// (+ 014_mask_off.sql), and Humiliation Ritual's server-side prompt draw
+// (015_ritual_prompts.sql)
 // in an embedded Postgres (PGlite, WASM — no server), with a tiny stand-in
 // for Supabase's auth schema (auth.users, auth.uid() from a setting).
 //   node test/coins_sql.mjs
@@ -21,6 +22,7 @@ await db.exec(`
 `);
 await db.exec(await readFile(`${ROOT}supabase/migrations/013_coins_shop.sql`, "utf8"));
 await db.exec(await readFile(`${ROOT}supabase/migrations/014_mask_off.sql`, "utf8"));
+await db.exec(await readFile(`${ROOT}supabase/migrations/015_ritual_prompts.sql`, "utf8"));
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 for (let i = 1; i <= 9; i++) { await db.query("insert into auth.users values ($1)", [U(i)]); await db.query("insert into profiles (id, handle) values ($1, $2)", [U(i), `p${i}`]); }
@@ -85,6 +87,35 @@ ok(r2.ok && r2.coins === 25, "buying it again doesn't charge again");
 ok((await err(as(2, "update profiles set avatar = '{\"shoes\": \"clog-pink\"}' where id = $1", [U(2)])))?.includes("locked"), "you can't put on a shop item you don't own");
 ok(await err(as(1, "update profiles set avatar = '{\"shoes\": \"clog-pink\"}' where id = $1", [U(1)])) === null, "…and can once you own it");
 ok(await err(as(2, "update profiles set avatar = '{\"shoes\": \"loafer-black\"}' where id = $1", [U(2)])) === null, "free items stay free");
+
+head("Humiliation Ritual: the prompt is drawn on the server, for the caller only");
+const POOL = JSON.parse(await readFile(`${ROOT}web/data/ritual_prompts.json`, "utf8")).prompts;
+const rows = await as(0, "select id, level, text from ritual_prompts order by id");
+ok(rows.length === POOL.length && POOL.every(p => rows.some(r => r.id === p.id && r.level === p.level && r.text === p.text)),
+  `the server's prompts match web/data/ritual_prompts.json (${rows.length})`);
+const draw = (n, room, turn, level = "mild") => one(n, "select ritual_draw($1, $2, $3)", [room, turn, level]);
+const R = "party-sess-1111";
+const d1 = await draw(1, R, "turnkey0001");
+ok(d1?.id && POOL.find(p => p.id === d1.id)?.text === d1.text, `the performer gets a prompt (${d1.id})`);
+ok((await draw(1, R, "turnkey0001")).id === d1.id, "asking again for the same turn gets the same prompt (a reload)");
+const d2 = await draw(2, R, "turnkey0001");
+ok(d2.id !== d1.id, "someone else drawing 'for' that turn gets a different prompt of their own, never the performer's");
+const seen = new Set([d1.id, d2.id]);
+const mild = POOL.filter(p => p.level === "mild").length;
+for (let k = 2; k < mild; k++) seen.add((await draw(3, R, `turnkey${String(k).padStart(4, "0")}`)).id);
+ok(seen.size === mild, `no prompt comes up twice in a room until all ${mild} mild ones have (${seen.size})`);
+ok([...seen].every(id => POOL.find(p => p.id === id).level === "mild"), "a mild party only ever draws mild prompts");
+ok(!!(await draw(3, R, "turnkey9999"))?.id, "once the pool is used up, the room starts over");
+let spicy = false;
+for (let k = 0; k < 40 && !spicy; k++) { const d = await draw(4, `party-sp-${k}`, "turnkey0001", "spicy"); spicy = POOL.find(p => p.id === d.id).level === "spicy"; }
+ok(spicy, "a spicy party can draw the spicy prompts");
+ok((await err(draw(0, R, "turnkey0001")))?.includes("sign in"), "you have to be signed in");
+ok((await err(draw(1, R, "turnkey0001", "extreme")))?.includes("level"), "only known levels");
+ok((await err(draw(1, R, "x")))?.includes("bad turn") && (await err(draw(1, "bad room!", "turnkey0001")))?.includes("bad turn"), "turn and room ids are checked");
+const priv = await as(0, `select has_table_privilege('authenticated', 'ritual_prompts', 'select') a, has_table_privilege('authenticated', 'ritual_draws', 'select') b,
+  has_table_privilege('anon', 'ritual_draws', 'insert') c, has_function_privilege('anon', 'ritual_draw(text, text, text)', 'execute') d,
+  has_function_privilege('authenticated', 'ritual_draw(text, text, text)', 'execute') e`);
+ok(!priv[0].a && !priv[0].b && !priv[0].c && !priv[0].d && priv[0].e, "clients can't read the prompts or the draws; signed-in players can only call ritual_draw");
 
 console.log(`\n${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);

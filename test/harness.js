@@ -97,7 +97,7 @@ export class FakeRoom {
 // ---------------------------------------------------------------- table
 // Seat n players, start `gamedef` for each, and hand back handles. Everyone
 // runs the real game module; exactly one of them is the host.
-export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, party = null, session = null } = {}) {
+export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, party = null, session = null, drawPrompt = null } = {}) {
   const bus = makeBus();
   const t0 = Date.now();
   const players = (ids ?? Array.from({ length: n }, (_, i) => `p${i + 1}`)).map((id, i) => ({
@@ -116,6 +116,8 @@ export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, par
       party: party ?? { name: "test party", vibe: "chill", cap: 12, code: "TEST", privacy: "private", settings: { adult: false, diaryMax: null } },
       options,
       session: session ?? {},
+      // a stand-in for the server's ritual_draw: drawPrompt(args, me)
+      drawPrompt: drawPrompt ? args => drawPrompt(args, c.me.id) : null,
       onEnd: r => { c.ended = true; c.results = r ?? null; },
     };
     gamedef.start(ctx);

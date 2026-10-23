@@ -64,6 +64,9 @@ export const sfx = {
   whistle() { try { tone(2100, 0.35, { type: "triangle", gain: 0.14, slide: 2300 }); tone(2300, 0.3, { type: "triangle", gain: 0.14, at: 0.4, slide: 1900 }); } catch {} },
   chime() { try { [1568, 2093, 2637].forEach((f, i) => tone(f, 0.6, { at: i * 0.09, gain: 0.08, release: 0.4 })); } catch {} },
   pop() { try { tone(700, 0.05, { gain: 0.12, slide: 1400 }); } catch {} },
+  // the Ritual clown: a gulp (the mouth catch) and a gacha capsule popping open
+  gulp() { try { tone(320, 0.16, { gain: 0.16, slide: 120 }); tone(180, 0.12, { gain: 0.12, at: 0.14, slide: 90 }); } catch {} },
+  gacha() { try { noise(0.08, { gain: 0.22, lp: 5000, lpEnd: 1500 }); tone(520, 0.07, { gain: 0.16, slide: 1600 }); [1568, 2093, 2637, 3136].forEach((f, i) => tone(f, 0.35, { at: 0.08 + i * 0.06, gain: 0.07, release: 0.3 })); } catch {} },
   // the retro UI set: dialog text blip, menu cursor, confirm, back
   blip() { try { tone(1180 + Math.random() * 120, 0.035, { type: "square", gain: 0.035, attack: 0.002, release: 0.02 }); } catch {} },
   cursor() { try { tone(1320, 0.04, { type: "square", gain: 0.05 }); } catch {} },
