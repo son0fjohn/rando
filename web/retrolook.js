@@ -183,7 +183,11 @@ export async function retroStage(host, mood = {}) {
     get tier() { return tier; },
     onFrame(fn) { frameFns.add(fn); return () => frameFns.delete(fn); },
     // move the canvas into another host (a panel rebuilt around it)
-    attach(el) { if (el && canvas.parentNode !== el) { el.appendChild(canvas); ro.disconnect(); host = el; ro.observe(el); resize(); } },
+    attach(el) {
+      if (!el || canvas.parentNode === el) return;
+      el.appendChild(canvas); ro.disconnect(); host = el; ro.observe(el); resize();
+      if (alive) { cancelAnimationFrame(raf); raf = 0; draw(performance.now()); }   // a frame at the new size right away
+    },
     // a 3D point (and a world-space radius) -> a DOMRect-like box on screen
     rectOf(obj, radius = 0.1) {
       const r = canvas.getBoundingClientRect(), p = new THREE.Vector3();
