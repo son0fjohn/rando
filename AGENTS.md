@@ -42,12 +42,12 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   someone: 3D card, wave, report, block), `web/hpkit.js` (round machine, results screen, cleanup),
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots; its
   `finish()` hands the final standings to the party),
-  `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/clown3d.js`
-  (Humiliation Ritual's 3D clown host: juggles gacha capsules with the
-  players' faces, mouth catch, gacha open / peek-wink-shhh, bow;
-  `web/models/clown/`, see `docs/clown_assets.md`), `web/wizard3d.js`
-  (Side Quest's 3D wizard over the pixel one, `web/models/wizard/`;
-  `SIDEQUEST.WIZARD_3D`, see `docs/wizard_assets.md`), `web/hpconfig.js`
+  `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/npcscene.js`
+  (Side Quest's wizard and the Ritual's clown, built like the Art Gallery:
+  painted backdrop, NPC pose cutouts, props on gravity arcs, a prop that
+  flies up to become the card; art in `web/games/sidequest|ritual/`, see
+  `docs/npc_scenes.md`), `web/charrender.js` (players' own 3D characters as
+  pictures for those scenes, warmed in the lobby), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors, party/coin/game numbers),
   `web/partyset.js` (a party is a set of 3 games: places → party points),
   `web/partyboard.js` (the podium, coin bursts; its room board is hidden),
@@ -79,15 +79,13 @@ npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Dia
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
-node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]   # Side Quest's 3D wizard: loads, fits, every mode + the nod
-node test/clown3d_shots.mjs <dir> [--only=juggle,toss,open,peek,bow]   # the Ritual's 3D clown: loads, budget, bones, wink texture, every beat
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
 node test/charturn_shots.mjs <dir> [--hair=none,f2,m1] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
 node test/combos_shots.mjs <dir>       # every top × bottom (idle + walk) and hairstyle × top, for clipping
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
-node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|party]   # phones playing Side Quest / Mask Off (+ each reveal frame by frame) / a Ritual turn / a full 3-game set + shop, recorded side by side
+node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party]   # phones playing Side Quest / Mask Off (+ each reveal frame by frame) / a Ritual turn / an Art Gallery piece / a full 3-game set + shop, recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
