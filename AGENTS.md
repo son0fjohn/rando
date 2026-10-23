@@ -43,7 +43,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots; its
   `finish()` hands the final standings to the party),
   `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/wizard3d.js`
-  (Side Quest's 3D wizard over the pixel one; off until its model is in,
+  (Side Quest's 3D wizard over the pixel one, `web/models/wizard/`;
   `SIDEQUEST.WIZARD_3D`, see `docs/wizard_assets.md`), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors, party/coin/game numbers),
   `web/partyset.js` (a party is a set of 3 games: places → party points),
