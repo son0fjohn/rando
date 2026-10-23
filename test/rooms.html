@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>retrorooms</title>
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<style>html,body{margin:0;background:#000;height:100%} #w{position:relative;width:100vw;height:100vh;overflow:hidden}</style>
+</head><body>
+<!-- One of the game scenes' rooms (web/retrorooms.js) on its own:
+     ?room=tent|study|lounge. test/rooms_shots.mjs shoots each. -->
+<div id="w"></div>
+<script type="module">
+  import { retroRoom } from "/web/retrorooms.js";
+  const kind = new URLSearchParams(location.search).get("room") || "tent";
+  try { window.__room = await retroRoom(kind, document.getElementById("w")); window.__ready = true; }
+  catch (e) { console.error(e); window.__failed = String(e?.message ?? e); }
+</script>
+</body></html>
