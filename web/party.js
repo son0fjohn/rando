@@ -46,6 +46,7 @@ import { partyBeacons } from "./partybeacon.js";
 import { muteButton, popIn } from "./retro.js";
 import { newSet, addGame, addPartial, standings, nextGameNo } from "./partyset.js";
 import { showPodium, closePodium, showCoins, coinBurst } from "./partyboard.js";
+import { warmLooks } from "./charrender.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -742,6 +743,9 @@ export const party = {
     c.lobby?.setBackground(LOBBY_BG[c.meta.vibe] ?? LOBBY_BG.chill);
     c.lobby?.setVibe(c.meta.vibe);
     c.lobby?.sync();
+    // everyone's 3D look, rendered while the room hangs out: the game scenes
+    // (Side Quest's ball, the Ritual's capsules) show them without a wait
+    warmLooks(c.room.members.map(m => m.avatar ?? {}));
     this._renderNext();
     this._renderPicker();
     this._renderSetEnd();
