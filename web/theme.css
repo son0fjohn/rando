@@ -1255,3 +1255,17 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .sq-3d .retro-canvas { transition: opacity .6s ease-out; }
 .sq-room .sq-group { transition: opacity .6s ease-out; }
 .sq-room.r3d .sq-group { opacity: 0; pointer-events: none; }
+
+/* Humiliation Ritual's 3D tent (retrorooms.js): the canvas fills the room;
+   once it's up, the painted stage goes and the clown, machine and capsules
+   are drawn in the tent (mirrored from these hidden elements) */
+.hr-3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.hr-3d .retro-canvas { transition: opacity .6s ease-out; }
+.hr-room.r3d { background-image: none !important; background-color: #0b0814; }
+.hr-room.r3d .hr-group { visibility: hidden; }
+.hr-room.r3d .hr-group .np-confetti { visibility: visible; }
+
+/* a game's 3D room behind its cards (hpkit roomBackdrop, retrorooms.js):
+   fills the game layer under the HUD and the frosted cards */
+#game-layer > .game-bg { position: absolute; inset: 0; opacity: 0; transition: opacity .7s ease-out; pointer-events: none; }
+#game-layer > .game-bg.on { opacity: 1; }

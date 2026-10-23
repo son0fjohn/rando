@@ -164,6 +164,9 @@ const DIAL = [140, 416, 88, 88], CHUTE = [184, 596];
 const GLOBE = [[92, 316], [143, 339], [195, 316], [246, 339], [292, 313]];
 const capHtml = (id, cls, style) => `<div class="hr-cap ${cls}" data-id="${esc(id)}" style="${style}"><img class="hr-cap-base" src="${ART}capsule.webp" alt=""><img class="hr-cap-head" alt=""><img class="hr-cap-gloss" src="${ART}capsule_top.webp" alt=""></div>`;
 const box = ([x, y], [w, h]) => at(G, x - w / 2, y - h / 2, w, h);
+// ?tent=0 pins the painted stage
+const TENT_ON = RITUAL.TENT_3D && params.get("tent") !== "0";
+
 
 export const HUMILIATION_RITUAL = {
   id: "ritual", title: "Humiliation Ritual",
@@ -199,7 +202,26 @@ export const HUMILIATION_RITUAL = {
     // the host's phone deals the bots' prompts itself (bots only exist in the
     // offline demo); kept in memory, never in the synced state
     const botSecrets = new Map();
-    trash.add(() => { mine = []; secrets.clear(); botSecrets.clear(); looks.clear(); });
+    // the circus tent in 3D (retrorooms.js, the retro look kit): it loads as
+    // the game starts; the clown, the machine and the capsules keep their
+    // DOM choreography and are mirrored into it as cards lit by its
+    // spotlights. Until it's up, or if it can't be, the painted stage stays.
+    let tent = null, tentP = null, mirror = null;
+    const holder = document.createElement("div");
+    const loadTent = () => TENT_ON ? (tentP ??= import("./../retrorooms.js").then(m => m.retroRoom("tent", holder)).then(t => { tent = t; return t; })
+      .catch(e => { console.warn("[ritual] no 3D tent, the painted stage stays:", e?.message ?? e); return null; })) : null;
+    loadTent();
+    function mount3d(fade) {
+      const at = $("hr-3d"), show = $("hr-show");
+      if (!tent || !at || !show) return;
+      const cv = tent.stage.canvas;
+      if (fade) cv.style.opacity = "0";
+      tent.stage.attach(at);
+      mirror?.dispose();
+      mirror = tent.mirror(show);
+      requestAnimationFrame(() => requestAnimationFrame(() => { cv.style.opacity = ""; $("hr-show")?.closest(".hr-room")?.classList.add("r3d"); }));
+    }
+    trash.add(() => { mine = []; secrets.clear(); botSecrets.clear(); looks.clear(); mirror?.dispose(); mirror = null; tentP?.then(t => t?.dispose()); tent = null; tentP = null; });
 
     // the performer's own phone draws the prompt: from the server when the
     // party has one (only this phone is sent it), else from the pool here
@@ -377,6 +399,7 @@ export const HUMILIATION_RITUAL = {
       const cast = r.cast ?? [r.performer];
       const caps = cast.map((id, i) => capHtml(id, `in-globe ${id === r.performer ? "chosen" : ""}`, `${box(GLOBE[i % GLOBE.length], CAP)};--s:.3`)).join("");
       return `<div class="np-room hr-room" style="background-image:url(${ART}stage.jpg)">
+        <div class="hr-3d" id="hr-3d"></div>
         <div class="np-pill" id="np-pill"></div>
         <h2 class="np-title" id="np-title"></h2>
         <div class="np-group hr-group" id="hr-show">
@@ -405,6 +428,7 @@ export const HUMILIATION_RITUAL = {
       ui.panel(sceneHtml(s, r), "np-full");
       bindHostSkip(game);
       paint();
+      if (tent) mount3d(false); else loadTent()?.then(() => mount3d(true));
       return true;
     }
     const pkOf = s => `${s.ti}:${s.phase}`;
