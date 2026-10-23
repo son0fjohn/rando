@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sqnook</title>
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<style>html,body{margin:0;background:#000;height:100%} #w{position:relative;width:100vw;height:100vh;overflow:hidden}</style>
+</head><body>
+<!-- Side Quest's 3D nook on its own: test/nook_shots.mjs drives it (poses,
+     the ball's moods, a face in the ball) and shoots each moment. -->
+<div id="w"></div>
+<script type="module">
+  import { sqNook } from "/web/sqnook.js";
+  try { window.__nook = await sqNook(document.getElementById("w")); window.__ready = true; }
+  catch (e) { console.error(e); window.__failed = String(e?.message ?? e); }
+</script>
+</body></html>
