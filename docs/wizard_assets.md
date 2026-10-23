@@ -60,11 +60,13 @@ the quest card appears and when the reel lands. The ball follows his palms
 (eased, held still while his hands wave). The pixel wizard stays until a 3D
 frame is up, and whenever WebGL or the model isn't there.
 
-Checked on the real v3 rig in the Higgsfield sandbox, with the shipped
-`wizard3d.js` (the dev sandbox can't download the GLB): every mode renders
-front-on, intact, the ball over his palms.
+Checked on the real v3 rig with the shipped `wizard3d.js`: every mode
+renders front-on, intact, the ball over his palms
+(`node test/wizard3d_shots.mjs <dir> --model=3d`, 5 checks).
 
-It's off until the model is in: `SIDEQUEST.WIZARD_3D` in `hpconfig.js`.
+It's on: the model is in `web/models/wizard/wizard.glb` and
+`SIDEQUEST.WIZARD_3D` in `hpconfig.js` is `true` (set it `false` to go back
+to the pixel wizard).
 `?wizard=dealer` runs it on the dealer's rig (same bone names) to test without
 the model; `node test/wizard3d_shots.mjs <dir> [--model=dealer|3d] [--video]`
 checks it loads, fits the frame, hides the pixel wizard, and shoots every mode.

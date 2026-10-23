@@ -133,7 +133,7 @@ export const SIDEQUEST = {
   STARS: 5,
   POINTS_PER_STAR: 20,         // 5 stars = 100
   MAX_TURNS: 30,
-  WIZARD_3D: false,            // the 3D wizard (wizard3d.js): on once web/models/wizard/wizard.glb is in
+  WIZARD_3D: true,             // the 3D wizard (wizard3d.js) over the pixel one; web/models/wizard/wizard.glb
 };
 
 // Who goes next (Side Quest, Humiliation Ritual): random but fair. Everyone
