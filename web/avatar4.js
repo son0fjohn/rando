@@ -23,11 +23,28 @@ import { faceTexture4, drawFace4, EXPRESSIONS4, EXPR_ALIAS } from "./face4.js";
 const BASE = new URL("./avatar4/", import.meta.url).href;
 const CHAR_H = 15;
 
-import { ITEMS4, HAIR4_RGB, SKIN4_RGB, SLOTS4, PART_OPTIONS4, DEFAULT_AVATAR4, normalizeAvatar4, EMOTES4 } from "./items4.js";
+import { ITEMS4, HAIR4_RGB, SKIN4_RGB, SLOTS4, PART_OPTIONS4, DEFAULT_AVATAR4, normalizeAvatar4, EMOTES4, LAYER4 } from "./items4.js";
 export { ITEMS4, HAIR4_RGB, SKIN4_RGB, SLOTS4, PART_OPTIONS4, DEFAULT_AVATAR4, normalizeAvatar4, EMOTES4 };
 const TEE_RGB = [214, 214, 216], SHORTS_RGB = [150, 152, 158];
 
 const lin = (rgb, out = new THREE.Color()) => out.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
+
+// test hook (test/glitch4.html): 0 = normal; 1 = every layer in a flat ID
+// colour (R part, G body region); 2 = view depth packed into RGB (1/100
+// world units per 2^24). Shared by every avatar4 material.
+export const DEBUG4 = { mode: { value: 0 }, fit: () => ({ scalpAt, HC, fitCache, bodyCovers, bodyAt, bodyCover, headCover }) };
+const PART_ID = { body: 1, bottom: 2, top: 3, shoes: 4, neck: 5, hair: 6, facewear: 7, head: 8 };
+const DEBUG_FRAG = `
+if (uDbg > 0.5) {
+  if (uDbg < 1.5) gl_FragColor = vec4(uPartId / 255.0, DBG_G / 255.0, 0.0, 1.0);
+  else { float z = clamp(vViewPosition.z / 100.0, 0.0, 1.0) * 16777215.0;
+    gl_FragColor = vec4(floor(z / 65536.0) / 255.0, mod(floor(z / 256.0), 256.0) / 255.0, mod(z, 256.0) / 255.0, 1.0); }
+}`;
+const debugHook = (sh, part, g = "0.0") => {
+  sh.uniforms.uDbg = DEBUG4.mode; sh.uniforms.uPartId = { value: PART_ID[part] ?? 9 };
+  sh.fragmentShader = sh.fragmentShader.replace("#include <common>", `#include <common>\nuniform float uDbg, uPartId;\n#define DBG_G ${g}`)
+    .replace("#include <dithering_fragment>", "#include <dithering_fragment>" + DEBUG_FRAG);
+};
 
 // ---------------- the clay material ----------------
 // Lambert (per-pixel, matte), its map read as the region mask. Clothes hide
@@ -38,17 +55,21 @@ function bodyMaterial(mask) {
   const U = {
     uSkin: { value: new THREE.Color() }, uTee: { value: lin(TEE_RGB) }, uShorts: { value: lin(SHORTS_RGB) },
     uFace: { value: null }, uHide: { value: new THREE.Vector4(0, 0, -1, 9) }, // tee, shorts, below y, above y
-    uHideArms: { value: 0 }, uHideLegs: { value: 0 }, uScalp: { value: new THREE.Vector4(0, 0, 0, 0) }, // rgb, on
+    uHideArms: { value: 0 }, uHideLegs: { value: 0 }, uHideEars: { value: 0 }, uScalp: { value: new THREE.Vector4(0, 0, 0, 0) }, // rgb, on
+    // where the top / the bottom actually cover the body (round its axis, CY0..CY1): the
+    // underlayer is only hidden there, so a wide collar or a short hem never opens a hole
+    uCovT: { value: NO_COVER }, uCovB: { value: NO_COVER }, uCovOn: { value: new THREE.Vector2(0, 0) },
   };
   const m = new THREE.MeshLambertMaterial({ map: mask });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
+    debugHook(sh, "body", "dbgRegion");
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nattribute vec2 faceUv; attribute float _facew; varying vec2 vFaceUv; varying float vFaceW; varying vec3 vRest;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFaceUv = faceUv; vFaceW = _facew; vRest = position;");
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <common>", `#include <common>
-uniform vec3 uSkin, uTee, uShorts; uniform sampler2D uFace; uniform vec4 uHide, uScalp; uniform float uHideArms, uHideLegs;
+uniform vec3 uSkin, uTee, uShorts; uniform sampler2D uFace, uCovT, uCovB; uniform vec4 uHide, uScalp; uniform float uHideArms, uHideLegs, uHideEars; uniform vec2 uCovOn;
 varying vec2 vFaceUv; varying float vFaceW; varying vec3 vRest;`)
       .replace("#include <map_fragment>", `
 vec3 rg = texture2D(map, vMapUv).rgb;
@@ -57,14 +78,23 @@ float tee = rg.g * bodyM, shorts = rg.b * bodyM;
 // arms: out past the shoulders, above the wrists; legs: below the hips
 float arm = step(0.115, abs(vRest.x)) * step(0.505, vRest.y) * step(vRest.y, 0.72);
 float leg = step(vRest.y, 0.42) * step(abs(vRest.x), 0.13);
-if ((uHide.x > 0.5 && tee > 0.5) || (uHide.y > 0.5 && shorts > 0.5) || vRest.y < uHide.z || vRest.y > uHide.w
-    || (uHideArms > 0.5 && arm > 0.5 && tee + shorts < 0.5) || (uHideLegs > 0.5 && leg > 0.5)) discard;
+// debug region (glitch4): 1 hand, 2 arm, 3 leg, 4 head, 5 torso
+float dbgRegion = abs(vRest.x) > 0.2 && vRest.y < 0.56 ? 1.0 : arm > 0.5 ? 2.0 : leg > 0.5 ? 3.0 : vRest.y > 0.76 ? 4.0 : 5.0;
+vec2 covUv = vec2(atan(vRest.x, vRest.z) / 6.2831853 + 0.5, (vRest.y - ${CY0.toFixed(3)}) / ${(CY1 - CY0).toFixed(3)});
+bool inMap = covUv.y > 0.0 && covUv.y < 1.0;
+// (well inside it: at the cloth's edge the underlayer shows, like an undershirt, never a hole)
+bool covT = uCovOn.x < 0.5 || !inMap || texture2D(uCovT, covUv).r > 0.95;
+bool covB = uCovOn.y < 0.5 || !inMap || texture2D(uCovB, covUv).r > 0.95;
+if ((uHide.x > 0.5 && tee > 0.5 && covT && vRest.y < 0.715) || (uHide.y > 0.5 && shorts > 0.5 && covB) || vRest.y < uHide.z || vRest.y > uHide.w
+    || (uHideArms > 0.5 && arm > 0.5 && tee + shorts < 0.5) || (uHideLegs > 0.5 && leg > 0.5)
+    || (uHideEars > 0.5 && abs(vRest.x) > 0.088 && vRest.y > 0.82 && vRest.y < 0.92)) discard;
 vec3 col = uSkin * (1.0 - tee - shorts) + uTee * tee + uShorts * shorts;
 // under hair the scalp takes the hair's colour (no skin through gaps between locks)
 float ear = step(0.085, abs(vRest.x)) * step(vRest.y, 0.905);
 float scalp = uScalp.w * (1.0 - ear) * max(smoothstep(0.935, 0.955, vRest.y - max(vRest.z, 0.0) * 0.4 + 0.02),
   smoothstep(0.0, -0.03, vRest.z) * smoothstep(0.8, 0.83, vRest.y));
 col = mix(col, uScalp.rgb, scalp);
+if (scalp > 0.5) dbgRegion = 6.0;
 vec4 fc = texture2D(uFace, vFaceUv);
 col = mix(col, fc.rgb, fc.a * vFaceW * step(0.0, vFaceUv.x) * step(vFaceUv.x, 1.0) * step(0.0, vFaceUv.y) * step(vFaceUv.y, 1.0));
 diffuseColor.rgb *= col;`);
@@ -77,7 +107,7 @@ diffuseColor.rgb *= col;`);
 // items: their own texture, optionally recolored. tint: [keyRGB, newRGB]
 // pairs; each pixel near a key (in chroma + lightness) is moved to the new
 // color keeping its shading. hair: the whole texture, by luminance.
-function itemMaterial(map, def, cfg) {
+function itemMaterial(map, def, cfg, hat = null, edge = false) {
   const keys = [], cols = [];
   const tints = typeof def.tint === "function" ? def.tint(cfg) : def.tint ?? [];
   for (const [k, c] of tints.slice(0, 3)) { keys.push(lin(k)); cols.push(lin(c)); }
@@ -86,11 +116,16 @@ function itemMaterial(map, def, cfg) {
   const m = new THREE.MeshLambertMaterial({ map, side: def.doubleSide ? THREE.DoubleSide : THREE.FrontSide });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
+    debugHook(sh, def.cat === "face" ? "facewear" : def.cat);
+    // cut edges take the colour of the cloth just inside them (refit4.mjs)
+    if (edge) sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nattribute vec4 _edgecol; varying vec4 vEdge;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvEdge = _edgecol;");
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uKey[3], uCol[3]; uniform float uAll;")
+      .replace("#include <common>", "#include <common>\nuniform vec3 uKey[3], uCol[3]; uniform float uAll;" + (edge ? "\nvarying vec4 vEdge;" : ""))
       .replace("#include <map_fragment>", `
 vec4 tx = texture2D(map, vMapUv);
 vec3 c = tx.rgb;
+${edge ? "c = mix(c, pow(vEdge.rgb, vec3(2.2)), vEdge.a);" : ""}
 for (int k = 0; k < 3; k++) {
   if (uKey[k].r < -1.0) continue;
   float lk = dot(uKey[k], vec3(.3, .59, .11)), lc = dot(c, vec3(.3, .59, .11));
@@ -101,8 +136,283 @@ for (int k = 0; k < 3; k++) {
 }
 diffuseColor *= vec4(c, tx.a);`);
   };
-  m.customProgramCacheKey = () => "rando-item4";
+  // layers in order (LAYER4): where two still meet, the outer one wins the depth test
+  const L = LAYER4[def.cat] ?? 0;
+  m.polygonOffset = L > 0; m.polygonOffsetFactor = -0.5 * L; m.polygonOffsetUnits = -2 * L;
+  // under a hood: the hair behind the head is inside it
+  if (def.cat === "hair" && hat?.hairBack) clipBehind(m, HC[2] - 0.015);
+  else m.customProgramCacheKey = () => "rando-item4-" + def.cat + (edge ? "-e" : "");
   return m;
+}
+
+// ---------------- layer shells ----------------
+// Layers never share a surface, and the outer one always wins. In rest
+// space (base units), once per item or pair, cached:
+//  - the head shell: the scalp's radius round the head centre, measured
+//    per direction from the base mesh;
+//  - a hat is pushed out to sit at least HAT_GAP off the scalp, so it never
+//    touches the scalp or the hair under it;
+//  - hat hair: wherever a hat covers the head, the hair is pressed down to
+//    within HAIR_IN of the scalp; what the hat doesn't cover (bangs, sides,
+//    the back, a ponytail's tail) stays as it is;
+//  - hair lies over a top's collar and over neck items (lifted LIFT off
+//    them), and so do neck items and a hood's neck; a top's hem goes over
+//    the bottom's waistband (pressed in);
+//  - a mask or shades sit FACE_GAP off the face;
+//  - a hood hides the hair behind the head (itemMaterial clips it).
+const HC = [0, 0.895, 0];                       // head centre
+const AZ = 96, PO = 48;                         // head / body maps: azimuth bins; head map polar bins (fine enough for the nose)
+const CY0 = 0.36, CY1 = 0.84, CYN = 40;         // body map: heights round the vertical axis
+// (big flat triangles sag ~0.003 toward a curved scalp between their corners: the gaps allow for it)
+const HAT_GAP = 0.016, FACE_GAP = 0.008, HAIR_IN = 0.0075, HAIR_MIN = 0.005, LIFT = 0.008, MAX_LIFT = 0.035, TUCK = 0.007, SOFT = 0.003;
+const softplus = x => x > 20 ? x : Math.log1p(Math.exp(x));
+// a smooth max / min that keeps the order of the layers inside a shell
+const atLeast = (r, a) => a + SOFT * softplus((r - a) / SOFT);
+const atMost = (r, a) => a - SOFT * softplus((a - r) / SOFT);
+
+// positions as a plain xyz array (the glbs' attributes are interleaved)
+const xyz = geo => { const a = geo.attributes.position, p = new Float32Array(a.count * 3); for (let i = 0; i < a.count; i++) { p[i * 3] = a.getX(i); p[i * 3 + 1] = a.getY(i); p[i * 3 + 2] = a.getZ(i); } return p; };
+function triangles(geo, keep = null) {
+  const p = xyz(geo), ix = geo.index?.array, n = ix ? ix.length : p.length / 3, out = [];
+  for (let i = 0; i < n; i += 3) {
+    const a = ix ? ix[i] : i, b = ix ? ix[i + 1] : i + 1, c = ix ? ix[i + 2] : i + 2;
+    if (keep && !keep(p[a * 3 + 1], p[b * 3 + 1], p[c * 3 + 1])) continue;
+    out.push(p[a * 3], p[a * 3 + 1], p[a * 3 + 2], p[b * 3], p[b * 3 + 1], p[b * 3 + 2], p[c * 3], p[c * 3 + 1], p[c * 3 + 2]);
+  }
+  return new Float32Array(out);
+}
+// distances along the ray o + t·d to every triangle it crosses (only the
+// triangles listed in `only`, when given: a bucket of them)
+function hits(T, o, d, only = null) {
+  const out = [], n = only ? only.length : T.length / 9;
+  for (let q = 0; q < n; q++) {
+    const i = (only ? only[q] : q) * 9;
+    const e1x = T[i + 3] - T[i], e1y = T[i + 4] - T[i + 1], e1z = T[i + 5] - T[i + 2];
+    const e2x = T[i + 6] - T[i], e2y = T[i + 7] - T[i + 1], e2z = T[i + 8] - T[i + 2];
+    const px = d[1] * e2z - d[2] * e2y, py = d[2] * e2x - d[0] * e2z, pz = d[0] * e2y - d[1] * e2x;
+    const det = e1x * px + e1y * py + e1z * pz;
+    if (Math.abs(det) < 1e-12) continue;
+    const inv = 1 / det, tx = o[0] - T[i], ty = o[1] - T[i + 1], tz = o[2] - T[i + 2];
+    const u = (tx * px + ty * py + tz * pz) * inv; if (u < 0 || u > 1) continue;
+    const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
+    const v = (d[0] * qx + d[1] * qy + d[2] * qz) * inv; if (v < 0 || u + v > 1) continue;
+    const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+    if (t > 1e-5) out.push(t);
+  }
+  return out;
+}
+// triangles bucketed by a per-corner key range (lo..hi bins, inclusive), so a ray only tests its bucket
+function buckets(T, nb, key) {
+  const B = Array.from({ length: nb }, () => []);
+  for (let t = 0; t < T.length / 9; t++) {
+    let lo = Infinity, hi = -Infinity;
+    for (let c = 0; c < 3; c++) { const k = key(T[t * 9 + c * 3], T[t * 9 + c * 3 + 1], T[t * 9 + c * 3 + 2]); lo = Math.min(lo, k); hi = Math.max(hi, k); }
+    for (let b = Math.max(0, Math.floor(lo)); b <= Math.min(nb - 1, Math.ceil(hi)); b++) B[b].push(t);
+  }
+  return B;
+}
+// head map directions: bin centres; and a point's (fractional) bin
+const headDir = (i, j) => { const az = (i + 0.5) / AZ * 2 * Math.PI - Math.PI, po = (j + 0.5) / PO * Math.PI; return [Math.sin(po) * Math.sin(az), Math.cos(po), Math.sin(po) * Math.cos(az)]; };
+const headBin = (x, y, z) => { const r = Math.hypot(x, y, z) || 1; return [(Math.atan2(x, z) + Math.PI) / (2 * Math.PI) * AZ - 0.5, Math.acos(Math.max(-1, Math.min(1, y / r))) / Math.PI * PO - 0.5]; };
+const bodyRow = j => CY0 + (j + 0.5) / CYN * (CY1 - CY0);
+// (a triangle spanning the pole or the back seam just lands in a wide range of buckets: still correct)
+const polarBuckets = T => buckets(T, PO, (x, y, z) => headBin(x - HC[0], y - HC[1], z - HC[2])[1]);
+// bilinear, wrapping round in azimuth
+function sample(map, W, H, fi, fj) {
+  const i0 = Math.floor(fi), j0 = Math.max(0, Math.min(H - 1, Math.floor(fj))), j1 = Math.min(H - 1, j0 + 1);
+  const ti = fi - i0, tj = Math.max(0, Math.min(1, fj - j0)), a = ((i0 % W) + W) % W, b = (a + 1) % W;
+  return (map[j0 * W + a] * (1 - ti) + map[j0 * W + b] * ti) * (1 - tj) + (map[j1 * W + a] * (1 - ti) + map[j1 * W + b] * ti) * tj;
+}
+// coverage maps: dilate once, then blur, so a layer's edge fades out over a bin or two
+// (down = -2: no dilation, just the blur)
+function soften(m, W, H, down = 0) {
+  let a = Float32Array.from(m);
+  if (down > -2) for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    let v = m[j * W + i];
+    for (let dj = -1; dj <= 1 + down; dj++) for (let di = -1; di <= 1; di++) { const jj = j - dj; if (jj >= 0 && jj < H) v = Math.max(v, m[jj * W + ((i + di + W) % W)]); }
+    a[j * W + i] = v;
+  }
+  const b = new Float32Array(a.length);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    let v = 0, n = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj; if (jj >= 0 && jj < H) { v += a[jj * W + ((i + di + W) % W)]; n++; } }
+    b[j * W + i] = v / n;
+  }
+  return b;
+}
+let SCALP = null;
+const BONE_IX = {};
+// the scalp's radius per head direction (directions below the jaw keep the
+// last good radius: nothing is fitted there)
+function scalpMap(geo) {
+  if (SCALP) return SCALP;
+  const T = triangles(geo, (a, b, c) => Math.min(a, b, c) > 0.74), R = new Float32Array(AZ * PO), Bk = polarBuckets(T);
+  for (let j = 0; j < PO; j++) for (let i = 0; i < AZ; i++) {
+    const h = hits(T, HC, headDir(i, j), Bk[j]);
+    R[j * AZ + i] = h.length ? Math.min(0.14, Math.min(...h)) : (j ? R[(j - 1) * AZ + i] : 0.1);
+  }
+  for (let j = Math.round(PO * 0.64); j < PO; j++) for (let i = 0; i < AZ; i++) R[j * AZ + i] = R[(j - 1) * AZ + i];
+  return SCALP = R;
+}
+const scalpAt = (x, y, z) => { const [fi, fj] = headBin(x - HC[0], y - HC[1], z - HC[2]); return sample(SCALP, AZ, PO, fi, fj); };
+// where a hat covers the head: a ray from the head centre meets it close to the scalp
+function headCover(geos) {
+  const T = geos.map(g => triangles(g)), Bk = T.map(polarBuckets), C = new Float32Array(AZ * PO);
+  for (let j = 0; j < PO; j++) for (let i = 0; i < AZ; i++) {
+    const R = SCALP[j * AZ + i];
+    C[j * AZ + i] = T.some((t, k) => hits(t, HC, headDir(i, j), Bk[k][j]).some(h => h < R + 0.06)) ? 1 : 0;
+  }
+  return soften(C, AZ, PO, 1);
+}
+// round the body's vertical axis: where a top (or neck item) is, and its radius
+// (the first surface out from the axis, past the middle of the body)
+function bodyCover(geos) {
+  const T = geos.map(g => triangles(g)), C = new Float32Array(AZ * CYN), R = new Float32Array(AZ * CYN), Ro = new Float32Array(AZ * CYN);
+  const Bk = T.map(t => buckets(t, CYN, (x, y) => (y - CY0) / (CY1 - CY0) * CYN - 0.5));
+  for (let j = 0; j < CYN; j++) for (let i = 0; i < AZ; i++) {
+    const az = (i + 0.5) / AZ * 2 * Math.PI - Math.PI, o = [0, bodyRow(j), 0], d = [Math.sin(az), 0, Math.cos(az)];
+    const h = T.flatMap((t, k) => hits(t, o, d, Bk[k][j])).filter(t => t > 0.02 && t < 0.24);
+    // R: its inside (what goes under it is pressed in under this); Ro: its outside, the
+    // last surface within a cloth's thickness (what goes over it is lifted past this)
+    if (h.length) { const r0 = Math.min(...h); C[j * AZ + i] = 1; R[j * AZ + i] = r0; Ro[j * AZ + i] = Math.max(...h.filter(t => t < r0 + 0.035)); }
+  }
+  // fill radii where uncovered with the neighbours', so sampling across an edge stays sane
+  for (const M of [R, Ro]) for (let k = 0; k < 4; k++) for (let j = 0; j < CYN; j++) for (let i = 0; i < AZ; i++) if (!M[j * AZ + i]) {
+    const n = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([di, dj]) => M[Math.max(0, Math.min(CYN - 1, j + dj)) * AZ + (i + di + AZ) % AZ]).filter(Boolean);
+    if (n.length) M[j * AZ + i] = Math.max(...n);
+  }
+  return { C: soften(C, AZ, CYN), exact: soften(C, AZ, CYN, -2), R, Ro };
+}
+// a cover map as a texture for the body shader (azimuth wraps)
+const NO_COVER = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+NO_COVER.needsUpdate = true;
+const coverTexs = new Map();
+function coverTex(id, M) {
+  if (coverTexs.has(id)) return coverTexs.get(id);
+  const d = new Uint8Array(AZ * CYN * 4);
+  for (let k = 0; k < AZ * CYN; k++) d[k * 4] = d[k * 4 + 1] = d[k * 4 + 2] = d[k * 4 + 3] = Math.round(Math.min(1, M.exact[k]) * 255);
+  const t = new THREE.DataTexture(d, AZ, CYN);
+  t.wrapS = THREE.RepeatWrapping; t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true;
+  coverTexs.set(id, t);
+  return t;
+}
+const bodyAt = (map, x, y, z, outer = false) => {
+  const fi = (Math.atan2(x, z) + Math.PI) / (2 * Math.PI) * AZ - 0.5, fj = (y - CY0) / (CY1 - CY0) * CYN - 0.5;
+  if (fj < -1 || fj > CYN) return [0, 0];
+  return [sample(map.C, AZ, CYN, fi, fj), sample(outer ? map.Ro : map.R, AZ, CYN, fi, fj)];
+};
+// a copy of an item's geometry with its positions moved (everything else shared)
+function moved(geo, fn) {
+  const g = new THREE.BufferGeometry();
+  for (const [k, a] of Object.entries(geo.attributes)) g.setAttribute(k, a);
+  g.index = geo.index;
+  const p = xyz(geo);
+  for (let i = 0; i < p.length; i += 3) fn(p, i);
+  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+  g.computeBoundingSphere();
+  return g;
+}
+// hair and a hood's drape ride the head bone; below the jaw they hand over
+// to the chest (all of it by the shoulders), so long hair and the hood's
+// neck move with the body under them instead of swinging through the top
+function onTheChest(geo) {
+  const P = geo.attributes.position, n = P.count, J = new Uint16Array(n * 4), W = new Float32Array(n * 4);
+  const head = BONE_IX.head, chest = BONE_IX.chest, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+  if (head == null || chest == null) return geo;
+  let changed = false;
+  for (let i = 0; i < n; i++) {
+    const y = P.getY(i), k = Math.min(1, Math.max(0, (0.8 - y) / 0.14)), w = k * k * (3 - 2 * k);
+    if (w > 0) { J.set([head, chest, 0, 0], i * 4); W.set([1 - w, w, 0, 0], i * 4); changed = true; }
+    else { J.set([si.getX(i), si.getY(i), si.getZ(i), si.getW(i)], i * 4); W.set([sw.getX(i), sw.getY(i), sw.getZ(i), sw.getW(i)], i * 4); }
+  }
+  if (!changed) return geo;
+  const g = new THREE.BufferGeometry();
+  for (const [k, a] of Object.entries(geo.attributes)) g.setAttribute(k, a);
+  g.index = geo.index;
+  g.setAttribute("skinIndex", new THREE.BufferAttribute(J, 4)); g.setAttribute("skinWeight", new THREE.BufferAttribute(W, 4));
+  g.computeBoundingSphere();
+  return g;
+}
+// radial moves round the head centre / the body's axis
+const headTo = (p, i, f) => {
+  const x = p[i] - HC[0], y = p[i + 1] - HC[1], z = p[i + 2] - HC[2], r = Math.hypot(x, y, z);
+  if (r < 1e-4) return;
+  const k = f(r) / r; p[i] = HC[0] + x * k; p[i + 1] = HC[1] + y * k; p[i + 2] = HC[2] + z * k;
+};
+const axisTo = (p, i, f) => {
+  const r = Math.hypot(p[i], p[i + 2]);
+  if (r < 1e-4) return;
+  const k = f(r) / r; p[i] *= k; p[i + 2] *= k;
+};
+// the fitted geometry of one worn item, given the other worn items that
+// shape it ({ id, def, geos }), cached
+const fitCache = new Map(), headCovers = new Map(), bodyCovers = new Map();
+const headCoverOf = o => headCovers.get(o.id) ?? headCovers.set(o.id, headCover(o.geos)).get(o.id);
+const bodyCoverOf = o => bodyCovers.get(o.id) ?? bodyCovers.set(o.id, bodyCover(o.geos)).get(o.id);
+// which other worn items shape an item's fit
+const shapes = (def, o) => def.cat === "hair" ? (o.cat === "head" && o.shell !== false) || ((o.cat === "top" || o.cat === "neck") && o.liftsHair !== false)
+  : def.cat === "bottom" ? o.cat === "top" && o.tucks !== false
+  : def.cat === "neck" || def.cat === "head" ? o.cat === "top" : false;
+function fitted(id, idx, geo, others) {
+  const def = ITEMS4[id], key = [id, idx, ...others.map(o => o.id)].join("|");
+  if (fitCache.has(key)) return fitCache.get(key);
+  let g = geo;
+  const shell = def.cat === "head" && def.shell !== false, face = def.cat === "face";
+  if (shell || face) g = moved(g, (p, i) => {
+    // a hat sits on the head shell: nothing of it inside scalp + HAT_GAP;
+    // a mask or shades sit just off the face
+    // (a mask over the nose and mouth stands further off than shades: the nose is a small, sharp bump)
+    const R = scalpAt(p[i], p[i + 1], p[i + 2]), gap = shell ? HAT_GAP : p[i + 1] < 0.855 ? FACE_GAP * 1.6 : FACE_GAP;
+    if (p[i + 1] > HC[1] - (shell ? 0.08 : 0.13)) headTo(p, i, r => r < R + gap + 0.03 ? atLeast(r, R + gap) : r);
+  });
+  if (def.cat === "hair") g = moved(g, (p, i) => {
+    // hair never shares the scalp's surface (a buzz cut stands HAIR_MIN off it)
+    if (p[i + 1] > HC[1] - 0.1) { const R = scalpAt(p[i], p[i + 1], p[i + 2]); headTo(p, i, r => r < R + HAIR_MIN + 0.01 ? atLeast(r, R + HAIR_MIN) : r); }
+  });
+  for (const o of others) {
+    if (def.cat === "hair" && o.def.cat === "head" && o.def.shell !== false) {
+      // hat hair: pressed under whatever the hat covers
+      const C = headCoverOf(o);
+      g = moved(g, (p, i) => {
+        const [fi, fj] = headBin(p[i] - HC[0], p[i + 1] - HC[1], p[i + 2] - HC[2]), c = sample(C, AZ, PO, fi, fj);
+        if (c < 0.01) return;
+        const R = sample(SCALP, AZ, PO, fi, fj);
+        headTo(p, i, r => r + c * (atMost(r, R + HAIR_IN) - r));
+      });
+    }
+    if (def.cat === "hair" && (o.def.cat === "top" || o.def.cat === "neck") && o.def.liftsHair !== false) {
+      // hair lies over a collar / a scarf / straps
+      const M = bodyCoverOf(o);
+      g = moved(g, (p, i) => {
+        const [c, R] = bodyAt(M, p[i], p[i + 1], p[i + 2], true);
+        // further down the back, more room: hair rides the head bone, the top bends with the spine
+        if (c > 0.01 && Math.hypot(p[i], p[i + 2]) > R * 0.6) axisTo(p, i, r => r + c * Math.min(MAX_LIFT * 1.7, atLeast(r, R + LIFT + Math.max(0, 0.84 - p[i + 1]) * 0.05) - r));
+      });
+    }
+    if ((def.cat === "neck" || def.cat === "head") && o.def.cat === "top") {
+      // a chain, a scarf, straps, a hood's neck: over the top, never through it
+      const M = bodyCoverOf(o);
+      g = moved(g, (p, i) => {
+        const [c, R] = bodyAt(M, p[i], p[i + 1], p[i + 2], true);
+        // (more room: near the shoulders the top follows the arms, the chain the chest)
+        // all the way round: behind the neck it rests on the collar, never inside it
+        // (at most 2.5 × MAX_LIFT: past that the cover is a sleeve or an arm, not the chest)
+        if (c > 0.01 && p[i + 1] < 0.8) axisTo(p, i, r => r + c * Math.min(MAX_LIFT * 2.5, atLeast(r, R + LIFT * 2.5) - r));
+      });
+    }
+    if (def.cat === "bottom" && o.def.cat === "top" && o.def.tucks !== false) {
+      // the waistband goes in under the top's hem
+      const M = bodyCoverOf(o);
+      g = moved(g, (p, i) => {
+        const [c, R] = bodyAt(M, p[i], p[i + 1], p[i + 2]);
+        if (c > 0.01) axisTo(p, i, r => r + c * (atMost(r, R - TUCK) - r));
+      });
+    }
+  }
+  if (def.cat === "hair" || def.cat === "head") g = onTheChest(g);
+  if (fitCache.size > 200) fitCache.delete(fitCache.keys().next().value);
+  fitCache.set(key, g);
+  return g;
 }
 
 // ---------------- loading ----------------
@@ -116,6 +426,8 @@ export function loadAvatar4() {
     if (!body) throw new Error("avatar4/base.glb: no skinned mesh");
     const geo = body.geometry;
     if (geo.attributes.uv1) geo.setAttribute("faceUv", geo.attributes.uv1);
+    scalpMap(geo);
+    body.skeleton.bones.forEach((b, i) => { BONE_IX[b.name] = i; });
     const mask = body.material.map;
     mask.colorSpace = THREE.NoColorSpace; mask.needsUpdate = true;
     TPL = { scene: g.scene, mask };
@@ -165,44 +477,50 @@ function build(cfg) {
     // a hat can hide the hairstyles that would poke through it (the hood: buns, tails)
     const ids = all.filter(id => ITEMS4[id].file && !(ITEMS4[id].cat === "hair" && hat?.hidesHair?.includes(id)));
     if (all.some(id => ITEMS4[id].code === "hoops")) worn.push(...hoops());
-    // hats over hair: a hat's def says how much hair stays (hairCut: y in
-    // rest-pose units; the hair above it is clipped)
-    const hide = { tee: 0, shorts: 0, below: -1, above: 9, arms: 0, legs: 0 };
+    const hide = { tee: 0, shorts: 0, below: -1, above: 9, arms: 0, legs: 0, ears: 0 };
     for (const id of ids) {
       const h = ITEMS4[id].hides ?? {};
-      if (h.tee) hide.tee = 1; if (h.shorts) hide.shorts = 1; if (h.arms) hide.arms = 1; if (h.legs) hide.legs = 1;
+      if (h.tee) hide.tee = 1; if (h.ears) hide.ears = 1; if (h.shorts) hide.shorts = 1; if (h.arms) hide.arms = 1; if (h.legs) hide.legs = 1;
       if (h.below != null) hide.below = Math.max(hide.below, h.below);
       if (h.above != null) hide.above = Math.min(hide.above, h.above);
     }
     U.uHide.value.set(hide.tee, hide.shorts, hide.below, hide.above);
-    U.uHideArms.value = hide.arms; U.uHideLegs.value = hide.legs;
+    U.uHideArms.value = hide.arms; U.uHideLegs.value = hide.legs; U.uHideEars.value = hide.ears;
     // the scalp under hair takes the hair colour; under a hat, the hat's (no
     // skin through the gaps either way)
     const hairDef = ITEMS4[cfg.hair];
     const scalpRgb = hat?.scalp ?? (hairDef?.scalp ? HAIR4_RGB[cfg.hairColor] ?? HAIR4_RGB.black : null);
     if (scalpRgb) { const c = lin(scalpRgb); U.uScalp.value.set(c.r * 0.75, c.g * 0.75, c.b * 0.75, 1); }
     else U.uScalp.value.set(0, 0, 0, 0);
-    ready = Promise.all(ids.map(id => loadItem(id).then(meshes => {
+    ready = Promise.all(ids.map(id => loadItem(id))).then(loaded => {
       if (disposed || my !== epoch) return;
-      const def = ITEMS4[id];
-      for (const src of meshes) {
-        const mat = itemMaterial(src.material.map, def, cfg);
-        if (def.cat === "hair" && hat?.hairCut != null) cutAbove(mat, hat.hairCut);
-        const sm = new THREE.SkinnedMesh(src.geometry, mat);
-        // its flat colour (the lobby sprites paint parts flat): the tint's, else its own
-        const tints = typeof def.tint === "function" ? def.tint(cfg) : def.tint;
-        sm.userData.rgb = tints?.[0]?.[1] ?? def.rgb;
-        sm.frustumCulled = false; sm.castShadow = true; sm.userData.part = def.cat === "face" ? "facewear" : def.cat;
-        body.parent.add(sm);
-        sm.bind(skel, body.bindMatrix);
-        worn.push(sm);
+      const worn4 = ids.map((id, k) => ({ id, def: ITEMS4[id], meshes: loaded[k], geos: loaded[k].map(m => m.geometry) }));
+      const top = worn4.find(o => o.def.cat === "top"), bot = worn4.find(o => o.def.cat === "bottom");
+      U.uCovT.value = top ? coverTex(top.id, bodyCoverOf(top)) : NO_COVER;
+      U.uCovB.value = bot ? coverTex(bot.id, bodyCoverOf(bot)) : NO_COVER;
+      U.uCovOn.value.set(top ? 1 : 0, bot ? 1 : 0);
+      for (const { id, def, meshes } of worn4) {
+        const others = worn4.filter(o => o.id !== id && shapes(def, o.def));
+        meshes.forEach((src, k) => {
+          const mat = itemMaterial(src.material.map, def, cfg, hat, !!src.geometry.attributes._edgecol);
+          const sm = new THREE.SkinnedMesh(fitted(id, k, src.geometry, others), mat);
+          // its flat colour (the lobby sprites paint parts flat): the tint's, else its own
+          const tints = typeof def.tint === "function" ? def.tint(cfg) : def.tint;
+          sm.userData.rgb = tints?.[0]?.[1] ?? def.rgb;
+          sm.frustumCulled = false; sm.castShadow = true; sm.userData.part = def.cat === "face" ? "facewear" : def.cat;
+          body.parent.add(sm);
+          sm.bind(skel, body.bindMatrix);
+          worn.push(sm);
+        });
       }
-    }))).then(() => {});
+    });
   };
 
   // hoop earrings, made in code: a small gold ring hanging from each ear, on the head bone
   const hoops = () => [-1, 1].map(side => {
-    const m = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.0028, 8, 24), new THREE.MeshLambertMaterial({ color: 0xe8c25a, emissive: 0x3a2a08 }));
+    const mat = new THREE.MeshLambertMaterial({ color: 0xe8c25a, emissive: 0x3a2a08 });
+    mat.onBeforeCompile = sh => debugHook(sh, "facewear");
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.0028, 8, 24), mat);
     m.position.set(side * 0.112, 0.036, -0.004);           // head-bone space (base units): under the ear lobe
     m.rotation.y = Math.PI / 2;
     m.userData.ownGeo = true; m.userData.part = "facewear"; m.userData.rgb = [232, 194, 90];
@@ -342,17 +660,17 @@ function build(cfg) {
   };
 }
 
-// hair under a hat: clip everything above the hat's line (rest-pose height)
-function cutAbove(mat, y) {
+// hair under a hood: clip everything behind the head (rest-pose z)
+function clipBehind(mat, z) {
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = sh => {
     prev(sh);
-    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vRestY;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvRestY = position.y;");
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vRestY;")
-      .replace("void main() {", `void main() {\n  if (vRestY > ${y.toFixed(4)}) discard;`);
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vRestZ;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvRestZ = position.z;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vRestZ;")
+      .replace("void main() {", `void main() {\n  if (vRestZ < ${z.toFixed(4)}) discard;`);
   };
-  mat.customProgramCacheKey = () => "rando-item4-cut" + y;
+  mat.customProgramCacheKey = () => "rando-item4-behind" + z;
 }
 
 export async function makeCharacter4(raw) {
@@ -438,7 +756,7 @@ export function pieceThumb4(id, { hairColor = "darkbrown", size = 160 } = {}) {
   if (!def) return Promise.reject(new Error("no such item"));
   if (!thumbCache.has(key)) thumbCache.set(key, thumbQ = thumbQ.catch(() => {}).then(async () => {
     if (!def.file) return codeThumb(id, size);
-    const meshes = await loadItem(id);
+    const [meshes] = await Promise.all([loadItem(id), loadAvatar4()]);
     if (!thumbR) { thumbR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); thumbR.outputColorSpace = THREE.SRGBColorSpace; }
     thumbR.setSize(size, size, false);
     const scene = new THREE.Scene();
@@ -446,7 +764,7 @@ export function pieceThumb4(id, { hairColor = "darkbrown", size = 160 } = {}) {
     const k = new THREE.DirectionalLight(0xfff3dc, 1.7); k.position.set(4, 10, 12); scene.add(k);
     const rim = new THREE.DirectionalLight(0xffd57a, 1.2); rim.position.set(-6, 6, -8); scene.add(rim);
     const g = new THREE.Group(), mats = [];
-    for (const src of meshes) { const m = itemMaterial(src.material.map, def, { hairColor }); mats.push(m); g.add(new THREE.Mesh(src.geometry, m)); }
+    meshes.forEach((src, k) => { const m = itemMaterial(src.material.map, def, { hairColor }, null, !!src.geometry.attributes._edgecol); mats.push(m); g.add(new THREE.Mesh(fitted(id, k, src.geometry, []), m)); });
     g.rotation.y = def.cat === "shoes" ? -0.6 : /backpack|skateboard/.test(id) ? Math.PI - 0.4 : 0.35;
     scene.add(g); g.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(g), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());

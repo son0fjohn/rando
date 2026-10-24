@@ -1294,3 +1294,10 @@ button.dlg-choice.sq-star { color: #ffd23f; }
    fills the game layer under the HUD and the frosted cards */
 #game-layer > .game-bg { position: absolute; inset: 0; opacity: 0; transition: opacity .7s ease-out; pointer-events: none; }
 #game-layer > .game-bg.on { opacity: 1; }
+
+/* the Style screen: a tile that doesn't fit with what's on, and the note that says so */
+#style-screen .opt-tile.clash { opacity: .38; filter: grayscale(.6); }
+#ss-note { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translate(-50%, 6px); max-width: calc(100% - 32px); padding: 7px 12px; border-radius: 12px;
+  background: rgba(8,12,32,.9); color: #fff; font: 600 13px/18px var(--f-sys); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 5; }
+#ss-note.show { opacity: 1; transform: translate(-50%, 0); }
