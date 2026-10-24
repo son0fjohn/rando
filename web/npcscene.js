@@ -40,7 +40,7 @@ export function confetti(host, { n = 26, x = "50%", y = "50%" } = {}) {
   const box = document.createElement("div");
   box.className = "np-confetti";
   box.style.left = x; box.style.top = y;
-  const C = ["#ffc83d", "#ff5d8a", "#3ee0d0", "#ffffff", "#ff8a3d", "#8ab4ff"];
+  const C = ["#ffc83d", "#ffe08a", "#3ee0d0", "#ffffff", "#ff8a3d", "#8ab4ff"];
   for (let i = 0; i < n; i++) {
     const b = document.createElement("i");
     b.style.cssText = `--x:${(Math.random() * 2 - 1) * 150}px;--y:${-70 - Math.random() * 150}px;--r:${Math.random() * 720 - 360}deg;background:${C[i % C.length]};animation-delay:${Math.random() * 70}ms`;

@@ -36,7 +36,8 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   and `cel.js` are the old character, kept only for `staticize`/`matteify`.)
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
-  for Korean) and frosted-glass panels; pixel art only in the room art and
+  for Korean) and frosted-glass panels; one accent, gold `--color-accent`
+  with navy `--color-on-accent` text, never a hardcoded accent hex; pixel art only in the room art and
   sprites, never in text, buttons or panels).
 - **House party:** `web/party.js` (party + lobby: chat, players vote for the
   next game, the host's "Game votes" sheet starts one; the TV opens the same
