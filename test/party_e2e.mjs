@@ -289,9 +289,14 @@ try {
     const slip = await text(performer, "#hr-slip-p");
     const perfName = new URL(performer.url()).searchParams.get("me");
     ok(perfName === upName, `the performer is the one the Boss named (${upName})`);
+    // the pick's big moment: the performer's phone went to the red "YOU'RE UP", everyone else's slammed the name in
+    const moments = async pg => pg.evaluate(() => globalThis.__npcMoments ?? []);
+    ok((await moments(performer)).some(m => m.kind === "take-red" && m.text === "YOU'RE UP"), "the performer's phone: a red spotlight, \"YOU'RE UP\"");
+    ok((await Promise.all(guessers.map(moments))).every(ms => ms.some(m => m.kind === "slam" && m.text === upName) && ms.some(m => m.kind === "banner" && m.text === `${upName} is performing`)),
+      "everyone else's: the name slams in, \"[Name] is performing\"");
     ok((await Promise.all(guessers.map(pg => pg.locator(".hr-slip, .hr-card").count()))).every(n => n === 0)
-      && (await Promise.all(guessers.map(pg => until(pg, () => /^Shhh\.\.\. this one's just for you\.$/.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 5000)))).every(Boolean),
-      "everyone else gets his \"Shhh... this one's just for you.\", no slip");
+      && (await Promise.all(guessers.map(pg => until(pg, () => /^Shhh\.$/.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 5000)))).every(Boolean),
+      "everyone else gets his \"Shhh.\", no slip");
     await shot(performer, "08a-ritual-slip");
     await shot(guessers[0], "08b-ritual-shh");
     // the prompt never reaches another phone: not in the synced game state, not in the page

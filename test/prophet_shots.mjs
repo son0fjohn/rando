@@ -57,16 +57,20 @@ if (!ONLY || ONLY.startsWith("7")) {
   await drag(80, 200, 380, 200); await sleep(200); await drag(80, 200, 380, 200); await sleep(200); await drag(80, 200, 380, 200);
   await sleep(900);
   const v2 = await view();
-  ok(v2.yaw >= -0.62 && v2.yaw <= 0.62, `it stops at about ±35° (yaw ${v2.yaw.toFixed(2)})`);
+  ok(v2.yaw >= -0.43 && v2.yaw <= 0.62, `it stops at -24° on the left (yaw ${v2.yaw.toFixed(2)})`);
   await pg.screenshot({ path: join(OUT, "7-orbit-left.png") }); console.log("  shot 7-orbit-left");
-  await sleep(4500);
+  await sleep(2500);
+  const v2b = await view();
+  ok(Math.abs(v2b.yaw) > 0.3, `2.5 s after letting go it's still where you left it (yaw ${v2b.yaw.toFixed(2)})`);
+  await sleep(3500);
   const v3 = await view();
-  ok(Math.abs(v3.yaw) < 0.08 && Math.abs(v3.pitch) < 0.05, `~3 s after letting go it glides back home (yaw ${v3.yaw.toFixed(3)})`);
-  await pg.evaluate(() => __p.hold(true));
-  await drag(300, 200, 60, 200); await sleep(600);
+  ok(Math.abs(v3.yaw) < 0.08 && Math.abs(v3.pitch) < 0.05, `~4 s after letting go it glides back home (yaw ${v3.yaw.toFixed(3)})`);
+  // never locked: mid-line (the text still typing) a drag still orbits
+  await pg.evaluate(() => __dlg.say("Relax. The ball already knows who's next, and so do I, and so does everybody else in here."));
+  await drag(300, 200, 60, 200); await sleep(500);
   const v4 = await view();
-  ok(Math.abs(v4.yaw) < 0.05, "while held (the pick, the reveal) a drag doesn't move it");
-  await pg.evaluate(() => __p.hold(false));
+  ok(Math.abs(v4.yaw) > 0.3, `while a line is typing a drag still orbits (yaw ${v4.yaw.toFixed(2)})`);
+  await sleep(6000);
   // a pinch: two touch points moving apart
   const cdp = await pg.context().newCDPSession(pg);
   const touch = (type, pts) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });

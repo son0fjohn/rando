@@ -5,13 +5,20 @@
 // full of gacha capsules in front of him. He talks through the dialog box
 // (dialog.js). Each turn he picks the performer (random but fair, see
 // fairpick.js): "Pick a capsule. Any capsule." He reaches into the box,
-// pulls one out and holds it up to the camera: the performer's own 3D face
-// inside (charrender.js), their name under it: "[Name]. You're up." Then he
-// twists it open, pop. On the performer's phone a folded slip unrolls out of
-// it toward the camera and becomes their ACT IT OUT card. On everyone
-// else's he peeks inside, smirks and goes "Shhh... this one's just for
-// you.", and the guess box appears: type guesses, as many as you like, for
-// 60 seconds. A slow approving nod closes the turn.
+// pulls one out and holds it up to the camera; it spins, players' faces
+// flicking through it like a slot machine (their own 3D faces,
+// charrender.js), slowing over a drumroll, and lands on the performer's: a
+// flash, a little shake, their name slams onto the screen. Their own 3D
+// character pops in in front of his table under one harsh spotlight and
+// stays for the turn; he takes a slow drag on his cigar: "[Name]. You're
+// up." Their phone goes to a red spotlight, "YOU'RE UP"; everyone else's
+// says "[Name] is performing". Then he twists it open, pop, confetti. On
+// the performer's phone a slip unrolls out of it and flies at the camera,
+// filling the screen, and a red ACT IT OUT stamp slams onto it. On everyone
+// else's he peeks inside, smirks and goes "Shhh.", and the guess box slides
+// up: type guesses, as many as you like, for 60 seconds. A slow approving
+// nod closes the turn. The pick and the reveal take about 8 s; the host can
+// skip ahead. Players can look around (orbit) the whole time.
 //
 // The prompt only ever reaches the performer's phone. That phone asks the
 // server for it (ritual_draw, migrations/015_ritual_prompts.sql) when its
@@ -36,7 +43,7 @@ import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
 import { RITUAL } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash } from "./../hpkit.js";
-import { Beats, flyFrom, confetti } from "./../npcscene.js";
+import { Beats, flyFrom, confetti, impact, nameSlam, takeover, banner, stampOn } from "./../npcscene.js";
 import { dialogBox } from "./../dialog.js";
 import { renderLook } from "./../charrender.js";
 import { fairPick } from "./../fairpick.js";
@@ -47,13 +54,14 @@ const params = new URLSearchParams(location.search);
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
 
 // the Boss's pick: "Pick a capsule. Any capsule.", he reaches into the box,
-// takes one out and holds it up to the camera
-export const PICK_MS = 7000;
-export const REACH_AT = 1300;  // he leans in and reaches into the box
-export const TAKE_AT = 2600;   // ...comes out with a capsule
-export const SHOW_AT = 3600;   // ...and holds it up to the camera: "[Name]. You're up."
+// takes one out and holds it up to the camera, it spins through the faces
+export const PICK_MS = 5200;
+export const REACH_AT = 150;   // he leans in and reaches into the box
+export const TAKE_AT = 900;    // ...comes out with a capsule, held up: it spins, faces flicking (a drumroll)
+export const SHOW_AT = 3400;   // ...it lands on the performer: "[Name]. You're up." (the name holds ~1.5 s)
 // he twists it open: the slip for the performer, peek/smirk/shhh for the rest
-export const OPEN_MS = 3800;
+export const OPEN_MS = 2800;
+const POP_AT = 650, SLIP_AT = 750, STAMP_AT = 1500;
 const ACT_MS = RITUAL.ACT_MS;
 const CAST_MAX = 5;          // the turn's cast: whose capsules are in play (the performer's among them)
 const RESULT_MS = 7000;
@@ -155,7 +163,8 @@ const LINES = {
     name: "The Boss",
     pick: "Pick a capsule. Any capsule.",
     up: n => `${n}. You're up.`,
-    shh: "Shhh... this one's just for you.",
+    shh: "Shhh.",
+    upBig: "YOU'RE UP", performing: n => `${n} is performing`, act: "ACT IT OUT", skip: "skip ▸▸",
     yours: "That one's yours. No talking. Sell it.",
     got: (g, n) => `${g} got it. ${n}, not bad.`,
     nobody: "Nobody? That's a shame.",
@@ -168,7 +177,8 @@ const LINES = {
     name: "보스",
     pick: "캡슐 하나 골라. 아무거나.",
     up: n => `${n}. 네 차례야.`,
-    shh: "쉿... 이건 너만 보는 거야.",
+    shh: "쉿.",
+    upBig: "네 차례야", performing: n => `${n} 공연 중`, act: "연기해", skip: "넘기기 ▸▸",
     yours: "이건 네 거야. 말하지 말고, 팔아 봐.",
     got: (g, n) => `${g}, 맞혔네. ${n}, 나쁘지 않아.`,
     nobody: "아무도 못 맞혔어? 아쉽네.",
@@ -235,7 +245,7 @@ export const HUMILIATION_RITUAL = {
       .catch(e => { console.warn("[ritual] no 3D basement, the plain room stays:", e?.message ?? e); return null; }));
     loadBoss();
     // what the scene should show; re-applied whenever he's (re)mounted
-    const want = { pose: "idle", cap: "hidden", face: null, name: "", hold: false };
+    const want = { pose: "idle", cap: "hidden", face: null, name: "", guest: null };
     const room$ = () => $("game-panel")?.querySelector(".hr-room");
     // taps on the scene, between beats only: him (a line, and a drag on the
     // cigar or a slow nod), the box (a rattle), the cup (a sip), the lamp
@@ -260,7 +270,8 @@ export const HUMILIATION_RITUAL = {
         const first = !b.stage.canvas.isConnected && !room$()?.classList.contains("r3d");
         if (first) b.stage.canvas.style.opacity = "0";   // the first time: fade in over the plain room
         b.attach(at);
-        b.setPose(want.pose); b.capsuleState(want.cap); b.capsule(want.face, want.name); b.hold(want.hold);
+        b.setPose(want.pose); b.capsuleState(want.cap); b.capsule(want.face, want.name);
+        if (want.guest) b.guest.show(want.guest.id, want.guest.avatar, { pop: false });
         b.onTap = onTap;
         globalThis.__boss = b;                             // for the tests
         requestAnimationFrame(() => requestAnimationFrame(() => { b.stage.canvas.style.opacity = ""; room$()?.classList.add("r3d"); }));
@@ -442,8 +453,17 @@ export const HUMILIATION_RITUAL = {
     const play = name => boss?.play(name);
     const capState = st => { want.cap = st; boss?.capsuleState(st); };
     const capsule = (s, id) => { want.face = lookOf(s, id); want.name = s.players?.[id]?.handle ?? ""; boss?.capsule(want.face, want.name); };
-    // the key moments (the pick, the reveal): the camera glides home and stays
-    const hold = on => { if (on !== want.hold) { want.hold = on; boss?.hold(on); } };
+    // the performer, standing in front of his table (null: nobody)
+    const guest = (s, id, { pop = false, react = null } = {}) => {
+      if (!id) { if (want.guest) { want.guest = null; boss?.guest.hide(); } return; }
+      if (want.guest?.id === id && !pop && !react) return;
+      want.guest = { id, avatar: avatarOf(s, id) };
+      boss?.guest.show(id, want.guest.avatar, { pop, react });
+    };
+    // a face flicking past in the spinning capsule (no name under it yet)
+    const flickFace = (s, id) => { const u = lookOf(s, id); if (u) { want.face = u; want.name = ""; boss?.capsule(u, ""); } };
+    let spinTok = 0;
+    const skipLabel = txt => { const b = $("hp-skip"); if (b && b.textContent !== txt) b.textContent = txt; };
     const top = pill => { const p = $("np-pill"); if (p && p._v !== pill) { p._v = pill; p.innerHTML = pill; } };
     const title = t => { const h = $("np-title"); if (h && h.textContent !== t) h.textContent = t; };
     // the panel over the dialog (feed, guess box, points), rebuilt only when its key changes
@@ -474,30 +494,60 @@ export const HUMILIATION_RITUAL = {
     // comes out with one, and holds it up: their face inside, their name
     function showPick(s, r, elapsed, fresh) {
       const pk = pkOf(s), name = s.players?.[r.performer]?.handle ?? "?";
-      if (fresh || uiKey !== pk) { plaque(pk, ""); title(""); top(`turn <b>${r.no}</b> · who's it going to be…`); $("hr-wall") && ($("hr-wall").innerHTML = ""); }
+      if (fresh || uiKey !== pk) {
+        plaque(pk, ""); title(""); top(`turn <b>${r.no}</b> · who's it going to be…`); $("hr-wall") && ($("hr-wall").innerHTML = "");
+        $("hr-wall")?.classList.remove("full");
+        guest(s, null);                                    // last turn's performer leaves
+      }
       if (elapsed < TAKE_AT) { capState("hidden"); }
       if (elapsed < SHOW_AT) line(`${pk}:pick`, T.pick, { late: elapsed > 1200 });
-      beats.at("reach", pk, REACH_AT, elapsed, late => { pose("reach"); if (!late) { for (let i = 0; i < 3; i++) setTimeout(() => sfx.tick(), 300 + i * 90); } });
-      beats.at("take", pk, TAKE_AT, elapsed, late => { capsule(s, r.performer); capState("inhand"); pose("hold"); if (!late) sfx.pop(); });
+      beats.at("reach", pk, REACH_AT, elapsed, late => { pose("reach"); if (!late) { for (let i = 0; i < 3; i++) setTimeout(() => sfx.tick(), 200 + i * 90); } });
+      // held up to the camera, it spins: the cast's faces flick through it,
+      // fast then slowing, over a drumroll, landing on the performer's
+      beats.at("take", pk, TAKE_AT, elapsed, late => {
+        capState("inhand"); pose("hold");
+        if (late && elapsed > SHOW_AT - 300) return;
+        boss?.capsuleSpin(true);
+        const ids = (r.cast?.length ? r.cast : [r.performer]).filter(id => s.players?.[id]);
+        const tok = ++spinTok, steps = [];
+        let t = TAKE_AT + 100, d = 60, i = Math.floor(Math.random() * ids.length);
+        while (t + d < SHOW_AT - 120) { steps.push([t, ids[i++ % ids.length]]); t += d; d *= 1.13; }
+        for (const [at, id] of steps) {
+          if (at < elapsed) continue;
+          setTimeout(() => { if (tok === spinTok) { flickFace(s, id); sfx.tick(); } }, at - elapsed);
+        }
+        flickFace(s, steps.find(([at]) => at >= elapsed)?.[1] ?? r.performer);
+        if (!late) { sfx.pop(); sfx.drumroll((SHOW_AT - elapsed) / 1000 - 0.1); }
+      });
       beats.at("show", pk, SHOW_AT, elapsed, late => {
+        spinTok++; boss?.capsuleSpin(false);
         capsule(s, r.performer); capState("inhand"); pose("hold");
         top(`turn <b>${r.no}</b> · <b>${esc(name)}</b>`);
         line(`${pk}:up`, T.up(name), { late });
-        if (!late) { sfx.chime(); if (r.performer === ctx.me.id) buzz([60, 40, 120]); }
+        guest(s, r.performer, { pop: !late, react: late ? null : "surprised" });
+        play("drag");                                      // a slow drag on the cigar
+        const room = room$(), mine = r.performer === ctx.me.id;
+        if (!late) { sfx.chime(); sfx.slam(); impact(room, { from: capRect(), color: "rgba(255, 250, 240, .9)" }); }
+        // held ~1.5 s from the landing; a phone that got here late still shows it, briefly
+        const ms = Math.max(600, SHOW_AT + 1500 - elapsed), msT = Math.max(700, SHOW_AT + 2000 - elapsed);
+        if (mine) { takeover(room, T.upBig, { kind: "red", late, ms: msT }); if (!late) buzz([90, 40, 220]); }
+        else { nameSlam(room, name, { late, ms }); banner(room, T.performing(name), { cls: "red", ms: msT + 400 }); }
       });
+      if (elapsed >= SHOW_AT) capsule(s, r.performer);
     }
 
     // the performer's slip: it unrolls out of the capsule toward the camera
     // and lands as their card on the wall, where it stays for the turn
-    function slip(r, fly) {
+    function slip(r, fly, { stamped = true } = {}) {
       const w = $("hr-wall");
       if (!w) return null;
       let c = w.querySelector(".hr-slip");
       if (!c) {
-        w.innerHTML = `<div class="hr-slip"><div class="hr-kick">ACT IT OUT</div><div class="hr-prompt" id="hr-slip-p">…</div><p class="hr-note">only you can see this · no talking, no spelling</p></div>`;
+        w.innerHTML = `<div class="hr-slip"><div class="hr-prompt" id="hr-slip-p">…</div><p class="hr-note">only you can see this · no talking, no spelling</p></div>`;
         c = w.firstChild;
-        if (fly) { c.classList.add("unroll"); flyFrom(c, capRect(), { ms: 1100, tilt: 85 }); }
+        if (fly) { c.classList.add("unroll"); flyFrom(c, capRect(), { ms: 800, tilt: 85 }); }
       }
+      if (stamped && !c.querySelector(".hr-kick")) stampOn(c, T.act, { cls: "red hr-kick", late: true });
       const sp = $("hr-slip-p"), t = secrets.get(r.key)?.text ?? "";
       if (sp && sp.dataset.t !== t) { sp.dataset.t = t; sp.textContent = t || "…"; }
       return c;
@@ -513,15 +563,23 @@ export const HUMILIATION_RITUAL = {
         if (elapsed < 900) { capState("inhand"); pose("hold"); }
         top(perf ? "only <b>you</b> can see this" : `<b>${esc(who)}</b> is up · get ready to guess`);
       }
-      beats.at("twist", pk, 250, elapsed, late => { if (!late) { play("twist"); sfx.cursor(); } });
-      beats.at("pop", pk, 900, elapsed, late => { capState("open"); if (!late) { sfx.gacha(); buzz([30, 30, 60]); burst(); } });
+      guest(s, r.performer);
+      beats.at("twist", pk, 150, elapsed, late => { if (!late) { play("twist"); sfx.cursor(); } });
+      beats.at("pop", pk, POP_AT, elapsed, late => { capState("open"); if (!late) { sfx.gacha(); buzz([30, 30, 60]); burst(); } });
       if (perf) {
-        beats.at("slip", pk, 1000, elapsed, late => { slip(r, !late); line(`${pk}:yours`, T.yours, { late }); });
-        if (elapsed >= 1000) slip(r, false);
+        // the slip unrolls out of the capsule and flies at the camera, filling
+        // the screen; ACT IT OUT slams onto it
+        beats.at("slip", pk, SLIP_AT, elapsed, late => { $("hr-wall")?.classList.add("full"); slip(r, !late, { stamped: late }); line(`${pk}:yours`, T.yours, { late }); if (!late) sfx.whoosh(); });
+        beats.at("stamp", pk, STAMP_AT, elapsed, late => {
+          const c = slip(r, false, { stamped: false });
+          if (c && !c.querySelector(".hr-kick")) stampOn(c, T.act, { cls: "red hr-kick", late });
+          if (!late) { sfx.thud(); buzz(40); }
+        });
+        if (elapsed >= SLIP_AT) slip(r, false, { stamped: elapsed >= STAMP_AT });
       } else {
-        beats.at("peek", pk, 1100, elapsed, late => { pose("peek"); if (!late) sfx.cursor(); });
-        beats.at("smirk", pk, 1800, elapsed, late => { if (!late) { play("smirk"); sfx.pop(); } });
-        beats.at("shh", pk, 2400, elapsed, late => { capState("hidden"); pose("shhh"); line(`${pk}:shh`, T.shh, { late }); if (!late) sfx.whoosh(); });
+        beats.at("peek", pk, SLIP_AT, elapsed, late => { pose("peek"); if (!late) sfx.cursor(); });
+        beats.at("smirk", pk, 1300, elapsed, late => { if (!late) { play("smirk"); sfx.pop(); } });
+        beats.at("shh", pk, 1800, elapsed, late => { capState("hidden"); pose("shhh"); line(`${pk}:shh`, T.shh, { late }); if (!late) sfx.whoosh(); });
       }
     }
 
@@ -535,8 +593,6 @@ export const HUMILIATION_RITUAL = {
         lastTurn = tk;
       }
       phaseNow = s.phase;
-      // the key moments (the pick, the open): the camera glides home and stays
-      hold(s.phase === "pick" || s.phase === "open");
       const now = performance.now(); if (now - lastHud < 100) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
@@ -561,6 +617,8 @@ export const HUMILIATION_RITUAL = {
 
       const fresh = scene(s);
       const pk = pkOf(s);
+      if (["pick", "open"].includes(s.phase)) skipLabel(T.skip);
+      else if ($("hp-skip")?.textContent === T.skip) skipLabel("host: skip ahead");
 
       if (s.phase === "pick") {
         showPick(s, r, PICK_MS - s.left, fresh);
@@ -575,6 +633,8 @@ export const HUMILIATION_RITUAL = {
           // steps aside for the feed / the guess box
           pose("idle"); capState("hidden");
           dlg.hide(); dlgKey = null;
+          $("hr-wall")?.classList.remove("full");
+          guest(s, r.performer);
         }
         if (isPerformer(s)) {
           // PERFORMER: their card stays up, the clock, the live feed to tap.
@@ -634,7 +694,7 @@ export const HUMILIATION_RITUAL = {
         top(r.skipped ? "nobody scores this turn" : r.won ? `“${esc(r.won.text)}” · ${r.secs}s` : "nobody got it — no points this turn");
         const w = $("hr-wall");
         // a slow approving nod to close the turn, and his verdict
-        if (first) { capState("hidden"); pose(r.skipped ? "shhh" : "idle"); if (!r.skipped) play("nod"); }
+        if (first) { capState("hidden"); pose(r.skipped ? "shhh" : "idle"); if (!r.skipped) play("nod"); $("hr-wall")?.classList.remove("full"); if (r.skipped) guest(s, null); }
         line(`${pk}:said`, r.skipped ? T.left(who) : r.won ? T.got(g?.handle ?? "?", who) : T.nobody, { late: s.left < RESULT_MS - 1500 });
         if (r.skipped) {
           if (w) w.innerHTML = `<div class="hr-reveal"><small>the prompt stays a secret</small><b>🤫</b></div>`;

@@ -1188,6 +1188,55 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .np-clock.urgent { color: #ff5d6a; animation: sq-pulse .8s ease-in-out infinite; }
 #game-panel.np-full .ag-skip { position: absolute; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); margin: 0; z-index: 6; background: rgba(20, 16, 12, .78); color: #f3e7c9; border-color: transparent; }
 .np-confetti { position: absolute; z-index: 5; pointer-events: none; }
+/* the scene's big moments, in screen space (npcscene.js): readable from any
+   camera angle, and never in the way of a drag (the orbit is never locked) */
+.sq-wall, .hr-wall, .np-pill, .np-title { pointer-events: none; }
+.np-flash, .np-slam, .np-take, .np-banner, .np-count { position: absolute; pointer-events: none; }
+.np-flash { inset: 0; z-index: 6; animation: np-flash .65s ease-out both; }
+@keyframes np-flash { 0% { opacity: 0 } 12% { opacity: 1 } 100% { opacity: 0 } }
+.np-room.np-shake { animation: np-shake .5s cubic-bezier(.36, .07, .19, .97) both; }
+@keyframes np-shake { 10%, 90% { transform: translateX(calc(-50% - 2px)) } 20%, 80% { transform: translate(calc(-50% + 4px), 1px) } 30%, 50%, 70% { transform: translate(calc(-50% - 6px), -2px) } 40%, 60% { transform: translate(calc(-50% + 6px), 2px) } }
+/* the name, slammed in big gold letters with a soft glow */
+.np-slam { left: 0; right: 0; top: 38%; z-index: 7; display: flex; justify-content: center; text-align: center; padding: 0 12px; }
+.np-slam b { font: 900 64px/1.05 var(--f-sys); letter-spacing: -.01em; color: var(--color-accent); overflow-wrap: anywhere;
+  text-shadow: 0 0 18px rgba(var(--color-accent-rgb), .75), 0 0 42px rgba(var(--color-accent-rgb), .45), 0 4px 0 rgba(15, 26, 58, .85), 0 8px 24px rgba(0, 0, 0, .5);
+  animation: np-slam .5s cubic-bezier(.2, 1.4, .4, 1) both; }
+.np-slam.red b { color: #ff5a4f; text-shadow: 0 0 18px rgba(255, 70, 60, .7), 0 0 42px rgba(255, 70, 60, .4), 0 4px 0 rgba(30, 6, 6, .85), 0 8px 24px rgba(0, 0, 0, .5); }
+@keyframes np-slam { 0% { opacity: 0; transform: scale(2.6) translateY(-10px) } 55% { opacity: 1; transform: scale(.94) } 75% { transform: scale(1.04) } 100% { transform: none } }
+.np-slam.out, .np-take.out, .np-banner.out { transition: opacity .4s ease-in, transform .4s ease-in; opacity: 0; }
+.np-slam.out { transform: scale(.92); }
+/* the chosen player's own phone: the whole screen, for a moment */
+.np-take { inset: 0; z-index: 8; display: grid; place-items: center; text-align: center; padding: 0 18px; }
+.np-take b { font: 900 46px/1.05 var(--f-sys); letter-spacing: .01em; animation: np-slam .55s cubic-bezier(.2, 1.4, .4, 1) .1s both; }
+.np-take.gold { background: radial-gradient(circle at 50% 45%, rgba(255, 236, 170, .95), rgba(var(--color-accent-rgb), .9) 38%, rgba(120, 80, 0, .82) 100%); animation: np-take-in .45s ease-out both; }
+.np-take.gold b { color: var(--color-on-accent); text-shadow: 0 2px 0 rgba(255, 255, 255, .45); }
+.np-take.red { background: radial-gradient(ellipse 46% 40% at 50% 46%, rgba(255, 70, 50, .35), rgba(120, 0, 0, .55) 55%, rgba(8, 0, 0, .94) 100%); animation: np-take-in .45s ease-out both; }
+.np-take.red b { color: #fff; text-shadow: 0 0 22px rgba(255, 60, 40, .9), 0 4px 0 rgba(60, 0, 0, .9); }
+@keyframes np-take-in { 0% { opacity: 0 } 20% { opacity: 1 } 100% { opacity: 1 } }
+.np-take.late, .np-take.late b, .np-slam.late b { animation: none; }
+/* everyone else: a banner across the top */
+.np-banner { left: 50%; top: 104px; z-index: 6; transform: translateX(-50%); max-width: 88%; box-sizing: border-box; padding: 9px 18px; border-radius: 999px;
+  background: var(--color-accent); color: var(--color-on-accent); font: 800 16px/20px var(--f-sys); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .4); animation: np-banner .4s cubic-bezier(.2, 1.3, .4, 1) both; }
+.np-banner.red { background: #c8322e; color: #fff; }
+@keyframes np-banner { from { opacity: 0; transform: translate(-50%, -16px) scale(.9) } to { opacity: 1; transform: translateX(-50%) } }
+/* a stamp slammed onto a card, and its dust */
+.np-stamp { position: absolute; right: 10px; top: -14px; z-index: 2; padding: 4px 12px; border: 3px solid currentColor; border-radius: 6px; transform: rotate(-8deg);
+  font: 900 18px/1 var(--f-sys); letter-spacing: .1em; color: var(--color-accent); background: var(--color-on-accent); box-shadow: 0 3px 10px rgba(0, 0, 0, .35);
+  animation: np-stamp .38s cubic-bezier(.3, 1.6, .5, 1) both; }
+.np-stamp.red { color: #ff4a3d; background: #fff6ee; }
+.np-stamp.late { animation: none; }
+@keyframes np-stamp { 0% { opacity: 0; transform: rotate(-8deg) scale(2.4) } 60% { opacity: 1; transform: rotate(-8deg) scale(.9) } 100% { transform: rotate(-8deg) } }
+.np-dust { position: absolute; left: 50%; bottom: 0; pointer-events: none; }
+.np-dust i { position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: rgba(230, 220, 200, .8); animation: np-dust .8s ease-out both; }
+@keyframes np-dust { from { opacity: .9; transform: none } to { opacity: 0; transform: translate(var(--x), var(--y)) scale(2.4) } }
+/* 3, 2, 1, GO */
+.np-count { left: 0; right: 0; top: 34%; z-index: 7; text-align: center; }
+.np-count b { font: 900 96px/1 var(--f-sys); color: #fff; text-shadow: 0 0 24px rgba(var(--color-accent-rgb), .7), 0 6px 0 rgba(15, 26, 58, .85); display: inline-block; animation: np-count .6s ease-out both; }
+.np-count.go b { color: var(--color-accent); font-size: 104px; animation: np-slam .5s cubic-bezier(.2, 1.4, .4, 1) both; }
+@keyframes np-count { 0% { opacity: 0; transform: scale(1.8) } 25% { opacity: 1; transform: scale(1) } 80% { opacity: 1 } 100% { opacity: 0; transform: scale(.85) } }
+@media (prefers-reduced-motion: reduce) { .np-slam b, .np-take b, .np-stamp, .np-count b, .np-banner { animation: none !important; } }
+
 .np-confetti i { position: absolute; width: 8px; height: 12px; border-radius: 2px; animation: hr-conf 1.4s cubic-bezier(.2, .7, .4, 1) both; }
 /* a player's 3D look, pre-rendered (charrender.js) */
 .np-look { position: absolute; display: block; object-fit: contain; pointer-events: none; }
@@ -1254,6 +1303,13 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 .hr-room .hr-slip, .hr-room .hr-reveal { position: relative; margin: 0; padding: 12px 14px 14px; text-align: center; color: #24262c; border: 2px solid #d9d4c6; border-radius: 10px;
   background: #f2efe6; box-shadow: 0 10px 24px rgba(0, 0, 0, .35); transform-origin: 50% 100%; }
 .hr-room .hr-kick { font: 700 13px/16px var(--dlg-font); letter-spacing: .12em; color: #b8323f; }
+/* the slip, flown at the camera: it fills the screen, ACT IT OUT stamped on it in red */
+.hr-room .hr-slip .np-stamp.hr-kick { font: 900 20px/1 var(--f-sys); letter-spacing: .1em; color: #e8352a; background: #fff6ee; top: -16px; right: 12px; }
+.hr-wall { transition: top .45s cubic-bezier(.2, .9, .25, 1), left .45s, right .45s; }
+.hr-wall.full { top: 20%; left: 4%; right: 4%; }
+.hr-wall.full .hr-slip { padding: 30px 18px 32px; box-shadow: 0 18px 60px rgba(0, 0, 0, .55); }
+.hr-wall.full .hr-prompt { font-size: 38px; line-height: 44px; }
+.hr-wall.full .hr-slip .np-stamp.hr-kick { font-size: 26px; top: -20px; }
 .hr-room .hr-prompt { font: 800 28px/33px var(--f-sys); margin-top: 4px; overflow-wrap: anywhere; }
 .hr-room .hr-note { margin: 8px 0 0; font: 13px/16px var(--dlg-font); color: #6a6460; }
 .hr-room .hr-slip.small { padding: 8px 12px 10px; } .hr-room .hr-slip.small .hr-prompt { font-size: 21px; line-height: 26px; } .hr-room .hr-slip.small .hr-note { display: none; }
