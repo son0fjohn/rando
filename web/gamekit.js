@@ -1,7 +1,7 @@
 // Shared kit for quests + catalog games: host-authoritative state, bots,
 // and the full-screen game UI primitives (panel, HUD, prompts, votes).
 import { mulberry, hashStr } from "./net.js";
-import { avatar3Random } from "./bots.js";
+import { botAvatar } from "./bots.js";
 
 const $ = id => document.getElementById(id);
 
@@ -107,7 +107,7 @@ export function makeBots(n, rng, existingIds = new Set()) {
     if (existingIds.has(id)) continue;
     out.push({
       id, handle: names[i % names.length], isBot: true,
-      avatar: avatar3Random(rng),
+      avatar: botAvatar(rng),
       skill: 0.25 + rng() * 0.6, aggro: rng(), social: 0.3 + rng() * 0.7, reaction: 260 + rng() * 220,
     });
   }

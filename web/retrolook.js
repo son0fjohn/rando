@@ -65,7 +65,7 @@ void main(){ vec3 s = texture2D(tex, vUv).rgb * 0.227;
 // the final look: bloom in, grade, vignette, grain, a limited palette with
 // ordered (Bayer) dithering, then to sRGB
 const FINAL = `uniform sampler2D tex; uniform sampler2D bloom; uniform float bloomOn, strength;
-uniform vec3 tint; uniform float sat, contrast, lift, levels, dither, vignette, grain, time; uniform vec2 res;
+uniform vec3 tint; uniform float sat, contrast, lift, levels, dither, vignette, grain, time, encoded; uniform vec2 res;
 varying vec2 vUv;
 float bayer(vec2 p){ vec2 q = mod(floor(p), 4.0);
   float m[16]; m[0]=0.;m[1]=8.;m[2]=2.;m[3]=10.;m[4]=12.;m[5]=4.;m[6]=14.;m[7]=6.;m[8]=3.;m[9]=11.;m[10]=1.;m[11]=9.;m[12]=15.;m[13]=7.;m[14]=13.;m[15]=5.;
@@ -76,7 +76,7 @@ float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453
 void main(){
   vec3 c = texture2D(tex, vUv).rgb;
   if (bloomOn > 0.5) c += texture2D(bloom, vUv).rgb * strength;
-  c = pow(max(c, 0.0), vec3(1.0 / 2.2));                       // linear -> display
+  if (encoded < 0.5) c = pow(max(c, 0.0), vec3(1.0 / 2.2));   // linear -> display (an encoded stage is display-ready already)
   c *= tint;
   float g = dot(c, vec3(0.299, 0.587, 0.114));
   c = mix(vec3(g), c, sat);
@@ -102,7 +102,8 @@ export async function retroStage(host, mood = {}) {
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;     // the final pass converts itself
   const canvas = renderer.domElement;
   canvas.className = "retro-canvas";
-  Object.assign(canvas.style, { position: "absolute", inset: "0", width: "100%", height: "100%", imageRendering: "pixelated", display: "block" });
+  // a mood with smooth: true upscales softly (a slightly soft low-res render) instead of crisp pixels
+  Object.assign(canvas.style, { position: "absolute", inset: "0", width: "100%", height: "100%", imageRendering: M.smooth ? "auto" : "pixelated", display: "block" });
   host.appendChild(canvas);
 
   const scene = new THREE.Scene();
@@ -115,7 +116,9 @@ export async function retroStage(host, mood = {}) {
   const fill = new THREE.DirectionalLight(M.fill.color, M.fill.intensity); fill.position.set(...M.fill.pos);
   scene.add(hemi, key, fill);
 
-  const rtOpts = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true };
+  // smooth moods: linear filtering and multisampled edges (soft, not stair-stepped)
+  const filt = M.smooth ? THREE.LinearFilter : THREE.NearestFilter;
+  const rtOpts = { minFilter: filt, magFilter: filt, depthBuffer: true, samples: M.msaa ?? 0 };
   const rtScene = new THREE.WebGLRenderTarget(4, 4, rtOpts);
   const rtA = new THREE.WebGLRenderTarget(4, 4, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
   const rtB = rtA.clone();
@@ -128,7 +131,7 @@ export async function retroStage(host, mood = {}) {
     tex: { value: rtScene.texture }, bloom: { value: rtA.texture }, bloomOn: { value: 0 }, strength: { value: M.bloom ? M.bloom.strength : 0 },
     tint: { value: new THREE.Vector3(...M.grade.tint) }, sat: { value: M.grade.sat }, contrast: { value: M.grade.contrast }, lift: { value: M.grade.lift },
     levels: { value: M.levels }, dither: { value: M.dither }, vignette: { value: M.vignette }, grain: { value: tier === "low" ? 0 : M.grain },
-    time: { value: 0 }, res: { value: new THREE.Vector2(4, 4) },
+    time: { value: 0 }, res: { value: new THREE.Vector2(4, 4) }, encoded: { value: M.encoded ? 1 : 0 },
   });
   const pass = (m, target) => { quad.material = m; renderer.setRenderTarget(target); renderer.render(post, postCam); };
 
@@ -332,114 +335,4 @@ export function breathe(stage, { amp = 0.012, speed = 0.35, target = new THREE.V
     stage.camera.lookAt(target);
   });
   return { home, target };
-}
-
-// ---------------------------------------------------------------- stand-ins
-// A flat cut-out (a pose, a prop) as a card lit by the room: its own texture
-// with a mood ambient, a key light from one side, a coloured rim read off the
-// cut-out's edge, an optional glow from below, and a touch of fog.
-export function litCardMaterial(mood, { key = mood.key?.color ?? 0xffb070, rim = mood.fill?.color ?? 0x6a6cff, ambient = 0x50407a, side = 1, fog = 0.35 } = {}) {
-  return new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,
-    uniforms: {
-      map: { value: null }, opacity: { value: 1 },
-      ambient: { value: new THREE.Color(ambient) }, key: { value: new THREE.Color(key) }, rim: { value: new THREE.Color(rim) },
-      glow: { value: new THREE.Color(0xffd7a0) }, glowAmt: { value: 0 }, keyAmt: { value: 1 }, side: { value: side },
-      fogColor: { value: new THREE.Color(mood.fog?.color ?? 0x000000) }, fogAmt: { value: fog },
-      texel: { value: new THREE.Vector2(1 / 256, 1 / 256) },
-    },
-    vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
-    fragmentShader: `uniform sampler2D map; uniform float opacity, glowAmt, keyAmt, side, fogAmt; uniform vec3 ambient, key, rim, glow, fogColor; uniform vec2 texel; varying vec2 vUv;
-      void main(){
-        vec4 c = texture2D(map, vUv);
-        if (c.a * opacity < 0.02) discard;
-        float aR = texture2D(map, vUv + vec2(texel.x * 3.0 * side, 0.0)).a, aL = texture2D(map, vUv - vec2(texel.x * 3.0 * side, 0.0)).a;
-        float lit = clamp(c.a - aL, 0.0, 1.0), back = clamp(c.a - aR, 0.0, 1.0);
-        vec3 col = pow(c.rgb, vec3(2.2));
-        float kx = side > 0.0 ? vUv.x : 1.0 - vUv.x;               // the key falls off across the card
-        vec3 light = ambient + key * keyAmt * mix(0.55, 0.95, 1.0 - kx) + key * lit * 0.7 + rim * back * 1.5;
-        light += glow * glowAmt * smoothstep(0.65, 0.0, vUv.y);    // light from below (a stage, a ball)
-        col = mix(col * light, pow(fogColor, vec3(2.2)), fogAmt);
-        gl_FragColor = vec4(col, c.a * opacity);
-      }`,
-  });
-}
-
-// The game's own DOM pieces drawn in the 3D room instead. The DOM stays the
-// source of truth (its CSS transitions, gravity arcs and timing keep running,
-// just hidden); every frame each <img> under `root` hands its box, rotation,
-// scale and opacity to a lit card at a fixed distance in front of the camera,
-// so the choreography is unchanged and the pieces sit in the room's light.
-export function mirrorDom(stage, root, { selector = "img", distance = 3, material = () => litCardMaterial(stage.mood), fog = 0.3 } = {}) {
-  const { camera, canvas } = stage;
-  if (!camera.parent) stage.scene.add(camera);
-  const layer = new THREE.Group();
-  camera.add(layer);
-  const cards = new Map(), texOf = new Map();
-  const geo = new THREE.PlaneGeometry(1, 1);
-  // a detached copy of the image: three sizes a texture from img.width, which
-  // on a laid-out <img> is its CSS width, not the picture's
-  const tex = img => {
-    const src = img.currentSrc || img.src;
-    if (!src || !img.complete || !img.naturalWidth) return null;
-    if (!texOf.has(src)) {
-      const t = new THREE.Texture();
-      t.colorSpace = THREE.SRGBColorSpace;
-      texOf.set(src, t);
-      const copy = new Image();
-      copy.onload = () => { t.image = copy; t.needsUpdate = true; t.ready = true; };
-      copy.src = src;
-    }
-    const t = texOf.get(src);
-    return t.ready ? t : null;
-  };
-  function chain(el) {
-    // opacity, rotation and scale from the element up to the root
-    let op = 1, ang = 0, sx = 1, sy = 1;
-    for (let n = el; n && n !== root.parentElement; n = n.parentElement) {
-      const cs = getComputedStyle(n);
-      op *= parseFloat(cs.opacity);
-      if (cs.display === "none") return null;
-      if (cs.transform && cs.transform !== "none") { const m = new DOMMatrixReadOnly(cs.transform); ang += Math.atan2(m.b, m.a); sx *= Math.hypot(m.a, m.b); sy *= Math.hypot(m.c, m.d); }
-      if (n === root) break;
-    }
-    return { op, ang, sx, sy };
-  }
-  const off = stage.onFrame(() => {
-    if (!root.isConnected) return;
-    const cr = canvas.getBoundingClientRect();
-    if (!cr.height) return;
-    const k = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / cr.height;   // CSS px -> world at that distance
-    const seen = new Set();
-    const els = root.querySelectorAll(selector);
-    els.forEach((img, i) => {
-      const t = tex(img), ch = t && chain(img);
-      if (!t || !ch || ch.op < 0.01) return;
-      const r = img.getBoundingClientRect();
-      if (!r.width) return;
-      let card = cards.get(img);
-      if (!card) { card = new THREE.Mesh(geo, material(img)); card.material.uniforms.fogAmt.value = fog; layer.add(card); cards.set(img, card); }
-      seen.add(img);
-      const u = card.material.uniforms;
-      if (u.map.value !== t) { u.map.value = t; u.texel.value.set(1 / img.naturalWidth, 1 / img.naturalHeight); }
-      u.opacity.value = ch.op;
-      // object-fit: contain inside the element's box (poses sit on the box's bottom)
-      const bw = img.offsetWidth * ch.sx, bh = img.offsetHeight * ch.sy, ar = img.naturalWidth / img.naturalHeight;
-      const fw = Math.min(bw, bh * ar), fh = Math.min(bh, bw / ar);
-      const bottom = getComputedStyle(img).objectPosition?.includes("100%");
-      let dx = 0, dy = bottom ? (bh - fh) / 2 : 0;
-      const ca = Math.cos(ch.ang), sa = Math.sin(ch.ang);
-      const cx = r.left + r.width / 2 + dx * ca - dy * sa, cy = r.top + r.height / 2 + dx * sa + dy * ca;
-      card.position.set((cx - cr.left - cr.width / 2) * k, -(cy - cr.top - cr.height / 2) * k, -distance + i * 0.0005);
-      card.scale.set(fw * k, fh * k, 1);
-      card.rotation.z = -ch.ang;
-      card.renderOrder = 10 + i;
-      card.visible = true;
-    });
-    for (const [img, card] of cards) if (!seen.has(img)) { card.visible = false; if (!img.isConnected) { card.material.dispose(); layer.remove(card); cards.delete(img); } }
-  });
-  return {
-    cards, layer,
-    dispose() { off(); for (const c of cards.values()) c.material.dispose(); for (const t of texOf.values()) t.dispose(); camera.remove(layer); },
-  };
 }

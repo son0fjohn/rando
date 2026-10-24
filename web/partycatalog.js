@@ -1,4 +1,4 @@
-// The six house-party games, in play order.
+// The six house-party games, in the order every game list shows them.
 //
 // Each entry is { id, title, blurb, minPlayers, maxPlayers, length, start(ctx) }.
 // `start` gets the ctx party.js builds (room, me, humans, seed, isHost, party,
@@ -13,12 +13,15 @@ import { HUMILIATION_RITUAL } from "./hpgames/ritual.js";
 import { SIDE_QUEST } from "./hpgames/sidequest.js";
 import { MANHUNT_GAME } from "./hpgames/manhunt.js";
 
+// THE order, everywhere a game list shows (the host's "Game votes" sheet,
+// the players' "Vote for the next game", anything else that lists games):
+// every screen reads this array and nothing re-sorts it.
 export const PARTY_CATALOG = [
-  SECRET_DIARY,
-  MASK_OFF,
-  HUMILIATION_RITUAL,
-  SIDE_QUEST,
   ART_GALLERY,
+  SECRET_DIARY,
+  SIDE_QUEST,
+  HUMILIATION_RITUAL,
+  MASK_OFF,
   MANHUNT_GAME,
 ];
 

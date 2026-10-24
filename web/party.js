@@ -807,7 +807,7 @@ export const party = {
   },
 
   // the game list, as a sheet over the room: players vote, the host sees the
-  // live tally (most votes first) and taps a game to start it
+  // live tally (the leader marked) and taps a game to start it
   _renderPicker() {
     const c = this.current; const el = $("pt-picker"); if (!c || !el) return;
     const open = this.pickerOpen && !c.launched && !c.set.done;
@@ -821,8 +821,10 @@ export const party = {
     el.dataset.sig = sig;
     const host = c.room.presence[c.room.hostId]?.handle ?? "the host";
     const total = Object.keys(votes).length;
+    // always the catalog's order (one list, every screen); the host sees the
+    // leader marked instead of the list re-sorting under their thumb
     const games = PARTY_CATALOG.map((g, i) => ({ g, i, v: count(g.id) }));
-    if (isHost) games.sort((a, b) => b.v - a.v || a.i - b.i);
+    const top = Math.max(0, ...games.map(x => x.v));
     const optsFor = g => {
       if (!isHost || !(g.options ?? []).length) return "";
       const cur = { ...defaultsFor(g), ...(c.gameOpts?.[g.id] ?? {}) };
@@ -832,7 +834,7 @@ export const party = {
     const rows = games.map(({ g, v }) => {
       const need = Math.max(0, minFor(g) - n);
       const attr = isHost ? `data-game="${g.id}"` : `data-vote="${g.id}"`;
-      return `<div class="pv-row ${mine === g.id ? "mine" : ""} ${need && isHost ? "short" : ""}" ${attr} role="button" tabindex="0" aria-label="${esc(g.title)}${v ? `, ${v} vote${v === 1 ? "" : "s"}` : ""}">
+      return `<div class="pv-row ${mine === g.id ? "mine" : ""} ${need && isHost ? "short" : ""} ${isHost && v && v === top ? "lead" : ""}" ${attr} role="button" tabindex="0" aria-label="${esc(g.title)}${v ? `, ${v} vote${v === 1 ? "" : "s"}` : ""}">
           <span class="pv-art" aria-hidden="true">${CHANNEL_ART[g.id] ?? ""}</span>
           <span class="pv-t"><b>${esc(g.title)}</b><small>${mine === g.id ? "✓ your vote · " : ""}${need ? `needs ${need} more` : `${minFor(g)}+ players · ${esc(g.length ?? "")}`}</small>${optsFor(g)}</span>
           <span class="pv-n ${v ? "" : "zero"}">${v}<i>${v === 1 ? "vote" : "votes"}</i></span>

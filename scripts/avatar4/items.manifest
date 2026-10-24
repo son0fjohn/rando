@@ -1,0 +1,64 @@
+# every item: <source figure> <slot> <file (no .glb)> <target tris> [options]
+# figures: docs/avatar4.md (the generation log). Run with scripts/avatar4/run_items.sh
+cp1-hair hair hair_middlepart 1500
+cp1-top top top_sweat_babyblue 1500
+cp1-shoes shoes shoes_skate_blue 900
+1 bottom bottom_cargo_chain 1400 YMAX=0.44
+1 head head_beanie_phones 900 YMIN=0.78 TOPALL=1
+2 bottom bottom_snowpants 1300 YMAX=0.42
+2 face face_mask_black 400 FACE=lower YMIN=0.77 ZMIN=0.02
+2 head head_beanie_goggles 1000 YMIN=0.8
+2 shoes shoes_snowboard 900 YMAX=0.15
+2 top top_puffer_black 1500 YMIN=0.42
+3 bottom bottom_track_purple 1300 YMAX=0.44
+3 face face_shades_round 400 FACE=upper YMAX=0.885 XMAX=0.1
+3 head head_durag 700 YMIN=0.8 TOPALL=1
+3 top top_track_purple 1500 YMIN=0.44
+4 bottom bottom_jeans_wide 1300 YMAX=0.43
+4 head head_bucket 800 YMIN=0.82 TOPALL=1
+4 shoes shoes_white_chunky 900 YMAX=0.11 NOTBLUE=1
+4 top top_bomber_olive 1500 YMIN=0.43
+5 bottom bottom_plaid_wide 1300 YMAX=0.43
+5 hair hair_twinbuns 1500 YMIN=0.76
+5 shoes shoes_combat 900 YMAX=0.15
+5 top top_cardigan_cream 1500 YMIN=0.43
+6 bottom bottom_cargo_shorts 1100 YMAX=0.44 YMIN=0.18
+6 head head_cap_back 800 YMIN=0.82 TOPALL=1
+6 shoes shoes_hightop 900 YMAX=0.15
+6 top top_varsity 1500 YMIN=0.43
+7 bottom bottom_sweatpants 1300 YMAX=0.45
+7 hair hair_twists 1500
+7 shoes shoes_slides 700 YMAX=0.12
+7 top top_tee_oversized 1200 YMIN=0.45
+8 hair hair_buzz 900
+8 top top_zip_hoodie 1500 YMIN=0.4
+9 bottom bottom_skirt_pleated 900 YMAX=0.45 YMIN=0.3
+9 hair hair_bowl 1500 YMIN=0.76
+9 top top_denim_jacket 1500 YMIN=0.44
+10 bottom bottom_skirt_long 1200 YMAX=0.46 YMIN=0.08
+10 hair hair_long_bangs 1500 YMIN=0.55 HXMAX=0.115 HDARK=1
+10 shoes shoes_maryjanes 700 YMAX=0.1
+10 top top_crop_flannel 1500 YMIN=0.46 NOHAIR=1
+11 bottom bottom_mini_leggings 1200 YMAX=0.5 YMIN=0.11
+11 hair hair_pigtails 1500 HXMAX=0.25
+11 shoes shoes_platform 900 YMAX=0.16
+11 top top_baby_tee 900 YMIN=0.5
+12 hair hair_spiky 1500
+12 neck neck_chain 500 YMIN=0.55 YMAX=0.735 SIDE=front XMAX=0.1 CHAIN=1
+13 hair hair_slicked 1300 YMIN=0.8
+13 neck neck_scarf 900 YMIN=0.5 XMAX=0.14
+14 hair hair_wolf 1500 YMIN=0.68
+14 neck neck_sling 800 YMIN=0.35 XMAX=0.2
+15 hair hair_afro 1500
+16 hair hair_ponytail 1500 BACK=1 YMIN=0.7 HXMAX=0.06
+16 neck neck_backpack 900 BACK=1 SIDE=back YMIN=0.45 XMAX=0.17
+17 hair hair_locs 1500 YMIN=0.62 HXMAX=0.16
+18 hair hair_bob 1500 BACK=1
+18 neck neck_skateboard 900 BACK=1 SIDE=back YMIN=0.2 YMAX=0.78 XMAX=0.32 RIGID=chest
+19 face face_shades_wrap 400 FACE=upper YMAX=0.885
+19 head head_beanie_pixel 900 YMIN=0.8
+20 face face_bandana_mask 500 FACE=lower YMIN=0.76
+20 head head_trucker 900 YMIN=0.82
+21 head head_earmuffs 800 YMIN=0.78
+22 head head_hood 1200 YMIN=0.72
+23 head head_bandana 600 YMIN=0.82

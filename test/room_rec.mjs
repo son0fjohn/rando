@@ -24,7 +24,7 @@ const server = createServer(async (req, res) => {
   try {
     const p = join(ROOT, normalize(decodeURIComponent(req.url.split("?")[0])).replace(/^(\.\.[/\\])+/, ""));
     let body = await readFile(p);
-    if (p.endsWith("test/hpparty.html")) body = Buffer.from(body.toString().replace("<!--INDEX_CSS-->", CSS).replace(/\s*"\/web\/avatar3\.js": "[^"]+",?/, ""));
+    if (p.endsWith("test/hpparty.html")) body = Buffer.from(body.toString().replace("<!--INDEX_CSS-->", CSS).replace(/\s*"\/web\/avatar[34]\.js": "[^"]+",?/g, ""));
     res.writeHead(200, { "content-type": MIME[extname(p)] ?? "application/octet-stream" }); res.end(body);
   } catch { res.writeHead(404); res.end(); }
 });

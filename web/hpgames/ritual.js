@@ -1,16 +1,17 @@
 // Humiliation Ritual (3+) — charades, in public.
 //
-// The host is a clown on a circus stage, built like the Art Gallery
-// (npcscene.js): a painted backdrop, the clown as pose cutouts, props as
-// cutouts, the UI in the room. Each turn he picks the performer (random but
-// fair, see fairpick.js): he cranks a big gacha machine, the performer's
-// capsule (their own 3D head inside, charrender.js) pops out of the chute,
-// he catches it and holds it up: "[Name], you're up!". Then he cracks it
-// open. On the performer's phone the slip unrolls
-// out of it and flies up to become their ACT IT OUT card. On everyone
-// else's he peeks inside, winks and goes "shhh", the capsule stays shut,
-// and the guess box appears: type guesses, as many as you like, for 60
-// seconds. The performer's 3D character takes the stage while they act.
+// The host is The Boss (boss.js): an old mafia boss in clown face paint,
+// sitting back behind a folding table in a gray basement, a cardboard box
+// full of gacha capsules in front of him. He talks through the dialog box
+// (dialog.js). Each turn he picks the performer (random but fair, see
+// fairpick.js): "Pick a capsule. Any capsule." He reaches into the box,
+// pulls one out and holds it up to the camera: the performer's own 3D face
+// inside (charrender.js), their name under it: "[Name]. You're up." Then he
+// twists it open, pop. On the performer's phone a folded slip unrolls out of
+// it toward the camera and becomes their ACT IT OUT card. On everyone
+// else's he peeks inside, smirks and goes "Shhh... this one's just for
+// you.", and the guess box appears: type guesses, as many as you like, for
+// 60 seconds. A slow approving nod closes the turn.
 //
 // The prompt only ever reaches the performer's phone. That phone asks the
 // server for it (ritual_draw, migrations/015_ritual_prompts.sql) when its
@@ -35,7 +36,8 @@ import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
 import { RITUAL } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash } from "./../hpkit.js";
-import { at, posesHtml, setPose, Beats, arcTo, flyFrom, confetti, say, hush } from "./../npcscene.js";
+import { Beats, flyFrom, confetti } from "./../npcscene.js";
+import { dialogBox } from "./../dialog.js";
 import { renderLook } from "./../charrender.js";
 import { fairPick } from "./../fairpick.js";
 import { maxLevelFor } from "./secretdiary.js";
@@ -44,15 +46,16 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
 
-// the clown's pick: he cranks the machine, the chosen capsule comes out,
-// he catches it and holds it up to the camera
+// the Boss's pick: "Pick a capsule. Any capsule.", he reaches into the box,
+// takes one out and holds it up to the camera
 export const PICK_MS = 7000;
-export const TOSS_AT = 2300;   // the chosen capsule pops out of the chute
-export const SHOW_AT = 3600;   // ...and is held up to the camera: "[Name], you're up!"
-// he cracks it open: the slip for the performer, peek/wink/shhh for the rest
+export const REACH_AT = 1300;  // he leans in and reaches into the box
+export const TAKE_AT = 2600;   // ...comes out with a capsule
+export const SHOW_AT = 3600;   // ...and holds it up to the camera: "[Name]. You're up."
+// he twists it open: the slip for the performer, peek/smirk/shhh for the rest
 export const OPEN_MS = 3800;
 const ACT_MS = RITUAL.ACT_MS;
-const CAST_MAX = 5;          // capsules in the air at once
+const CAST_MAX = 5;          // the turn's cast: whose capsules are in play (the performer's among them)
 const RESULT_MS = 7000;
 const END_MS = 22000;
 const GUESS_MAX = 60;
@@ -144,33 +147,54 @@ const turnKey = () => {
 };
 
 // ---------------------------------------------------------------- the stage
-// in the units of the NPC group (760 x 900): the clown's pose cutouts are
-// 600x800 canvases standing on the floor line (y 900); the gacha machine
-// stands on its drum to his right-hand side (screen left), its dial right
-// under his hand in the "twist" pose. Every landmark below was measured on
-// the pose cutouts (pose units, + the clown's offset).
-const ART = "games/ritual/";
-const G = { w: 760, h: 900 };
-const CX = 160, CY = 100;                                   // the clown's canvas in the group
-const P = (x, y) => [x + CX, y + CY];
-const POSES = ["clown_idle", "clown_twist", "clown_catch", "clown_hold", "clown_open", "clown_peek", "clown_shh"];
-const CAP = [192, 221];                                     // a capsule, as he holds it (capsule.webp at .457)
-const HOLD = P(300, 371);                                   // its centre in the "hold" pose
-const CATCH = P(294, 446);                                  // resting in his cupped hands in "catch"
-const CUP = [200 + CX, 328 + CY, 202, 124];                 // the open cup in "open"
-const LID = P(301, 273);                                    // the lid's centre, still on the cup
-const DIAL = [140, 416, 88, 88], CHUTE = [184, 596];
-// the players' capsules in the machine's globe, front row (centres)
-const GLOBE = [[92, 316], [143, 339], [195, 316], [246, 339], [292, 313]];
-const capHtml = (id, cls, style) => `<div class="hr-cap ${cls}" data-id="${esc(id)}" style="${style}"><img class="hr-cap-base" src="${ART}capsule.webp" alt=""><img class="hr-cap-head" alt=""><img class="hr-cap-gloss" src="${ART}capsule_top.webp" alt=""></div>`;
-const box = ([x, y], [w, h]) => at(G, x - w / 2, y - h / 2, w, h);
-// ?tent=0 pins the painted stage
-const TENT_ON = RITUAL.TENT_3D && params.get("tent") !== "0";
+// What he says, in English or Korean (the phone's language); the prompts
+// themselves are as written in the pool.
+const KO = /^ko\b/i.test(globalThis.navigator?.language ?? "");
+const LINES = {
+  en: {
+    name: "The Boss",
+    pick: "Pick a capsule. Any capsule.",
+    up: n => `${n}. You're up.`,
+    shh: "Shhh... this one's just for you.",
+    yours: "That one's yours. No talking. Sell it.",
+    got: (g, n) => `${g} got it. ${n}, not bad.`,
+    nobody: "Nobody? That's a shame.",
+    left: n => `${n} walked out. Nobody scores.`,
+    end: "That's the night. Everybody did their part.",
+    // tap him between beats
+    quips: ["Patience. Business takes time.", "You owe me a laugh, kid.", "Nobody leaves until somebody performs."],
+  },
+  ko: {
+    name: "보스",
+    pick: "캡슐 하나 골라. 아무거나.",
+    up: n => `${n}. 네 차례야.`,
+    shh: "쉿... 이건 너만 보는 거야.",
+    yours: "이건 네 거야. 말하지 말고, 팔아 봐.",
+    got: (g, n) => `${g}, 맞혔네. ${n}, 나쁘지 않아.`,
+    nobody: "아무도 못 맞혔어? 아쉽네.",
+    left: n => `${n} 나가 버렸어. 이번엔 점수 없음.`,
+    end: "오늘 밤은 여기까지. 다들 제 몫은 했어.",
+    quips: ["인내심. 사업엔 시간이 걸려.", "너 나한테 웃음 하나 빚졌다, 꼬마야.", "누군가 하기 전엔 아무도 못 나가."],
+  },
+};
+const T = KO ? LINES.ko : LINES.en;
+export const bossLines = LINES;
+// the players' faces in the capsule, lit like his room: soft, no coloured rim
+const LOOK_RIM = 0xe8e8ee;
+// The Boss's basement in 3D fills the screen (boss.js). Until it's up, or if
+// this phone can't draw it, the room is plain gray: never a picture of him.
+const sceneHtml = ctx => `<div class="np-room hr-room">
+    <div class="hr-3d" id="hr-3d"></div>
+    <div class="np-pill" id="np-pill"></div>
+    <h2 class="np-title" id="np-title"></h2>
+    <div class="hr-wall" id="hr-wall"></div>
+    <div class="hr-low">${hostSkip(ctx)}<div class="hr-ui" id="hr-ui"></div><div class="hr-dlg" id="hr-dlg"></div></div>
+  </div>`;
 
 
 export const HUMILIATION_RITUAL = {
   id: "ritual", title: "Humiliation Ritual",
-  blurb: "charades, in public. the clown picks a performer, only they get the secret prompt, everyone types guesses, the performer taps the right one.",
+  blurb: "charades, in public. the Boss picks a performer, only they get the secret prompt, everyone types guesses, the performer taps the right one.",
   minPlayers: 3, maxPlayers: 12, length: "~1.5 min per turn",
   backdrop: "room",            // played over the party room (dimmed), not the map
   options: [{
@@ -193,7 +217,7 @@ export const HUMILIATION_RITUAL = {
     const meta = ctx.party ?? {};
     const PROMPTS = ritualPromptsFor(POOL, meta);
     const PER = Math.max(1, Math.min(3, +(ctx.options?.rounds ?? 1) || 1));
-    let lastHud = 0, mine = [], sceneTi = null, uiKey = null;
+    let lastHud = 0, mine = [], sceneTi = null, uiKey = null, dlgKey = null, phaseNow = "pick", quipN = Math.floor(Math.random() * 3);
     const beats = new Beats(), looks = new Map();
     // what only this phone knows: the prompt it drew for its own turn(s)
     const secrets = new Map();      // turn key -> { id, text } | null while drawing
@@ -202,26 +226,47 @@ export const HUMILIATION_RITUAL = {
     // the host's phone deals the bots' prompts itself (bots only exist in the
     // offline demo); kept in memory, never in the synced state
     const botSecrets = new Map();
-    // the circus tent in 3D (retrorooms.js, the retro look kit): it loads as
-    // the game starts; the clown, the machine and the capsules keep their
-    // DOM choreography and are mirrored into it as cards lit by its
-    // spotlights. Until it's up, or if it can't be, the painted stage stays.
-    let tent = null, tentP = null, mirror = null;
+    // one Boss and one dialog box for the whole game, moved into each turn's
+    // freshly built scene. He loads (model, room, shaders) as the game starts.
+    let boss = null, bossP = null;
     const holder = document.createElement("div");
-    const loadTent = () => TENT_ON ? (tentP ??= import("./../retrorooms.js").then(m => m.retroRoom("tent", holder)).then(t => { tent = t; return t; })
-      .catch(e => { console.warn("[ritual] no 3D tent, the painted stage stays:", e?.message ?? e); return null; })) : null;
-    loadTent();
-    function mount3d(fade) {
-      const at = $("hr-3d"), show = $("hr-show");
-      if (!tent || !at || !show) return;
-      const cv = tent.stage.canvas;
-      if (fade) cv.style.opacity = "0";
-      tent.stage.attach(at);
-      mirror?.dispose();
-      mirror = tent.mirror(show);
-      requestAnimationFrame(() => requestAnimationFrame(() => { cv.style.opacity = ""; $("hr-show")?.closest(".hr-room")?.classList.add("r3d"); }));
+    const dlg = dialogBox(document.createElement("div"), { name: T.name, blip: () => sfx.blip() });
+    const loadBoss = () => (bossP ??= import("./../boss.js").then(m => m.bossScene(holder)).then(b => { boss = b; return b; })
+      .catch(e => { console.warn("[ritual] no 3D basement, the plain room stays:", e?.message ?? e); return null; }));
+    loadBoss();
+    // what the scene should show; re-applied whenever he's (re)mounted
+    const want = { pose: "idle", cap: "hidden", face: null, name: "", hold: false };
+    const room$ = () => $("game-panel")?.querySelector(".hr-room");
+    // taps on the scene, between beats only: him (a line, and a drag on the
+    // cigar or a slow nod), the box (a rattle), the cup (a sip), the lamp
+    const busy = () => ["pick", "open", "end"].includes(phaseNow);
+    const onTap = kind => {
+      if (kind === "lamp") { sfx.cursor(); return true; }
+      if (kind === "box") { for (let i = 0; i < 4; i++) setTimeout(() => sfx.tick(), i * 70); buzz(12); return true; }
+      if (busy()) return false;
+      if (kind === "cup") { sfx.blip(); return true; }
+      if (kind !== "boss") return false;
+      const q = T.quips[quipN++ % T.quips.length];
+      if (dlg.el.hidden) { dlg.show(); dlg.say(q); const k = phaseNow; setTimeout(() => { if (phaseNow === k && k === "act") dlg.hide(); }, 2600); }
+      else if (dlg.done) dlg.quip(q);
+      else return false;
+      sfx.blip(); buzz(15);
+      return true;
+    };
+    function mount3d() {
+      loadBoss().then(b => {
+        const at = $("hr-3d");
+        if (!b || !at) return;
+        const first = !b.stage.canvas.isConnected && !room$()?.classList.contains("r3d");
+        if (first) b.stage.canvas.style.opacity = "0";   // the first time: fade in over the plain room
+        b.attach(at);
+        b.setPose(want.pose); b.capsuleState(want.cap); b.capsule(want.face, want.name); b.hold(want.hold);
+        b.onTap = onTap;
+        globalThis.__boss = b;                             // for the tests
+        requestAnimationFrame(() => requestAnimationFrame(() => { b.stage.canvas.style.opacity = ""; room$()?.classList.add("r3d"); }));
+      });
     }
-    trash.add(() => { mine = []; secrets.clear(); botSecrets.clear(); looks.clear(); mirror?.dispose(); mirror = null; tentP?.then(t => t?.dispose()); tent = null; tentP = null; });
+    trash.add(() => { mine = []; secrets.clear(); botSecrets.clear(); looks.clear(); dlg.dispose(); bossP?.then(b => b?.dispose()); boss = null; bossP = null; if (globalThis.__boss) globalThis.__boss = null; });
 
     // the performer's own phone draws the prompt: from the server when the
     // party has one (only this phone is sent it), else from the pool here
@@ -341,9 +386,8 @@ export const HUMILIATION_RITUAL = {
     const BOT_NOISE = ["a horse?", "driving", "cooking", "swimming", "falling over", "a baby", "waiting for a bus", "crying", "eating soup", "a tree", "sneezing", "very confused", "boxing", "a chicken"];
     const botNoise = rng => BOT_NOISE[Math.floor(rng() * BOT_NOISE.length)];
 
-    // the next turn: a fair pick of the performer, and the capsules in the
-    // clown's gacha machine (up to 5 players, the performer among them). No
-    // prompt here.
+    // the next turn: a fair pick of the performer, and the turn's cast (up to
+    // 5 players, the performer among them). No prompt here.
     function deal(s) {
       const ids = active(s).map(x => x.id);
       const { id, weights } = fairPick(s.weights, ids, game.rng);
@@ -375,67 +419,34 @@ export const HUMILIATION_RITUAL = {
       if (perf) perf.score += r.perfPts;
     }
 
-    // ---- the clown's show (every phone plays it from the synced clock) ----
+    // ---- the Boss's show (every phone plays it from the synced clock) ----
     const avatarOf = (s, id) => s?.players?.[id]?.avatar ?? ctx.humans.find(h => h.id === id)?.avatar ?? room.members?.find(m => m.id === id)?.avatar ?? {};
-    // everyone's own 3D character, rendered once: heads for the capsules,
-    // the full body for the performer on stage
-    const lookOf = (s, id, frame = "head") => {
-      const k = `${frame}:${id}`;
-      if (!looks.has(k)) { looks.set(k, null); renderLook(avatarOf(s, id), { frame }).then(u => { if (looks.has(k)) { looks.set(k, u); paint(); } }); }
-      return looks.get(k);
+    // everyone's own 3D head, rendered once, for the capsule
+    const lookOf = (s, id) => {
+      if (!looks.has(id)) { looks.set(id, null); renderLook(avatarOf(s, id), { frame: "head", rim: LOOK_RIM }).then(u => { if (looks.has(id)) { looks.set(id, u); if (want.cap !== "hidden" && game.s?.turn?.performer === id) capsule(game.s, id); } }); }
+      return looks.get(id);
     };
-    function paint() {
-      const s = game.s;
-      if (!s) return;
-      document.querySelectorAll(".hr-room .hr-cap[data-id]").forEach(c => {
-        const u = lookOf(s, c.dataset.id), im = c.querySelector(".hr-cap-head");
-        if (u && im && im.getAttribute("src") !== u) im.src = u;
-      });
-      const st = $("hr-star");
-      if (st?.dataset.id) { const u = lookOf(s, st.dataset.id, "full"); if (u && st.getAttribute("src") !== u) st.src = u; }
-    }
-
-    function sceneHtml(s, r) {
-      const cast = r.cast ?? [r.performer];
-      const caps = cast.map((id, i) => capHtml(id, `in-globe ${id === r.performer ? "chosen" : ""}`, `${box(GLOBE[i % GLOBE.length], CAP)};--s:.3`)).join("");
-      return `<div class="np-room hr-room" style="background-image:url(${ART}stage.jpg)">
-        <div class="hr-3d" id="hr-3d"></div>
-        <div class="np-pill" id="np-pill"></div>
-        <h2 class="np-title" id="np-title"></h2>
-        <div class="np-group hr-group" id="hr-show">
-          <img class="np-prop hr-pedestal" src="${ART}pedestal.webp" alt="" style="${at(G, 0, 671, 371, 221)}">
-          <img class="np-prop hr-machine" src="${ART}gacha.webp" alt="" style="${at(G, 19, 31, 331, 640)}">
-          <img class="np-prop hr-dial" id="hr-dial" src="${ART}dial.webp" alt="" style="${at(G, ...DIAL)}">
-          <img class="hr-star" id="hr-star" data-id="${esc(r.performer)}" alt="" style="${at(G, 0, 300, 380, 570)}">
-          <div class="np-npc" id="hr-npc" style="${at(G, CX, CY, 600, 800)}"><div class="np-body">${posesHtml(ART, POSES, "clown_idle")}</div></div>
-          <div class="hr-caps" id="hr-caps">${caps}</div>
-          ${capHtml(r.performer, "hero", `${box(CHUTE, CAP)};--s:.42`)}
-          <img class="hr-lid" id="hr-lid" src="${ART}capsule_top.webp" alt="" style="${box(LID, [192, 130])}">
-          <i class="hr-cup" id="hr-cup" style="${at(G, ...CUP)}"></i>
-        </div>
-        <div class="np-bubble hr-bubble" id="np-bubble"></div>
-        ${r.performer === ctx.me.id ? "" : `<div class="np-bubble hr-shh" id="hr-shh" aria-hidden="true">shhh…</div>`}
-        <div class="hr-wall" id="hr-wall"></div>
-        <div class="hr-ui" id="hr-ui"></div>
-        ${hostSkip(ctx)}
-      </div>`;
-    }
-    // built once per turn, then patched beat by beat: the capsule he catches
-    // is the one he opens, and the performer's slip is their card all turn
-    function scene(s, r) {
-      if (sceneTi === s.ti && $("hr-npc")) return false;
-      sceneTi = s.ti; uiKey = null;
-      ui.panel(sceneHtml(s, r), "np-full");
+    // the scene: built once per turn, then patched beat by beat, so the
+    // performer's slip is their card all turn
+    function scene(s) {
+      if (sceneTi === s.ti && room$()) return false;
+      sceneTi = s.ti; uiKey = null; dlgKey = null;
+      ui.panel(sceneHtml(ctx), "np-full");
       bindHostSkip(game);
-      paint();
-      if (tent) mount3d(false); else loadTent()?.then(() => mount3d(true));
+      dlg.attach($("hr-dlg"));
+      mount3d();
       return true;
     }
     const pkOf = s => `${s.ti}:${s.phase}`;
-    const pose = (name, opts) => setPose($("hr-npc"), name, opts);
-    const bump = () => { const n = $("hr-npc"); if (n) { n.classList.remove("np-bump"); void n.offsetWidth; n.classList.add("np-bump"); } };
+    const pose = name => { want.pose = name === "nod" ? "idle" : name; boss?.setPose(name); };
+    const play = name => boss?.play(name);
+    const capState = st => { want.cap = st; boss?.capsuleState(st); };
+    const capsule = (s, id) => { want.face = lookOf(s, id); want.name = s.players?.[id]?.handle ?? ""; boss?.capsule(want.face, want.name); };
+    // the key moments (the pick, the reveal): the camera glides home and stays
+    const hold = on => { if (on !== want.hold) { want.hold = on; boss?.hold(on); } };
     const top = pill => { const p = $("np-pill"); if (p && p._v !== pill) { p._v = pill; p.innerHTML = pill; } };
     const title = t => { const h = $("np-title"); if (h && h.textContent !== t) h.textContent = t; };
+    // the panel over the dialog (feed, guess box, points), rebuilt only when its key changes
     const plaque = (key, html) => {
       if (uiKey === key) return false;
       uiKey = key;
@@ -443,72 +454,41 @@ export const HUMILIATION_RITUAL = {
       if (u) u.innerHTML = html ? `<div class="np-plaque hr-plaque enter">${html}</div>` : "";
       return true;
     };
-    const heroEl = () => $("hr-show")?.querySelector(".hr-cap.hero");
-    const place = (el, x, y, rot = 0, sc = 1) => {
-      el.style.left = `${((x - CAP[0] / 2) / G.w * 100).toFixed(3)}%`; el.style.top = `${((y - CAP[1] / 2) / G.h * 100).toFixed(3)}%`;
-      el.style.transform = `rotate(${rot.toFixed(1)}deg) scale(${sc})`;
+    // what he says, once per key: `late` (arrived mid-beat) shows it at once
+    const line = (key, text, { late = false } = {}) => {
+      if (dlgKey === key) return false;
+      dlgKey = key;
+      dlg.show(); dlg.say(text, { instant: late });
+      return true;
     };
-    // the capsule in his hands, held up: the pose has the cup and the grip,
-    // the capsule shows the head inside its dome
-    const hold = el => { if (!el) return; el.classList.remove("gone"); el.classList.add("out", "inhand"); place(el, ...HOLD); };
-    const caught = el => { if (!el) return; el.classList.add("out"); place(el, ...CATCH); };
-    // the lid pops off and bounces away across the floor
-    function popLid(fly) {
-      const lid = $("hr-lid");
-      if (!lid) return;
-      lid.className = "hr-lid on";
-      lid.style.cssText = box(LID, [192, 130]);
-      if (!fly) { lid.classList.add("land"); return; }
-      arcTo(lid, G, LID, [LID[0] + 230, 850], { ms: 820, peak: 170, spin: 400 }).then(() => lid.classList.add("land"));
-    }
-    const burst = () => confetti($("hr-show"), { x: `${(CUP[0] + CUP[2] / 2) / G.w * 100}%`, y: `${(CUP[1] + 20) / G.h * 100}%` });
+    // where the capsule is on screen (the slip and the confetti come out of it)
+    const capRect = () => boss?.capsuleRect() ?? (() => { const r = room$()?.getBoundingClientRect(); return r && { left: r.left + r.width * 0.45, top: r.top + r.height * 0.4, width: r.width * 0.1, height: r.width * 0.1 }; })();
+    const burst = () => {
+      const rm = room$(), c = capRect();
+      if (!rm || !c) return;
+      const r = rm.getBoundingClientRect();
+      confetti(rm, { n: 18, x: `${((c.left + c.width / 2 - r.left) / r.width * 100).toFixed(1)}%`, y: `${((c.top + c.height / 2 - r.top) / r.height * 100).toFixed(1)}%` });
+    };
 
-    // ---- the pick: he cranks the gacha machine. (A juggling version was
-    // tried first: with two drawn frames the hands snap and the capsules
-    // teleport between palms, so it read as a flipbook, not a juggle.)
-    function gachaBeats(s, r, elapsed) {
-      const pk = pkOf(s), hero = heroEl();
-      // anticipation: he steps to the machine and grabs the dial; action: two
-      // full turns, the globe rattling, a click a quarter turn
-      beats.at("grab", pk, 250, elapsed, late => { pose("clown_twist"); if (!late) sfx.cursor(); });
-      beats.at("crank", pk, 500, elapsed, late => {
-        $("hr-dial")?.classList.add("turn");
-        $("hr-caps")?.classList.add("shake");
-        if (!late) for (let i = 0; i < 8; i++) setTimeout(() => { if ($("hr-dial")) sfx.tick(); }, 120 + i * 200);
-      });
-      beats.at("bump1", pk, 1100, elapsed, () => bump());
-      // the performer's capsule drops out of the globe into the works…
-      beats.at("drop", pk, TOSS_AT - 300, elapsed, () => { $("hr-caps")?.classList.remove("shake"); $("hr-caps")?.querySelector(".chosen")?.classList.add("drop"); });
-      // …hands ready (he lets go of the dial and cups them)…
-      beats.at("ready", pk, TOSS_AT - 150, elapsed, () => pose("clown_catch"));
-      // …and it pops out of the chute, on a real arc, into his hands
-      beats.at("out", pk, TOSS_AT, elapsed, late => {
-        if (!hero) return;
-        if (late) { caught(hero); return; }
-        hero.classList.add("out");
-        sfx.stamp();
-        arcTo(hero, G, CHUTE, CATCH, { ms: 650, peak: 150, spin: 360, scale: [0.42, 1] })
-          .then(() => { if (hero.isConnected && pkOf(game.s ?? {}) === pk) { bump(); sfx.pop(); buzz(30); } });
-      });
-    }
-
+    // ---- the pick: "Pick a capsule. Any capsule." He reaches into the box,
+    // comes out with one, and holds it up: their face inside, their name
     function showPick(s, r, elapsed, fresh) {
       const pk = pkOf(s), name = s.players?.[r.performer]?.handle ?? "?";
-      if (fresh || uiKey !== pk) { plaque(pk, ""); title(""); top(`turn <b>${r.no}</b> · who's it going to be…`); }
-      gachaBeats(s, r, elapsed);
-      // hold: up to the camera, their head in the dome, and he names them
+      if (fresh || uiKey !== pk) { plaque(pk, ""); title(""); top(`turn <b>${r.no}</b> · who's it going to be…`); $("hr-wall") && ($("hr-wall").innerHTML = ""); }
+      if (elapsed < TAKE_AT) { capState("hidden"); }
+      if (elapsed < SHOW_AT) line(`${pk}:pick`, T.pick, { late: elapsed > 1200 });
+      beats.at("reach", pk, REACH_AT, elapsed, late => { pose("reach"); if (!late) { for (let i = 0; i < 3; i++) setTimeout(() => sfx.tick(), 300 + i * 90); } });
+      beats.at("take", pk, TAKE_AT, elapsed, late => { capsule(s, r.performer); capState("inhand"); pose("hold"); if (!late) sfx.pop(); });
       beats.at("show", pk, SHOW_AT, elapsed, late => {
-        pose("clown_hold");
-        hold(heroEl());
-        $("hr-caps")?.classList.add("away");
+        capsule(s, r.performer); capState("inhand"); pose("hold");
         top(`turn <b>${r.no}</b> · <b>${esc(name)}</b>`);
-        say($("np-bubble"), `${name}, you're up!`, { blip: late ? null : () => sfx.blip() });
+        line(`${pk}:up`, T.up(name), { late });
         if (!late) { sfx.chime(); if (r.performer === ctx.me.id) buzz([60, 40, 120]); }
       });
     }
 
-    // the performer's slip: rises out of the cup, unrolls on the way and lands
-    // as their card on the wall, where it stays for the turn
+    // the performer's slip: it unrolls out of the capsule toward the camera
+    // and lands as their card on the wall, where it stays for the turn
     function slip(r, fly) {
       const w = $("hr-wall");
       if (!w) return null;
@@ -516,39 +496,32 @@ export const HUMILIATION_RITUAL = {
       if (!c) {
         w.innerHTML = `<div class="hr-slip"><div class="hr-kick">ACT IT OUT</div><div class="hr-prompt" id="hr-slip-p">…</div><p class="hr-note">only you can see this · no talking, no spelling</p></div>`;
         c = w.firstChild;
-        if (fly) { c.classList.add("unroll"); flyFrom(c, $("hr-cup")?.getBoundingClientRect(), { ms: 1100, tilt: 85 }); }
+        if (fly) { c.classList.add("unroll"); flyFrom(c, capRect(), { ms: 1100, tilt: 85 }); }
       }
       const sp = $("hr-slip-p"), t = secrets.get(r.key)?.text ?? "";
       if (sp && sp.dataset.t !== t) { sp.dataset.t = t; sp.textContent = t || "…"; }
       return c;
     }
 
+    // ---- the open: he twists it open, pop. The performer gets the slip;
+    // everyone else sees him peek, smirk and go "shhh"
     function showOpen(s, r, elapsed, perf, fresh) {
       const pk = pkOf(s), who = s.players?.[r.performer]?.handle ?? "?";
       if (fresh || uiKey !== pk) {
         plaque(pk, "");
-        hush($("np-bubble"));
-        pose("clown_hold", { bump: false });
-        hold(heroEl());
-        $("hr-caps")?.classList.add("away");
+        capsule(s, r.performer);
+        if (elapsed < 900) { capState("inhand"); pose("hold"); }
         top(perf ? "only <b>you</b> can see this" : `<b>${esc(who)}</b> is up · get ready to guess`);
       }
+      beats.at("twist", pk, 250, elapsed, late => { if (!late) { play("twist"); sfx.cursor(); } });
+      beats.at("pop", pk, 900, elapsed, late => { capState("open"); if (!late) { sfx.gacha(); buzz([30, 30, 60]); burst(); } });
       if (perf) {
-        // anticipation (a squeeze), action (he cracks it, the lid flies), the slip
-        beats.at("wind", pk, 300, elapsed, late => { bump(); if (!late) sfx.cursor(); });
-        beats.at("crack", pk, 700, elapsed, late => {
-          pose("clown_open");
-          heroEl()?.classList.add("gone");
-          popLid(!late);
-          if (!late) { sfx.gacha(); buzz([30, 30, 60]); burst(); }
-        });
-        beats.at("slip", pk, 850, elapsed, late => slip(r, !late));
-        slip(r, false);
+        beats.at("slip", pk, 1000, elapsed, late => { slip(r, !late); line(`${pk}:yours`, T.yours, { late }); });
+        if (elapsed >= 1000) slip(r, false);
       } else {
-        // he peeks in (only he sees it), a gasp, then a wink: "shhh"
-        beats.at("peek", pk, 400, elapsed, late => { pose("clown_peek"); heroEl()?.classList.add("gone"); if (!late) sfx.cursor(); });
-        beats.at("gasp", pk, 1300, elapsed, late => { bump(); if (!late) sfx.pop(); });
-        beats.at("shh", pk, 1800, elapsed, late => { pose("clown_shh"); $("hr-shh")?.classList.add("on"); if (!late) sfx.whoosh(); });
+        beats.at("peek", pk, 1100, elapsed, late => { pose("peek"); if (!late) sfx.cursor(); });
+        beats.at("smirk", pk, 1800, elapsed, late => { if (!late) { play("smirk"); sfx.pop(); } });
+        beats.at("shh", pk, 2400, elapsed, late => { capState("hidden"); pose("shhh"); line(`${pk}:shh`, T.shh, { late }); if (!late) sfx.whoosh(); });
       }
     }
 
@@ -561,6 +534,9 @@ export const HUMILIATION_RITUAL = {
         if (lastTurn?.split(":")[0] !== String(s.ti)) mine = [];
         lastTurn = tk;
       }
+      phaseNow = s.phase;
+      // the key moments (the pick, the open): the camera glides home and stays
+      hold(s.phase === "pick" || s.phase === "open");
       const now = performance.now(); if (now - lastHud < 100) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
@@ -571,20 +547,19 @@ export const HUMILIATION_RITUAL = {
       if (!r && s.phase !== "end") return;
       // the performer's phone fetches its prompt as soon as it's picked
       const secret = r && isPerformer(s) ? mySecret(r) : null;
-      // render everyone's look early: the capsules need them by the toss
-      if (r) for (const id of r.cast ?? [r.performer]) lookOf(s, id);
-      if (r && ["act", "result"].includes(s.phase)) lookOf(s, r.performer, "full");
+      // render the performer's look early: the capsule needs it by the take
+      if (r) lookOf(s, r.performer);
 
       if (s.phase === "end") {
         if (!ui.once("end", () => {})) return;
         sceneTi = null;
         showResults(P, { title: "Humiliation Ritual", sub: "final scores", note: `right guess: ${RITUAL.GUESS_PTS}-${RITUAL.GUESS_PTS + RITUAL.GUESS_SPEED} · performer: ${RITUAL.PERFORM_PTS}-${RITUAL.PERFORM_PTS + RITUAL.PERFORM_SPEED} · faster = more` },
-          `<img class="hr-end-clown" src="${ART}clown_hold.webp" alt=""><p class="ab-sub">back to the party in a moment</p>${hostSkip(ctx)}`);
+          `<p class="ab-sub">${esc(T.end)}</p><p class="ab-sub">back to the party in a moment</p>${hostSkip(ctx)}`);
         bindHostSkip(game);
         return;
       }
 
-      const fresh = scene(s, r);
+      const fresh = scene(s);
       const pk = pkOf(s);
 
       if (s.phase === "pick") {
@@ -596,14 +571,10 @@ export const HUMILIATION_RITUAL = {
       } else if (s.phase === "act") {
         const gs = r.guesses ?? [];
         if (fresh || !String(uiKey).startsWith(pk)) {
-          // the performer takes the stage: their own character, in the spot
-          pose("clown_idle", { bump: !fresh });
-          hush($("np-bubble"));
-          $("hr-shh")?.classList.remove("on");
-          heroEl()?.classList.add("gone");
-          $("hr-caps")?.classList.add("away");
-          $("hr-show")?.classList.add("acting");
-          paint();
+          // the acting: he sits back with his cigar and watches; the dialog
+          // steps aside for the feed / the guess box
+          pose("idle"); capState("hidden");
+          dlg.hide(); dlgKey = null;
         }
         if (isPerformer(s)) {
           // PERFORMER: their card stays up, the clock, the live feed to tap.
@@ -661,25 +632,20 @@ export const HUMILIATION_RITUAL = {
         const board = P.slice().sort((a, b) => b.score - a.score).map(p => `<li class="${r.won && (p.id === r.won.by || p.id === r.performer) ? "me" : ""}"><b>${esc(p.handle)}</b><span>${p.score}</span></li>`).join("");
         title(r.skipped ? `${who} left` : r.won ? `${g?.handle ?? "?"} got it!` : "time's up!");
         top(r.skipped ? "nobody scores this turn" : r.won ? `“${esc(r.won.text)}” · ${r.secs}s` : "nobody got it — no points this turn");
-        $("hr-shh")?.classList.remove("on");
         const w = $("hr-wall");
+        // a slow approving nod to close the turn, and his verdict
+        if (first) { capState("hidden"); pose(r.skipped ? "shhh" : "idle"); if (!r.skipped) play("nod"); }
+        line(`${pk}:said`, r.skipped ? T.left(who) : r.won ? T.got(g?.handle ?? "?", who) : T.nobody, { late: s.left < RESULT_MS - 1500 });
         if (r.skipped) {
-          pose("clown_shh");
           if (w) w.innerHTML = `<div class="hr-reveal"><small>the prompt stays a secret</small><b>🤫</b></div>`;
         } else if (!r.answer) {
-          // the capsule's back in his hands, waiting for the performer's phone
-          if (first) { pose("clown_hold"); const h = heroEl(); if (h) { h.classList.remove("gone"); hold(h); } }
+          // waiting for the performer's phone to say what it was
           if (w) w.innerHTML = `<div class="hr-reveal waiting"><small>it was</small><b>…</b></div>`;
-        } else {
-          // the reveal: he cracks it open for everyone and the answer flies up
-          pose("clown_open");
-          heroEl()?.classList.add("gone");
+        } else if (w) {
+          // the reveal: the answer drops in for everyone
           const fly = !first || s.left > RESULT_MS - 1500;
-          popLid(fly);
-          if (w) {
-            w.innerHTML = `<div class="hr-reveal"><small>it was</small><b>${esc(r.answer)}</b></div>`;
-            if (fly) { flyFrom(w.firstChild, $("hr-cup")?.getBoundingClientRect(), { ms: 900, tilt: 80 }); sfx.gacha(); if (r.won) burst(); }
-          }
+          w.innerHTML = `<div class="hr-reveal"><small>it was</small><b>${esc(r.answer)}</b></div>`;
+          if (fly) { flyFrom(w.firstChild, capRect(), { ms: 900, tilt: 80 }); sfx.gacha(); if (r.won) burst(); }
         }
         plaque(key, r.won
           ? `<div class="hr-pts"><span><b>${esc(g?.handle ?? "?")}</b> +${r.pts}</span><span><b>${esc(who)}</b> +${r.perfPts}</span></div><ol class="sq-board">${board}</ol>`

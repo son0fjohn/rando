@@ -23,7 +23,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const ok = (c, msg) => { if (c) { pass++; console.log(`  ✓ ${msg}`); } else { fail++; console.log(`  ✗ ${msg}`); } };
 const errors = [];
-const LOOK = { skin: "2", hair: "m1", hairColor: "black", face: "f1", iris: "brown", top: "tee-baggy-black", bottom: "cargo-black", shoes: "sneaker-white-stripe" };
+const LOOK = { skin: "2", eyes: "sharp", iris: "brown", hair: "middle-part", hairColor: "black", top: "tee-white", bottom: "cargo-chain", shoes: "skate-blue" };
 const A = await ctx.newPage();
 A.on("pageerror", e => errors.push(e.message));
 await A.goto(`${base}/app.html?me=tony&coins=200&av=${encodeURIComponent(JSON.stringify(LOOK))}&devlat=37.5347&devlng=126.9945`);
@@ -53,48 +53,56 @@ await A.waitForFunction(() => !!document.querySelector("#style-view canvas"), nu
 await sleep(2500);
 let s = await state();
 ok(s.canvas, "the character is on the stage in 3D");
-ok(s.tab === "Hair" && s.save === "Saved" && !s.saveOn, `opens on Hair, nothing to save ("${s.save}")`);
+ok(s.tab === "Eyes" && s.save === "Saved" && !s.saveOn, `opens on Eyes, nothing to save ("${s.save}")`);
 const tabs = await A.locator("#outfit-tabs button").evaluateAll(bs => bs.map(b => b.textContent.trim()));
-ok(["Hair", "Eyes", "Top", "Bottom", "Shoes", "Head", "Face", "Neck", "Shop"].every(t => tabs.includes(t)), `icon tabs: ${tabs.join(" · ")}`);
+ok(tabs.join(",") === "Eyes,Hair,Head,Face,Top,Bottom,Shoes,Neck/back,Shop", `icon tabs, in order: ${tabs.join(" · ")}`);
+ok(await A.evaluate(() => getComputedStyle(document.querySelector("#outfit-tabs .active")).color.replace(/\s/g, "")) === "rgb(255,200,61)", "the active tab is gold (#FFC83D)");
 await shot("01-open");
 
 // hair: a style, then a color swatch
-await A.locator('#outfit-grid [data-slot="hair"][data-value="f2"]').click(); await sleep(1500);
-await A.locator('#outfit-grid [data-slot="hairColor"][data-value="yellow"]').click(); await sleep(1600);
+await A.locator("#outfit-tabs button", { hasText: /^Hair$/ }).click(); await sleep(2500);
+await A.locator('#outfit-grid [data-slot="hair"][data-value="bob"]').click(); await sleep(1500);
+await A.locator('#outfit-grid [data-slot="hairColor"][data-value="blonde"]').click(); await sleep(1600);
 s = await state();
 ok(s.save === "Save" && s.saveOn, "trying on a new hair makes Save ready");
 const sparks = await A.locator("#style-view .ss-sparks i").count();
 await shot("02-hair");
-ok(await A.locator('#outfit-grid [data-slot="hairColor"][data-value="yellow"].selected').count() === 1, "the yellow swatch is selected");
+ok(await A.locator('#outfit-grid [data-slot="hairColor"][data-value="blonde"].selected').count() === 1, "the blonde swatch is selected");
 
 // eyes
 await A.locator("#outfit-tabs button", { hasText: /^Eyes$/ }).click(); await sleep(500);
-await A.locator('#outfit-grid [data-slot="face"][data-value="f3"]').click(); await sleep(400);
+await A.locator('#outfit-grid [data-slot="eyes"][data-value="cat"]').click(); await sleep(400);
 await A.locator('#outfit-grid [data-slot="iris"][data-value="green"]').click(); await sleep(1400);
 await shot("03-eyes");
 
-// top: the hoodie is a shop item -> try it on, a Buy bar shows, Save waits
+// top: the denim jacket is a shop item -> try it on, a Buy bar shows, Save waits
 await A.locator("#outfit-tabs button", { hasText: /^Top$/ }).click(); await sleep(2500);
-await A.locator('#outfit-grid [data-slot="top"][data-value="hoodie-maroon"]').click(); await sleep(2200);
+await A.locator('#outfit-grid [data-slot="top"][data-value="denim-jacket"]').click(); await sleep(2200);
 s = await state();
 ok(s.buy && s.save === "Unlock to save" && !s.saveOn, `a locked item is tried on; Save waits ("${s.save}")`);
 await shot("04-try-locked");
 await A.locator("#ss-buy [data-ss-buy]").click(); await sleep(2500);
 s = await state();
-ok(!s.buy && +s.coins === 50, `bought it: 200 → ${s.coins} coins (hoodie 150), Buy bar gone`);
+ok(!s.buy && +s.coins === 50, `bought it: 200 → ${s.coins} coins (denim jacket 150), Buy bar gone`);
 ok(s.save === "Saved ✓" || s.save === "Saved", `buying saves the look ("${s.save}")`);
 
 // bottoms + shoes strips (3D thumbnails)
 await A.locator("#outfit-tabs button", { hasText: /^Bottom$/ }).click(); await sleep(3500);
 const thumbs = await A.locator("#outfit-grid .opt-tile.thumb3d").count();
 ok(thumbs >= 5, `bottoms show 3D thumbnails (${thumbs})`);
-await A.locator('#outfit-grid [data-slot="bottom"][data-value="jeans-baggy-blue"]').click(); await sleep(1500);
+await A.locator('#outfit-grid [data-slot="bottom"][data-value="wide-jeans"]').click(); await sleep(1500);
 await shot("05-bottom");
 await A.locator("#outfit-tabs button", { hasText: /^Shoes$/ }).click(); await sleep(3000);
-await A.locator('#outfit-grid [data-slot="shoes"][data-value="sneaker-hitop-black"]').click(); await sleep(1500);
+await A.locator('#outfit-grid [data-slot="shoes"][data-value="combat"]').click(); await sleep(1500);
 await shot("06-shoes");
-await A.locator("#outfit-tabs button", { hasText: /^Head$/ }).click(); await sleep(700);
-ok(await A.locator("#outfit-grid .ss-soon").count() === 1, "Head says new drops are coming (no items yet)");
+await A.locator("#outfit-tabs button", { hasText: /^Head$/ }).click(); await sleep(3000);
+await A.locator('#outfit-grid [data-slot="head"][data-value="bucket"]').click(); await sleep(1500);
+ok(await A.locator('#outfit-grid [data-slot="head"]').count() >= 10, "Head has the headwear (10 + none)");
+await shot("06b-head");
+await A.locator("#outfit-tabs button", { hasText: /^Neck\/back$/ }).click(); await sleep(3000);
+await A.locator('#outfit-grid .opt-tile[data-slot="neck"][data-value="chain-silver"]').click(); await sleep(1500);
+ok(await A.locator('#outfit-grid .ss-variants [data-value="chain-gold"]').count() === 1, "tintable items show colour swatches under them (silver / gold chain)");
+await shot("06c-neck");
 
 // walk preview
 await A.locator('#style-view [data-preview="walk"]').click(); await sleep(1800);

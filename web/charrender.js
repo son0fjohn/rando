@@ -1,6 +1,6 @@
 // Players' own 3D characters as still pictures for the game scenes (Side
 // Quest's crystal ball, the Ritual's capsules, a performer on stage): the
-// real avatar (avatar3.js, the cel shader every character uses), posed with
+// real avatar (avatar4.js, the clay character every player is), posed with
 // a smile and rendered with a light that matches the scene's painted one:
 // a warm key from the upper left and the front, a soft fill, a coloured rim.
 // The scenes are painted / pre-rendered like the Art Gallery's, so the
@@ -56,7 +56,7 @@ export function warmLooks(avatars, frames = ["head", "full"]) {
 async function rig() {
   if (R) return R;
   const THREE = await import("https://esm.sh/three@0.160.0");
-  const A = await import("./avatar3.js");
+  const A = await import("./avatar4.js");
   if (!A.makeHumanCharacter) throw new Error("no avatar renderer here");
   const probe = document.createElement("canvas");
   if (!(probe.getContext("webgl2") || probe.getContext("webgl"))) throw new Error("no WebGL");
@@ -77,7 +77,7 @@ async function rig() {
 
 async function render(avatar, frame, rimHex) {
   const { THREE, A, renderer, scene, cam, rim } = await rig();
-  const ch = await A.makeHumanCharacter(A.normalizeAvatar3(avatar));
+  const ch = await A.makeHumanCharacter(A.normalizeAvatar(avatar));
   await Promise.race([ch.ready ?? Promise.resolve(), new Promise(r => setTimeout(r, 15000))]);
   ch.setExpression?.("smile");
   const [w, h] = SIZE[frame] ?? SIZE.head;

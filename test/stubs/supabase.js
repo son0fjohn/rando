@@ -16,6 +16,7 @@
 //   ritual    ritual_draw (migrations/015): a prompt for the caller only, no
 //             repeats per room on this phone (the real SQL: test/coins_sql.mjs)
 import { StubChannel } from "./bcchannel.js";
+import { ITEMS4, HAIRCOLOR_SHOP, STARTER_OUTFITS4 } from "/web/items4.js";
 
 const q = new URLSearchParams(location.search);
 const handle = q.get("me") || "tester";
@@ -32,13 +33,9 @@ const ZONES = [
   ["bogwang", "Bogwang", 37.5289, 126.9944],
 ].map(([id, name, lat, lng]) => ({ id, name, lat, lng, kind: "fixed" }));
 
-const LOOKS = [
-  { skin: "2", hair: "f1", hairColor: "brown", face: "f1", iris: "blue", top: "hoodie-maroon", bottom: "cargo-black", shoes: "sneaker-white-stripe" },
-  { skin: "4", hair: "m1", hairColor: "black", face: "f3", iris: "brown", top: "tee-white-graphic", bottom: "jeans-baggy-blue", shoes: "sneaker-hitop-black" },
-  { skin: "1", hair: "f2", hairColor: "red", face: "f2", iris: "green", top: "tee-baggy-black", bottom: "skirt-pleated-black", shoes: "clog-pink" },
-  { skin: "3", hair: "m3", hairColor: "white", face: "f5", iris: "navy", top: "none", bottom: "track-navy", shoes: "boot-work-tan" },
-  { skin: "5", hair: "f4", hairColor: "yellow", face: "f6", iris: "blue", top: "tee-white-graphic", bottom: "shorts-green", shoes: "sneaker-white-lowtop" },
-];
+// the strangers wear the starter outfits (the new wardrobe), with some hair and colour
+const LOOKS = STARTER_OUTFITS4.map(({ id, name, ...o }, i) => ({ skin: String(1 + (i * 3) % 8), eyes: ["sharp", "round", "cat", "sleepy", "sparkly", "narrow"][i], iris: ["brown", "lightblue", "green", "amber", "violet", "gray"][i],
+  hair: o.hair ?? ["middle-part", "buzz", "bob", "wolf", "twin-buns", "slicked"][i], hairColor: ["darkbrown", "black", "blonde", "lightbrown", "black", "red"][i], ...o }));
 const NAMES = ["mina", "jae", "sol", "haru", "dana", "kit", "yuna", "rio", "bo", "lux", "ari", "noa"];
 const crowd = Math.max(0, Math.min(12, q.get("crowd") === null ? 5 : +q.get("crowd")));
 const strangers = Array.from({ length: crowd }, (_, i) => ({
@@ -55,12 +52,11 @@ const db = {
     { id: 2, sender: "u-jae", handle: "jae", body: "coffee line is insane lol", zone_id: "itaewon-station", created_at: "2026-10-21T10:01:00Z" },
   ],
   matches: [], match_queue: [], messages: [], friend_messages: [], encounter_confirms: [], reports: [], diary_prompt_log: [],
+  // the shop as migrations/016 makes it
   shop_items: [
-    ["top-hoodie-maroon", "top", "hoodie-maroon", "maroon hoodie", 150], ["bottom-camo", "bottom", "camo", "camo pants", 100],
-    ["bottom-skirt-pleated", "bottom", "skirt-pleated-black", "pleated skirt", 100], ["bottom-shorts-blue", "bottom", "shorts-blue", "blue shorts", 60],
-    ["shoes-clog-pink", "shoes", "clog-pink", "pink clogs", 90], ["shoes-boot-work-tan", "shoes", "boot-work-tan", "tan work boots", 120],
-    ["haircolor-red", "hairColor", "red", "red hair dye", 80], ["haircolor-white", "hairColor", "white", "white hair dye", 80],
-  ].map(([id, slot, value, name, price]) => ({ id, slot, value, name, price })),
+    ...Object.entries(ITEMS4).filter(([, d]) => d.price > 0).map(([v, d]) => ({ id: `a4-${v}`, slot: d.cat, value: v, name: d.name.toLowerCase(), price: d.price, rarity: d.rarity })),
+    ...Object.entries(HAIRCOLOR_SHOP).map(([c, t]) => ({ id: `a4-haircolor-${c}`, slot: "hairColor", value: c, name: `${c} hair dye`, price: t.price, rarity: t.rarity })),
+  ],
 };
 
 // ---- the coin "server", shared by every tab: IndexedDB (localStorage writes

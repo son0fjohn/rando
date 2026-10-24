@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>party room sprites — check</title>
 <!-- Dev page: six test characters with different cosmetics, rendered by
-     web/charsprite.js (real avatar3 models, flattened to small classic-RPG
+     web/charsprite.js (real avatar4 models, flattened to small classic-RPG
      sprites) next to their 3D versions, every facing and walk frame, the
      pixel-figure fallback, and all six standing and walking in the party
      room at night. node test/charsprite_shots.mjs screenshots it. -->
@@ -49,12 +49,12 @@ import { spriteFor, silhouetteFor, SPRITE } from "/web/charsprite.js";
 import { LobbyRoom } from "/web/hplobby.js";
 const { W, H, COLS } = SPRITE;
 const CHARS = [
-  { name: "mina", cfg: { skin: "1", hair: "f2", hairColor: "red", face: "f2", iris: "blue", top: "hoodie-maroon", bottom: "skirt-pleated-black", shoes: "clog-pink" } },
-  { name: "jun", cfg: { skin: "3", hair: "m2", hairColor: "black", face: "f4", iris: "brown", top: "tee-white-graphic", bottom: "cargo-khaki", shoes: "sneaker-white-lowtop" } },
-  { name: "sol", cfg: { skin: "5", hair: "f4", hairColor: "yellow", face: "f6", iris: "green", top: "tee-baggy-black", bottom: "jeans-baggy-blue", shoes: "boot-work-tan" } },
-  { name: "haru", cfg: { skin: "2", hair: "f1", hairColor: "brown", face: "f1", iris: "blue", top: "hoodie-maroon", bottom: "cargo-black", shoes: "sneaker-white-stripe" } },
-  { name: "dee", cfg: { skin: "4", hair: "m3", hairColor: "white", face: "f5", iris: "navy", top: "none", bottom: "track-navy", shoes: "boot-work-tan" } },
-  { name: "bo", cfg: { skin: "3", hair: "m1", hairColor: "black", face: "f3", iris: "brown", top: "tee-white-graphic", bottom: "shorts-green", shoes: "sneaker-hitop-black" } },
+  { name: "mina", cfg: { skin: "1", eyes: "cat", iris: "violet", hair: "pigtails", hairColor: "pink", top: "baby-tee", bottom: "mini-leggings", shoes: "platform" } },
+  { name: "jun", cfg: { skin: "3", eyes: "sharp", iris: "brown", hair: "middle-part", hairColor: "black", head: "beanie-phones", top: "sweat-babyblue", bottom: "cargo-chain", shoes: "skate-blue" } },
+  { name: "sol", cfg: { skin: "5", eyes: "round", iris: "green", hair: "bob", hairColor: "blonde", head: "bucket", top: "bomber-olive", bottom: "wide-jeans", shoes: "white-chunky" } },
+  { name: "haru", cfg: { skin: "2", eyes: "sparkly", iris: "lightblue", hair: "twin-buns", hairColor: "darkbrown", top: "cardigan-cream", bottom: "plaid-wide", shoes: "combat" } },
+  { name: "dee", cfg: { skin: "7", eyes: "narrow", iris: "amber", hair: "locs", hairColor: "black", head: "durag", face: "shades-round", top: "track-purple", bottom: "track-pants", shoes: "white-chunky" } },
+  { name: "bo", cfg: { skin: "4", eyes: "sleepy", iris: "gray", hair: "wolf", hairColor: "red", head: "cap-back", top: "varsity", bottom: "cargo-shorts", shoes: "hightop" } },
 ];
 const label = c => Object.entries(c.cfg).filter(([k]) => !["face", "iris"].includes(k)).map(([k, v]) => `${k} ${v}`).join(" · ");
 const frame = (url, row, col, s) => `<div class="spr" style="width:${W * s}px;height:${H * s}px;background-image:url(${url});background-size:${W * COLS * s}px ${H * 3 * s}px;background-position:${-col * W * s}px ${-row * H * s}px"></div>`;
@@ -71,7 +71,7 @@ for (const c of CHARS) {
 const ref = {};
 {
   const THREE = await import("three");
-  const A = await import("/web/avatar3.js");
+  const A = await import("/web/avatar4.js");
   const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   r.setSize(110, 180); r.outputColorSpace = THREE.SRGBColorSpace;
   const sc = new THREE.Scene();

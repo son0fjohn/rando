@@ -182,7 +182,7 @@ if (await guests[0].locator("#pt-vote").count()) {
 }
 await A.evaluate(() => document.querySelector(".lr-tv")?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1 })));
 await sleep(4500);
-await shot(A, "10-tv-picker", "the host: tapped the TV (same as Game votes): live counts, most votes on top, tap any game to start");
+await shot(A, "10-tv-picker", "the host: tapped the TV (same as Game votes): live counts, the leader marked, tap any game to start");
 if (stop) console.log(`flow: ${await stop(join(OUT, "flow"))} frames`);
 await A.evaluate(() => document.getElementById("pt-picker-x")?.click());
 await sleep(500);

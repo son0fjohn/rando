@@ -130,7 +130,7 @@ try {
   await B.click("#pt-picker-x");
   await A.click("#pt-vote");
   await sleep(700);
-  await shot(A, "07-game-votes", "the host's game votes, most votes first");
+  await shot(A, "07-game-votes", "the host's game votes, the leader marked");
   await step("party settings", async () => {
     await A.click("#pv-settings-h");
     const s = A.locator(".pt-settings");

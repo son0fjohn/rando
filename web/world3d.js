@@ -8,11 +8,12 @@ import { mergeGeometries } from "https://esm.sh/three@0.160.0/examples/jsm/utils
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { makeCharacter, makeGLBCharacter, makeGLBCharacterSync, loadGLBTemplate } from "./character3d.js";
 import { makeHumanCharacter, makeHumanCharacterSync, loadHumanTemplate,
-         makeAnimatedCharacter, staticize, matteify } from "./avatar3.js";
+         makeAnimatedCharacter } from "./avatar4.js";
+import { staticize, matteify } from "./avatar3.js";
 import { THEME } from "./theme.js";
 
 // generated GLB characters are the default; ?glb=0 falls back to procedural
-// character system: avatar3 humanoid by default; ?legacy=glb keeps the old
+// character system: the avatar4 clay character by default; ?legacy=glb keeps the old
 // animated Tripo GLB, ?legacy=blob the procedural blob (?glb=0 kept as an
 // alias of blob for old links)
 const LEGACY_CHAR = (() => {
@@ -1919,7 +1920,7 @@ export const world3d = {
           install(api);
         };
         (ANIM_CHAR ? makeAnimatedCharacter : makeHumanCharacter)(opts.avatar)
-          .then(arrive)
+          .then(api => api.ready.then(() => arrive(api)))
           // anim clips missing/broken -> static humanoid -> blob
           .catch(() => makeHumanCharacter(opts.avatar).then(arrive)
             .catch(() => install(undefined)));

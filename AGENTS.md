@@ -22,11 +22,17 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
   `web/charview.js` (a character in 3D, alive: drag to spin, pinch to zoom,
   double-tap to reset, Idle/Walk preview; the Style screen's lit stage),
-  `web/avatar3.js` (the player character: body.glb with faces painted into
-  the head through a face UV set, flat-painted body regions, a rebuilt rig
-  with procedural swagger idle/walk, hair/clothes fitted at load),
-  `web/face3.js` (faces drawn in code: 6 eye styles × 6 expressions),
-  `web/cel.js` (the one cel shader every character mesh uses),
+  `web/avatar4.js` (the player character: one shared clay base,
+  `web/avatar4/base.glb`, a 20-joint rig with procedural idle/walk; skin,
+  the tee/shorts underlayer and items are code tints; the eyes are a
+  canvas on the head's own face UV set; items are glbs skinned offline to
+  the same joints, `web/avatar4/items/`; hat hair, emote marks, item
+  thumbnails), `web/items4.js` (the wardrobe: every item, what it hides,
+  how it tints, free vs shop with rarity and label prices, the six starter
+  outfits; no three.js, so bots and tests read it), `web/face4.js` (the
+  eyes drawn in code: 8 shapes × 8 iris tints, expressions, no mouth; the
+  face-layer accessories), see `docs/avatar4.md`. (`avatar3.js`, `face3.js`
+  and `cel.js` are the old character, kept only for `staticize`/`matteify`.)
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
   for Korean) and frosted-glass panels; pixel art only in the room art and
@@ -43,18 +49,38 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots; its
   `finish()` hands the final standings to the party),
   `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/npcscene.js`
-  (Side Quest's wizard and the Ritual's clown, built like the Art Gallery:
-  painted backdrop, NPC pose cutouts, props on gravity arcs, a prop that
-  flies up to become the card; art in `web/games/sidequest|ritual/`, see
-  `docs/npc_scenes.md`), `web/retrolook.js` (the retro look kit
-  every game scene's 3D layer uses: mood lights, fog, emissive bloom,
-  low-res nearest upscale, grade + dither + vignette + grain, quality tiers),
-  `web/sqnook.js` (Side Quest's 3D fortune-teller nook on that kit;
-  `SIDEQUEST.NOOK_3D`, `?nook=0` pins the painted parlour), `web/retrorooms.js`
-  (the other rooms on the kit: the Ritual's circus tent, with the clown and
-  props mirrored in from the DOM; Secret Diary's study and Mask Off's lounge
-  behind their cards via `roomBackdrop()`; `RITUAL.TENT_3D`, `?tent=0`,
-  `?rooms=0`), `web/charrender.js` (players' own 3D characters as
+  (the game hosts' DOM beats: `Beats` off the synced clock, a card flying out
+  of the scene, confetti), `web/npcstage.js` (what both hosts' 3D scenes
+  share: the look-around camera, one component and one set of settings, tap
+  picking, the head that follows the camera, the shader bits for a live-lit
+  character in a painted room, the smoke wisp), `web/projroom.js` (camera
+  mapping: low-poly geometry painted by projecting an approved picture from
+  its camera, a depth map for what it saw, a tile for what it didn't),
+  `web/prophet.js` (Side Quest's host, The Prophet: a rigged low-poly 3D
+  model, `web/games/sidequest/prophet/prophet.glb`, sitting cross-legged
+  behind a low table, lit live; procedural idle / reveal / point / nod, the
+  crystal ball; drag to orbit the camera, pinch to zoom, it glides home and
+  holds still for the pick and the reveal; tap him / the ball / the lamp /
+  the TV), `web/rooftop.js` (his rooftop room, camera-mapped, a clean plate
+  where he, the ball and the dialog were; assets in
+  `web/games/sidequest/rooftop/`, see `docs/npc_scenes.md`), `web/boss.js`
+  (the Ritual's host, The Boss: a rigged low-poly 3D model,
+  `web/games/ritual/boss/boss.glb`, sitting back behind a folding table, lit
+  live; procedural idle with cigar drags / reach / hold / twist / peek /
+  shhh / nod / sip, the capsule with the player's face and name, the cigar
+  and finger props; the same look-around as the Prophet; tap him / the box /
+  the cup / the lamp), `web/basement.js` (his gray basement, camera-mapped,
+  haze, the lamp's flicker; assets in `web/games/ritual/basement/`),
+  `web/dialog.js` (the shared NPC dialog box: navy, name tab, text typed in
+  the app font with a blip, ▼, choice boxes, `quip()` for a passing line;
+  styles `.dlg-*` in theme.css), `web/retrolook.js`
+  (the retro look kit every game scene's 3D layer uses: mood lights, fog,
+  emissive bloom, low-res nearest upscale, grade + dither + vignette +
+  grain, quality tiers; `smooth` + `msaa` for a soft look, `encoded` for a
+  display-ready buffer, as the camera-mapped rooms need),
+  `web/retrorooms.js`
+  (the other rooms on the kit: Secret Diary's study and Mask Off's lounge
+  behind their cards via `roomBackdrop()`; `?rooms=0`), `web/charrender.js` (players' own 3D characters as
   pictures for those scenes, warmed in the lobby), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors, party/coin/game numbers),
   `web/partyset.js` (a party is a set of 3 games: places → party points),
@@ -74,7 +100,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/data/ritual_prompts.json` (the SQL test checks they match).
 - **Coins and the shop:** `013_coins_shop.sql`. Balances, payouts and purchases
   happen only in SQL functions (`report_game`, `confirm_game`, `buy_item`);
-  the client only displays them.
+  the client only displays them. `016_wardrobe4.sql` is the new wardrobe's
+  shop (head / face / neck slots, rarity); its rows must match
+  `web/items4.js` (the SQL test checks).
 
 ## Run and test
 
@@ -87,11 +115,12 @@ npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Dia
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
-node test/nook_shots.mjs <dir>       # Side Quest's 3D nook on its own: loads, every beat of a turn
-node test/rooms_shots.mjs <dir> [tent,study,lounge]   # the other game rooms on their own: each loads, a shot each
+node test/prophet_shots.mjs <dir> [only]   # Side Quest's Prophet on his own: every pose, the dialog box (EN + KO), drag-to-orbit / glide home / hold / pinch, taps
+node test/boss_shots.mjs <dir> [only] [--video]   # the Ritual's Boss on his own: every beat, the dialog box (EN + KO), drag-to-orbit / glide home / hold / pinch, taps (--video + FFMPEG: orbit.mp4)
+node test/rooms_shots.mjs <dir> [study,lounge]   # the other game rooms on their own: each loads, a shot each
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
-node test/charturn_shots.mjs <dir> [--hair=none,f2,m1] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
-node test/combos_shots.mjs <dir>       # every top × bottom (idle + walk) and hairstyle × top, for clipping
+node test/charturn_shots.mjs <dir> [--hair=none,bob,wolf] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
+node test/combos_shots.mjs <dir> [--only=tops|hats]   # every top × bottom (idle + walk) and every headwear × hairstyle, for clipping
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)

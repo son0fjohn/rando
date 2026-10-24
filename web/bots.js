@@ -1,17 +1,11 @@
-// Bot helpers: random avatar configs from the real avatar3 catalog, and
-// text pools for the talk-type games. Kept in one place so the demo's
-// "fake people" are at least consistently fake.
-import { PART_OPTIONS3 } from "./avatar3.js";
+// Bot helpers: random looks from the real wardrobe (items4.js), and text
+// pools for the talk-type games. Kept in one place so the demo's "fake
+// people" are at least consistently fake.
+import { randomAvatar4 } from "./items4.js";
 
-export function avatar3Random(rng) {
-  const pick = arr => arr[Math.floor(rng() * arr.length)];
-  const p = PART_OPTIONS3;
-  return {
-    skin: pick(p.skin), hair: pick(p.hair.filter(x => x !== "none")), hairColor: pick(p.hairColor),
-    face: pick(p.face), iris: pick(p.iris),
-    top: rng() < 0.7 ? pick(p.top.filter(x => x !== "none")) : "none",
-    bottom: pick(p.bottom.filter(x => x !== "none")), shoes: pick(p.shoes.filter(x => x !== "none")),
-  };
+// a bot's look: free items only, like a new player's
+export function botAvatar(rng) {
+  return randomAvatar4(rng);
 }
 
 export const CAPTION_POOL = [

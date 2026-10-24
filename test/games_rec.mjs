@@ -1,11 +1,13 @@
 // Recordings of the party games, played on several "phones" through the real
 // UI (test/hpparty.html, real characters), for review:
-//   sidequest  4 phones: the host's setup, the wizard + crystal ball, a full
-//              turn (timer, Done, star votes, points) and a Give-up turn
-//   ritual     3 phones: one full charades turn — the clown juggles, catches
-//              a capsule in his mouth, holds it up, opens it (the slip on the
-//              performer's phone, peek/wink/shhh on a guesser's), the live
-//              guess feed, a guesser typing, the performer tapping it
+//   sidequest  3 phones (2 in the video): the host's setup, the Prophet
+//              and his crystal ball, a full turn (Accept, timer, ratings,
+//              verdict, his nod) and a Give-up turn
+//   ritual     3 phones (2 in the video): one full charades turn — the Boss
+//              reaches into his box, holds a capsule up ("[Name]. You're
+//              up."), twists it open (the slip on the performer's phone,
+//              peek/smirk/"Shhh..." on a guesser's), the live guess feed, a
+//              guesser typing, the performer tapping it, his nod
 //   maskoff    3 phones: the deck setup, a full Mask Off turn (hand, card,
 //              mask off, Same, Go deeper), a Pass turn, the "masks off" end
 //   party      4 phones: a full set of 3 games (skipped through) ending on the
@@ -142,9 +144,9 @@ const backInRoom = pg => until(pg, () => !document.getElementById("party-panel")
 // ---------------------------------------------------------------- Side Quest
 async function sidequest() {
   log("\nSide Quest");
-  const P = await phones(["alice", "bob", "cy", "dee"]);
+  const P = await phones(["alice", "bob", "cy"]);
   // the lobby renders everyone's 3D look while they hang out (charrender.js);
-  // four phones doing that in software GL on one CPU take a while
+  // three phones doing that in software GL on one CPU take a while
   await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/charrender.js").then(m => m.warmLooks([])))));
   const casts = await Promise.all(P.list.map(screencast));
   const A = P.host;
@@ -155,45 +157,61 @@ async function sidequest() {
   await A.click('[data-open="anywhere"]'); await sleep(1200);
   await A.locator(".sq-q").nth(5).click(); await sleep(900);          // one quest off
   await A.locator(".sq-q").nth(5).click(); await sleep(700);          // …and back on
-  await A.click('[data-cat="strangers"]'); await sleep(1200);         // a whole category off
-  await A.click('[data-cat="strangers"]'); await sleep(900);          // …and on
   await A.click('[data-open="anywhere"]'); await sleep(500);
-  for (let i = 0; i < 2; i++) { await A.locator('[data-turns]').first().click(); await sleep(500); }   // 4 → 2 turns
-  await sleep(800);
+  await A.locator('[data-turns]').first().click(); await sleep(800);  // 3 → 2 turns
   await A.click("#sq-go");
+  let first = null;
   for (let turn = 1; turn <= 2; turn++) {
-    // first who: the ball lands on a face and the wizard names them; then what
+    // first who: the ball lands on a face, the Prophet points and names them;
+    // then what: the card rises out of the ball
     await phaseIs(A, "spin", 40000);
     const whoId = (await stateOn(A)).turn.who;
     const picked = P.list.find(pg => idOf(pg) === whoId);
     const other = P.list.find(pg => pg !== picked);
-    await until(other, () => { const b = document.querySelector(".sq-room #np-bubble.on"); return b && !b.querySelector(".np-rest")?.textContent; }, null, 15000);
+    first ??= [picked, other];
+    await until(other, () => { const d = document.querySelector(".sq-room .dlg-box.done .dlg-text"); return d && /\.\.\. \S/.test(d.textContent); }, null, 15000);
     if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-1-player-reveal.png") }), await picked.screenshot({ path: join(OUT, "sidequest-2-player-reveal-chosen.png") });
     await phaseIs(A, "quest", 15000);
     await until(other, () => !!document.querySelector("#sq-wall .sq-card"), null, 10000);
-    await sleep(700);
+    await sleep(1600);
     if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-3-quest-reveal.png") });
     await phaseIs(A, "do", 40000);
     const s = await stateOn(A);
     const perf = P.list.find(pg => idOf(pg) === s.turn.who);
     log(`  turn ${turn}: ${perf.label} — ${s.turn.quest.text}`);
-    await sleep(6000);
+    await sleep(2500);
     if (turn === 1) {
-      // the room rates while the quest is on; the turn ends once all three have
-      const stars = [5, 4, 4];
-      for (const [k, pg] of P.list.filter(pg => pg !== perf).entries()) { await pg.locator(`[data-star="${stars[k]}"]`).click(); await sleep(1400); }
+      // someone watching looks around the room (drag), then pokes him (tap): he answers between beats
+      const watcher = P.list.find(pg => pg !== perf);
+      const drag = async (pg, x0, x1, y) => { await pg.mouse.move(x0, y); await pg.mouse.down(); for (let i = 1; i <= 14; i++) { await pg.mouse.move(x0 + (x1 - x0) * i / 14, y); await sleep(20); } await pg.mouse.up(); };
+      await drag(watcher, 320, 120, 330); await sleep(1600);
+      await drag(watcher, 100, 330, 300); await sleep(1400);
+      await watcher.mouse.click(195, 300); await sleep(1500);
+      await watcher.screenshot({ path: join(OUT, "sidequest-4b-poke.png") });
+      await perf.locator(".sq-room .dlg-choice:not(.warn)").click(); await sleep(2500);   // Accept
+      await perf.screenshot({ path: join(OUT, "sidequest-4-accepted.png") });
+      // the room rates while the quest is on; the turn ends once both have
+      const stars = [5, 4];
+      for (const [k, pg] of P.list.filter(pg => pg !== perf).entries()) {
+        if (k === 0) await pg.screenshot({ path: join(OUT, "sidequest-5-rate.png") });
+        await pg.locator(".sq-room .dlg-choice.sq-star").nth(stars[k] - 1).click(); await sleep(1800);
+      }
     } else {
-      await perf.click("#sq-giveup"); await sleep(1200);
-      await perf.click("#sq-giveup");
+      await perf.locator(".sq-room .dlg-choice.warn").click(); await sleep(1200);
+      await perf.locator(".sq-room .dlg-choice.warn").click();
     }
     await phaseIs(A, "result", 10000);
     const r = (await stateOn(A)).turn;
     log(`    ${r.status}: avg ${r.avg} → +${r.pts}`);
-    await sleep(8500);
+    await sleep(1500);
+    if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-6-verdict.png") });
+    await sleep(7000);
   }
   await phaseIs(A, "end", 15000);
   await sleep(4000);
-  await writeScene("sidequest", casts);
+  // two phones side by side: turn 1's chosen player and someone watching
+  await Promise.all(casts.filter((c, i) => !first.includes(P.list[i])).map(c => c.stop()));
+  await writeScene("sidequest", first.map(pg => casts[P.list.indexOf(pg)]));
   await P.ctx.close();
 }
 
@@ -303,7 +321,7 @@ async function ritual() {
   const P = await phones(["alice", "bob", "cy"]);
   const A = P.host;
   await sleep(1000);
-  // film every phone from the start (the clown's pick, the capsule, the
+  // film every phone from the start (the Boss's pick, the capsule, the
   // open), then keep the performer's and one guesser's side by side
   const all = new Map();
   // the lobby renders everyone's 3D look while they hang out (charrender.js)
