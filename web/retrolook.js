@@ -102,7 +102,8 @@ export async function retroStage(host, mood = {}) {
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;     // the final pass converts itself
   const canvas = renderer.domElement;
   canvas.className = "retro-canvas";
-  Object.assign(canvas.style, { position: "absolute", inset: "0", width: "100%", height: "100%", imageRendering: "pixelated", display: "block" });
+  // a mood with smooth: true upscales softly (a slightly soft low-res render) instead of crisp pixels
+  Object.assign(canvas.style, { position: "absolute", inset: "0", width: "100%", height: "100%", imageRendering: M.smooth ? "auto" : "pixelated", display: "block" });
   host.appendChild(canvas);
 
   const scene = new THREE.Scene();
@@ -115,7 +116,9 @@ export async function retroStage(host, mood = {}) {
   const fill = new THREE.DirectionalLight(M.fill.color, M.fill.intensity); fill.position.set(...M.fill.pos);
   scene.add(hemi, key, fill);
 
-  const rtOpts = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true };
+  // smooth moods: linear filtering and multisampled edges (soft, not stair-stepped)
+  const filt = M.smooth ? THREE.LinearFilter : THREE.NearestFilter;
+  const rtOpts = { minFilter: filt, magFilter: filt, depthBuffer: true, samples: M.msaa ?? 0 };
   const rtScene = new THREE.WebGLRenderTarget(4, 4, rtOpts);
   const rtA = new THREE.WebGLRenderTarget(4, 4, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
   const rtB = rtA.clone();
