@@ -155,7 +155,8 @@ async function render3d(avatar) {
     if (!o.isMesh && !o.isSkinnedMesh) return;
     const part = o.userData.part ?? "body";
     if (part === "face") { o.visible = false; return; }     // the face is drawn, not sampled
-    if (!colors[part]) colors[part] = medianColor(o.material.map?.image) ?? [128, 128, 128];
+    // the item's own flat colour when it says (items cut from one figure share a texture atlas)
+    if (!colors[part]) colors[part] = o.userData.rgb ?? medianColor(o.material.map?.image) ?? [128, 128, 128];
     meshes.push({ o, part });
   });
   // chunky head, readable shoes

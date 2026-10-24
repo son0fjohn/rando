@@ -189,6 +189,9 @@ function build(cfg) {
         const mat = itemMaterial(src.material.map, def, cfg);
         if (def.cat === "hair" && hat?.hairCut != null) cutAbove(mat, hat.hairCut);
         const sm = new THREE.SkinnedMesh(src.geometry, mat);
+        // its flat colour (the lobby sprites paint parts flat): the tint's, else its own
+        const tints = typeof def.tint === "function" ? def.tint(cfg) : def.tint;
+        sm.userData.rgb = tints?.[0]?.[1] ?? def.rgb;
         sm.frustumCulled = false; sm.castShadow = true; sm.userData.part = def.cat === "face" ? "facewear" : def.cat;
         body.parent.add(sm);
         sm.bind(skel, body.bindMatrix);
@@ -202,7 +205,7 @@ function build(cfg) {
     const m = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.0028, 8, 24), new THREE.MeshLambertMaterial({ color: 0xe8c25a, emissive: 0x3a2a08 }));
     m.position.set(side * 0.112, 0.036, -0.004);           // head-bone space (base units): under the ear lobe
     m.rotation.y = Math.PI / 2;
-    m.userData.ownGeo = true; m.userData.part = "facewear";
+    m.userData.ownGeo = true; m.userData.part = "facewear"; m.userData.rgb = [232, 194, 90];
     B.head.add(m);
     return m;
   });
