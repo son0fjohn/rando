@@ -180,6 +180,13 @@ async function sidequest() {
     log(`  turn ${turn}: ${perf.label} — ${s.turn.quest.text}`);
     await sleep(2500);
     if (turn === 1) {
+      // someone watching looks around the room (drag), then pokes him (tap): he answers between beats
+      const watcher = P.list.find(pg => pg !== perf);
+      const drag = async (pg, x0, x1, y) => { await pg.mouse.move(x0, y); await pg.mouse.down(); for (let i = 1; i <= 14; i++) { await pg.mouse.move(x0 + (x1 - x0) * i / 14, y); await sleep(20); } await pg.mouse.up(); };
+      await drag(watcher, 320, 120, 330); await sleep(1600);
+      await drag(watcher, 100, 330, 300); await sleep(1400);
+      await watcher.mouse.click(195, 300); await sleep(1500);
+      await watcher.screenshot({ path: join(OUT, "sidequest-4b-poke.png") });
       await perf.locator(".sq-room .dlg-choice:not(.warn)").click(); await sleep(2500);   // Accept
       await perf.screenshot({ path: join(OUT, "sidequest-4-accepted.png") });
       // the room rates while the quest is on; the turn ends once both have

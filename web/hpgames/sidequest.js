@@ -65,6 +65,8 @@ const LINES = {
     verdict: (a, p) => `${a} out of 5. +${p}.`,
     nobody: "Nobody rated it. Zero.",
     rated: (k, n) => `${k}/${n} rated`,
+    // tap him between beats
+    quips: ["Patience.", "Don't rush fate, kid.", "I already know what you're gonna ask.", "The ball doesn't like fingerprints.", "Mm-hm."],
   },
   ko: {
     name: "예언자", kicker: "사이드 퀘스트:",
@@ -83,6 +85,7 @@ const LINES = {
     verdict: (a, p) => `5점 만점에 ${a}. +${p}.`,
     nobody: "아무도 평가 안 했어. 0점.",
     rated: (k, n) => `${k}/${n} 평가`,
+    quips: ["인내심.", "운명을 서두르지 마, 꼬마야.", "네가 뭘 물어볼지 이미 알아.", "공에 지문 묻히지 마.", "음-흠."],
   },
 };
 const T = KO ? LINES.ko : LINES.en;
@@ -153,7 +156,16 @@ export const SIDE_QUEST = {
     const loadProphet = () => (prophetP ??= import("./../prophet.js").then(m => m.prophetScene(holder)).then(p => { prophet = p; return p; })
       .catch(e => { console.warn("[sidequest] no 3D back room, the plain one stays:", e?.message ?? e); return null; }));
     loadProphet();
-    let lastPose = "idle", lastOrb = "idle", lastFace = null, lastPush = 0;
+    let lastPose = "idle", lastOrb = "idle", lastFace = null, lastPush = 0, lastHold = false, phaseNow = "setup", quipN = Math.floor(Math.random() * 5);
+    // taps on the scene: him (a line, between beats only), the ball, the lamp
+    const onTap = kind => {
+      if (kind === "ball") { sfx.chime(); return true; }
+      if (kind === "lamp") { sfx.cursor(); return true; }
+      if (kind !== "prophet" || ["spin", "quest", "end"].includes(phaseNow) || !dlg.done) return false;
+      dlg.quip(T.quips[quipN++ % T.quips.length]);
+      sfx.blip(); buzz(15);
+      return true;
+    };
     function mount3d() {
       loadProphet().then(p => {
         const at = $("sq-3d");
@@ -161,11 +173,13 @@ export const SIDE_QUEST = {
         const first = !p.stage.canvas.isConnected && !room$()?.classList.contains("r3d");
         if (first) p.stage.canvas.style.opacity = "0";   // the first time: fade in over the plain room
         p.attach(at);
-        p.setPose(lastPose); p.orb(lastOrb); p.push(lastPush); if (lastFace) p.face(lastFace);
+        p.setPose(lastPose); p.orb(lastOrb); p.push(lastPush); p.hold(lastHold); if (lastFace) p.face(lastFace);
+        p.onTap = onTap;
+        globalThis.__prophet = p;                          // for the tests
         requestAnimationFrame(() => requestAnimationFrame(() => { p.stage.canvas.style.opacity = ""; room$()?.classList.add("r3d"); }));
       });
     }
-    trash.add(() => { myVote = null; looks.clear(); dlg.dispose(); prophetP?.then(p => p?.dispose()); prophet = null; prophetP = null; });
+    trash.add(() => { myVote = null; looks.clear(); dlg.dispose(); prophetP?.then(p => p?.dispose()); prophet = null; prophetP = null; if (globalThis.__prophet) globalThis.__prophet = null; });
 
     const turn = s => s.turn ?? null;
     const isMe = s => turn(s)?.who === ctx.me.id;
@@ -318,6 +332,8 @@ export const SIDE_QUEST = {
     const pose = name => { lastPose = name === "nod" ? "idle" : name; prophet?.setPose(name); };
     const orb = mode => { lastOrb = mode; prophet?.orb(mode); const o = $("sq-orb"); if (o) o.className = `sq-orb ${mode}`; };
     const push = k => { lastPush = k; prophet?.push(k); };
+    // the key moments (the pick, the reveal): the camera glides home and stays
+    const hold = on => { if (on !== lastHold) { lastHold = on; prophet?.hold(on); } };
     const face = (s, id, pop = false) => {
       const img = $("sq-face"), url = lookOf(s, id);
       if (url) { lastFace = url; prophet?.face(url, pop); }
@@ -379,6 +395,8 @@ export const SIDE_QUEST = {
       // per-turn local state resets on every phone, keyed off the state
       const tk = `${s.ti}:${s.phase}`;
       if (tk !== lastTurn) { lastTurn = tk; if (s.phase !== "do") myVote = null; giveUpArmed = 0; }
+      phaseNow = s.phase;
+      hold(s.phase === "spin" || s.phase === "quest");
       const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
