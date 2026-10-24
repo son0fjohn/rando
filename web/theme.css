@@ -806,6 +806,8 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .pv-row:active { transform: scale(.985); }
 .pv-row.mine { background: rgba(255,93,138,.18); border-color: rgba(255,93,138,.7); }
 .pv-row.short { opacity: .55; }
+.pv-row.lead { border-color: rgba(255,200,61,.85); box-shadow: 0 0 0 1px rgba(255,200,61,.35) inset; }
+.pv-row.lead .pv-n { color: #ffc83d; }
 .pv-art { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 12px; background: rgba(255,255,255,.08); }
 .pv-art svg { width: 30px; height: 30px; image-rendering: pixelated; }
 .pv-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }

@@ -119,9 +119,14 @@ try {
   ok(await until(B, () => document.querySelector('[data-vote="mask_off"]')?.classList.contains("mine")), "their vote is marked");
   await A.click("#pt-vote");
   ok(await A.locator("#pt-picker").isVisible() && /Game votes/.test(await text(A, ".pt-picker-head")), "the host opens 'Game votes'");
-  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "mask_off" && /^1/.test(document.querySelector('[data-game="mask_off"] .pv-n')?.textContent ?? "")), "the host sees the vote live, most votes first");
+  const ORDER = "artgallery,secretdiary,sidequest,ritual,mask_off,manhunt";
+  ok(await B.evaluate(() => [...document.querySelectorAll(".pv-list .pv-row")].map(r => r.dataset.vote).join(",")) === ORDER, "the players' list is in the one order: Art Gallery, Secret Diary, Side Quest, Ritual, Mask Off, Manhunt");
+  await shot(B, "vote-player");
+  ok(await until(A, () => document.querySelector('[data-game="mask_off"]')?.classList.contains("lead") && /^1/.test(document.querySelector('[data-game="mask_off"] .pv-n')?.textContent ?? "")), "the host sees the vote live, the leader marked");
+  ok(await A.evaluate(() => [...document.querySelectorAll(".pv-list .pv-row")].map(r => r.dataset.game).join(",")) === ORDER, "…in the same order (votes never re-sort it)");
+  await shot(A, "vote-host");
   await B.click('[data-vote="ritual"]');
-  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "ritual" && /^0/.test(document.querySelector('[data-game="mask_off"] .pv-n')?.textContent ?? "")), "a player can change their vote: one vote each, the tally follows");
+  ok(await until(A, () => document.querySelector('[data-game="ritual"]')?.classList.contains("lead") && /^0/.test(document.querySelector('[data-game="mask_off"] .pv-n')?.textContent ?? "")), "a player can change their vote: one vote each, the tally follows");
   await A.click('[data-opt="rounds"][data-val="2"][data-for="ritual"]');
   ok(await until(A, () => document.querySelector('[data-opt="rounds"][data-val="2"][data-for="ritual"]')?.classList.contains("on")), "the host sets a game's options right in the list (the Ritual: twice each)");
   await A.click('[data-opt="rounds"][data-val="1"][data-for="ritual"]');
