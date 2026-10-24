@@ -79,7 +79,7 @@ if (!ONLY || ONLY.startsWith("o")) {
   await drag(80, 200, 380, 200); await sleep(200); await drag(80, 200, 380, 200); await sleep(200); await drag(80, 200, 380, 200);
   await sleep(900);
   const v2 = await view();
-  ok(v2.yaw >= -1.06 && v2.yaw <= 1.06, `it stops at about ±60° (yaw ${v2.yaw.toFixed(2)})`);
+  ok(v2.yaw >= -0.62 && v2.yaw <= 0.62, `it stops at about ±35° (yaw ${v2.yaw.toFixed(2)})`);
   await pg.screenshot({ path: join(OUT, "o2-orbit-left.png") }); console.log("  shot o2-orbit-left");
   await sleep(4500);
   const v3 = await view();

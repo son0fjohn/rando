@@ -6,12 +6,22 @@ the default view looks almost exactly like that picture and you can still
 look around. They share:
 
 - `web/npcstage.js`: the look-around camera (one component, one set of
-  settings: ±60°, a little up and down, pinch to zoom in a bit, momentum,
+  settings: ±35°, a little up and down, pinch to zoom in a bit, momentum,
   home ~3 s after the last touch, `hold()` for the key moments), tap picking,
   the head that follows the camera, the shader bits that put a live-lit
   character into a painted room (`encode`, `underTable`), the smoke wisp.
 - `web/projroom.js`: the camera mapping (the projector, its depth map, the
-  painted material with its fallback tile, `crop()`, `onPlane()`).
+  painted material with its fallback tile, `crop()`, `onPlane()`), with up
+  to two side projectors: the same room seen from the camera orbited 45°
+  round the table to the left and the right (`left.webp`, `right.webp`,
+  Nano Banana Pro from the approved picture). The front paints whatever it
+  sees (so the default view is still exactly the picture); side walls,
+  corners and what it sees almost edge-on take the side views, blended by
+  how squarely each one sees the surface.
+  Each side view's alpha masks out the table and what's on it (they never
+  line up with the room's own props). The orbit stops at ±35°: past that
+  the props near the table, which only the front picture shows, would
+  stretch.
 - `web/dialog.js`: the dialog box (below).
 - `web/npcscene.js`: the DOM side: `Beats` (beats fired off the synced game
   clock), `flyFrom` (a card flying out of the scene to where it lives),
@@ -69,7 +79,7 @@ anyone moves the camera) looks almost exactly like it.
   point (right arm out at the camera), nod. Pipe smoke, the ball's glow, a
   slow camera push-in on the key moments.
 - **Look around** (`npcstage.js`, the same camera as the Boss's): drag to
-  orbit (±60°, a little up and down; pinch to zoom in a bit), eased with a
+  orbit (±35°, a little up and down; pinch to zoom in a bit), eased with a
   little momentum, gliding home ~3 s after the last touch; Side Quest holds it
   home for the pick and the reveal. His head turns
   a little toward the camera. From the far left the lamp fades rather than
@@ -106,6 +116,13 @@ sidequest` records turns.
   clutter). 3 credits. It came back 3% taller; it was registered back onto
   the picture (scale + offset fitted on the areas he never covers).
 - `wall.webp`, `rug.webp`: tiles cut from the plate (graffiti; the rug).
+- `left.webp`, `right.webp`: the side views (Nano Banana Pro, the plate as
+  the image reference: "the same room, camera orbited 45° left / right
+  round the table, no people"), jobs `2203279f-80c7-4f92-9125-b302b83137fc`
+  and `87dd029a-3894-4bf4-8f4c-4df32195e7a6`, 2 credits each; resized to
+  752×1344 and the table masked out in their alpha. The basement's are
+  `2ab552b1-414a-420f-8914-1563a19d36aa` and
+  `67683532-f403-4877-953a-6f587af3d60a` (`web/games/ritual/basement/`).
 
 The Prophet model itself was not regenerated: it is the one built from the
 same turnaround (below).

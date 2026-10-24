@@ -20,12 +20,15 @@
 //   const room = await rooftopRoom(stage);   // after retroStage(..., { encoded: true })
 //   room.onTap / room.targets / room.lamp / room.update(t, dt) / room.refreshDepth()
 import { THREE } from "./retrolook.js";
-import { projRoom, loadTex } from "./projroom.js";
+import { projRoom, loadTex, orbitProj } from "./projroom.js";
 
 const ART = new URL("./games/sidequest/rooftop/", import.meta.url).href;
 // the default camera, solved from the picture: where it stands, how far it
 // looks down, its vertical field of view at 9:16
 export const PROJ = { pos: [0, 1.02, 2.59], pitch: 0.204, fov: 46, aspect: 9 / 16 };
+// the side views (left.webp, right.webp): the same room from the camera
+// orbited round the table to the left and the right (the look-around's orbit)
+export const SIDE_L = orbitProj(PROJ, 2.5, -0.785), SIDE_R = orbitProj(PROJ, 2.5, 0.785);
 // the low table: top height, centre, size (metres)
 export const TABLE = { y: 0.42, x: 0, z: 0.29, w: 1.06, d: 1.06 };
 // the room box: half width, back wall, front wall, ceiling
@@ -33,8 +36,9 @@ const RW = 2.6, RB = -3.3, RF = 3.4, RH = 2.32;
 
 export async function rooftopRoom(stage) {
   const { scene } = stage;
-  const [plate, wallTile, rugTile] = await Promise.all([loadTex(`${ART}plate.webp`), loadTex(`${ART}wall.webp`, true), loadTex(`${ART}rug.webp`, true)]);
-  const pr = projRoom(stage, PROJ, plate);
+  const [plate, left, right, wallTile, rugTile] = await Promise.all([loadTex(`${ART}plate.webp`), loadTex(`${ART}left.webp`), loadTex(`${ART}right.webp`),
+    loadTex(`${ART}wall.webp`, true), loadTex(`${ART}rug.webp`, true)]);
+  const pr = projRoom(stage, PROJ, plate, { sides: [{ PROJ: SIDE_L, plate: left }, { PROJ: SIDE_R, plate: right }] });
   const { proj, paint, add, statics, crop, refreshDepth } = pr;
   const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   const PL = (w, h) => new THREE.PlaneGeometry(w, h);

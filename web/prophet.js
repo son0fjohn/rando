@@ -268,7 +268,7 @@ export async function prophetScene(host) {
     const lampD = lp.distanceTo(camera.position), ballD = BALL.distanceTo(camera.position);
     lp.project(camera); const bq = BALL.clone().project(camera);
     const sep = Math.hypot((lp.x - bq.x) * camera.aspect, lp.y - bq.y);
-    const fadeTo = lampD < ballD && sep < 0.42 ? 0.18 + Math.max(0, sep - 0.2) * 2 : 1;
+    const fadeTo = lampD < ballD && sep < 0.24 ? 0.25 + Math.max(0, sep - 0.12) * 6 : 1;
     const lf = lampFade + (Math.min(1, fadeTo) - lampFade) * Math.min(1, dt * 6);
     if (Math.abs(lf - lampFade) > 0.002 || (lf < 1 && fadeTo >= 1)) { lampFade = lf > 0.995 ? 1 : lf; room.lampFade(lampFade); }
     lampPokeT += dt;

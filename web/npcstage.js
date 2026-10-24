@@ -20,7 +20,7 @@ const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)
 
 // how far you may look away from the default view, and how it comes back
 export const ORBIT = {
-  yawRange: [-1.05, 1.05],        // ±60°
+  yawRange: [-0.61, 0.61],        // ±35°
   pitchRange: [-0.09, 0.2],       // a little lower (never under the table top), a little higher
   zoomRange: [0.72, 1.0],         // pinch: in a bit, never out past the default
   push: 0.84,                     // the push-in on key moments: distance × this
