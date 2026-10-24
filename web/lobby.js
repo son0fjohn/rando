@@ -10,7 +10,8 @@
 // if wanted.)
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
-import { makeHumanCharacter, staticize, matteify } from "./avatar3.js";
+import { staticize, matteify } from "./avatar3.js";
+import { makeHumanCharacter } from "./avatar4.js";
 
 const el = id => document.getElementById(id);
 

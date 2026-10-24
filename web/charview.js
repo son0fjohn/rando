@@ -29,7 +29,7 @@ export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, sta
 
   async function start() {
     const THREE = await import("https://esm.sh/three@0.160.0");
-    const A = await import("./avatar3.js");
+    const A = await import("./avatar4.js");
     if (!A.makeHumanCharacter || disposed || !box.isConnected) return;
     // the living build; the static one if the rig can't load here
     let ch = await (A.makeAnimatedCharacter ?? A.makeHumanCharacter)(pending ?? {})

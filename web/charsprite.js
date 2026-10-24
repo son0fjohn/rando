@@ -3,7 +3,7 @@
 // each, a pure black 1px outline, a round chunky head and big shoes.
 //
 // So cosmetics just work, every sprite is made from the player's real 3D
-// avatar (avatar3.js), posed and rendered through the room's 3/4 camera:
+// avatar (avatar4.js), posed and rendered through the room's 3/4 camera:
 //   * the head and feet bones are scaled up a little first (chunky head,
 //     readable shoes)
 //   * an ID pass says which part each pixel is (skin, hair, top, bottom,
@@ -12,9 +12,9 @@
 //     color's single shade. Skin and hair come from the avatar palette, each
 //     garment is its texture's median color.
 //   * stray pixels go, then the black outline goes around the silhouette
-//   * the face is never sampled: eyes (2px tall, a white highlight) and a
-//     small mouth are a fixed pixel overlay on the head, so every face comes
-//     out clean and friendly
+//   * the face is never sampled: the eyes (2px tall, a white highlight; no
+//     mouth, like the 3D characters) are a fixed pixel overlay on the head,
+//     so every face comes out clean
 // Shown with nearest-neighbor scaling at whole multiples (the room's pixel
 // scale), so it stays crisp.
 //
@@ -26,20 +26,20 @@
 const W = 20, H = 30;                        // sprite pixels per frame
 const SS = 4;                                // rendered at 4x, reduced per 4x4 block
 const COLS = 3, FACINGS = ["down", "left", "up"];
-const VERSION = 4;
+const VERSION = 5;
 export const SPRITE = { W, H, COLS, FACINGS };
 
-const BLACK = [12, 10, 18], WHITE = [255, 255, 255], MOUTH = [70, 28, 40];
+const BLACK = [12, 10, 18], WHITE = [255, 255, 255];
 const WORDS = { black: [44, 44, 52], white: [238, 240, 236], maroon: [128, 38, 56], blue: [70, 112, 196], navy: [44, 58, 104],
   khaki: [190, 166, 104], camo: [104, 118, 72], brown: [124, 88, 60], grey: [146, 150, 158], green: [84, 150, 86], pink: [240, 140, 176], tan: [196, 152, 98] };
 const FALLBACK_SKIN = { 1: [238, 196, 156], 2: [205, 170, 147], 3: [192, 135, 91], 4: [155, 99, 65], 5: [89, 60, 44] };
 const FALLBACK_HAIR = { black: [53, 52, 57], brown: [115, 82, 70], yellow: [225, 185, 122], red: [206, 55, 58], white: [225, 210, 200] };
 // the one shade per color: darker and a touch cooler, like night light
 const shadeOf = c => [Math.round(c[0] * 0.66), Math.round(c[1] * 0.64), Math.round(c[2] * 0.72 + 12)];
-const PARTS = ["body", "hair", "top", "bottom", "shoes"];
+const PARTS = ["body", "hair", "top", "bottom", "shoes", "head", "facewear", "neck"];
 
 const mem = new Map();                        // look key -> Promise<sheet>
-const lookKey = cfg => `v${VERSION}:` + ["skin", "hair", "hairColor", "top", "bottom", "shoes"].map(k => cfg?.[k] ?? "").join("|");
+const lookKey = cfg => `v${VERSION}:` + ["skin", "eyes", "hair", "hairColor", "head", "face", "top", "bottom", "shoes", "neck"].map(k => cfg?.[k] ?? "").join("|");
 
 // ---------------------------------------------------------------- public
 // Resolves to { url, anim, fallback }. Never rejects.
@@ -86,7 +86,7 @@ let R = null;                                 // { THREE, A, renderer, scene, ca
 async function rig() {
   if (R) return R;
   const THREE = await import("https://esm.sh/three@0.160.0");
-  const A = await import("./avatar3.js");
+  const A = await import("./avatar4.js");
   if (!A.makeHumanCharacter) throw new Error("no avatar renderer here");
   const canvas = document.createElement("canvas");
   canvas.width = W * SS; canvas.height = H * SS;
@@ -134,7 +134,7 @@ function medianColor(img) {
 
 async function render3d(avatar) {
   const { THREE, A, renderer, scene, cam, amb, light } = await rig();
-  const cfg = A.normalizeAvatar3(avatar);
+  const cfg = A.normalizeAvatar(avatar);
   // the rigged body brings a walk cycle; the static body is the fallback
   let ch = null, anim = false;
   try { ch = await withTimeout(A.makeAnimatedCharacter(cfg), 15000); anim = !!ch.pose; }
@@ -148,7 +148,7 @@ async function render3d(avatar) {
     hair: A.HAIR_RGB?.[cfg.hairColor] ?? FALLBACK_HAIR.black,
   };
   // ID colors in linear space, rendered linear: they come out exact
-  const idMats = PARTS.map((p, i) => new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB((i + 1) * 40 / 255, 0, 0, THREE.LinearSRGBColorSpace), side: THREE.DoubleSide }));
+  const idMats = PARTS.map((p, i) => new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB((i + 1) * 28 / 255, 0, 0, THREE.LinearSRGBColorSpace), side: THREE.DoubleSide }));
   const litMat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   const meshes = [];
   ch.group.traverse(o => {
@@ -161,8 +161,8 @@ async function render3d(avatar) {
   // chunky head, readable shoes
   const bones = {};
   ch.group.traverse(o => { if (o.isBone) bones[o.name] = o; });
-  const head = bones.tripoHead_1 ?? bones.tripoHead_0;
-  const feet = [bones.tripo1_Left_Limb_2, bones.tripo1_Right_Limb_2].filter(Boolean);
+  const head = bones.head ?? bones.tripoHead_1 ?? bones.tripoHead_0;
+  const feet = [bones.foot_L ?? bones.tripo1_Left_Limb_2, bones.foot_R ?? bones.tripo1_Right_Limb_2].filter(Boolean);
   // classic-RPG proportions: a big round head, a stockier body, big shoes
   const bigger = () => { head?.scale.setScalar(1.55); feet.forEach(f => f.scale.setScalar(1.35)); ch.group.scale.set(1.3, 0.9, 1.3); };
 
@@ -191,7 +191,7 @@ async function render3d(avatar) {
         bigger();
         ch.group.updateMatrixWorld(true);
         meshes.forEach(m => { m.o.material = idMats[PARTS.indexOf(m.part)] ?? idMats[0]; });
-        grab(ids, (d, s) => d[s + 3] < 128 ? 0 : Math.round(d[s] / 40));
+        grab(ids, (d, s) => d[s + 3] < 128 ? 0 : Math.round(d[s] / 28));
         meshes.forEach(m => { m.o.material = litMat; });
         grab(lit, (d, s) => d[s]);
         const headAt = head ? project(head, cam, THREE) : null;
@@ -232,7 +232,7 @@ function flatten(ids, lit, colors, headAt, facing) {
   for (let i = 0; i < ids.length; i++) if (ids[i]) hist[ids[i] - 1].push(lit[i]);
   const cut = hist.map(h => { if (!h.length) return 0; h.sort((a, b) => a - b); return h[Math.floor(h.length * 0.6)] * 0.78; });
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const votes = [0, 0, 0, 0, 0, 0], darks = [0, 0, 0, 0, 0, 0];
+    const votes = new Array(PARTS.length + 1).fill(0), darks = new Array(PARTS.length + 1).fill(0);
     for (let yy = 0; yy < SS; yy++) for (let xx = 0; xx < SS; xx++) {
       const i = (y * SS + yy) * RW + x * SS + xx, p = ids[i];
       votes[p]++; if (p && lit[i] < cut[p - 1]) darks[p]++;
@@ -305,7 +305,7 @@ function smoothShade(part, dark) {
 
 // the face overlay, the same on everyone: a clean patch of skin where the
 // face is (bangs never hide it), two eyes 2px tall with a white highlight,
-// and a small mouth. One eye in profile; nothing from behind. The head is
+// and no mouth (the characters have none). One eye in profile; nothing from behind. The head is
 // found from the sprite's own silhouette (its top rows).
 function face(put, part, colors, dark, facing) {
   const SKIN = 1;
@@ -321,11 +321,9 @@ function face(put, part, colors, dark, facing) {
   if (facing === "down") {
     fill(cx - 3, cx + 2, ey - 1, ey + 3);
     for (const x of [cx - 3, cx + 1]) { put(ey * W + x, WHITE); put(ey * W + x + 1, BLACK); put((ey + 1) * W + x, BLACK); put((ey + 1) * W + x + 1, BLACK); }
-    put((ey + 3) * W + cx - 1, MOUTH); put((ey + 3) * W + cx, MOUTH);
   } else if (facing === "left") {
     fill(cx - 4, cx - 1, ey - 1, ey + 3);
     put(ey * W + cx - 3, WHITE); put((ey + 1) * W + cx - 3, BLACK); put(ey * W + cx - 2, BLACK); put((ey + 1) * W + cx - 2, BLACK);
-    put((ey + 3) * W + cx - 3, MOUTH);
   }
 }
 

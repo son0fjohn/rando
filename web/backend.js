@@ -9,22 +9,15 @@ import { party } from "./party.js";
 import { sfx } from "./fx.js";
 import { typeDialog, muteButton } from "./retro.js";
 import { mountCharView } from "./charview.js";
-import {
-  PART_OPTIONS3, DEFAULT_AVATAR3, normalizeAvatar3, avatarThumb3,
-  SKIN_RGB, HAIR_RGB, IRIS3_HEX, loadFaceDecals, pieceThumb, STARTER_FITS,
-} from "./avatar3.js";
-import { drawFace } from "./face3.js";
-// avatar v3 humanoid replaces the blob system; keep the old names local so
+import { PART_OPTIONS4, DEFAULT_AVATAR4, normalizeAvatar4, avatarThumb4, SKIN4_RGB, HAIR4_RGB, pieceThumb4 } from "./avatar4.js";
+import { ITEMS4, IRIS4, EYE_NAMES, STARTER_OUTFITS4, HAIRCOLOR_SHOP, randomAvatar4, LOOK_KEYS4 } from "./items4.js";
+import { drawFace4 } from "./face4.js";
+// the new player character (avatar4) everywhere; the old names stay local so
 // the rest of this file reads unchanged
-const DEFAULT_AVATAR = DEFAULT_AVATAR3;
-const normalizeAvatar = normalizeAvatar3;
-const avatarThumb = avatarThumb3;
-// thumbs drawn before the face decals finish loading come out faceless and
-// nothing re-rendered them — draw now, redraw once decals are in
-const setAvatarThumb = (img, avatar) => {
-  img.src = avatarThumb(avatar);
-  loadFaceDecals().then(() => { img.src = avatarThumb(avatar); });
-};
+const DEFAULT_AVATAR = DEFAULT_AVATAR4;
+const normalizeAvatar = normalizeAvatar4;
+const avatarThumb = avatarThumb4;
+const setAvatarThumb = (img, avatar) => { img.src = avatarThumb(avatar); };
 
 world3d.init(document.querySelector(".frame"));
 const bubbleLayer = document.getElementById("bubble-layer");
@@ -1337,51 +1330,50 @@ presence.goClosed = async function () {
 
 // Style tabs: icons with a label; each holds rows of tiles (a slot each).
 // Tintable slots get a swatch row under their tiles. Head / Face / Neck are
-// the accessory slots: no items yet (see docs), so they say so.
+// the Style screen's tabs, one per slot, in the wardrobe's order
 const ICON = {
-  hair: '<path d="M5 13c0-5 3-8 7-8s7 3 7 8v3h-2v-3c0-2-1-3-2-4-2 2-5 3-8 3v4H5z"/>',
   eyes: '<path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  hair: '<path d="M5 13c0-5 3-8 7-8s7 3 7 8v3h-2v-3c0-2-1-3-2-4-2 2-5 3-8 3v4H5z"/>',
+  head: '<path d="M4 15a8 8 0 0 1 16 0z"/><path d="M2 15h20v3H2z"/>',
+  face: '<path d="M3 9h18v2a4 4 0 0 1-4 4h-1a3 3 0 0 1-3-3 1 1 0 0 0-2 0 3 3 0 0 1-3 3H7a4 4 0 0 1-4-4z"/>',
   top: '<path d="M8 4l-5 3 2 4 2-1v10h10V10l2 1 2-4-5-3c-1 2-2 3-4 3S9 6 8 4z"/>',
   bottom: '<path d="M6 3h12l1 18h-5l-2-11-2 11H5z"/>',
   shoes: '<path d="M3 15c3 0 5-2 6-6l3 2c2 1 4 2 7 2 2 0 3 1 3 3v2H3z"/>',
-  head: '<path d="M4 15a8 8 0 0 1 16 0z"/><path d="M2 15h20v3H2z"/>',
-  facewear: '<path d="M4 8h16v5a8 5 0 0 1-16 0z"/><path d="M8 11h8"/>',
   neck: '<path d="M6 4c0 6 2 10 6 10s6-4 6-10"/><circle cx="12" cy="17" r="2.5"/>',
   shop: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
 };
 const TABS = [
+  { key: "eyes", label: "Eyes", rows: [["eyes", "eyes"], ["iris", "swatch"], ["skin", "swatch"]] },
   { key: "hair", label: "Hair", rows: [["hair", "tiles"], ["hairColor", "swatch"]] },
-  { key: "eyes", label: "Eyes", rows: [["face", "eyes"], ["iris", "swatch"], ["skin", "swatch"]] },
+  { key: "head", label: "Head", rows: [["head", "tiles"]] },
+  { key: "face", label: "Face", rows: [["face", "tiles"]] },
   { key: "top", label: "Top", rows: [["fits", "fits"], ["top", "tiles"]] },
   { key: "bottom", label: "Bottom", rows: [["bottom", "tiles"]] },
   { key: "shoes", label: "Shoes", rows: [["shoes", "tiles"]] },
-  { key: "head", label: "Head", soon: "Beanies, caps, headphones and goggles are on the way." },
-  { key: "facewear", label: "Face", soon: "Face masks are on the way." },
-  { key: "neck", label: "Neck", soon: "Chains and backpacks are on the way." },
+  { key: "neck", label: "Neck/back", rows: [["neck", "tiles"]] },
   { key: "shop", label: "Shop" },
 ];
-const ROW_LABEL = { fits: "Starter fits", hair: "Style", hairColor: "Color", face: "Eyes", iris: "Iris", skin: "Skin", top: "Tops", bottom: "Bottoms", shoes: "Sneakers & shoes" };
-const SLOTS = ["skin", "hair", "hairColor", "face", "iris", "top", "bottom", "shoes"];
+const ROW_LABEL = { fits: "Starter outfits", hair: "Style", hairColor: "Color", eyes: "Eyes", iris: "Iris", skin: "Skin tone", head: "Headwear",
+  face: "Face", top: "Tops", bottom: "Bottoms", shoes: "Shoes", neck: "Neck & back" };
+const SLOTS = LOOK_KEYS4;
 const rgbCss = a => `rgb(${a[0]},${a[1]},${a[2]})`;
-// fallback tile art while the 3D thumbnail renders (prep-generated crops)
-const OPTION_ICON = {
-  hair: v => `avatar3/icons/hair_${v}.jpg`,
-  top: v => `avatar3/icons/top_${v}.jpg`,
-  bottom: v => `avatar3/icons/bottom_${v}.jpg`,
-  shoes: v => `avatar3/icons/shoe_${v}.jpg`,
-};
-// rarity is a display tier from the shop price (free items are common)
-const rarityOf = it => !it ? "common" : it.price < 100 ? "rare" : it.price < 150 ? "epic" : "legendary";
+// colour variants of one mesh (one tile, swatches under it)
+const groupOf = v => ITEMS4[v]?.group ?? null;
+const variants = g => Object.keys(ITEMS4).filter(id => ITEMS4[id].group === g);
+const SWATCH = { "tee-white": [236, 236, 232], "tee-black": [46, 44, 48], "chain-silver": [200, 204, 212], "chain-gold": [222, 178, 70] };
+// rarity: the shop row's, else the wardrobe's label (free things are common)
+const rarityOf = (slot, value, it) => it?.rarity ?? (slot === "hairColor" ? HAIRCOLOR_SHOP[value]?.rarity : ITEMS4[value]?.rarity) ?? "common";
 const haptic = (ms = 8) => { try { navigator.vibrate?.(ms); } catch {} };
 const faceTile = (cfg, value) => {
   const cv = document.createElement("canvas"); cv.width = cv.height = 128;
   const g = cv.getContext("2d");
-  g.fillStyle = rgbCss(SKIN_RGB[cfg.skin] ?? [226, 189, 173]);
+  g.fillStyle = rgbCss(SKIN4_RGB[cfg.skin] ?? [228, 182, 146]);
   g.beginPath(); g.arc(64, 70, 56, 0, Math.PI * 2); g.fill();
-  g.translate(-16, -40); drawFace(g, 160, { style: value, iris: cfg.iris, expr: "neutral", brow: HAIR_RGB[cfg.hairColor] });
+  g.translate(-36, -32); drawFace4(g, 200, { eyes: value, iris: cfg.iris, expr: "neutral" });
   return cv;
 };
 
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 const styleScreen = document.getElementById("style-screen");
 const outfitGrid = document.getElementById("outfit-grid");
 const same = (a, b) => SLOTS.every(k => a[k] === b[k]);
@@ -1389,7 +1381,7 @@ const same = (a, b) => SLOTS.every(k => a[k] === b[k]);
 export const avatar = {
   mine: { ...DEFAULT_AVATAR },   // what's saved (and what others see)
   draft: null,                   // what you're trying on in the style screen
-  tab: "hair",
+  tab: "eyes",
 
   async load() {
     const { data: { session } } = await sb.auth.getSession();
@@ -1448,11 +1440,9 @@ export const avatar = {
   },
 
   randomize() {
+    // anything you can wear: free things and what you own
     const free = (k, v) => { const it = wallet.itemFor(k, v); return !it || wallet.owns(it.id); };
-    const pickOf = k => { const vs = PART_OPTIONS3[k].filter(v => free(k, v)); return vs[Math.floor(Math.random() * vs.length)]; };
-    const next = { ...(this.draft ?? this.mine) };
-    for (const k of SLOTS) next[k] = pickOf(k);
-    if (next.shoes === "none") next.shoes = pickOf("shoes"); // sneakers on, mostly
+    const next = randomAvatar4(Math.random, free);
     this.draft = next;
     styleView.view?.setAvatar(next);
     sfx.cursor(); haptic(12); styleView.sparkle(true);
@@ -1462,7 +1452,7 @@ export const avatar = {
   // the tile strip for the current tab (rebuilt on tab changes only; picks
   // just move the selection, so the strips keep their scroll positions)
   renderGrid() {
-    if (!TABS.some(t => t.key === this.tab)) this.tab = "hair";
+    if (!TABS.some(t => t.key === this.tab)) this.tab = "eyes";
     wallet.paint();
     const look = this.draft ?? this.mine;
 
@@ -1496,13 +1486,14 @@ export const avatar = {
       const strip = row.lastChild;
       if (kind === "fits") {
         // a whole fit in one tap: its top, bottom and shoes side by side
-        for (const f of STARTER_FITS) {
+        for (const f of STARTER_OUTFITS4) {
           const b = document.createElement("button");
           b.type = "button"; b.className = "fit-tile"; b.dataset.fit = f.id;
-          b.innerHTML = `<span class="fit-art">${["top", "bottom", "shoes"].map(k => `<img alt="" data-k="${k}" src="${OPTION_ICON[k](f[k])}">`).join("")}</span><b>${f.name}</b>`;
-          for (const k of ["top", "bottom", "shoes"]) styleView.ready.then(() => pieceThumb(k, f[k], { size: 96 })).then(url => { const im = b.querySelector(`[data-k="${k}"]`); if (im) im.src = url; }).catch(() => {});
+          b.innerHTML = `<span class="fit-art">${["top", "bottom", "shoes"].map(k => `<img alt="" data-k="${k}" src="${BLANK}">`).join("")}</span><b>${f.name}</b>`;
+          for (const k of ["top", "bottom", "shoes"]) styleView.ready.then(() => pieceThumb4(f[k], { size: 96 })).then(url => { const im = b.querySelector(`[data-k="${k}"]`); if (im) im.src = url; }).catch(() => {});
           b.addEventListener("click", () => {
-            this.draft = { ...(this.draft ?? this.mine), top: f.top, bottom: f.bottom, shoes: f.shoes };
+            const { id, name, ...look } = f;
+            this.draft = { ...(this.draft ?? this.mine), ...look };
             styleView.view?.setAvatar(this.draft);
             sfx.cursor(); haptic(); styleView.sparkle(true);
             this.markSelected(); styleView.paintActions();
@@ -1512,40 +1503,62 @@ export const avatar = {
         outfitGrid.appendChild(row);
         continue;
       }
-      for (const value of PART_OPTIONS3[slot]) {
+      // one tile per mesh: colour variants share a tile, their swatches go under it
+      const values = PART_OPTIONS4[slot].filter(v => !groupOf(v) || variants(groupOf(v))[0] === v);
+      for (const value of values) {
         const b = document.createElement("button");
         b.type = "button";
         b.dataset.slot = slot; b.dataset.value = value;
+        if (groupOf(value)) b.dataset.group = groupOf(value);
         const it = wallet.itemFor(slot, value);
         if (kind === "swatch") {
-          b.className = "swatch";
-          b.style.setProperty("--sw", slot === "skin" ? rgbCss(SKIN_RGB[value]) : slot === "hairColor" ? rgbCss(HAIR_RGB[value]) : IRIS3_HEX[value]);
+          b.className = `swatch r-${rarityOf(slot, value, it)}`;
+          b.style.setProperty("--sw", rgbCss(slot === "skin" ? SKIN4_RGB[value] : slot === "hairColor" ? HAIR4_RGB[value] : IRIS4[value]));
           b.setAttribute("aria-label", `${ROW_LABEL[slot]} ${value}`);
         } else if (kind === "eyes") {
           b.className = "opt-tile face-tile";
           b.appendChild(faceTile(look, value));
-          b.setAttribute("aria-label", `eyes ${value}`);
+          b.setAttribute("aria-label", `eyes: ${EYE_NAMES[value] ?? value}`);
         } else if (value === "none") {
           b.className = "opt-tile part-chip";
           b.innerHTML = `<span>none</span>`;
         } else {
-          b.className = `opt-tile r-${rarityOf(it)}`;
+          b.className = `opt-tile r-${rarityOf(slot, value, it)}`;
+          b.title = ITEMS4[value]?.name ?? value;
           const img = document.createElement("img");
-          img.alt = value.replace(/-/g, " ");
-          img.src = OPTION_ICON[slot]?.(value) ?? "";
-          img.onerror = () => { img.style.visibility = "hidden"; };
+          img.alt = ITEMS4[value]?.name ?? value;
+          img.src = BLANK;
           b.appendChild(img);
           // 3D thumbnails once the stage's character is up (they queue)
-          styleView.ready.then(() => pieceThumb(slot, value, { hairColor: look.hairColor }))
-            .then(url => { img.style.visibility = ""; img.src = url; b.classList.add("thumb3d"); })
+          styleView.ready.then(() => pieceThumb4(value, { hairColor: look.hairColor }))
+            .then(url => { img.src = url; b.classList.add("thumb3d"); })
             .catch(() => {});
         }
         // shop items: a lock and the price until you own them
         if (it && !wallet.owns(it.id)) { b.classList.add("locked"); b.insertAdjacentHTML("beforeend", `<span class="lock-tag"><i class="coin"></i>${it.price}</span>`); }
-        b.addEventListener("click", () => this.pick(slot, value));
+        b.addEventListener("click", () => this.pick(slot, groupOf(value) && groupOf(look[slot]) === groupOf(value) ? look[slot] : value));
         strip.appendChild(b);
       }
       outfitGrid.appendChild(row);
+      // colour swatches under tintable items (one mesh, several colours)
+      const groups = [...new Set(PART_OPTIONS4[slot].map(groupOf).filter(Boolean))];
+      if (kind === "tiles" && groups.length) {
+        const sw = document.createElement("div");
+        sw.className = "ss-row ss-swatch ss-variants";
+        sw.innerHTML = `<small>Colors</small><div class="ss-strip"></div>`;
+        for (const g of groups) for (const v of variants(g)) {
+          const b = document.createElement("button");
+          b.type = "button"; b.className = `swatch r-${rarityOf(slot, v, wallet.itemFor(slot, v))}`;
+          b.dataset.slot = slot; b.dataset.value = v;
+          b.style.setProperty("--sw", rgbCss(SWATCH[v] ?? [128, 128, 128]));
+          b.setAttribute("aria-label", ITEMS4[v].name);
+          const it = wallet.itemFor(slot, v);
+          if (it && !wallet.owns(it.id)) { b.classList.add("locked"); b.insertAdjacentHTML("beforeend", `<span class="lock-tag"><i class="coin"></i>${it.price}</span>`); }
+          b.addEventListener("click", () => this.pick(slot, v));
+          sw.lastChild.appendChild(b);
+        }
+        outfitGrid.appendChild(sw);
+      }
     }
     this.markSelected();
     styleView.paintActions();
@@ -1554,11 +1567,12 @@ export const avatar = {
   markSelected() {
     const look = this.draft ?? this.mine;
     outfitGrid.querySelectorAll("[data-fit]").forEach(b => {
-      const f = STARTER_FITS.find(x => x.id === b.dataset.fit);
-      b.classList.toggle("selected", !!f && f.top === look.top && f.bottom === look.bottom && f.shoes === look.shoes);
+      const f = STARTER_OUTFITS4.find(x => x.id === b.dataset.fit);
+      b.classList.toggle("selected", !!f && ["head", "face", "top", "bottom", "shoes", "neck"].every(k => (f[k] ?? "none") === look[k]));
     });
     outfitGrid.querySelectorAll("[data-slot]").forEach(b => {
-      const sel = look[b.dataset.slot] === b.dataset.value;
+      // a grouped tile is selected when any of its colours is worn
+      const sel = look[b.dataset.slot] === b.dataset.value || (!!b.dataset.group && b.dataset.group === groupOf(look[b.dataset.slot]) && !b.classList.contains("swatch"));
       if (sel && !b.classList.contains("selected")) b.scrollIntoView?.({ block: "nearest", inline: "nearest" });
       b.classList.toggle("selected", sel);
     });
@@ -1576,7 +1590,8 @@ export const wallet = {
   async load() {
     const [{ data: w }, { data: items }] = await Promise.all([sb.rpc("my_wallet"), sb.from("shop_items").select("*").order("price")]);
     if (w) { this.coins = w.coins ?? 0; this.owned = new Set(w.owned ?? []); }
-    if (items) this.items = items;
+    // the shop lists what the new wardrobe knows (old avatar3 rows stay in SQL for the inventory)
+    if (items) this.items = items.filter(it => it.slot === "hairColor" ? PART_OPTIONS4.hairColor.includes(it.value) : ITEMS4[it.value]?.cat === it.slot);
     this.paint();
   },
   itemFor(slot, value) { return this.items.find(i => i.slot === slot && i.value === value) ?? null; },
@@ -1589,10 +1604,10 @@ export const wallet = {
     if (!this.items.length) { grid.innerHTML = `<p class="shop-empty">the shop is closed right now</p>`; return; }
     grid.innerHTML = this.items.map(it => {
       const own = this.owns(it.id), wearing = (avatar.draft ?? avatar.mine)[it.slot] === it.value;
-      const art = OPTION_ICON[it.slot]?.(it.value);
-      if (art) pieceThumb(it.slot, it.value).then(url => { const im = grid.querySelector(`[data-item="${it.id}"] img`); if (im) im.src = url; }).catch(() => {});
-      const vis = art ? `<img src="${art}" alt="">` : `<span class="shop-swatch" style="background:${it.slot === "hairColor" ? rgbCss(HAIR_RGB[it.value] ?? [128, 128, 128]) : "#555"}"></span>`;
-      return `<div class="shop-item r-${rarityOf(it)} ${own ? "owned" : ""} ${avatar.focus === it.id ? "focus" : ""}" data-item="${it.id}">
+      const art = it.slot !== "hairColor";
+      if (art) pieceThumb4(it.value).then(url => { const im = grid.querySelector(`[data-item="${it.id}"] img`); if (im) im.src = url; }).catch(() => {});
+      const vis = art ? `<img src="${BLANK}" alt="">` : `<span class="shop-swatch" style="background:${rgbCss(HAIR4_RGB[it.value] ?? [128, 128, 128])}"></span>`;
+      return `<div class="shop-item r-${rarityOf(it.slot, it.value, it)} ${own ? "owned" : ""} ${avatar.focus === it.id ? "focus" : ""}" data-item="${it.id}">
           <div class="shop-vis">${vis}</div><b>${escHtml(it.name)}</b>
           ${own ? `<button type="button" class="y-btn small ${wearing ? "dim" : "lime"}" data-wear="${it.id}" ${wearing ? "disabled" : ""}>${wearing ? "wearing" : "owned · wear"}</button>`
                 : `<button type="button" class="y-btn small gold" data-buy="${it.id}" ${this.coins < it.price ? "disabled" : ""}><i class="coin"></i>${it.price}</button>`}

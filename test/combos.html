@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <title>outfit combinations — check</title>
-<!-- Dev page: every top × bottom on the animated character, in the idle and
-     at a walk stride (front 3/4 + back), and every hairstyle with every
-     top, to catch clipping. node test/combos_shots.mjs <dir> screenshots it. -->
+<!-- Dev page: every top × bottom on the player character (avatar4), in the
+     idle and at a walk stride (front 3/4 + back), and every headwear with
+     every hairstyle (hat hair), to catch clipping.
+     node test/combos_shots.mjs <dir> [--only=tops|hats] screenshots it. -->
 <base href="/web/">
 <script type="importmap">
 { "imports": { "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js", "https://esm.sh/three@0.160.0/": "/node_modules/three/", "three": "/node_modules/three/build/three.module.js" } }
@@ -22,8 +23,9 @@
 <div id="g"></div>
 <script type="module">
 import * as THREE from "https://esm.sh/three@0.160.0";
-import * as A from "/web/avatar3.js";
-const P = A.PART_OPTIONS3;
+import * as A from "/web/avatar4.js";
+const P = A.PART_OPTIONS4;
+const q = new URLSearchParams(location.search), ONLY = q.get("only");   // tops | hats
 const W = 110, H = 150;
 const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 r.setPixelRatio(1.5); r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace;
@@ -31,13 +33,15 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color(0x2a3160);
 scene.add(new THREE.HemisphereLight(0xdce8ff, 0x2a3570, 1.7));
 const key = new THREE.DirectionalLight(0xfff3dc, 1.7); key.position.set(5, 16, 14); scene.add(key);
 const cam = new THREE.PerspectiveCamera(30, W / H, 0.5, 300);
-cam.position.set(0, 9, 34); cam.lookAt(0, 7.2, 0);
-const ch = await A.makeAnimatedCharacter({ skin: "2", hair: "m1", hairColor: "black", face: "f1", iris: "brown", top: "none", bottom: "none", shoes: "sneaker-white-stripe" });
+const body = () => { cam.position.set(0, 9, 34); cam.lookAt(0, 7.6, 0); };
+const head = () => { cam.position.set(0, 13.4, 13); cam.lookAt(0, 12.9, 0); };
+const ch = await A.makeAnimatedCharacter({ skin: "3", hair: "none", top: "none", bottom: "none", shoes: "skate-blue" });
 scene.add(ch.group);
 const g = document.getElementById("g");
-async function grid(title, combos) {
+async function grid(title, combos, frame = body) {
   const h = document.createElement("h3"); h.textContent = title; g.append(h);
   const row = document.createElement("div"); row.className = "row"; g.append(row);
+  frame();
   for (const [label, cfg, pose, yaw] of combos) {
     ch.setConfig(cfg); await ch.ready;
     ch.pose(pose, pose === "walk" ? ch.clipLength("walk") * 0.25 : 0.4);
@@ -49,16 +53,20 @@ async function grid(title, combos) {
     const s = document.createElement("small"); s.textContent = label; cell.append(s); row.append(cell);
   }
 }
-const tops = P.top, bottoms = P.bottom;
-for (const top of tops) {
+const tops = P.top.filter(x => x !== "none"), bottoms = P.bottom.filter(x => x !== "none");
+// every top with every bottom: idle (3/4), walk (3/4), walk from behind
+if (ONLY !== "hats") for (const top of tops) {
   const combos = [];
   for (const bottom of bottoms) for (const [pose, yaw] of [["idle", 0.5], ["walk", 0.5], ["walk", 3.4]])
-    combos.push([`${bottom} · ${pose}${yaw > 3 ? " back" : ""}`, { top, bottom }, pose, yaw]);
+    combos.push([`${bottom} · ${pose}${yaw > 3 ? " back" : ""}`, { top, bottom, hair: "none", head: "none" }, pose, yaw]);
   await grid(`top: ${top}`, combos);
 }
-const hc = [];
-for (const hair of P.hair) for (const top of tops) hc.push([`${hair} + ${top}`, { hair, top, bottom: "cargo-black" }, "walk", 0.9]);
-await grid("hair × top (walk, 3/4)", hc);
+// every headwear with every hair (hat hair): walk 3/4, and from behind
+if (ONLY !== "tops") for (const hat of P.head.filter(x => x !== "none")) {
+  const combos = [];
+  for (const hair of P.hair) for (const yaw of [0.6, 3.6]) combos.push([`${hair}${yaw > 3 ? " back" : ""}`, { head: hat, hair, top: "tee-white", bottom: "none" }, "walk", yaw]);
+  await grid(`headwear: ${hat}`, combos, head);
+}
 window.__done = true;
 </script>
 </body>

@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>character turntable — check</title>
-<!-- Dev page: the player character (web/avatar3.js) turned through 360° at
+<!-- Dev page: the player character (web/avatar4.js) turned through 360° at
      three zooms — map distance (the animated build, as on the map, posed
      through its idle clip as it turns), the Style screen and a face
      close-up (the static build and lights the Style screen uses) — for a
      few hairstyles. node test/charturn_shots.mjs screenshots it.
-     ?hair=f2,f3,m1  ?angles=8  ?scale=2  ?only=close-up -->
+     ?hair=middle-part,bob,wolf  ?angles=8  ?scale=2  ?only=close-up -->
 <base href="/web/">
 <script type="importmap">
 { "imports": {
@@ -34,13 +34,13 @@
 <div id="grid"></div>
 <script type="module">
 import * as THREE from "https://esm.sh/three@0.160.0";
-import * as A from "/web/avatar3.js";
+import * as A from "/web/avatar4.js";
 const q = new URLSearchParams(location.search);
-const HAIRS = (q.get("hair") ?? "f2,f3,m1").split(",");
+const HAIRS = (q.get("hair") ?? "middle-part,bob,wolf").split(",");
 const N = +(q.get("angles") ?? 8);
 const BIG = +(q.get("scale") ?? 1); // bigger cells for inspecting details
 const ONLY = q.get("only"); // e.g. only=close-up
-const LOOK = { skin: "2", hairColor: (q.get("hc") ?? "brown"), face: "f1", iris: "blue", top: "none", bottom: "none", shoes: "none" };
+const LOOK = { skin: "2", hairColor: (q.get("hc") ?? "darkbrown"), eyes: "sharp", iris: "lightblue", top: "none", bottom: "none", shoes: "none" };
 const ZOOMS = [
   // name, builder, canvas w/h, fov, camera (dist, eyeY, lookY), lights
   { name: "map distance", cls: "map", anim: true, w: 120, h: 120, fov: 40, dist: 70, eye: 22, look: 7.5 },
@@ -54,7 +54,7 @@ const ZOOMS = [
   { name: "close-up, animated, idle clip at 0°", cls: "closeup", anim: true, still: true, w: 150, h: 150, fov: 30, dist: 13, eye: 12.6, look: 12.2 },
 ];
 // an outfit, to check clipping (the Style screen view, the static build)
-const OUTFIT = { top: "hoodie-maroon", bottom: "cargo-black", shoes: "sneaker-white-lowtop" };
+const OUTFIT = { top: "sweat-babyblue", bottom: "cargo-chain", shoes: "skate-blue" };
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
 renderer.setPixelRatio(2);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -65,7 +65,7 @@ const rim = new THREE.DirectionalLight(0x4de8c8, 1.2); rim.position.set(-10, 8, 
 const grid = document.getElementById("grid");
 const info = document.getElementById("info");
 const notes = [];
-const OUTFIT_ZOOM = { name: "Style screen, hoodie + cargo + sneakers", cls: "style", anim: false, outfit: true, w: 150, h: 200, fov: 30, dist: 34, eye: 9, look: 7.2 };
+const OUTFIT_ZOOM = { name: "Style screen, sweatshirt + cargos + skate shoes", cls: "style", anim: false, outfit: true, w: 150, h: 200, fov: 30, dist: 34, eye: 9, look: 7.2 };
 for (const hair of HAIRS) {
   for (const z0 of [...ZOOMS, OUTFIT_ZOOM]) {
     if (ONLY && !z0.name.startsWith(ONLY)) continue;

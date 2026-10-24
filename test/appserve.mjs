@@ -37,7 +37,7 @@ export async function serve({ realAvatars = false } = {}) {
           const html = await readFile(join(ROOT, "web/index.html"), "utf8");
           const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>") + "</style>".length);
           let s = body.toString().replace("<!--INDEX_CSS-->", css);
-          if (realAvatars) s = s.replace(/\s*"\/web\/avatar3\.js": "[^"]+",?/, "");
+          if (realAvatars) s = s.replace(/\s*"\/web\/avatar[34]\.js": "[^"]+",?/g, "");
           body = Buffer.from(s);
         }
       }

@@ -1,6 +1,6 @@
 // Screenshot test/combos.html: every top × bottom (idle + walk) and every
-// hairstyle × top on the animated character, to catch clipping.
-//   node test/combos_shots.mjs <dir>
+// headwear × hairstyle on the player character, to catch clipping.
+//   node test/combos_shots.mjs <dir> [--only=tops|hats]
 import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -22,7 +22,7 @@ pg.on("console", m => { if (m.type() === "warning" || m.type() === "error") errs
 pg.on("response", r => { if (r.status() >= 400) errs.push(`${r.status()} ${r.url()}`); });
 const qs = new URLSearchParams(Object.fromEntries(["hair", "angles", "scale", "only", "hc", "rot"].filter(opt).map(k => [k, opt(k)])));
 await pg.goto(`${base}/test/combos.html?${qs}`);
-await pg.waitForFunction(() => window.__done, null, { timeout: 300000 });
+await pg.waitForFunction(() => window.__done, null, { timeout: 1500000 });
 await pg.screenshot({ path: join(OUT, "combos.png"), fullPage: true });
 console.log(`combos.png in ${OUT}`, errs.length ? `\n${errs.slice(0, 8).join("\n")}` : "");
 await browser.close(); close();
