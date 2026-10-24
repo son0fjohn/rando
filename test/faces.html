@@ -2,40 +2,57 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>faces — check</title>
-<!-- Dev page: every eye style × expression from web/face3.js, flat on a
-     skin disc, plus the iris colors. node test/charturn_shots.mjs
-     <dir> --faces screenshots it. -->
+<title>eyes — check</title>
+<!-- Dev page: every eye shape × expression ON the player character's head
+     (avatar4 + face4.js), then every iris tint, then the shapes at 3/4.
+     Open it on npm run serve, or node test/faces_shots.mjs <dir>. -->
+<base href="/web/">
 <script type="importmap">
-{ "imports": { "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js" } }
+{ "imports": { "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js", "https://esm.sh/three@0.160.0/": "/node_modules/three/", "three": "/node_modules/three/build/three.module.js" } }
 </script>
 <style>
   body { margin: 0; padding: 10px; background: #1b1f3d; color: #e8ebff; font: 12px system-ui, sans-serif; }
-  .row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
-  .row b { width: 28px; }
-  canvas { width: 128px; height: 128px; }
+  .row { display: flex; gap: 4px; margin-bottom: 4px; align-items: center; }
+  .row b { width: 96px; flex: none; }
+  .row span { width: 120px; text-align: center; color: #9aa3d9; }
+  canvas { width: 120px; height: 120px; border-radius: 6px; }
 </style>
 </head>
 <body>
 <div id="g"></div>
 <script type="module">
-import { drawFace, EXPRESSIONS, IRIS_RGB } from "/web/face3.js";
+import * as THREE from "https://esm.sh/three@0.160.0";
+import * as A from "/web/avatar4.js";
+import { EYE_SHAPES, EYE_NAMES, IRIS4 } from "/web/items4.js";
+import { EXPRESSIONS4 } from "/web/face4.js";
+const S = 240;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(S, S); r.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xd9dde6);
+scene.add(new THREE.HemisphereLight(0xf4f6ff, 0x8a8f9e, 1.9));
+const key = new THREE.DirectionalLight(0xfff4e6, 1.7); key.position.set(6, 14, 10); scene.add(key);
+const cam = new THREE.PerspectiveCamera(24, 1, 0.5, 100);
+const ch = await A.makeCharacter4({ skin: "3", hair: "none", hairColor: "darkbrown", top: "tee-white", bottom: "none", eyes: "sharp", iris: "lightblue" });
+scene.add(ch.group); await ch.ready; ch.pose("idle", 0.4);
 const g = document.getElementById("g");
-const tile = look => {
-  const cv = document.createElement("canvas"); cv.width = cv.height = 256;
-  const c = cv.getContext("2d");
-  c.fillStyle = "rgb(226,189,173)"; c.beginPath(); c.arc(128, 120, 118, 0, Math.PI * 2); c.fill();
-  drawFace(c, 256, look); return cv;
+const tile = (yaw = 0) => {
+  ch.group.rotation.y = yaw; ch.pose("idle", 0.4);
+  cam.position.set(0, 13.05, 6.4); cam.lookAt(0, 12.85, 0);
+  r.render(scene, cam);
+  const c = document.createElement("canvas"); c.width = c.height = S; c.getContext("2d").drawImage(r.domElement, 0, 0); return c;
 };
-const head = document.createElement("div"); head.className = "row"; head.innerHTML = "<b></b>" + EXPRESSIONS.map(e => `<span style="width:128px">${e}</span>`).join("");
+const head = document.createElement("div"); head.className = "row";
+head.innerHTML = "<b></b>" + EXPRESSIONS4.map(e => `<span>${e}</span>`).join("") + "<span>3/4</span>";
 g.append(head);
-for (const style of ["f1", "f2", "f3", "f4", "f5", "f6"]) {
-  const row = document.createElement("div"); row.className = "row"; row.innerHTML = `<b>${style}</b>`;
-  for (const expr of EXPRESSIONS) row.append(tile({ style, iris: "blue", expr }));
+for (const eyes of EYE_SHAPES) {
+  const row = document.createElement("div"); row.className = "row"; row.innerHTML = `<b>${EYE_NAMES[eyes]}<br><small>${eyes}</small></b>`;
+  ch.setConfig({ eyes });
+  for (const e of EXPRESSIONS4) { ch.setExpression(e); row.append(tile()); }
+  ch.setExpression("neutral"); row.append(tile(0.6));
   g.append(row);
 }
 const row = document.createElement("div"); row.className = "row"; row.innerHTML = "<b>iris</b>";
-for (const iris of Object.keys(IRIS_RGB)) row.append(tile({ style: "f1", iris, expr: "neutral" }));
+for (const iris of Object.keys(IRIS4)) { ch.setConfig({ eyes: "sharp", iris }); row.append(tile()); }
 g.append(row);
 window.__done = true;
 </script>
