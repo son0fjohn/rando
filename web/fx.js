@@ -113,7 +113,7 @@ const easeOut = t => 1 - Math.pow(1 - t, 3);
 const easeInOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 // ---------------------------------------------------------------- particles
-function burst(pos, { count = 24, colors = [0xffd60a, 0xff5d8a, 0x4da6ff, 0x7dff5e], size = 0.9, speed = 18, up = 22, life = 1400 } = {}) {
+function burst(pos, { count = 24, colors = [0xffd60a, 0xffc83d, 0x4da6ff, 0x7dff5e], size = 0.9, speed = 18, up = 22, life = 1400 } = {}) {
   const group = new THREE.Group();
   const items = [];
   for (let i = 0; i < count; i++) {

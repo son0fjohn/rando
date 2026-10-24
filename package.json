@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "serve": "python3 -m http.server 8743 --directory web",
-    "test": "node test/run.mjs && node test/coins_sql.mjs",
+    "test": "node test/run.mjs && node test/wardrobe.mjs && node test/coins_sql.mjs",
     "test:e2e": "node test/party_e2e.mjs && node test/diary_e2e.mjs",
     "test:e2e:iphone": "node test/party_e2e.mjs --browser=webkit && node test/diary_e2e.mjs --browser=webkit",
     "test:all": "node test/run.mjs && node test/party_e2e.mjs && node test/diary_e2e.mjs",

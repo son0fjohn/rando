@@ -87,7 +87,9 @@ ok(!s.buy && +s.coins === 50, `bought it: 200 → ${s.coins} coins (denim jacket
 ok(s.save === "Saved ✓" || s.save === "Saved", `buying saves the look ("${s.save}")`);
 
 // bottoms + shoes strips (3D thumbnails)
-await A.locator("#outfit-tabs button", { hasText: /^Bottom$/ }).click(); await sleep(3500);
+// (they render one at a time, after the tabs opened before: up to 10 s on swiftshader)
+await A.locator("#outfit-tabs button", { hasText: /^Bottom$/ }).click();
+for (let i = 0; i < 40 && await A.locator("#outfit-grid .opt-tile.thumb3d").count() < 5; i++) await sleep(250);
 const thumbs = await A.locator("#outfit-grid .opt-tile.thumb3d").count();
 ok(thumbs >= 5, `bottoms show 3D thumbnails (${thumbs})`);
 await A.locator('#outfit-grid [data-slot="bottom"][data-value="wide-jeans"]').click(); await sleep(1500);

@@ -32,7 +32,7 @@ export function openCard(host, person, { me, isHost = false, friend = false, blo
         </div>
       </div>
       <div class="y-card-btns">
-        <button type="button" class="y-btn pink" id="y-card-wave">wave</button>
+        <button type="button" class="y-btn accent" id="y-card-wave">wave</button>
         <button type="button" class="y-btn ${friend ? "lime" : "dim"}" id="y-card-friend" disabled>${friend ? "friends ✓" : "add friend"}</button>
         <button type="button" class="y-btn dim small" id="y-card-report">report</button>
         <button type="button" class="y-btn dim small" id="y-card-block">${blocked ? "unblock" : "block"}</button>

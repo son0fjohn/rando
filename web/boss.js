@@ -326,7 +326,7 @@ export async function bossScene(host) {
     const lampD = lp.distanceTo(camera.position), boxD = boxC.distanceTo(camera.position);
     lp.project(camera); const bq = cp.copy(boxC).project(camera);
     const sep = Math.hypot((lp.x - bq.x) * camera.aspect, lp.y - bq.y);
-    const fadeTo = lampD < boxD && sep < 0.5 ? 0.18 + Math.max(0, sep - 0.25) * 2.5 : 1;
+    const fadeTo = lampD < boxD && sep < 0.28 ? 0.25 + Math.max(0, sep - 0.14) * 5 : 1;
     lampFade += (Math.min(1, fadeTo) - lampFade) * Math.min(1, dt * 6);
     room.lampFade(lampFade > 0.995 ? 1 : lampFade);
     // ---- smoke: the wisp off the ember; an exhale from his mouth

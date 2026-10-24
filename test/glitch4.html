@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>avatar4 glitch grid</title>
+<!-- Dev page: renders outfit combinations on the player character (avatar4)
+     from the front, 3/4, side and back, idle and mid-stride, and finds the
+     glitches by rendering every layer on its own (flat ID + view depth, the
+     DEBUG4 hook in avatar4.js):
+       poke-through  an inner layer in front of the layer that should cover
+                     it, by less than a layer's thickness (hair through a hat,
+                     a collar cutting into hair, skin through a sleeve)
+       z-fight       two layers within 0.02 world units of each other over an
+                     area (they share a surface: flicker on a phone)
+       flicker       pixels whose front layer changes when only the depth
+                     precision changes (the symptom of the above)
+       gap           a hole: the bare body would be there, but its hidden
+                     part shows background or something far behind
+     node test/glitch4.mjs <dir> drives it; window.sheet(spec) returns one
+     labelled contact sheet + the counts. -->
+<base href="/web/">
+<script type="importmap">
+{ "imports": { "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js", "https://esm.sh/three@0.160.0/": "/node_modules/three/", "three": "/node_modules/three/build/three.module.js" } }
+</script>
+<style>body { margin: 0; background: #1b1f3d; }</style>
+</head>
+<body>
+<script type="module">
+import * as THREE from "https://esm.sh/three@0.160.0";
+const A = await import(new URLSearchParams(location.search).get("mod") || "/web/avatar4.js");
+
+const PARTS = [null, "body", "bottom", "top", "shoes", "neck", "hair", "facewear", "head"];
+// inner layer, outer layer, label, max depth gap that still counts as poking through (world units)
+const RULES = [
+  ["body", "top", "skin through top", 0.35], ["body", "bottom", "skin through bottom", 0.35], ["body", "shoes", "skin through shoes", 0.35],
+  ["body", "head", "head through hat", 0.35], ["body", "hair", "scalp through hair", 0.35], ["body", "neck", "skin through neck item", 0.35],
+  ["body", "facewear", "skin through face item", 0.35],
+  ["hair", "head", "hair through hat", 0.5], ["top", "hair", "collar cutting into hair", 0.5], ["top", "neck", "top through neck item", 0.5],
+  ["top", "head", "collar through hood", 0.5], ["bottom", "top", "waistband through top", 0.5], ["shoes", "bottom", "shoe through pant leg", 0.5],
+  ["facewear", "head", "face item through hat", 0.5], ["facewear", "hair", "shades/mask through hair", 0.5],
+];
+// body regions (G channel): 1 hand, 2 arm, 3 leg, 4 head, 5 torso, 6 scalp painted in the hair's or
+// hat's colour; which ones each outer layer covers
+const COVERS = { top: [2, 5], bottom: [3, 5], shoes: [3], head: [4, 6], hair: [4], neck: [4, 5], facewear: [4] };
+const EPS = 0.02, GAP = 0.12;
+const COL = { poke: [255, 45, 85], zfight: [255, 214, 10], flicker: [255, 80, 255], gap: [50, 215, 255] };
+
+const FRAMES = {
+  head: { w: 112, h: 112, dist: 15, ty: 12.7 },
+  upper: { w: 112, h: 140, dist: 24, ty: 10.8 },
+  body: { w: 84, h: 168, dist: 36, ty: 7.6 },
+};
+const VIEWS = [["front", 0], ["3/4", 0.78], ["side", Math.PI / 2], ["back", Math.PI]];
+const POSES = ["idle", "walk"];
+const EL = 0.14;   // camera a little above, like the map's
+
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.outputColorSpace = THREE.SRGBColorSpace; r.setPixelRatio(1);
+const scene = new THREE.Scene();
+const bg = new THREE.Color(0x2a3160);
+const lights = [new THREE.HemisphereLight(0xdce8ff, 0x2a3570, 1.7), new THREE.DirectionalLight(0xfff3dc, 1.7)];
+lights[1].position.set(5, 16, 14); scene.add(...lights);
+const cam = new THREE.PerspectiveCamera(30, 1, 0.5, 300);
+const ch = await A.makeCharacter4({ skin: "3", hair: "none", top: "none", bottom: "none", shoes: "skate-blue" });
+scene.add(ch.group);
+const { U } = ch.__rig();
+const rts = {};
+
+const layers = () => { const o = []; ch.group.traverse(m => { if (m.isMesh && m.userData.part) o.push(m); }); return o; };
+function read(f, mode, only, near = 0.5) {
+  A.DEBUG4.mode.value = mode;
+  const ls = layers();
+  for (const m of ls) m.visible = !only || m.userData.part === only;
+  scene.background = null; lights.forEach(l => l.visible = false);
+  cam.near = near; cam.updateProjectionMatrix();
+  const rt = rts[f.w + "x" + f.h] ??= new THREE.WebGLRenderTarget(f.w, f.h);
+  r.setRenderTarget(rt); r.setClearColor(0, 0); r.clear(); r.render(scene, cam); r.setRenderTarget(null);
+  const buf = new Uint8Array(f.w * f.h * 4);
+  r.readRenderTargetPixels(rt, 0, 0, f.w, f.h, buf);
+  for (const m of ls) m.visible = true;
+  A.DEBUG4.mode.value = 0; scene.background = bg; lights.forEach(l => l.visible = true);
+  cam.near = 0.5; cam.updateProjectionMatrix();
+  // flip rows (GL is bottom-up)
+  const out = new Uint8Array(buf.length), row = f.w * 4;
+  for (let y = 0; y < f.h; y++) out.set(buf.subarray((f.h - 1 - y) * row, (f.h - y) * row), y * row);
+  return out;
+}
+const depthOf = b => { const d = new Float32Array(b.length / 4); for (let i = 0; i < d.length; i++) d[i] = b[i * 4 + 3] ? (b[i * 4] * 65536 + b[i * 4 + 1] * 256 + b[i * 4 + 2]) / 16777215 * 100 : 0; return d; };
+const nbrs = (m, W, H, i, v) => { const x = i % W, y = (i / W) | 0; let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < H && m[yy * W + xx] === v) n++; } return n; };
+
+function analyze(f) {
+  const W = f.w, H = f.h, N = W * H;
+  const idb = read(f, 1), dComp = depthOf(read(f, 2));
+  const part = new Uint8Array(N), region = new Uint8Array(N);
+  for (let i = 0; i < N; i++) { part[i] = idb[i * 4 + 3] ? idb[i * 4] : 0; region[i] = idb[i * 4 + 1]; }
+  const present = [...new Set(layers().map(m => m.userData.part))];
+  const dP = Object.fromEntries(present.map(p => [p, depthOf(read(f, 2, p))]));
+  // the bare body, nothing hidden: where it is, something should be
+  const h0 = U.uHide.value.clone(), a0 = U.uHideArms.value, l0 = U.uHideLegs.value;
+  U.uHide.value.set(0, 0, -1, 9); U.uHideArms.value = 0; U.uHideLegs.value = 0;
+  const dFull = depthOf(read(f, 2, "body"));
+  U.uHide.value.copy(h0); U.uHideArms.value = a0; U.uHideLegs.value = l0;
+  // low depth precision, two slightly different near planes: what flips is flicker
+  const fa = read(f, 1, null, 0.02), fb = read(f, 1, null, 0.0213);
+
+  const kind = new Uint8Array(N), lab = new Array(N);   // 1 poke 2 zfight 3 gap 4 flicker
+  for (let i = 0; i < N; i++) {
+    const a = PARTS[part[i]];
+    if (a) for (const b of present) {
+      if (b === a || !dP[b][i]) continue;
+      const diff = dP[b][i] - dComp[i];
+      if (diff < EPS) { kind[i] = 2; lab[i] = "z-fight " + [a, b].sort().join("/"); break; }
+      const rule = RULES.find(q => q[0] === a && q[1] === b);
+      if (rule && diff < rule[3] && (a !== "body" || COVERS[b].includes(region[i]))) { kind[i] = 1; lab[i] = rule[2]; break; }
+      // the scalp, painted the hair's colour, seen through a parting or a gap between locks: reported, not flagged
+      if (a === "body" && b === "hair" && region[i] === 6 && diff < 0.35) { kind[i] = 5; lab[i] = "(info) painted scalp in a hair gap"; break; }
+    }
+    if (!kind[i] && dFull[i] && (!part[i] || dComp[i] > dFull[i] + GAP)) { kind[i] = 3; lab[i] = "gap / see-through"; }
+    if (!kind[i] && fa[i * 4 + 3] && fa[i * 4] !== fb[i * 4]) {
+      const x = i % W, y = (i / W) | 0;
+      const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const xx = x + dx, yy = y + dy; return xx < 0 || yy < 0 || xx >= W || yy >= H || part[yy * W + xx] !== part[i]; });
+      if (!edge) { kind[i] = 4; lab[i] = "flicker " + [PARTS[fa[i * 4]], PARTS[fb[i * 4]]].sort().join("/"); }
+    }
+  }
+  // areas, not lines: drop pixels with too few flagged neighbours
+  const keep = new Uint8Array(N), counts = {};
+  for (let i = 0; i < N; i++) if (kind[i] && nbrs(kind, W, H, i, kind[i]) >= (kind[i] === 2 ? 4 : 2)) { if (kind[i] < 5) keep[i] = kind[i]; counts[lab[i]] = (counts[lab[i]] ?? 0) + 1; }
+  return { keep, counts };
+}
+
+function beauty(f, S) {
+  r.setSize(f.w * S, f.h * S, false);
+  r.render(scene, cam);
+  return r.domElement;
+}
+
+// spec: { title, frame, rows: [{ label, cfg }] } -> { png, cells: [{ row, view, pose, counts }] }
+window.sheet = async spec => {
+  const f = FRAMES[spec.frame], S = 2, CW = f.w * S, CH = f.h * S, LH = 34, RW = 150, TH = 46;
+  cam.aspect = f.w / f.h; cam.updateProjectionMatrix();
+  const cols = VIEWS.length * POSES.length;
+  const cv = document.createElement("canvas");
+  cv.width = RW + cols * (CW + 2); cv.height = TH + spec.rows.length * (CH + LH + 2);
+  const g = cv.getContext("2d");
+  g.fillStyle = "#14172e"; g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = "#fff"; g.font = "600 17px system-ui, sans-serif"; g.fillText(spec.title, 8, 20);
+  g.font = "11px system-ui, sans-serif"; let lx = g.canvas.width - 560;
+  for (const [k, name] of [["poke", "poke-through"], ["zfight", "z-fight (shared surface)"], ["flicker", "flicker"], ["gap", "gap / see-through"]]) {
+    g.fillStyle = `rgb(${COL[k]})`; g.fillRect(lx, 10, 10, 10); g.fillStyle = "#cfd5ff"; g.fillText(name, lx + 14, 19); lx += g.measureText(name).width + 34;
+  }
+  VIEWS.forEach(([v], vi) => POSES.forEach((p, pi) => { g.fillStyle = "#9aa3d9"; g.fillText(`${v} · ${p}`, RW + (vi * 2 + pi) * (CW + 2) + 4, 39); }));
+  const cells = [];
+  for (const [ri, row] of spec.rows.entries()) {
+    const y0 = TH + ri * (CH + LH + 2);
+    g.fillStyle = "#e8ebff"; g.font = "600 12px system-ui, sans-serif";
+    row.label.split("\n").forEach((t, k) => g.fillText(t, 8, y0 + 18 + k * 15));
+    if (row.blocked) {
+      g.fillStyle = "#2a2f52"; g.fillRect(RW, y0, cols * (CW + 2) - 2, CH);
+      g.fillStyle = "#9aa3d9"; g.font = "600 14px system-ui, sans-serif"; g.fillText(row.blocked + " (the Style screen says \"doesn't fit\")", RW + 16, y0 + CH / 2);
+      for (const [view] of VIEWS) for (const pose of POSES) cells.push({ row: row.label.replace(/\n/g, " "), cfg: row.cfg, view, pose, counts: {}, blocked: true });
+      continue;
+    }
+    ch.setConfig(row.cfg); await ch.ready;
+    for (const [vi, [view, yaw]] of VIEWS.entries()) for (const [pi, pose] of POSES.entries()) {
+      ch.pose(pose, pose === "walk" ? ch.clipLength("walk") * 0.25 : 0.4);
+      ch.group.rotation.y = yaw;
+      cam.position.set(0, f.ty + f.dist * EL, f.dist); cam.lookAt(0, f.ty, 0);
+      ch.group.updateMatrixWorld(true);
+      const { keep, counts } = analyze(f);
+      const x0 = RW + (vi * 2 + pi) * (CW + 2);
+      g.drawImage(beauty(f, S), x0, y0, CW, CH);
+      const img = g.getImageData(x0, y0, CW, CH);
+      for (let i = 0; i < keep.length; i++) if (keep[i]) {
+        const c = COL[["", "poke", "zfight", "gap", "flicker"][keep[i]]], x = (i % f.w) * S, y = ((i / f.w) | 0) * S;
+        for (let dy = 0; dy < S; dy++) for (let dx = 0; dx < S; dx++) { const o = ((y + dy) * CW + x + dx) * 4; img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; }
+      }
+      g.putImageData(img, x0, y0);
+      const top = Object.entries(counts).filter(([k, n]) => n >= 4 && !k.startsWith("(info)")).sort((a, b) => b[1] - a[1]);
+      g.font = "10px system-ui, sans-serif";
+      if (!top.length) { g.fillStyle = "#5fd38a"; g.fillText("clean", x0 + 3, y0 + CH + 12); }
+      top.slice(0, 2).forEach(([k, n], j) => { g.fillStyle = k.startsWith("z-") ? "#ffd60a" : k.startsWith("flicker") ? "#ff80ff" : k.startsWith("gap") ? "#32d7ff" : "#ff6b88"; g.fillText(`${k} ${n}`, x0 + 3, y0 + CH + 12 + j * 12); });
+      cells.push({ row: row.label.replace(/\n/g, " "), cfg: row.cfg, view, pose, counts });
+    }
+  }
+  return { png: cv.toDataURL("image/png"), cells };
+};
+window.__ready = true;
+</script>
+</body>
+</html>

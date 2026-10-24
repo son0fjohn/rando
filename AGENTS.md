@@ -26,16 +26,18 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/avatar4/base.glb`, a 20-joint rig with procedural idle/walk; skin,
   the tee/shorts underlayer and items are code tints; the eyes are a
   canvas on the head's own face UV set; items are glbs skinned offline to
-  the same joints, `web/avatar4/items/`; hat hair, emote marks, item
-  thumbnails), `web/items4.js` (the wardrobe: every item, what it hides,
+  the same joints, `web/avatar4/items/`; layer shells: hats on a measured
+  head shell, hat hair, hair over collars, hems over waistbands, layer
+  polygon offsets; emote marks, item thumbnails), `web/items4.js` (the wardrobe: every item, what it hides,
   how it tints, free vs shop with rarity and label prices, the six starter
   outfits; no three.js, so bots and tests read it), `web/face4.js` (the
-  eyes drawn in code: 8 shapes × 8 iris tints, expressions, no mouth; the
+  eyes drawn in code: 20 shapes × 8 iris tints, expressions, no mouth; the
   face-layer accessories), see `docs/avatar4.md`. (`avatar3.js`, `face3.js`
   and `cel.js` are the old character, kept only for `staticize`/`matteify`.)
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
-  for Korean) and frosted-glass panels; pixel art only in the room art and
+  for Korean) and frosted-glass panels; one accent, gold `--color-accent`
+  with navy `--color-on-accent` text, never a hardcoded accent hex; pixel art only in the room art and
   sprites, never in text, buttons or panels).
 - **House party:** `web/party.js` (party + lobby: chat, players vote for the
   next game, the host's "Game votes" sheet starts one; the TV opens the same
@@ -109,7 +111,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 ```
 npm ci && npx playwright install chromium   # once
 npm run serve              # http://localhost:8743
-npm test                   # logic suites: all games + "you + 3 bots", then the coin + ritual SQL in PGlite (≈1 min)
+npm test                   # logic suites: all games + "you + 3 bots", the wardrobe rules, then the coin + ritual SQL in PGlite (≈1 min)
 npm run test:sql           # just the coin/shop + ritual_draw migrations, run in an embedded Postgres
 npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Diary, through the real UI (≈5 min)
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
@@ -121,6 +123,9 @@ node test/rooms_shots.mjs <dir> [study,lounge]   # the other game rooms on their
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
 node test/charturn_shots.mjs <dir> [--hair=none,bob,wolf] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
 node test/combos_shots.mjs <dir> [--only=tops|hats]   # every top × bottom (idle + walk) and every headwear × hairstyle, for clipping
+node test/glitch4.mjs <dir> [--only=hats,tophair,topbottom,neck,face] [--item=id]   # the glitch grid: every hair × headwear, top × hair, top × bottom, neck × top, face × headwear, 4 views × idle/walk, poke-through / z-fight / gaps labelled (≈35 min for all)
+node test/faces_shots.mjs <dir>        # every eye shape × expression on the 3D head, the iris tints
+node test/orbit_shots.mjs <dir> [prophet|boss]   # both hosts' rooms at the orbit's far left / mid / centre / far right, zoomed, high and low
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)

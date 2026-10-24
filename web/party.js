@@ -572,7 +572,7 @@ export const party = {
         <div class="pc-stats"><span class="pc-vibe v-${esc(r.vibe)}">${esc(r.vibe)}</span><span><b>${r.count}</b>/${r.cap} in</span><span>${playing ? "mid-game" : "in the lobby"}</span></div>
         <div class="pc-note">public party · somewhere around here — the exact spot is never shown</div>
         <div class="pc-btns"><button type="button" class="y-btn dim" id="pc-close">later</button>
-          <button type="button" class="y-btn pink" id="pc-join" ${full || playing || mine ? "disabled" : ""}>${mine ? "you're in" : full ? "full" : playing ? "wait for the round" : "join ▶"}</button></div>
+          <button type="button" class="y-btn accent" id="pc-join" ${full || playing || mine ? "disabled" : ""}>${mine ? "you're in" : full ? "full" : playing ? "wait for the round" : "join ▶"}</button></div>
       </div>`;
     el.hidden = false;
     sfx.open();

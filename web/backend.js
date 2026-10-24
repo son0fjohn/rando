@@ -10,7 +10,7 @@ import { sfx } from "./fx.js";
 import { typeDialog, muteButton } from "./retro.js";
 import { mountCharView } from "./charview.js";
 import { PART_OPTIONS4, DEFAULT_AVATAR4, normalizeAvatar4, avatarThumb4, SKIN4_RGB, HAIR4_RGB, pieceThumb4 } from "./avatar4.js";
-import { ITEMS4, IRIS4, EYE_NAMES, STARTER_OUTFITS4, HAIRCOLOR_SHOP, randomAvatar4, LOOK_KEYS4 } from "./items4.js";
+import { ITEMS4, IRIS4, EYE_NAMES, STARTER_OUTFITS4, HAIRCOLOR_SHOP, randomAvatar4, LOOK_KEYS4, clash4 } from "./items4.js";
 import { drawFace4 } from "./face4.js";
 // the new player character (avatar4) everywhere; the old names stay local so
 // the rest of this file reads unchanged
@@ -1353,6 +1353,8 @@ const TABS = [
   { key: "neck", label: "Neck/back", rows: [["neck", "tiles"]] },
   { key: "shop", label: "Shop" },
 ];
+// "doesn't fit with this hat"
+const CLASH_NOUN = { head: "this hat", hair: "this hair", top: "this top", bottom: "these bottoms", neck: "this", face: "this", shoes: "these shoes" };
 const ROW_LABEL = { fits: "Starter outfits", hair: "Style", hairColor: "Color", eyes: "Eyes", iris: "Iris", skin: "Skin tone", head: "Headwear",
   face: "Face", top: "Tops", bottom: "Bottoms", shoes: "Shoes", neck: "Neck & back" };
 const SLOTS = LOOK_KEYS4;
@@ -1409,6 +1411,9 @@ export const avatar = {
 
   // try something on: the stage reacts; nothing is saved until Save
   pick(key, value, { quiet = false } = {}) {
+    // a combination that can't work: say so, and keep what's on
+    const other = clash4(this.draft ?? this.mine, key, value);
+    if (other) { this.note(`${ITEMS4[value].name} doesn't fit with ${CLASH_NOUN[ITEMS4[other].cat] ?? "this"}`); sfx.back(); haptic(8); return; }
     this.draft = { ...(this.draft ?? this.mine), [key]: value };
     styleView.view?.setAvatar(this.draft);
     if (!quiet) { sfx.cursor(); haptic(); styleView.sparkle(); }
@@ -1564,8 +1569,18 @@ export const avatar = {
     styleView.paintActions();
   },
 
+  // a small note over the tiles for a moment
+  note(text) {
+    let n = document.getElementById("ss-note");
+    if (!n) { n = document.createElement("div"); n.id = "ss-note"; n.setAttribute("role", "status"); outfitGrid.parentElement.appendChild(n); }
+    n.textContent = text; n.classList.remove("show"); void n.offsetWidth; n.classList.add("show");
+    clearTimeout(this.noteT); this.noteT = setTimeout(() => n.classList.remove("show"), 2200);
+  },
+
   markSelected() {
     const look = this.draft ?? this.mine;
+    // tiles that don't fit with what's on: dimmed (a tap says why)
+    outfitGrid.querySelectorAll(".opt-tile[data-slot]").forEach(b => b.classList.toggle("clash", b.dataset.value !== "none" && !!clash4(look, b.dataset.slot, b.dataset.value)));
     outfitGrid.querySelectorAll("[data-fit]").forEach(b => {
       const f = STARTER_OUTFITS4.find(x => x.id === b.dataset.fit);
       b.classList.toggle("selected", !!f && ["head", "face", "top", "bottom", "shoes", "neck"].every(k => (f[k] ?? "none") === look[k]));

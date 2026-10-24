@@ -19,13 +19,16 @@
 //   const room = await basementRoom(stage);   // after retroStage(..., { encoded: true })
 //   room.targets / room.update(t, dt) / room.poke(kind) / room.box / room.cup / room.lampFade(a)
 import { THREE } from "./retrolook.js";
-import { projRoom, loadTex } from "./projroom.js";
+import { projRoom, loadTex, orbitProj } from "./projroom.js";
 import { encode, softDot } from "./npcstage.js";
 
 const ART = new URL("./games/ritual/basement/", import.meta.url).href;
 // the picture's camera, solved from it (door, floor line, table edge, the
 // shelf): where it stands, how far it looks down, its vertical fov at 9:16
 export const PROJ = { pos: [0, 1.53, 2.77], pitch: 0.2007, fov: 39.4, aspect: 9 / 16 };
+// the side views (left.webp, right.webp): the same room from the camera
+// orbited round the table to the left and the right (the look-around's orbit)
+export const SIDE_L = orbitProj(PROJ, 3.0, -0.785), SIDE_R = orbitProj(PROJ, 3.0, 0.785);
 // the folding table: top height, centre, size (metres), a slight turn
 export const TABLE = { y: 0.74, x: 0, z: 0.0, w: 1.3, d: 1.0, ry: -0.06 };
 // the capsule box on it (front face, size), the cup, the ashtray, the lamp
@@ -40,8 +43,8 @@ const RW = 3.2, RB = -5.32, RF = 3.6, RH = 2.75;
 
 export async function basementRoom(stage) {
   const { scene } = stage;
-  const plate = await loadTex(`${ART}plate.webp`);
-  const pr = projRoom(stage, PROJ, plate, { lightDir: [-0.35, 0.85, 0.4] });
+  const [plate, left, right] = await Promise.all([loadTex(`${ART}plate.webp`), loadTex(`${ART}left.webp`), loadTex(`${ART}right.webp`)]);
+  const pr = projRoom(stage, PROJ, plate, { lightDir: [-0.35, 0.85, 0.4], sides: [{ PROJ: SIDE_L, plate: left }, { PROJ: SIDE_R, plate: right }] });
   const { paint, add, crop } = pr;
   const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   const PL = (w, h) => new THREE.PlaneGeometry(w, h);

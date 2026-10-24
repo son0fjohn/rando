@@ -10,7 +10,7 @@
 // Used by the rooms behind the game hosts: rooftop.js (Side Quest),
 // basement.js (the Ritual).
 //
-//   const pr = projRoom(stage, PROJ, plateTexture);
+//   const pr = projRoom(stage, PROJ, plateTexture, { sides: [{ PROJ: orbitProj(PROJ, 2.5, -0.79), plate: left }, ...] });
 //   pr.add(new THREE.BoxGeometry(1, 1, 1), pr.paint(0x808080), x, y, z);
 //   pr.refreshDepth();   // once everything static is added
 import { THREE } from "./retrolook.js";
@@ -26,32 +26,53 @@ void main() {
   vNormalW = normalize(mat3(modelMatrix) * normal);
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
+// up to three projectors: the approved picture (front) and two side views
+// (the same room seen from round the table to the left and the right). The
+// front paints whatever it sees head-on; what it sees badly or not at all
+// takes the side views', blended by how squarely each sees it; what none
+// of them saw falls back.
 const FS = `
 #include <packing>
-uniform sampler2D plate, depth, fbMap;
-uniform mat4 projVP; uniform vec3 projPos; uniform vec2 depthTexel;
+uniform sampler2D plate, depth, fbMap, plateL, depthL, plateR, depthR;
+uniform mat4 projVP, projVPL, projVPR; uniform vec3 projPos, projPosL, projPosR; uniform vec2 depthTexel; uniform float sides;
 uniform vec3 fbColor, mul, lightDir; uniform float useFb, alpha; uniform vec2 fbRepeat;
 varying vec3 vWorld; varying vec2 vUv; varying vec3 vNormalW;
-float sceneDist(vec2 uv) {   // the far-most of 3x3: no thin fallback rims along silhouettes
+float sceneDist(sampler2D dm, vec2 uv) {   // the far-most of 3x3: no thin fallback rims along silhouettes
   float d = 0.0;
   for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
-    d = max(d, unpackRGBAToDepth(texture2D(depth, uv + vec2(float(i), float(j)) * depthTexel)));
+    d = max(d, unpackRGBAToDepth(texture2D(dm, uv + vec2(float(i), float(j)) * depthTexel)));
   return d * ${MAXD.toFixed(1)};
 }
+// one projector: its colour here, and how much to trust it (0 = it didn't see this)
+vec4 seen(sampler2D pl, sampler2D dm, mat4 vp, vec3 pos, vec3 n, out vec3 col) {
+  vec4 p = vp * vec4(vWorld, 1.0);
+  vec2 uv = (p.xy / p.w) * 0.5 + 0.5;
+  col = vec3(0.0);
+  if (p.w <= 0.0 || uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec4(0.0);
+  float vis = step(distance(vWorld, pos), sceneDist(dm, uv) * 1.004 + 0.025);
+  float edge = smoothstep(0.0, 0.04, min(uv.x, 1.0 - uv.x)) * smoothstep(0.0, 0.04, min(uv.y, 1.0 - uv.y));
+  float facing = abs(dot(n, normalize(pos - vWorld)));
+  vec4 tx = texture2D(pl, uv);   // a side view's alpha masks out what it can't place (the table and its things)
+  col = tx.rgb;
+  return vec4(vis, vis * edge * facing * tx.a, facing, 0.0);
+}
 void main() {
-  vec4 p = projVP * vec4(vWorld, 1.0);
-  vec3 n = p.xyz / p.w;
-  vec2 uv = n.xy * 0.5 + 0.5;
-  float inside = step(0.0, p.w) * step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  float vis = 0.0;
-  if (inside > 0.5) {
-    float d = distance(vWorld, projPos);
-    vis = step(d, sceneDist(uv) * 1.004 + 0.025);
-  }
+  vec3 n = normalize(vNormalW);
+  vec3 cf, cl, cr;
+  vec4 f = seen(plate, depth, projVP, projPos, n, cf);
   // where the picture can't help: a tile or a colour, with a simple soft light from above the room
-  float lit = 0.62 + 0.38 * max(dot(normalize(vNormalW), lightDir), 0.0);
+  float lit = 0.62 + 0.38 * max(dot(n, lightDir), 0.0);
   vec3 fb = (useFb > 0.5 ? texture2D(fbMap, vUv * fbRepeat).rgb * fbColor : fbColor) * lit;
-  vec3 c = vis > 0.5 ? texture2D(plate, uv).rgb : fb;
+  vec3 c = f.x > 0.5 ? cf : fb;
+  if (sides > 0.5) {
+    vec4 l = seen(plateL, depthL, projVPL, projPosL, n, cl), r = seen(plateR, depthR, projVPR, projPosR, n, cr);
+    float ws = l.y + r.y;
+    vec3 side = ws > 0.02 ? (cl * l.y + cr * r.y) / ws : fb;
+    // the front wins wherever it saw the surface (the default view stays the picture);
+    // only what it saw almost edge-on, or not at all, takes the side views
+    float k = f.x * max(smoothstep(0.02, 0.08, f.z), step(ws, 0.02));
+    c = mix(ws > 0.02 ? side : fb, cf, k);
+  }
   gl_FragColor = vec4(c * mul, alpha);   // display-ready already (an encoded stage)
 }`;
 const DEPTH_FS = `
@@ -67,21 +88,39 @@ export const loadTex = (url, repeat = false) => new Promise((res, rej) => new TH
   res(t);
 }, undefined, rej));
 
-// PROJ: the picture's camera (pos, pitch, vertical fov, aspect); plate: its texture
-export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], depthSize = [376, 672] } = {}) {
+// a side view's camera: the picture's camera orbited `yaw` round the point
+// `dist` in front of it (the same orbit as npcstage.js's look-around)
+export function orbitProj(PROJ, dist, yaw) {
+  const [x, y, z] = PROJ.pos, p = PROJ.pitch;
+  const T = [x, y - dist * Math.sin(p), z - dist * Math.cos(p)];
+  return { ...PROJ, pos: [T[0] + dist * Math.sin(yaw) * Math.cos(p), T[1] + dist * Math.sin(p), T[2] + dist * Math.cos(yaw) * Math.cos(p)], target: T };
+}
+
+// PROJ: the picture's camera (pos, pitch or target, vertical fov, aspect); plate: its texture;
+// sides: [{ PROJ, plate }, { PROJ, plate }] the views from round the left and the right
+export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], depthSize = [376, 672], sides = null } = {}) {
   const { scene, renderer } = stage;
-  const proj = new THREE.PerspectiveCamera(PROJ.fov, PROJ.aspect, 0.05, 60);
-  proj.position.set(...PROJ.pos);
-  proj.lookAt(PROJ.pos[0], PROJ.pos[1] - Math.sin(PROJ.pitch), PROJ.pos[2] - Math.cos(PROJ.pitch));
-  proj.updateMatrixWorld(); proj.updateProjectionMatrix();
-  const projVP = new THREE.Matrix4().multiplyMatrices(proj.projectionMatrix, proj.matrixWorldInverse);
   const [DW, DH] = depthSize;
-  const depthRT = new THREE.WebGLRenderTarget(DW, DH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+  const projector = P => {
+    const cam = new THREE.PerspectiveCamera(P.fov, P.aspect, 0.05, 60);
+    cam.position.set(...P.pos);
+    if (P.target) cam.lookAt(...P.target);
+    else cam.lookAt(P.pos[0], P.pos[1] - Math.sin(P.pitch), P.pos[2] - Math.cos(P.pitch));
+    cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+    const rt = new THREE.WebGLRenderTarget(DW, DH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+    return { cam, rt, vp: new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse), pos: cam.position.clone() };
+  };
+  const front = projector(PROJ), proj = front.cam;
+  const L = sides ? projector(sides[0].PROJ) : front, R = sides ? projector(sides[1].PROJ) : front;
   const shared = {
-    plate: { value: plate }, depth: { value: depthRT.texture }, projVP: { value: projVP }, projPos: { value: proj.position.clone() },
+    plate: { value: plate }, depth: { value: front.rt.texture }, projVP: { value: front.vp }, projPos: { value: front.pos },
+    plateL: { value: sides?.[0].plate ?? plate }, depthL: { value: L.rt.texture }, projVPL: { value: L.vp }, projPosL: { value: L.pos },
+    plateR: { value: sides?.[1].plate ?? plate }, depthR: { value: R.rt.texture }, projVPR: { value: R.vp }, projPosR: { value: R.pos },
+    sides: { value: sides ? 1 : 0 },
     depthTexel: { value: new THREE.Vector2(1 / DW, 1 / DH) }, lightDir: { value: new THREE.Vector3(...lightDir).normalize() },
   };
-  const depthMat = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: DEPTH_FS, uniforms: { projPos: shared.projPos }, side: THREE.DoubleSide });
+  const depthPos = { value: front.pos };
+  const depthMat = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: DEPTH_FS, uniforms: { projPos: depthPos }, side: THREE.DoubleSide });
   // a projected material; the fallback is a colour, or a tile (times that colour)
   const paint = (fb = 0x2a2030, { map = null, repeat = [1, 1], side = THREE.FrontSide } = {}) => new THREE.ShaderMaterial({
     vertexShader: VS, fragmentShader: FS, side,
@@ -105,7 +144,10 @@ export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], d
     scene.traverse(o => { if (o.isMesh || o.isSprite || o.isPoints) { vis.set(o, o.visible); o.visible = statics.includes(o); } });
     const prevTarget = renderer.getRenderTarget(), prevOverride = scene.overrideMaterial, prevBg = scene.background;
     scene.overrideMaterial = depthMat; scene.background = null;
-    renderer.setRenderTarget(depthRT); renderer.setClearColor(0xffffff, 1); renderer.clear(); renderer.render(scene, proj);
+    for (const P of sides ? [front, L, R] : [front]) {
+      depthPos.value = P.pos;
+      renderer.setRenderTarget(P.rt); renderer.setClearColor(0xffffff, 1); renderer.clear(); renderer.render(scene, P.cam);
+    }
     renderer.setRenderTarget(prevTarget); scene.overrideMaterial = prevOverride; scene.background = prevBg;
     for (const [o, v] of vis) o.visible = v;
   }
@@ -119,6 +161,10 @@ export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], d
     },
     // fade a group of painted meshes (0..1), e.g. something standing in the way
     fade(objs, a) { for (const o of objs) { const m = o.material; m.uniforms.alpha.value = a; m.transparent = a < 0.99; m.depthWrite = a > 0.98; } },
-    dispose() { depthRT.dispose(); depthMat.dispose(); plate.dispose(); },
+    sideCams: sides ? [L.cam, R.cam] : [],
+    dispose() {
+      for (const P of new Set([front, L, R])) P.rt.dispose();
+      depthMat.dispose(); plate.dispose(); sides?.forEach(v => v.plate.dispose());
+    },
   };
 }

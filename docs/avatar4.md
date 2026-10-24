@@ -1,8 +1,9 @@
 # The player character (avatar4) and its wardrobe
 
 One shared, gender-neutral base: big round head, lanky (~4 heads), long
-neck, narrow shoulders, mitten hands, a bald body in a gray tee + shorts
-underlayer. Soft rounded clay, matte, no outlines. Big sharp almond eyes, a
+neck, narrow shoulders, thin arms and legs (15% slimmer than the first cut,
+`slim4.mjs`), mitten hands, a bald body in a gray tee + shorts
+underlayer. Soft rounded clay, matte, no outlines. Big sharp almond eyes (20 shapes), a
 tiny nose, **no mouth**; expressions are the eyes plus doodled emote marks.
 Only girl-coded clothes and hair (skirts, crop tops, long hair, buns,
 pigtails) change the silhouette; nothing is gender-locked.
@@ -17,7 +18,7 @@ pigtails) change the silhouette; nothing is gender-locked.
 | `web/items4.js` | the wardrobe: items, what they hide, tints, free/shop, rarity, label prices, starter outfits |
 | `web/face4.js` | the eyes (8 shapes × 8 iris tints, expressions) and the face-layer accessories |
 | `supabase/migrations/016_wardrobe4.sql` | the shop's real prices and rarity (must match `items4.js`; the SQL test checks) |
-| `scripts/avatar4/` | the pipeline: `split.mjs` (decimate), `regions.py` (region mask), `base4.mjs` (rig), `item4.mjs` + `items.manifest` + `run_items.sh` (items) |
+| `scripts/avatar4/` | the pipeline: `split.mjs` (decimate), `regions.py` (region mask), `base4.mjs` (rig), `slim4.mjs` (the slimmer body), `item4.mjs` + `items.manifest` + `run_items.sh` (items), `refit4.mjs` (refit to the slim body, the relaxed fit, clean cut edges) |
 
 ## How it's drawn
 
@@ -33,11 +34,43 @@ pigtails) change the silhouette; nothing is gender-locked.
   (keeping its light and dark); other items move a key colour (one mesh,
   several colours: white/black tee, silver/gold chain).
 - **Hiding under clothes:** items list what they hide (the tee / shorts
-  regions, arms, legs, feet below a height); the body discards those
-  pixels, so nothing pokes through in any pose.
-- **Hat hair:** a hat clips the hair above its line (`hairCut`), and the
-  scalp takes the hat's colour; the hood also hides tails and buns
-  (`hidesHair`). Under plain hair the scalp takes the hair colour.
+  regions, arms, legs, ears, feet below a height); the body discards those
+  pixels, so nothing pokes through in any pose. The tee and shorts regions
+  are only hidden where the top / bottom actually covers them (a cover map
+  round the body's axis), so a wide collar or a short hem never opens a
+  see-through hole.
+- **Layer shells** (`avatar4.js`, all in rest space, once per item or pair):
+  layers never share a surface and the outer one always wins.
+  - The head shell: the scalp's radius round the head centre, measured per
+    direction from the base mesh at load.
+  - Hats sit on it, pushed out to at least `HAT_GAP` off the scalp; masks
+    and shades sit `FACE_GAP` off the face.
+  - Hat hair: wherever a hat covers the head (its cover map, measured from
+    the hat itself), the hair is pressed down to within `HAIR_IN` of the
+    scalp; what the hat doesn't cover (bangs, sides, the back, a ponytail's
+    tail) stays. This works for every hat × every hairstyle with no
+    per-pair tuning, and the beanie + headphones too (ears hide under the
+    cups).
+  - Hair always stands `HAIR_MIN` off the scalp (a buzz cut never
+    flickers).
+  - Hair lies over a top's collar and over neck items, lifted a little
+    more further down the back. Neck items and a hood's neck lie over the
+    top. A top's hem goes over the bottom's waistband (the waistband is
+    pressed in).
+  - A hood hides the hair behind the head (`hairBack`) and the hairstyles
+    in its `hidesHair`.
+  - Layer order (`LAYER4`: bottom, shoes < top < neck < hair < face <
+    head) sets polygon offsets, so wherever two layers still touch, the
+    outer one wins the depth test.
+  - Per-item metadata in `items4.js`: `hides`, `hidesHair`, `hairBack`,
+    `shell` (opt out), `liftsHair`, `tucks`, `blocks` (a combination that
+    can't work: the Style screen dims the tile and says "doesn't fit with
+    this hat"; saved and random looks drop the clash). Blocked today: the
+    sling, the backpack, the skateboard and the scarf with the bulkiest
+    jackets (they were made over a tee and can't sit over those); the hood
+    hides long hair with bangs.
+- **Under plain hair** the scalp takes the hair colour; under a hat, the
+  hat's.
 - **Motion:** procedural idle (sway, blink, nods) and walk, arms down from
   the A-pose, a slightly wider stance; `react()` is a hop + a sparkle
   emote; `emote(name)` shows a doodled mark by the head (anger, zzz, hearts,
@@ -59,8 +92,16 @@ plain light gray background; no logos, brand names or real text.
    normals, copies skin weights from the nearest base vertices, writes a
    skinned glb. Options per item are in `items.manifest`.
 4. Add it to `items4.js` (and to `016`/a new migration if it's sold).
-5. Check it: `node test/combos_shots.mjs <dir>` (every top × bottom and
-   headwear × hair, idle + walk).
+5. `refit4.mjs` (old base, slim base, item, out): follow the slimmer body
+   (tight things: leggings, the baby tee, socks, chains), the relaxed fit
+   for tops and bottoms (dropped shoulders, wide puffy sleeves, longer
+   hems, a boxy body; wide legs that stack on the shoes; per-item numbers
+   in its `FIT` table), and clean cut edges (the zigzag edge loops are
+   smoothed, and edge vertices get the colour of the cloth just inside
+   them, `_EDGECOL`).
+6. Check it: `node test/glitch4.mjs <dir> --item=<id>` (every combination
+   it's in, front / 3/4 / side / back, idle + walk, poke-through, z-fight
+   and gaps labelled) and `node test/combos_shots.mjs <dir>`.
 
 ## Generation log (Oct 2026)
 
@@ -98,6 +139,13 @@ per picture; re-cuts are free. Total **313 credits** (592 → 279).
 The pictures and job ids are in the Higgsfield history (`hf_20261024_0944*`,
 `hf_20261024_0945*`); the base is `hf_20261024_070557_b4fcc475…` /
 `hf_20261024_070812_095bfcd5…`.
+
+### Fixes round (Oct 2026)
+
+No new items were generated: the slimmer body, the relaxed fit and the
+edge clean-up are geometry (`slim4.mjs`, `refit4.mjs`) and the layering is
+code. The eye shapes are code (`face4.js`, 20 shapes). The orbit rooms' side
+views cost 4 images (8 credits, below).
 
 ## Free vs shop
 
