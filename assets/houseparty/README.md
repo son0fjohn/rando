@@ -37,7 +37,7 @@ Model `gpt_image_2_5` (variant flare), `quality: high`, `resolution: 1k`.
 | 1 | (retired: its game was removed) | `8ebbe168-6ffc-48ac-89dc-3712706d744a` | 1024×688 (3:2) | 1 of 3 | not used |
 | 2 | `web/games/manhunt/radar.jpg` | `b134e086-90c9-4100-9e30-cf7bc0cdb710` | 1024×1024 (1:1) | 1 of 3 | generated, unreviewed |
 | 3 | `web/games/manhunt/bomb.png` | `e4873a39-2e2e-41e9-a957-048a6b609abf` | 1024×1024 (1:1), `background: transparent` | 1 of 3 | generated, unreviewed |
-| 4 | `web/games/ritual/stage.jpg` | `b418264a-bbf8-48fa-ad2e-975e58e60fa4` | 1168×880 (4:3) | 1 of 3 | generated, unreviewed |
+| 4 | (retired: the Ritual now plays in the Boss's 3D basement) | `b418264a-bbf8-48fa-ad2e-975e58e60fa4` | 1168×880 (4:3) | 1 of 3 | not used |
 
 ### Prompt subjects
 
