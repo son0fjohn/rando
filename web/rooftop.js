@@ -5,13 +5,10 @@
 // (laundry line, the city, a tower far off), and a low table covered in
 // cans, chips, polaroids, a handheld, a controller, a laptop, a bowl of chips.
 //
-// How it's drawn: real low-poly geometry (walls, couch, teddy, TV, fridge,
-// shelf, the door frame and the rooftop outside, the table and everything on
-// it), painted by projecting the approved picture from the default camera
-// (camera mapping). From the default view the room IS that picture; look
-// around and the same paint sits on the 3D shapes. Where the default camera
-// couldn't see a surface (behind the couch, past the picture's edges) it
-// falls back to a plain tile or colour. Where the Prophet, the ball and the
+// How it's drawn: camera mapping (projroom.js): real low-poly geometry
+// (walls, couch, teddy, TV, fridge, shelf, the door frame and the rooftop
+// outside, the table and everything on it) painted with the approved
+// picture from the default camera. Where the Prophet, the ball and the
 // dialog box were in the picture, a clean plate (the same room with them
 // painted out) is used, so they're never painted onto the room.
 //
@@ -23,6 +20,7 @@
 //   const room = await rooftopRoom(stage);   // after retroStage(..., { encoded: true })
 //   room.onTap / room.targets / room.lamp / room.update(t, dt) / room.refreshDepth()
 import { THREE } from "./retrolook.js";
+import { projRoom, loadTex } from "./projroom.js";
 
 const ART = new URL("./games/sidequest/rooftop/", import.meta.url).href;
 // the default camera, solved from the picture: where it stands, how far it
@@ -32,97 +30,15 @@ export const PROJ = { pos: [0, 1.02, 2.59], pitch: 0.204, fov: 46, aspect: 9 / 1
 export const TABLE = { y: 0.42, x: 0, z: 0.29, w: 1.06, d: 1.06 };
 // the room box: half width, back wall, front wall, ceiling
 const RW = 2.6, RB = -3.3, RF = 3.4, RH = 2.32;
-const MAXD = 40;   // distances are packed as d / MAXD
-
-// ---------------------------------------------------------------- the paint
-const VS = `
-varying vec3 vWorld; varying vec2 vUv; varying vec3 vNormalW;
-void main() {
-  vUv = uv;
-  vec4 w = modelMatrix * vec4(position, 1.0);
-  vWorld = w.xyz;
-  vNormalW = normalize(mat3(modelMatrix) * normal);
-  gl_Position = projectionMatrix * viewMatrix * w;
-}`;
-const FS = `
-#include <packing>
-uniform sampler2D plate, depth, fbMap;
-uniform mat4 projVP; uniform vec3 projPos; uniform vec2 depthTexel;
-uniform vec3 fbColor, mul; uniform float useFb, alpha; uniform vec2 fbRepeat;
-varying vec3 vWorld; varying vec2 vUv; varying vec3 vNormalW;
-float sceneDist(vec2 uv) {   // the far-most of 3x3: no thin fallback rims along silhouettes
-  float d = 0.0;
-  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
-    d = max(d, unpackRGBAToDepth(texture2D(depth, uv + vec2(float(i), float(j)) * depthTexel)));
-  return d * ${MAXD.toFixed(1)};
-}
-void main() {
-  vec4 p = projVP * vec4(vWorld, 1.0);
-  vec3 n = p.xyz / p.w;
-  vec2 uv = n.xy * 0.5 + 0.5;
-  float inside = step(0.0, p.w) * step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  float vis = 0.0;
-  if (inside > 0.5) {
-    float d = distance(vWorld, projPos);
-    vis = step(d, sceneDist(uv) * 1.004 + 0.025);
-  }
-  // where the picture can't help: a tile or a colour, with a simple soft light from above the room
-  float lit = 0.62 + 0.38 * max(dot(normalize(vNormalW), vec3(-0.25, 0.85, 0.46)), 0.0);
-  vec3 fb = (useFb > 0.5 ? texture2D(fbMap, vUv * fbRepeat).rgb * fbColor : fbColor) * lit;
-  vec3 c = vis > 0.5 ? texture2D(plate, uv).rgb : fb;
-  gl_FragColor = vec4(c * mul, alpha);   // display-ready already (an encoded stage)
-}`;
-const DEPTH_FS = `
-#include <packing>
-uniform vec3 projPos; varying vec3 vWorld; varying vec2 vUv; varying vec3 vNormalW;
-void main() { gl_FragColor = packDepthToRGBA(min(distance(vWorld, projPos) / ${MAXD.toFixed(1)}, 0.999)); }`;
-
-const tex = (loader, name, repeat = false) => new Promise((res, rej) => loader.load(`${ART}${name}`, t => {
-  t.colorSpace = THREE.NoColorSpace;   // used as is: the stage is encoded
-  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
-  t.generateMipmaps = repeat; t.minFilter = repeat ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
-  res(t);
-}, undefined, rej));
 
 export async function rooftopRoom(stage) {
-  const { scene, renderer } = stage;
-  const L = new THREE.TextureLoader();
-  const [plate, wallTile, rugTile] = await Promise.all([tex(L, "plate.webp"), tex(L, "wall.webp", true), tex(L, "rug.webp", true)]);
-
-  // the projector: the default camera
-  const proj = new THREE.PerspectiveCamera(PROJ.fov, PROJ.aspect, 0.05, 60);
-  proj.position.set(...PROJ.pos);
-  proj.lookAt(PROJ.pos[0], PROJ.pos[1] - Math.sin(PROJ.pitch), PROJ.pos[2] - Math.cos(PROJ.pitch));
-  proj.updateMatrixWorld(); proj.updateProjectionMatrix();
-  const projVP = new THREE.Matrix4().multiplyMatrices(proj.projectionMatrix, proj.matrixWorldInverse);
-  const DW = 376, DH = 672;
-  const depthRT = new THREE.WebGLRenderTarget(DW, DH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
-  const shared = {
-    plate: { value: plate }, depth: { value: depthRT.texture }, projVP: { value: projVP }, projPos: { value: proj.position.clone() },
-    depthTexel: { value: new THREE.Vector2(1 / DW, 1 / DH) },
-  };
-  const depthMat = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: DEPTH_FS, uniforms: { projPos: shared.projPos }, side: THREE.DoubleSide });
-  // a projected material; the fallback is a colour, or a tile (times that colour)
-  const paint = (fb = 0x2a2030, { map = null, repeat = [1, 1], side = THREE.FrontSide } = {}) => new THREE.ShaderMaterial({
-    vertexShader: VS, fragmentShader: FS, side,
-    uniforms: { ...shared, fbMap: { value: map }, useFb: { value: map ? 1 : 0 }, fbRepeat: { value: new THREE.Vector2(...repeat) },
-      fbColor: { value: fb?.isColor ? fb : new THREE.Color(fb) }, mul: { value: new THREE.Vector3(1, 1, 1) }, alpha: { value: 1 } },
-  });
-  const statics = [];
-  const add = (geo, m, x, y, z, ry = 0, rx = 0, rz = 0, parent = scene) => {
-    const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); parent.add(o); statics.push(o); return o;
-  };
+  const { scene } = stage;
+  const [plate, wallTile, rugTile] = await Promise.all([loadTex(`${ART}plate.webp`), loadTex(`${ART}wall.webp`, true), loadTex(`${ART}rug.webp`, true)]);
+  const pr = projRoom(stage, PROJ, plate);
+  const { proj, paint, add, statics, crop, refreshDepth } = pr;
   const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   const PL = (w, h) => new THREE.PlaneGeometry(w, h);
   const wallM = (repeat) => paint(new THREE.Color().setRGB(1.55, 1.3, 1.55), { map: wallTile, repeat });
-  // a piece of the picture as its own little texture (posters for the walls it never saw)
-  const crop = (x0, y0, x1, y1) => {
-    const im = plate.image, c = document.createElement("canvas");
-    const w = Math.max(8, Math.round((x1 - x0) * im.width)), h = Math.max(8, Math.round((y1 - y0) * im.height));
-    c.width = w; c.height = h; c.getContext("2d").drawImage(im, x0 * im.width, y0 * im.height, w, h, 0, 0, w, h);
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace; return t;
-  };
-
   // ---- the room box: floor (the rug), ceiling, walls; the back wall has the doorway
   const DX0 = 0.53, DX1 = 1.345, DTOP = 1.9;   // the doorway
   add(PL(RW * 2, RF - RB), paint(0x9a8080, { map: rugTile, repeat: [5, 6] }), 0, 0, (RF + RB) / 2, 0, -Math.PI / 2);
@@ -203,7 +119,7 @@ export async function rooftopRoom(stage) {
   })());
   const bulbs = [];
   for (const [fx, fy] of BULBS) {
-    const p = onPlane(proj, fx, fy, RB + 0.03);
+    const p = pr.onPlane(fx, fy, RB + 0.03);
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
     s.position.copy(p); s.scale.setScalar(0.07); s.userData.ph = Math.random() * 6.3; scene.add(s); bulbs.push(s);
   }
@@ -236,16 +152,6 @@ export async function rooftopRoom(stage) {
     sideBulb(-RW + 0.05, RH - 0.15 - sag, z); sideBulb(RW - 0.05, RH - 0.15 - sag, z); }
   for (let i = 0; i <= 8; i++) sideBulb(-RW + 0.3 + i * (RW * 2 - 0.6) / 8, RH - 0.15 - 0.05 * (i % 2), RF - 0.05);
 
-  // ---- the projector's view of the room, once: what it saw is painted, the rest falls back
-  function refreshDepth() {
-    const vis = new Map();
-    scene.traverse(o => { if (o.isMesh || o.isSprite || o.isPoints) { vis.set(o, o.visible); o.visible = statics.includes(o); } });
-    const prevTarget = renderer.getRenderTarget(), prevOverride = scene.overrideMaterial, prevBg = scene.background;
-    scene.overrideMaterial = depthMat; scene.background = null;
-    renderer.setRenderTarget(depthRT); renderer.setClearColor(0xffffff, 1); renderer.clear(); renderer.render(scene, proj);
-    renderer.setRenderTarget(prevTarget); scene.overrideMaterial = prevOverride; scene.background = prevBg;
-    for (const [o, v] of vis) o.visible = v;
-  }
   refreshDepth();
 
   // a little life: the lamp's glow, the TV, the bulbs; taps flicker them
@@ -266,19 +172,13 @@ export async function rooftopRoom(stage) {
   return {
     proj, statics, refreshDepth, update, lamp,
     // looking round from the left the lamp stands in front of the ball: fade it (0..1)
-    lampFade(a) { for (const o of [lampBase, lampStem, lampShade]) { const m = o.material; m.uniforms.alpha.value = a; m.transparent = a < 0.99; m.depthWrite = a > 0.98; } },
+    lampFade(a) { pr.fade([lampBase, lampStem, lampShade], a); },
     targets: [{ kind: "lamp", objs: [lampBase, lampStem, lampShade] }, { kind: "tv", objs: [tv, tvScreen] }],
     poke(kind) { if (kind === "lamp") lampPokeT = 0; if (kind === "tv") tvPokeT = 0; },
-    dispose() { depthRT.dispose(); plate.dispose(); wallTile.dispose(); rugTile.dispose(); glowTex.dispose(); },
+    dispose() { pr.dispose(); wallTile.dispose(); rugTile.dispose(); glowTex.dispose(); },
   };
 }
 
-// a point on the plane z = z, seen at (fx, fy) of the picture (0..1 from the top left)
-function onPlane(cam, fx, fy, z) {
-  const v = new THREE.Vector3(fx * 2 - 1, 1 - fy * 2, 0.5).unproject(cam);
-  const d = v.sub(cam.position).normalize();
-  return cam.position.clone().addScaledVector(d, (z - cam.position.z) / d.z);
-}
 // the string-light bulbs in the picture (fractions), along the top of the back wall
 const BULBS = [[0.025, 0.025], [0.083, 0.044], [0.146, 0.054], [0.21, 0.04], [0.33, 0.035], [0.39, 0.025], [0.465, 0.03],
   [0.505, 0.036], [0.565, 0.05], [0.64, 0.035], [0.705, 0.02], [0.76, 0.025], [0.82, 0.013], [0.92, 0.013]];

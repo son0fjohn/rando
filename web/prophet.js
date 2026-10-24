@@ -13,13 +13,10 @@
 // Small life: a thin wisp of smoke from the pipe, the ball's soft glow, the
 // lamp, the TV and the string lights, a slow camera push-in on the key moments.
 //
-// Look around: drag on the scene to orbit the camera around him and the
-// table (about ±60° each way, a little up and down, pinch to zoom in a bit),
-// with easing and a little momentum; ~3 s after the last touch it glides
-// back to the default view. hold(true) glides it home and keeps it there
-// (the game does that for the pick and the reveal). His head turns a little
-// toward the camera. On phones that report their tilt without asking, a
-// very slight parallax (?tilt=0 turns it off). Tap him (onTap("prophet")
+// Look around (npcstage.js, the same camera as the Ritual's Boss): drag to
+// orbit, pinch to zoom a bit, it glides home ~3 s after the last touch;
+// hold(true) keeps it home (the game does that for the pick and the
+// reveal). His head turns a little toward the camera. Tap him (onTap("prophet")
 // decides whether he reacts: a nod or a pipe puff), the ball (it pulses and
 // swirls), the lamp (it flickers) or the TV (a burst of static).
 //
@@ -31,6 +28,7 @@
 import { retroStage, THREE, blobShadow } from "./retrolook.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { rooftopRoom, PROJ, TABLE } from "./rooftop.js";
+import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp } from "./npcstage.js";
 
 const ART = new URL("./games/sidequest/prophet/", import.meta.url).href;
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -51,18 +49,8 @@ export const PROPHET_MOOD = {
 };
 
 // the default view: the picture's camera (rooftop.js PROJ), orbiting a point
-// on the table; how far you can look away from it. A taller screen keeps the
-// same width in view.
-const VD = 2.5;
-export const VIEW = {
-  target: [PROJ.pos[0], PROJ.pos[1] - VD * Math.sin(PROJ.pitch), PROJ.pos[2] - VD * Math.cos(PROJ.pitch)],
-  dist: VD, yaw: 0, pitch: PROJ.pitch, fov: PROJ.fov, aspect: PROJ.aspect,
-  yawRange: [-1.05, 1.05],        // ±60°
-  pitchRange: [-0.09, 0.2],       // a little lower (never under the table top), a little higher
-  zoomRange: [0.72, 1.0],         // pinch: in a bit, never out past the default
-  push: 0.84,                     // the push-in: distance × this
-  idleMs: 3000,                   // after the last touch, glide home
-};
+// on the table (the ranges and timings are npcstage.js ORBIT, shared)
+export const VIEW = viewFrom(PROJ, 2.5);
 
 const mat = (color, o = {}) => new THREE.MeshLambertMaterial({ color, ...o });
 
@@ -100,7 +88,7 @@ export const SEAT = { x: -0.13, z: -0.45, turn: 0.16, scale: 1.78, wide: 1.1, se
 
 export async function prophetScene(host) {
   const st = await retroStage(host, PROPHET_MOOD);
-  const { scene, camera, canvas } = st;
+  const { scene, camera } = st;
   camera.near = 0.05; camera.far = 30;
 
   // ---- the room (camera-mapped from the picture) and the ball on its stand
@@ -116,11 +104,7 @@ export async function prophetScene(host) {
   // a face in the ball (drawn over the glass, under its halo), a soft halo around it
   const face = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, depthTest: false, fog: false }));
   face.scale.setScalar(R * 1.3); face.position.copy(BALL); face.renderOrder = 3.5; scene.add(face);
-  const haloTex = new THREE.CanvasTexture((() => {
-    const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"), g = x.createRadialGradient(32, 32, 6, 32, 32, 32);
-    g.addColorStop(0, "rgba(255,255,255,.9)"); g.addColorStop(0.4, "rgba(220,200,255,.35)"); g.addColorStop(1, "rgba(200,180,255,0)");
-    x.fillStyle = g; x.fillRect(0, 0, 64, 64); return c;
-  })());
+  const haloTex = softDot();
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: 0xc8b4ff, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   halo.scale.setScalar(R * 3.4); halo.position.copy(BALL); halo.renderOrder = 4; scene.add(halo);
   const ballLight = new THREE.PointLight(0xb9a0ff, 0.25, 0.7, 2); ballLight.position.copy(BALL).add(new THREE.Vector3(0, 0.05, 0.05)); scene.add(ballLight);
@@ -133,26 +117,7 @@ export async function prophetScene(host) {
   const doorLight = new THREE.PointLight(0x4a78ff, 0.8, 4.5, 1.2); doorLight.position.set(0.95, 1.1, -2.9); scene.add(doorLight);
   const stringLight = new THREE.PointLight(0xffb070, 0.35, 4, 1.5); stringLight.position.set(-0.2, 2.1, -2.6); scene.add(stringLight);
 
-  // ---- him
-  // under the table top he's in its shadow (no shadow maps: the table's
-  // footprint and height are known); and, on an encoded stage, every lit
-  // material writes display-ready colour itself
-  const TX = TABLE.x, TZ = TABLE.z, THX = TABLE.w / 2, THZ = TABLE.d / 2;
-  const encode = sh => {
-    sh.fragmentShader = sh.fragmentShader.replace("#include <dithering_fragment>", "#include <dithering_fragment>\n  gl_FragColor.rgb = sRGBTransferOETF(gl_FragColor).rgb;");
-  };
-  const underTable = sh => {
-    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vWorldU;")
-      .replace("#include <project_vertex>", "#include <project_vertex>\nvWorldU = (modelMatrix * vec4(transformed, 1.0)).xyz;");
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWorldU;")
-      .replace("#include <dithering_fragment>", `
-      float inX = 1.0 - smoothstep(${(THX - 0.1).toFixed(2)}, ${(THX + 0.08).toFixed(2)}, abs(vWorldU.x - ${TX.toFixed(3)}));
-      float inZ = 1.0 - smoothstep(${(THZ - 0.06).toFixed(2)}, ${(THZ + 0.1).toFixed(2)}, abs(vWorldU.z - (${TZ.toFixed(3)})));
-      float below = 1.0 - smoothstep(${(TABLE_Y - 0.12).toFixed(3)}, ${(TABLE_Y - 0.03).toFixed(3)}, vWorldU.y);
-      gl_FragColor.rgb *= 1.0 - 0.87 * inX * inZ * below;   // (linear: about 0.4 once on screen)
-      #include <dithering_fragment>
-      gl_FragColor.rgb = sRGBTransferOETF(gl_FragColor).rgb;`);
-  };
+  // ---- him: lit live, in the table's shadow below its top (npcstage.js)
   for (const m of [sb.material, sr.material, glass.material, face.material, halo.material]) m.onBeforeCompile = encode;
   const g = await new GLTFLoader().loadAsync(`${ART}prophet.glb`);
   const model = g.scene;
@@ -166,7 +131,7 @@ export async function prophetScene(host) {
       const m = o.material;
       if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = 2; }
       o.material = new THREE.MeshLambertMaterial({ map: m.map ?? null, color: 0xffffff });
-      o.material.onBeforeCompile = underTable;
+      o.material.onBeforeCompile = underTable(TABLE);
       hitMeshes.push(o);
     }
   });
@@ -189,11 +154,7 @@ export async function prophetScene(host) {
   bone.head?.add(bowl);
 
   // ---- smoke: a thin wisp from the bowl, looping
-  const puffs = [];
-  for (let i = 0; i < 16; i++) {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: 0xe8e8ec, transparent: true, opacity: 0, depthWrite: false, depthTest: false, fog: false }));
-    sp.userData = { t: i / 16, x: 0 }; sp.renderOrder = 5; scene.add(sp); puffs.push(sp);
-  }
+  const smoke = smokeWisp(scene, haloTex, { encodeIt: false });
 
   // ---- the ball's moods: idle (a soft lavender glow), spin (faces flicking),
   // swirl (the quest coming), landed (held, bright), burst (the reveal), dim
@@ -212,92 +173,17 @@ export async function prophetScene(host) {
     faceOn = 1; if (pop) popT = 0;
   }
 
-  // ---- looking around: orbit offsets from the default view, eased
-  const V = VIEW, T = new THREE.Vector3(...V.target);
-  const view = { yaw: 0, pitch: 0, zoom: 1 };              // what's shown (eased toward `want`)
-  const want = { yaw: 0, pitch: 0, zoom: 1 };              // where the finger put it
-  const vel = { yaw: 0, pitch: 0 };                        // momentum after a flick (rad/s)
-  const tilt = { yaw: 0, pitch: 0 };                       // device tilt parallax
-  let held = false, lastTouch = -1e9;
-  const ptrs = new Map();
-  let drag = null, pinch = null;
-  const clampView = () => {
-    want.yaw = Math.max(V.yawRange[0], Math.min(V.yawRange[1], want.yaw));
-    want.pitch = Math.max(V.pitchRange[0], Math.min(V.pitchRange[1], want.pitch));
-    want.zoom = Math.max(V.zoomRange[0], Math.min(V.zoomRange[1], want.zoom));
-  };
-  const free = () => !held;
-  canvas.style.touchAction = "none";
-  canvas.style.pointerEvents = "auto";
-  const onDown = e => {
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    canvas.setPointerCapture?.(e.pointerId);
-    lastTouch = performance.now();
-    if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), lt: performance.now(), moved: 0 };
-    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: want.zoom }; if (drag) drag.moved = 99; }
-    vel.yaw = vel.pitch = 0;
-  };
-  const onMove = e => {
-    if (!ptrs.has(e.pointerId)) return;
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    lastTouch = performance.now();
-    if (ptrs.size >= 2 && pinch) {
-      const [a, b] = [...ptrs.values()];
-      if (free()) { want.zoom = pinch.z * pinch.d / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)); clampView(); }
-      return;
-    }
-    if (!drag) return;
-    const now = performance.now(), dx = e.clientX - drag.x, dy = e.clientY - drag.y, dt = Math.max(1, now - drag.lt) / 1000;
-    drag.moved = Math.max(drag.moved, Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0));
-    drag.x = e.clientX; drag.y = e.clientY; drag.lt = now;
-    if (!free() || drag.moved < 6) return;
-    const k = 2.2 / Math.max(240, canvas.clientWidth);   // a swipe across the screen ≈ the whole range
-    want.yaw -= dx * k; want.pitch += dy * k * 0.6; clampView();
-    vel.yaw = vel.yaw * 0.6 + (-dx * k / dt) * 0.4; vel.pitch = vel.pitch * 0.6 + (dy * k * 0.6 / dt) * 0.4;
-  };
-  const onUp = e => {
-    if (!ptrs.has(e.pointerId)) return;
-    ptrs.delete(e.pointerId);
-    lastTouch = performance.now();
-    if (ptrs.size < 2) pinch = null;
-    if (ptrs.size === 0 && drag) {
-      if (drag.moved < 8 && performance.now() - drag.t0 < 450) tap(e.clientX, e.clientY);
-      if (performance.now() - drag.lt > 80) vel.yaw = vel.pitch = 0;   // held still before letting go: no flick
-      drag = null;
-    }
-  };
-  canvas.addEventListener("pointerdown", onDown);
-  canvas.addEventListener("pointermove", onMove);
-  canvas.addEventListener("pointerup", onUp);
-  canvas.addEventListener("pointercancel", onUp);
-  // a tiny parallax from the phone's tilt, where the browser gives it
-  // without a permission prompt (not iOS); its slow-moving average is "level"
-  let tiltBase = null;
-  const onTilt = e => {
-    if (e.gamma == null || e.beta == null) return;
-    if (!tiltBase) tiltBase = { g: e.gamma, b: e.beta };
-    tiltBase.g += (e.gamma - tiltBase.g) * 0.02; tiltBase.b += (e.beta - tiltBase.b) * 0.02;
-    tilt.yaw = Math.max(-0.05, Math.min(0.05, (e.gamma - tiltBase.g) * 0.003));
-    tilt.pitch = Math.max(-0.03, Math.min(0.03, (e.beta - tiltBase.b) * 0.002));
-  };
-  const tiltOn = !reduce() && typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission !== "function"
-    && new URLSearchParams(location.search).get("tilt") !== "0";
-  if (tiltOn) addEventListener("deviceorientation", onTilt);
+  // ---- looking around (npcstage.js); swinging round to the left, the
+  // camera rises a little to look over the lamp
+  const orbit = orbitCamera(st, VIEW, { onTap: (x, y) => tap(x, y), rise: yaw => Math.max(0, -yaw - 0.35) * 0.32 });
+  const { view, want } = orbit;
 
   // ---- taps: him, the ball, the lamp, the TV
-  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   const targets = [{ kind: "ball", objs: [glass, stand] }, ...room.targets, { kind: "prophet", objs: hitMeshes }];
   let ballPokeT = 9, lampPokeT = 9, spinV = 0;
   const api = { onTap: null };
   function tap(cx, cy) {
-    const r = canvas.getBoundingClientRect();
-    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
-    ray.setFromCamera(ndc, camera);
-    let best = null;
-    for (const t of targets) {
-      const hit = ray.intersectObjects(t.objs, true)[0];
-      if (hit && (!best || hit.distance < best.d)) best = { kind: t.kind, d: hit.distance };
-    }
+    let best = pickTap(st, targets, cx, cy);
     // the ball is small on screen: a near miss still counts
     if (!best || best.kind !== "ball") {
       const b = st.rectOf(ballAnchor, R * 1.8);
@@ -312,7 +198,7 @@ export async function prophetScene(host) {
   }
 
   // ---- poses: target eulers per bone, blended quickly (critically damped, no float)
-  let poseName = "idle", poseT = 0, pushGoal = 0, pushNow = 0, nodT = 9, puffT = 3 + Math.random() * 3, puffK = 0;
+  let poseName = "idle", poseT = 0, nodT = 9, puffT = 3 + Math.random() * 3, puffK = 0;
   const target = {}, cur = {};
   for (const n of BONES) { cur[n] = new THREE.Vector3(...(SIT[n] ?? [0, 0, 0])); target[n] = new THREE.Vector3(); }
   function setPose(name) {
@@ -320,37 +206,12 @@ export async function prophetScene(host) {
     if (name === "nod") nodT = 0;
     if (name !== poseName) { poseName = name; poseT = 0; }
   }
-  const tmpE = new THREE.Euler(), tmpQ = new THREE.Quaternion(), tmpC = new THREE.Color(), camPos = new THREE.Vector3(), bp = new THREE.Vector3();
-  const deg = Math.PI / 180;
+  const tmpE = new THREE.Euler(), tmpQ = new THREE.Quaternion(), tmpC = new THREE.Color(), bp = new THREE.Vector3();
 
   st.onFrame((t, dt) => {
     const still = reduce();
     poseT += dt;
-    // ---- the camera: momentum, then home after a while (or when held)
-    const now = performance.now();
-    if (!drag && !pinch && (Math.abs(vel.yaw) > 1e-4 || Math.abs(vel.pitch) > 1e-4)) {
-      want.yaw += vel.yaw * dt; want.pitch += vel.pitch * dt; clampView();
-      const f = Math.exp(-dt * 4.5); vel.yaw *= f; vel.pitch *= f;
-    }
-    const idle = ptrs.size === 0 && now - lastTouch > V.idleMs;
-    if (held || idle) {
-      const k = 1 - Math.exp(-dt * (held ? 3 : 1.8));
-      want.yaw -= want.yaw * k; want.pitch -= want.pitch * k; want.zoom += (1 - want.zoom) * k;
-      vel.yaw = vel.pitch = 0;
-    }
-    const ke = still ? 1 : 1 - Math.exp(-dt * 10);
-    view.yaw += (want.yaw - view.yaw) * ke; view.pitch += (want.pitch - view.pitch) * ke; view.zoom += (want.zoom - view.zoom) * ke;
-    pushNow += (pushGoal - pushNow) * (1 - Math.exp(-dt * 1.1));
-    // swinging round to the left, the camera rises a little to look over the lamp
-    const yaw = V.yaw + view.yaw + tilt.yaw, pitch = V.pitch + view.pitch + tilt.pitch + Math.max(0, -view.yaw - 0.35) * 0.32;
-    const d = V.dist * view.zoom * (1 - pushNow * (1 - V.push));
-    camPos.set(T.x + d * Math.sin(yaw) * Math.cos(pitch), T.y + d * Math.sin(pitch), T.z + d * Math.cos(yaw) * Math.cos(pitch));
-    if (!still) { camPos.x += Math.sin(t * 0.31) * 0.005; camPos.y += Math.sin(t * 0.43 + 1) * 0.003; }
-    camera.position.copy(camPos); camera.lookAt(T);
-    // the same width in view on any screen as at 9:16
-    const a = camera.aspect || V.aspect;
-    const fov = a < V.aspect ? 2 * Math.atan(Math.tan(V.fov * deg / 2) * V.aspect / a) / deg : V.fov;
-    if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+    orbit.update(t, dt);
 
     // ---- him: targets are the seated base + this pose + small life
     const P = POSES[poseName];
@@ -359,8 +220,7 @@ export async function prophetScene(host) {
       target[n].set(b[0] + p[0], b[1] + p[1], b[2] + p[2]);
     }
     // he keeps half an eye on you: the head turns a little toward the camera
-    target.head.y += Math.max(-0.4, Math.min(0.4, view.yaw * 0.45)); target.neck.y += Math.max(-0.2, Math.min(0.2, view.yaw * 0.2));
-    target.head.x -= view.pitch * 0.4;
+    headFollow(target, view);
     if (!still) {
       const br = Math.sin(t * 1.25);                                  // breathing, ~5 s a breath
       target.chest.x += br * 0.018; target.spine.x += br * 0.01;
@@ -415,29 +275,20 @@ export async function prophetScene(host) {
     const fl = lampPokeT < 0.9 && !still ? (Math.floor(lampPokeT * 16) % 3 === 1 ? 0.45 : 0.8 + 0.2 * Math.random()) : 1;
     lampLight.intensity = LIGHT.lamp * fl;
     // ---- the smoke: rises, drifts, widens, fades; thicker right after a puff
-    bowl.getWorldPosition(bp);
-    for (const sp of puffs) {
-      const u = sp.userData;
-      u.t += dt * (still ? 0 : 0.22);
-      if (u.t >= 1) { u.t -= 1; u.x = (Math.random() - 0.5) * 0.02; }
-      const a2 = u.t;
-      sp.position.set(bp.x + u.x + Math.sin(a2 * 6 + t * 0.8) * 0.035 * a2, bp.y + 0.02 + a2 * 0.5, bp.z - a2 * 0.06);
-      sp.scale.set(0.022 + a2 * 0.06, 0.05 + a2 * 0.12, 1);
-      sp.material.opacity = (0.045 + puffK * 0.12) * Math.sin(Math.PI * Math.min(1, a2 * 1.1)) * (1 - a2 * 0.5);
-    }
+    smoke.update(bowl, t, dt, puffK);
   });
 
   return Object.assign(api, {
     stage: st,
     setPose, orb, face: setFace,
-    push: (k = 1) => { pushGoal = Math.max(0, Math.min(1, k)); },
+    push: orbit.push,
     // glide back to the default view and stay there (the key moments)
-    hold: (on = true) => { held = !!on; },
+    hold: orbit.hold,
     ballRect: () => st.rectOf(ballAnchor, R),
     attach: el => st.attach(el),
-    dispose: () => { if (tiltOn) removeEventListener("deviceorientation", onTilt); room.dispose(); st.dispose(); },
+    dispose: () => { orbit.dispose(); room.dispose(); st.dispose(); },
     get pose() { return poseName; },
     // for tests and tuning: the scene's parts
-    debug: { scene, camera, model, bone, view, want, SIT, POSES, VIEW, SEAT, T, tap, rest, room, glass, stand, lights: { lampLight, tvLight, doorLight, stringLight, hemi: st.lights.hemi }, LIGHT },
+    debug: { scene, camera, model, bone, view, want, SIT, POSES, VIEW, SEAT, T: orbit.T, tap, rest, room, glass, stand, lights: { lampLight, tvLight, doorLight, stringLight, hemi: st.lights.hemi }, LIGHT },
   });
 }
