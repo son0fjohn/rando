@@ -25,72 +25,93 @@ Prophet replaced the wizard: see below):
   bottom above the safe area, the host's skip bottom right. The NPC scene
   stays up behind every phase of a turn.
 
-## Side Quest: The Prophet (`web/prophet.js`, `web/games/sidequest/prophet/`)
+## Side Quest: The Prophet in the rooftop room (`web/prophet.js`, `web/rooftop.js`)
 
 The wizard is gone. Side Quest's host is The Prophet: a big puffy purple
-jacket, a starry purple hat over a black durag, small round dark sunglasses,
-a gray goatee, a gold chain and a pipe, seated behind a folding table in a
-plain gray back room (folding chair, a metal shelf with cardboard boxes and a
-yellow bin, a gray door, a table lamp), the crystal ball on its stand in
-front of him. It's a real 3D scene, not a painted backdrop:
+jacket, a starry purple hat over a black durag with long tails, small round
+dark shades, a gray goatee, a gold chain and a pipe, sitting cross-legged on
+the floor behind a low table in a rooftop room (옥탑방) at night that teens
+have taken over. The approved picture is the target: the default view (before
+anyone moves the camera) looks almost exactly like it.
 
-- **Style:** smooth low-poly, soft rounded blocks, flat solid colours (only
-  his face is a painted texture), muted palette. Soft even light (hemisphere
-  ambient, a warm key, a cool fill), gentle baked AO and blob shadows, low
-  contrast, no coloured lights, no outlines, no bloom. Drawn at 1.5× CSS
-  pixels (capped at 760 px wide) and softly upscaled with 4× MSAA
-  (`retrolook.js` with `smooth: true`, `msaa`). No shadow maps: whatever is
-  under the table (his legs, the floor, the chair) darkens in its material,
-  from the table's known footprint, back the way the key light throws it.
-- **The default view is the reference image.** The camera (`VIEW`), the room
-  and the props were placed by solving the reference's perspective (eye level
-  from the door, the floor line and his eyes: camera 1.53 up, 11.5° down,
-  39.4° vertical field at 9:16, the back wall ~5 m behind him), then each prop
-  unprojected from where it sits in the picture; his arms were solved on the
-  rig for the reference's elbows and fists, and his colours compared point by
-  point. A taller phone keeps the same width in view. The side-by-side is
-  `prophet_shots`' `0-default` next to the reference.
-- **Him:** one rigged mesh, 4,600 triangles, 20 joints (root, hips, spine,
-  chest, neck, head, shoulder/upperarm/forearm/hand and thigh/shin/foot per
-  side). The hat, durag tails, glasses and pipe are weighted to the head, the
-  chain to the chest. Poses are procedural (Euler targets per bone blended
-  on top of the rest pose): idle (breathing, a slight head tilt now and
-  then, a pipe puff every 5–9 s), reveal (leans in, hands hovering over the
-  ball, ball brighter), point (at the camera: at whoever the ball chose),
-  nod (a smug double dip to close the turn). A thin wisp of pipe smoke, the
-  ball's glow (brighter on the reveals) and a slow camera push-in on the key
-  moments.
-- **Look around:** drag on the room to orbit the camera around him and the
-  table (±60° left/right, a little up and down, never under the table or
-  through a wall; pinch to zoom in a bit), eased, with a little momentum.
-  ~3 s after the last touch it glides home; during the pick and the reveal
-  the game holds it home. His head turns a little toward the camera. The
-  room is closed on every side (walls, ceiling, a second shelf, boxes, a fuse
-  box), and from the far left the lamp fades rather than hide the ball. On
-  phones that report their tilt without a prompt, a very slight parallax
-  (`?tilt=0` turns it off).
-- **Taps:** him (between beats: a short line in the dialog box, `quip()`,
-  and a nod or a pipe puff), the ball (it pulses and swirls), the lamp (it
-  flickers). None of them block the game or the host's controls.
-- **Turn:** the ball flicks through everyone's 3D heads (`charrender.js`,
-  lit with a neutral rim to match the room) and lands on the chosen one; he
-  points: "Relax. The ball already knows who's next... [Name]." Then the
-  quest card rises out of the ball and stays on screen: "SIDE QUEST: [dare]".
-  Accept / Give up, the 3-minute timer, live 1–5 ratings, the verdict and his
-  nod all happen in the dialog box.
+- **The room is real geometry, painted with the picture** (camera mapping).
+  The default camera was solved from the picture's perspective (`PROJ` in
+  `rooftop.js`: 1.02 m up, 11.7° down, 46° vertical field at 9:16; the door
+  wall 3.3 m behind him), then every piece was placed by unprojecting where
+  it sits in the picture onto its plane: the walls and the doorway, the TV and
+  its cabinet, the couch and the teddy bear, the fridge, the shelf, the
+  rooftop outside (its floor, the parapet, the city as a far backdrop), the
+  low table and everything on it, the lamp. A shader projects the picture
+  from that camera onto them, so from the default view the room is the
+  picture; look around and the same paint sits on the 3D shapes.
+  - **Occlusion:** a depth map from the projector (once, at load) says which
+    surfaces the picture actually saw; the rest (behind the couch, the side
+    walls, past the picture's edges) falls back to a tile cut from it (graffiti
+    for walls, the rug for the floor) or a flat colour with a simple soft
+    light, plus posters and tags cut from the picture, more string lights and
+    a few props (crates, a beanbag, a floor mattress, a speaker), so every
+    allowed angle looks finished.
+  - **The clean plate:** where he, the ball and the dialog box are in the
+    picture, the paint comes from a version of it with them painted out, so
+    they're never painted onto the room behind his live model.
+  - **Light:** the paint carries the picture's light, so the room is unlit;
+    the lamp shade, the TV and the string-light bulbs get a little animation
+    on top. He's lit live by lights where the picture's are: a pink-purple
+    ambient, a warm key from the front left, a violet fill, the lamp, the
+    TV's pink, the door's night blue, the string lights. Under the table his
+    legs are in its shadow.
+  - **Colour:** the stage is `encoded` (`retrolook.js`): the buffer holds
+    display-ready colour, the paint is written as the picture's own pixels
+    and his materials encode to sRGB themselves, so darks don't band and the
+    picture comes through unchanged (no grade, no bloom). Drawn at 1× CSS
+    pixels and softly upscaled with 4× MSAA.
+- **Him:** the same rigged mesh (below), posed cross-legged (thighs and shins
+  solved on the rig), elbows out on the table's back edge, fists by the ball;
+  sleeves, fists, hat and jacket a little bigger to match the picture's
+  proportions (bone scales). Poses: idle (breathing, a slight head tilt, a
+  pipe puff), reveal (leans in, hands out over the ball, ball brighter),
+  point (right arm out at the camera), nod. Pipe smoke, the ball's glow, a
+  slow camera push-in on the key moments.
+- **Look around:** drag to orbit (±60°, a little up and down; pinch to zoom
+  in a bit), eased with a little momentum, gliding home ~3 s after the last
+  touch; Side Quest holds it home for the pick and the reveal. His head turns
+  a little toward the camera. From the far left the lamp fades rather than
+  hide the ball. A slight tilt parallax where the browser allows it without
+  a prompt (`?tilt=0` turns it off).
+- **Taps:** him (between beats: a short line in the dialog box and a nod or a
+  pipe puff), the ball (pulse and swirl), the lamp (flicker), the TV (a burst
+  of static). None of them touch the game state.
 - **Dialog box** (`web/dialog.js`, shared: the Ritual's clown and the map
   NPCs are next): navy at ~86%, a thin light bevelled border, the speaker's
   name on a tab (semibold), big regular text in the app's font (SF Pro,
   Apple SD Gothic Neo for Korean) typed letter by letter with a soft blip
-  (tap to skip), a blinking ▼, choices as boxes in
-  the same style (stacked, or a row for a rating). His lines are in English
-  or Korean by the phone's language.
-- **No 3D:** if WebGL or the model can't load, the room is plain gray with a
+  (tap to skip), a blinking ▼, choices as boxes in the same style (stacked, or
+  a row for a rating). His lines are in English or Korean by the phone's
+  language; while the host picks the quests: "Sit down, kid. Fate's got a job
+  for you."
+- **No 3D:** if WebGL or the room can't load, the screen is plain with a
   simple glowing ball; never the old wizard, never a picture of him.
 
-`node test/prophet_shots.mjs <dir>` shoots every pose with the dialog box
-(and a Korean line) and checks looking around and the taps with real
-pointer input; `node test/games_rec.mjs <dir> sidequest` records turns.
+`node test/prophet_shots.mjs <dir>` shoots every pose and the default view
+(`0-default.png`, for the side-by-side with the picture) and checks looking
+around and the taps with real pointer input; `node test/games_rec.mjs <dir>
+sidequest` records turns.
+
+### The rooftop room's assets (`web/games/sidequest/rooftop/`)
+
+- `plate.webp` (752×1344): the approved picture, with the clean plate where
+  he, the ball and the dialog box were (a hand-drawn mask, dilated and
+  feathered).
+- The clean plate: Flux Kontext (`flux_kontext`) edit of the picture
+  (uploaded as `238ae258-f930-4f3e-aa9d-fbae59b80413`): job
+  `0af534b1-1285-47e9-b445-aa132901bd09`, used (a second variant from the
+  same request, `2ec8879c-d395-49c2-a36a-78368d2fa484`, dropped the table
+  clutter). 3 credits. It came back 3% taller; it was registered back onto
+  the picture (scale + offset fitted on the areas he never covers).
+- `wall.webp`, `rug.webp`: tiles cut from the plate (graffiti; the rug).
+
+The Prophet model itself was not regenerated: it is the one built from the
+same turnaround (below).
 
 ### The Prophet's model
 

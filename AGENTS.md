@@ -47,17 +47,21 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   pose cutouts, props on gravity arcs, a prop that flies up to become the
   card; art in `web/games/ritual/`, see `docs/npc_scenes.md`),
   `web/prophet.js` (Side Quest's host, The Prophet: a rigged low-poly 3D
-  model, `web/games/sidequest/prophet/prophet.glb`, in a plain gray back
-  room, procedural idle / reveal / point / nod, the crystal ball; drag to
-  orbit the camera, pinch to zoom, it glides home and holds still for the
-  pick and the reveal; tap him / the ball / the lamp; its default view is
-  framed on the reference image, see `docs/npc_scenes.md`),
+  model, `web/games/sidequest/prophet/prophet.glb`, sitting cross-legged
+  behind a low table, lit live; procedural idle / reveal / point / nod, the
+  crystal ball; drag to orbit the camera, pinch to zoom, it glides home and
+  holds still for the pick and the reveal; tap him / the ball / the lamp /
+  the TV), `web/rooftop.js` (his rooftop room: low-poly geometry painted by
+  projecting the approved picture from the default camera, a clean plate
+  where he, the ball and the dialog were, tiles where the picture never saw;
+  assets in `web/games/sidequest/rooftop/`, see `docs/npc_scenes.md`),
   `web/dialog.js` (the shared NPC dialog box: navy, name tab, text typed in
   the app font with a blip, ▼, choice boxes, `quip()` for a passing line;
   styles `.dlg-*` in theme.css), `web/retrolook.js`
   (the retro look kit every game scene's 3D layer uses: mood lights, fog,
   emissive bloom, low-res nearest upscale, grade + dither + vignette +
-  grain, quality tiers; `smooth` + `msaa` for the Prophet's soft look),
+  grain, quality tiers; `smooth` + `msaa` for a soft look, `encoded` for a
+  display-ready buffer, as the Prophet's camera-mapped room needs),
   `web/retrorooms.js`
   (the other rooms on the kit: the Ritual's circus tent, with the clown and
   props mirrored in from the DOM; Secret Diary's study and Mask Off's lounge
