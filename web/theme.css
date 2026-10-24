@@ -1313,6 +1313,8 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 .hr-room .hr-prompt { font: 800 28px/33px var(--f-sys); margin-top: 4px; overflow-wrap: anywhere; }
 .hr-room .hr-note { margin: 8px 0 0; font: 13px/16px var(--dlg-font); color: #6a6460; }
 .hr-room .hr-slip.small { padding: 8px 12px 10px; } .hr-room .hr-slip.small .hr-prompt { font-size: 21px; line-height: 26px; } .hr-room .hr-slip.small .hr-note { display: none; }
+/* room at the top for the stamp (SIDE QUEST / ACT IT OUT) so it never sits on the text */
+.sq-room .sq-card, .sq-room .sq-card.small, .hr-room .hr-slip, .hr-room .hr-slip.small { padding-top: 22px; }
 .hr-slip.unroll > * { animation: hr-unroll-in .9s cubic-bezier(.3, 1.2, .5, 1) both; }
 @keyframes hr-unroll-in { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
 .hr-room .hr-reveal small { display: block; font: 700 12px/16px var(--dlg-font); letter-spacing: .1em; text-transform: uppercase; color: #6a6460; }
