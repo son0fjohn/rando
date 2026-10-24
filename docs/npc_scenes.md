@@ -213,7 +213,7 @@ taps); `node test/games_rec.mjs <dir> ritual` records a turn on two phones.
   `d1c71847-f818-487e-b7df-06222e2e4aa6`): job
   `1d53f20e-7f26-4254-b5a3-ae8454a13245`, used (the other variant,
   `d8312406-c92c-4296-b11c-dc58d06531ca`, dropped the box of capsules).
-  1.5 credits. It came back 752×1392; registered back onto the picture
+  Counted in the Boss's total below. It came back 752×1392; registered back onto the picture
   (scale 1.01 × 0.9675, offset 8, 2).
 
 ### The Boss's model (`web/games/ritual/boss/boss.glb`)
@@ -233,8 +233,9 @@ The view edits are Flux Kontext (`flux_kontext`), 1.5 credits a request:
 an attempt at a true left-side view (`c13132d7…`, `f4cfd68f…`, both came
 back facing the wrong way, not used), the arms-down front and back
 (`26cb2930…`, `9a05664b…`, `67adcf72…`, `9b007775…`) and side (`aafdb20b…`,
-`92e81755…`). Total for him: 24 (Tripo) + 7.5 (edits) = 31.5 credits; with
-the clean plate, 33 credits; 2 of the 3 allowed Tripo attempts.
+`92e81755…`). Total for the Boss, the edits and the clean plate: 43 credits
+(the balance went from 635 to 592: 24 for Tripo, 19 for the Flux edits);
+2 of the 3 allowed Tripo attempts.
 
 Cleanup (scripted, not by hand): welded and simplified to 4,600 triangles
 (meshoptimizer); the texture posterized to a flat palette (nearest colour in
