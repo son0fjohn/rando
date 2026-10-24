@@ -26,6 +26,10 @@ const GLB_MODE = LEGACY_CHAR === "glb";
 // runtime weight-transfer garments, wired to movement (walking flag drives
 // the crossfade). ?anim=0 falls back to the static bob.
 const ANIM_CHAR = new URLSearchParams(location.search).get("anim") !== "0";
+// ?char=4: the new base character (avatar4.js) for your own player, while
+// it's being reviewed; ?char4={json} dresses it. Everyone else stays on avatar3.
+const AV4 = new URLSearchParams(location.search).get("char") === "4";
+const AV4_CFG = (() => { try { return JSON.parse(new URLSearchParams(location.search).get("char4") || "null"); } catch { return null; } })();
 
 export const CHAR_H = 15;
 
@@ -1918,7 +1922,11 @@ export const world3d = {
           if (this.player) { this.removeChar(this.player, this.scene); this.player = null; }
           install(api);
         };
-        (ANIM_CHAR ? makeAnimatedCharacter : makeHumanCharacter)(opts.avatar)
+        if (AV4) {
+          import("./avatar4.js").then(m => m.makeCharacter4({ ...opts.avatar, ...AV4_CFG }))
+            .then(api => api.ready.then(() => arrive(api)))
+            .catch(e => console.error("avatar4 failed to load", e)); // no fallback while reviewing it
+        } else (ANIM_CHAR ? makeAnimatedCharacter : makeHumanCharacter)(opts.avatar)
           .then(arrive)
           // anim clips missing/broken -> static humanoid -> blob
           .catch(() => makeHumanCharacter(opts.avatar).then(arrive)
