@@ -145,7 +145,7 @@ try {
   ok(await until(A, () => document.querySelectorAll(".lr-av").length === 5, null, 25000), "bob, cy, dee and eve join from the link — 5 in the room");
   for (const g of guests) { await g.click("#pt-vote"); await g.click('[data-vote="secretdiary"]'); await g.click("#pt-picker-x"); }
   await A.click("#pt-vote");
-  ok(await until(A, () => document.querySelector(".pv-list .pv-row")?.dataset.game === "secretdiary" && /^4/.test(document.querySelector('[data-game="secretdiary"] .pv-n')?.textContent ?? "")), "everyone votes Secret Diary: the host sees it on top with 4 votes");
+  ok(await until(A, () => document.querySelector('[data-game="secretdiary"]')?.classList.contains("lead") && /^4/.test(document.querySelector('[data-game="secretdiary"] .pv-n')?.textContent ?? "")), "everyone votes Secret Diary: the host sees it marked as the leader with 4 votes");
   const batchCast = BATCH_VIDEO ? await screencast(A) : null;
   await A.click('[data-game="secretdiary"] .pv-t > b');
 
