@@ -65,7 +65,7 @@ void main(){ vec3 s = texture2D(tex, vUv).rgb * 0.227;
 // the final look: bloom in, grade, vignette, grain, a limited palette with
 // ordered (Bayer) dithering, then to sRGB
 const FINAL = `uniform sampler2D tex; uniform sampler2D bloom; uniform float bloomOn, strength;
-uniform vec3 tint; uniform float sat, contrast, lift, levels, dither, vignette, grain, time; uniform vec2 res;
+uniform vec3 tint; uniform float sat, contrast, lift, levels, dither, vignette, grain, time, encoded; uniform vec2 res;
 varying vec2 vUv;
 float bayer(vec2 p){ vec2 q = mod(floor(p), 4.0);
   float m[16]; m[0]=0.;m[1]=8.;m[2]=2.;m[3]=10.;m[4]=12.;m[5]=4.;m[6]=14.;m[7]=6.;m[8]=3.;m[9]=11.;m[10]=1.;m[11]=9.;m[12]=15.;m[13]=7.;m[14]=13.;m[15]=5.;
@@ -76,7 +76,7 @@ float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453
 void main(){
   vec3 c = texture2D(tex, vUv).rgb;
   if (bloomOn > 0.5) c += texture2D(bloom, vUv).rgb * strength;
-  c = pow(max(c, 0.0), vec3(1.0 / 2.2));                       // linear -> display
+  if (encoded < 0.5) c = pow(max(c, 0.0), vec3(1.0 / 2.2));   // linear -> display (an encoded stage is display-ready already)
   c *= tint;
   float g = dot(c, vec3(0.299, 0.587, 0.114));
   c = mix(vec3(g), c, sat);
@@ -131,7 +131,7 @@ export async function retroStage(host, mood = {}) {
     tex: { value: rtScene.texture }, bloom: { value: rtA.texture }, bloomOn: { value: 0 }, strength: { value: M.bloom ? M.bloom.strength : 0 },
     tint: { value: new THREE.Vector3(...M.grade.tint) }, sat: { value: M.grade.sat }, contrast: { value: M.grade.contrast }, lift: { value: M.grade.lift },
     levels: { value: M.levels }, dither: { value: M.dither }, vignette: { value: M.vignette }, grain: { value: tier === "low" ? 0 : M.grain },
-    time: { value: 0 }, res: { value: new THREE.Vector2(4, 4) },
+    time: { value: 0 }, res: { value: new THREE.Vector2(4, 4) }, encoded: { value: M.encoded ? 1 : 0 },
   });
   const pass = (m, target) => { quad.material = m; renderer.setRenderTarget(target); renderer.render(post, postCam); };
 
