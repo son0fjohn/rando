@@ -22,11 +22,17 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
   `web/charview.js` (a character in 3D, alive: drag to spin, pinch to zoom,
   double-tap to reset, Idle/Walk preview; the Style screen's lit stage),
-  `web/avatar3.js` (the player character: body.glb with faces painted into
-  the head through a face UV set, flat-painted body regions, a rebuilt rig
-  with procedural swagger idle/walk, hair/clothes fitted at load),
-  `web/face3.js` (faces drawn in code: 6 eye styles × 6 expressions),
-  `web/cel.js` (the one cel shader every character mesh uses),
+  `web/avatar4.js` (the player character: one shared clay base,
+  `web/avatar4/base.glb`, a 20-joint rig with procedural idle/walk; skin,
+  the tee/shorts underlayer and items are code tints; the eyes are a
+  canvas on the head's own face UV set; items are glbs skinned offline to
+  the same joints, `web/avatar4/items/`; hat hair, emote marks, item
+  thumbnails), `web/items4.js` (the wardrobe: every item, what it hides,
+  how it tints, free vs shop with rarity and label prices, the six starter
+  outfits; no three.js, so bots and tests read it), `web/face4.js` (the
+  eyes drawn in code: 8 shapes × 8 iris tints, expressions, no mouth; the
+  face-layer accessories), see `docs/avatar4.md`. (`avatar3.js`, `face3.js`
+  and `cel.js` are the old character, kept only for `staticize`/`matteify`.)
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
   for Korean) and frosted-glass panels; pixel art only in the room art and
@@ -94,7 +100,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/data/ritual_prompts.json` (the SQL test checks they match).
 - **Coins and the shop:** `013_coins_shop.sql`. Balances, payouts and purchases
   happen only in SQL functions (`report_game`, `confirm_game`, `buy_item`);
-  the client only displays them.
+  the client only displays them. `016_wardrobe4.sql` is the new wardrobe's
+  shop (head / face / neck slots, rarity); its rows must match
+  `web/items4.js` (the SQL test checks).
 
 ## Run and test
 
@@ -111,8 +119,8 @@ node test/prophet_shots.mjs <dir> [only]   # Side Quest's Prophet on his own: ev
 node test/boss_shots.mjs <dir> [only] [--video]   # the Ritual's Boss on his own: every beat, the dialog box (EN + KO), drag-to-orbit / glide home / hold / pinch, taps (--video + FFMPEG: orbit.mp4)
 node test/rooms_shots.mjs <dir> [study,lounge]   # the other game rooms on their own: each loads, a shot each
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
-node test/charturn_shots.mjs <dir> [--hair=none,f2,m1] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
-node test/combos_shots.mjs <dir>       # every top × bottom (idle + walk) and hairstyle × top, for clipping
+node test/charturn_shots.mjs <dir> [--hair=none,bob,wolf] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
+node test/combos_shots.mjs <dir> [--only=tops|hats]   # every top × bottom (idle + walk) and every headwear × hairstyle, for clipping
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
