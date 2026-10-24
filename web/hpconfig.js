@@ -131,7 +131,7 @@ export const RITUAL = {
   TENT_3D: true,               // the 3D circus tent (retrorooms.js) over the painted stage
 };
 
-// Side Quest: the wizard hands out a real-life dare, one player does it, the
+// Side Quest: the Prophet hands out a real-life dare, one player does it, the
 // room rates how hard they committed. Points = average stars x POINTS_PER_STAR.
 export const SIDEQUEST = {
   POOL_URL: "data/side_quests.json",
@@ -139,7 +139,6 @@ export const SIDEQUEST = {
   STARS: 5,
   POINTS_PER_STAR: 20,         // 5 stars = 100
   MAX_TURNS: 30,
-  NOOK_3D: true,               // the 3D nook (sqnook.js, the retro look kit) over the painted parlour
 };
 
 // Who goes next (Side Quest, Humiliation Ritual): random but fair. Everyone

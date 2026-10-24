@@ -964,6 +964,43 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
   .mo-fall { display: none; }
 }
 
+/* ===== The dialog box (dialog.js) ===== every NPC talks through it: dark
+   navy at ~85%, a thin light bevelled border, the speaker's name on a tab,
+   big type that types itself out, a blinking ▼; choices in the same style.
+   The type is the RandoPixel face (Galmuri, Latin + Hangul: fonts/README.md),
+   at whole multiples of its native size so it stays crisp. */
+@font-face { font-family: "RandoPixel9"; src: url(fonts/RandoPixel9-latin.woff2) format("woff2"); unicode-range: U+0020-2793; font-display: swap; }
+@font-face { font-family: "RandoPixel9"; src: url(fonts/RandoPixel9-hangul.woff2) format("woff2"); unicode-range: U+3000-303C, U+3131-318E, U+AC00-D7A3, U+FF01-FFEE; font-display: swap; }
+@font-face { font-family: "RandoPixel14"; src: url(fonts/RandoPixel14-latin.woff2) format("woff2"); unicode-range: U+0020-2793; font-display: swap; }
+@font-face { font-family: "RandoPixel14"; src: url(fonts/RandoPixel14-hangul.woff2) format("woff2"); unicode-range: U+3000-303C, U+3131-318E, U+AC00-D7A3, U+FF01-FFEE; font-display: swap; }
+:root { --dlg-navy: rgba(14, 30, 74, .86); --dlg-edge: #b8c9ec; --dlg-ink: #f4f7ff; --dlg-font: "RandoPixel9", var(--f-sys); --dlg-tab-font: "RandoPixel14", var(--f-sys); }
+.dlg { display: flex; flex-direction: column; align-items: flex-start; gap: 0; pointer-events: auto; animation: dlg-in .22s ease-out both; -webkit-font-smoothing: none; }
+.dlg[hidden] { display: none; }
+@keyframes dlg-in { from { opacity: 0; transform: translateY(6px); } }
+.dlg-name { position: relative; z-index: 1; margin: 0 0 -2px 6px; padding: 5px 14px 4px; background: var(--dlg-navy); color: var(--dlg-ink);
+  border: 2px solid var(--dlg-edge); border-bottom: 0; border-radius: 7px 7px 0 0; box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9);
+  font: 15px/18px var(--dlg-tab-font); letter-spacing: .02em; }
+.dlg-name[hidden] { display: none; }
+.dlg-box { position: relative; align-self: stretch; min-height: 92px; padding: 14px 18px 22px; background: var(--dlg-navy); color: var(--dlg-ink);
+  border: 2px solid var(--dlg-edge); border-radius: 8px;
+  box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), inset 0 0 0 3px rgba(184, 201, 236, .22), 0 6px 18px rgba(0, 0, 0, .35); }
+.dlg-text { margin: 0; font: 20px/30px var(--dlg-font); letter-spacing: .03em; word-break: keep-all; overflow-wrap: break-word; }
+.dlg-rest { visibility: hidden; }
+.dlg-more { position: absolute; right: 14px; bottom: 8px; width: 0; height: 0; border: 7px solid transparent; border-top: 9px solid var(--dlg-ink); border-bottom: 0; visibility: hidden; }
+.dlg-box.done .dlg-more { visibility: visible; animation: dlg-blink .9s steps(2) infinite; }
+@keyframes dlg-blink { 50% { opacity: 0; } }
+.dlg-choices { align-self: stretch; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.dlg-choices[hidden] { display: none; }
+button.dlg-choice { position: relative; margin: 0; padding: 12px 18px 12px 38px; text-align: left; cursor: pointer; background: var(--dlg-navy); color: var(--dlg-ink);
+  border: 2px solid var(--dlg-edge); border-radius: 8px; box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 4px 12px rgba(0, 0, 0, .3);
+  font: 20px/24px var(--dlg-font); letter-spacing: .03em; -webkit-font-smoothing: none; }
+button.dlg-choice::before { content: ""; position: absolute; left: 16px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-left: 9px solid var(--dlg-ink); border-right: 0; opacity: 0; }
+button.dlg-choice:hover::before, button.dlg-choice:focus-visible::before, button.dlg-choice:active::before, button.dlg-choice.armed::before { opacity: 1; }
+button.dlg-choice:active { transform: translateY(1px); }
+button.dlg-choice.warn { color: #ffd0cc; }
+button.dlg-choice.armed { background: rgba(120, 26, 40, .9); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .dlg, .dlg-box.done .dlg-more { animation: none; } }
+
 /* ---------------------------------------------------------- host controls in a game */
 /* Back (setup screens) top-left, End game top-right; the HUD makes room */
 .hp-ctl { position: absolute; top: calc(8px + env(safe-area-inset-top)); z-index: 30; height: 34px; padding: 0 12px; border-radius: 999px;
@@ -1160,64 +1197,58 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .np-look { position: absolute; display: block; object-fit: contain; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .np-npc .np-body, .np-npc.np-bump { animation: none; } }
 
-/* Side Quest's parlour: the wizard behind his table, the ball under his
-   hands, the quest card hung on the wall above him, the rating plaque over
-   the table. One focal point a phase: the ball (who), the card (what), the
-   plaque (rate / verdict). */
-.sq-group { left: 50%; bottom: 12%; width: min(86%, 36vh); width: min(86%, 36dvh); aspect-ratio: 600 / 1000; transform: translateX(-50%); }
-.sq-orb { border-radius: 50%; }
-.sq-orb > .np-prop { position: absolute; inset: 0; }
-.sq-orb-in { position: absolute; inset: 9%; border-radius: 50%; overflow: hidden; display: grid; place-items: center; }
-.sq-face { width: 92%; height: 92%; object-fit: contain; opacity: .92; filter: drop-shadow(0 0 6px rgba(190, 150, 255, .8)); transition: opacity .2s; }
+/* Side Quest: the Prophet's back room (prophet.js) fills the screen, the
+   quest card hangs over it once it has risen out of the ball, and he talks
+   through the dialog box (dialog.js) at the bottom, with the clock / rating
+   panel just above it. One focal point a phase: the ball (who), the card
+   (what), the dialog (accept / rate / verdict). */
+.sq-room { background: #77797c; }
+.sq-orb { position: absolute; left: 50%; top: 58%; width: 72px; height: 72px; margin: -36px 0 0 -36px; z-index: 1; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 38% 32%, #f1ebff, #b9a6ec 45%, #7d68c4 100%); box-shadow: 0 0 22px rgba(200, 180, 255, .55); display: grid; place-items: center; overflow: hidden; }
+.sq-room.r3d .sq-orb { display: none; }
+.sq-face { width: 86%; height: 86%; object-fit: contain; opacity: .92; transition: opacity .2s; }
 .sq-face.none, .sq-face:not([src]) { opacity: 0; }
 .sq-face.pop { animation: sq-face-pop .6s cubic-bezier(.34, 1.56, .64, 1) both; }
-@keyframes sq-face-pop { 0% { transform: scale(.55); filter: brightness(2.2) drop-shadow(0 0 14px #fff) } 60% { transform: scale(1.1) } 100% { transform: none } }
-.sq-orb-swirl { position: absolute; inset: 9%; border-radius: 50%; overflow: hidden; pointer-events: none; opacity: .25; mix-blend-mode: screen;
-  background: conic-gradient(from 0deg, transparent 0 10%, rgba(255, 93, 200, .7) 20%, transparent 34%, rgba(110, 200, 255, .65) 52%, transparent 66%, rgba(255, 210, 90, .6) 80%, transparent 92%);
-  filter: blur(5px); animation: sq-swirl 5s linear infinite; }
-.sq-orb-shine { position: absolute; left: 24%; top: 17%; width: 20%; height: 12%; border-radius: 50%; background: rgba(255, 255, 255, .45); transform: rotate(-30deg); pointer-events: none; }
-.sq-orb::after { content: ""; position: absolute; inset: -18%; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .4s;
-  background: radial-gradient(closest-side, rgba(255, 214, 120, .65), rgba(255, 190, 80, .25) 60%, transparent); }
-.sq-orb.spin .sq-orb-swirl { opacity: .8; animation-duration: 1.1s; }
-.sq-orb.swirl .sq-orb-swirl { opacity: 1; animation-duration: .45s; }
-.sq-orb.swirl .sq-face { opacity: .25; }
-.sq-orb.landed::after { opacity: .9; animation: sq-pulse 1.8s ease-in-out infinite; }
-.sq-orb.burst::after { opacity: 1; animation: sq-burst .7s ease-out both; }
-.sq-orb.dim .sq-face { opacity: .35; filter: grayscale(.7); }
-@keyframes sq-burst { 0% { transform: scale(.6); opacity: 1 } 100% { transform: scale(1.5); opacity: .35 } }
-.sq-bubble { left: 50%; top: 26%; max-width: 78%; translate: -50% 0; transform-origin: 50% 100%; border-radius: 14px; font-size: 15px; text-align: center; }
-.sq-wall { position: absolute; left: 7%; right: 7%; top: 100px; z-index: 3; }
-.sq-room .sq-card { margin: 0; background: linear-gradient(#f6ecd2, #e9d9b2); color: #2b1d3a; border: 2px solid #b8902f; border-radius: 10px; padding: 12px 14px 14px;
-  box-shadow: 0 0 0 4px rgba(36, 20, 44, .85), 0 0 34px rgba(255, 200, 110, .45), 0 14px 26px rgba(0, 0, 0, .45); transform-origin: 50% 100%; }
-.sq-room .sq-kicker { font: 800 13px/16px -apple-system, "Segoe UI", Helvetica, sans-serif; letter-spacing: .14em; color: #7a4fc0; }
-.sq-room .sq-text { font: 800 21px/27px -apple-system, "Segoe UI", Helvetica, sans-serif; margin-top: 4px; transition: font-size .4s, line-height .4s; }
+@keyframes sq-face-pop { 0% { transform: scale(.55); filter: brightness(2.2) } 60% { transform: scale(1.1) } 100% { transform: none } }
+.sq-orb.swirl .sq-face { opacity: .3; }
+.sq-orb.dim { filter: grayscale(.6) brightness(.8); }
+.sq-wall { position: absolute; left: 7%; right: 7%; top: 64px; z-index: 3; }
+.sq-room .sq-card { margin: 0; background: #f2efe6; color: #24262c; border: 2px solid #d9d4c6; border-radius: 10px; padding: 12px 14px 14px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .35); transform-origin: 50% 100%; }
+.sq-room .sq-kicker { font: 15px/18px var(--dlg-tab-font); letter-spacing: .06em; color: #4a3d8f; -webkit-font-smoothing: none; }
+.sq-room .sq-text { font: 800 21px/27px var(--f-sys); margin-top: 4px; transition: font-size .4s, line-height .4s; }
 .sq-room .sq-card.small { padding: 8px 12px 10px; }
 .sq-room .sq-card.small .sq-text { font-size: 15.5px; line-height: 20px; }
-.sq-room .sq-lv { border-radius: 4px; font: 700 10px/14px -apple-system, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
-.sq-ui { position: absolute; left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom)); z-index: 3; }
-.sq-ui .np-plaque { position: relative; margin: 0 5%; left: auto; right: auto; }
-.sq-plq-top { display: flex; align-items: center; justify-content: space-between; }
-.sq-room .sq-clock { margin: 0; font: 800 46px/1 -apple-system, "Segoe UI", Helvetica, sans-serif; color: #fff4dc; text-shadow: 0 3px 0 rgba(0, 0, 0, .5); }
-.sq-room .sq-clock.small { font-size: 22px; }
-.sq-room .sq-clock.urgent { color: #ff5d6a; }
-.sq-room .sq-film { color: #ff5d6a !important; font: 800 12px/1 -apple-system, sans-serif !important; letter-spacing: .08em; text-align: left; }
-.sq-room .sq-giveup { display: block; width: 100%; margin: 10px 0 0; min-height: 48px; border-radius: 10px; border: 1px solid rgba(243, 231, 201, .3); background: rgba(255, 255, 255, .08); color: #d6c6a8; font: 700 15px -apple-system, sans-serif; }
-.sq-room .sq-giveup.armed { background: #d8344a; color: #fff; border-color: transparent; }
-.sq-room .sq-rate { margin: 2px 0 0; }
-.sq-room .sq-star { width: 54px; height: 54px; font-size: 44px; line-height: 1; padding: 0; background: none; border: 0; color: rgba(243, 231, 201, .22); text-shadow: 0 2px 0 rgba(0, 0, 0, .5); cursor: pointer; transition: transform .1s, color .15s; }
-.sq-room .sq-star.on { color: #ffc83d; }
-.sq-room .sq-star:active { transform: scale(1.2); }
-.sq-room .sq-rate-lbl { margin: 2px 0 0; font: 800 15px -apple-system, sans-serif; color: #ffc83d; text-align: center; }
-.sq-room .sq-stars { margin: 0 auto; font-size: 44px; text-shadow: 0 2px 0 rgba(0, 0, 0, .5); }
-.sq-room .sq-st-bg { color: rgba(243, 231, 201, .2); } .sq-room .sq-st-fg { color: #ffc83d; }
-.sq-room .sq-avg b { font: 800 30px -apple-system, sans-serif; color: #fff4dc; } .sq-room .sq-avg span { color: #d6c6a8; }
-.sq-room .sq-pts { display: inline-block; margin-left: 10px; font: 800 30px -apple-system, sans-serif !important; font-style: normal; color: #9dff6a; }
-.sq-room .sq-stamp { margin: 2px auto 4px; border-color: #ff5d6a; color: #ff5d6a; font: 900 26px -apple-system, sans-serif; border-radius: 6px; }
+.sq-room .sq-lv { border-radius: 4px; font: 700 10px/14px var(--f-sys); letter-spacing: .06em; text-transform: uppercase; }
+/* the bottom: the panel (clock, verdict) over the dialog box */
+.sq-low { position: absolute; left: 10px; right: 10px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 4; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.sq-low > * { pointer-events: auto; }
+.sq-ui:empty { display: none; }
+.sq-panel { box-sizing: border-box; padding: 10px 12px 12px; text-align: center; color: var(--dlg-ink); background: var(--dlg-navy); border: 2px solid var(--dlg-edge); border-radius: 8px;
+  box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 6px 16px rgba(0, 0, 0, .3); animation: dlg-in .22s ease-out both; }
+.sq-panel.chip { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 12px; }
+.sq-room .sq-clock { margin: 0; font: 40px/1 var(--dlg-tab-font); color: var(--dlg-ink); text-shadow: none; font-variant-numeric: tabular-nums; -webkit-font-smoothing: none; }
+.sq-room .sq-clock.small { font-size: 20px; }
+.sq-room .sq-clock.urgent { color: #ff8a8a; }
+.sq-room .sq-film { color: #ff8a8a !important; font: 14px/1 var(--dlg-tab-font) !important; letter-spacing: .06em; text-align: left; }
+.sq-note { margin: 4px 0 0; font: 14px/18px var(--dlg-tab-font); color: #c9d4f0; -webkit-font-smoothing: none; }
+.sq-panel.chip .sq-note { margin: 0; }
+.sq-room .sq-stars { margin: 0 auto; font-size: 40px; text-shadow: none; }
+.sq-room .sq-st-bg { color: rgba(244, 247, 255, .18); } .sq-room .sq-st-fg { color: #ffd23f; }
+.sq-room .sq-avg b { font: 30px var(--dlg-tab-font); color: var(--dlg-ink); } .sq-room .sq-avg span { color: #c9d4f0; }
+.sq-room .sq-pts { display: inline-block; margin-left: 10px; font: 30px var(--dlg-tab-font) !important; font-style: normal; color: #9dff6a; }
+.sq-room .sq-stamp { margin: 2px auto 4px; border-color: #ff8a8a; color: #ff8a8a; font: 26px var(--dlg-tab-font); border-radius: 6px; }
 .sq-room .sq-board { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
-.sq-room .sq-board li { display: flex; gap: 6px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .08); font: 600 12.5px -apple-system, sans-serif; }
-.sq-room .sq-board li.me { outline: 1.5px solid #ffc83d; }
-.sq-room .sq-board li span { color: #ffc83d; }
-@media (prefers-reduced-motion: reduce) { .sq-orb-swirl, .sq-orb.landed::after { animation: none; } }
+.sq-room .sq-board li { display: flex; gap: 6px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .1); font: 600 12.5px var(--f-sys); }
+.sq-room .sq-board li.me { outline: 1.5px solid #ffd23f; }
+.sq-room .sq-board li span { color: #ffd23f; }
+/* the rating: five boxes in a row, in the dialog's style */
+.dlg-choices.row { flex-direction: row; }
+.dlg-choices.row button.dlg-choice { flex: 1; min-width: 0; padding: 12px 0; text-align: center; font-size: 18px; }
+.dlg-choices.row button.dlg-choice::before { display: none; }
+button.dlg-choice.sq-star { color: #ffd23f; }
+/* the host's skip sits just over the dialog, small, on the right */
+#game-panel.np-full .sq-low .ag-skip { position: static; align-self: flex-end; margin: 0; padding: 6px 12px; min-height: 0; font-size: 12px; }
 
 /* Humiliation Ritual's circus stage: the clown on the floor right of
    centre, the gacha machine on its drum at his side, capsules with the
@@ -1295,13 +1326,10 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .hr-end-clown { display: block; width: 120px; margin: 0 auto -6px; }
 @media (prefers-reduced-motion: reduce) { .hr-caps.shake .in-globe, .hr-slip.unroll > *, .hr-cap.inhand .hr-cap-head { animation: none; } .hr-dial { transition: none; } }
 
-/* Side Quest's 3D nook (sqnook.js): the low-res canvas fills the room
-   behind the UI; once it's drawing, the painted parlour and its 2D wizard
-   step aside */
+/* Side Quest's 3D back room (prophet.js): the canvas fills the room behind
+   the UI and fades in once it's drawing */
 .sq-3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .sq-3d .retro-canvas { transition: opacity .6s ease-out; }
-.sq-room .sq-group { transition: opacity .6s ease-out; }
-.sq-room.r3d .sq-group { opacity: 0; pointer-events: none; }
 
 /* Humiliation Ritual's 3D tent (retrorooms.js): the canvas fills the room;
    once it's up, the painted stage goes and the clown, machine and capsules
