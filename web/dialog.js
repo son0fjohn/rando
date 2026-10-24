@@ -1,7 +1,8 @@
 // The dialog box every game's NPC talks through (Side Quest's Prophet first;
 // the Ritual's clown and the map NPCs next): a dark navy box, ~85% opaque,
 // with a thin light bevelled border, the speaker's name on a tab at its top
-// left, big clean text that types out letter by letter with a soft blip, and
+// left, big text in the app's font that types out letter by letter with a
+// soft blip, and
 // a blinking ▼ when it's done. Tap while it types to show the rest. Choices
 // come up as a stack of boxes in the same style.
 //
@@ -12,9 +13,11 @@
 //   d.hide(); d.show(); d.dispose();
 //
 // Korean and English both: text is typed by grapheme (Intl.Segmenter when
-// the browser has it), and the font (RandoPixel, theme.css) has both. The
-// box's size is reserved up front, so it never grows while it types. Styles:
-// theme.css `.dlg-*`.
+// the browser has it) in the app's system font (SF Pro, Apple SD Gothic Neo
+// for Korean). The box's size is reserved up front, so it never grows while
+// it types. Styles: theme.css `.dlg-*`.
+//
+//   d.quip("Patience.");   // a passing remark: shown, then the line before it comes back (choices stay)
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 const seg = globalThis.Intl?.Segmenter ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
 const graphemes = s => (seg ? [...seg.segment(s)].map(x => x.segment) : [...s]);
@@ -26,18 +29,19 @@ export function dialogBox(host, { name = "", blip = null, cps = 34, cls = "" } =
   host.appendChild(el);
   const nameEl = el.querySelector(".dlg-name"), box = el.querySelector(".dlg-box");
   const typed = el.querySelector(".dlg-typed"), rest = el.querySelector(".dlg-rest"), choices = el.querySelector(".dlg-choices");
-  let timer = null, done = true, finish = () => {}, line = "", alive = true;
+  let timer = null, done = true, finish = () => {}, line = "", alive = true, quipT = null, quipBack = "";
   const setName = n => { nameEl.textContent = n ?? ""; nameEl.hidden = !n; };
   setName(name);
 
   // type `text` out; resolves once it's all on screen
-  function say(text, { name: who, instant = false, cont = false } = {}) {
+  function say(text, { name: who, instant = false, cont = false, keepChoices = false } = {}) {
     if (who !== undefined) setName(who);
-    clearInterval(timer);
+    clearInterval(timer); clearTimeout(quipT); quipT = null;
     const was = line;
     line = String(text ?? "");
     const chars = graphemes(line);
-    el.hidden = false; choices.hidden = true; choices.innerHTML = "";
+    el.hidden = false;
+    if (!keepChoices) { choices.hidden = true; choices.innerHTML = ""; }
     box.classList.remove("done");
     typed.textContent = ""; rest.textContent = line;            // the full line reserves its space
     done = false;
@@ -78,9 +82,19 @@ export function dialogBox(host, { name = "", blip = null, cps = 34, cls = "" } =
     });
   }
 
+  // a passing remark that doesn't take over: the line it interrupted (and
+  // its choices) come back after `ms`, unless something new was said
+  function quip(text, { ms = 2600 } = {}) {
+    const back = quipT ? quipBack : line;      // a second quip still goes back to the real line
+    quipBack = back;
+    say(text, { keepChoices: true });
+    quipT = setTimeout(() => { quipT = null; say(back, { instant: true, keepChoices: true }); }, ms);
+  }
+
   el.addEventListener("click", () => { if (!done) finish(); });
   return {
-    el, say, set, choose,
+    el, say, set, choose, quip,
+    get quipping() { return !!quipT; },
     get done() { return done; },
     get text() { return line; },
     skip: () => finish(),
@@ -88,7 +102,7 @@ export function dialogBox(host, { name = "", blip = null, cps = 34, cls = "" } =
     hide() { el.hidden = true; },
     show() { el.hidden = false; },
     attach(to) { if (to && el.parentNode !== to) to.appendChild(el); },
-    dispose() { alive = false; clearInterval(timer); el.remove(); },
+    dispose() { alive = false; clearInterval(timer); clearTimeout(quipT); el.remove(); },
   };
 }
 

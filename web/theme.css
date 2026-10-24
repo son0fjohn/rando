@@ -967,33 +967,30 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 /* ===== The dialog box (dialog.js) ===== every NPC talks through it: dark
    navy at ~85%, a thin light bevelled border, the speaker's name on a tab,
    big type that types itself out, a blinking ▼; choices in the same style.
-   The type is the RandoPixel face (Galmuri, Latin + Hangul: fonts/README.md),
-   at whole multiples of its native size so it stays crisp. */
-@font-face { font-family: "RandoPixel9"; src: url(fonts/RandoPixel9-latin.woff2) format("woff2"); unicode-range: U+0020-2793; font-display: swap; }
-@font-face { font-family: "RandoPixel9"; src: url(fonts/RandoPixel9-hangul.woff2) format("woff2"); unicode-range: U+3000-303C, U+3131-318E, U+AC00-D7A3, U+FF01-FFEE; font-display: swap; }
-@font-face { font-family: "RandoPixel14"; src: url(fonts/RandoPixel14-latin.woff2) format("woff2"); unicode-range: U+0020-2793; font-display: swap; }
-@font-face { font-family: "RandoPixel14"; src: url(fonts/RandoPixel14-hangul.woff2) format("woff2"); unicode-range: U+3000-303C, U+3131-318E, U+AC00-D7A3, U+FF01-FFEE; font-display: swap; }
-:root { --dlg-navy: rgba(14, 30, 74, .86); --dlg-edge: #b8c9ec; --dlg-ink: #f4f7ff; --dlg-font: "RandoPixel9", var(--f-sys); --dlg-tab-font: "RandoPixel14", var(--f-sys); }
-.dlg { display: flex; flex-direction: column; align-items: flex-start; gap: 0; pointer-events: auto; animation: dlg-in .22s ease-out both; -webkit-font-smoothing: none; }
+   The type is the app's own (SF Pro / Apple SD Gothic Neo): semibold name,
+   regular body, large. */
+:root { --dlg-navy: rgba(14, 30, 74, .86); --dlg-edge: #b8c9ec; --dlg-ink: #f4f7ff;
+  --dlg-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", system-ui, sans-serif; }
+.dlg { display: flex; flex-direction: column; align-items: flex-start; gap: 0; pointer-events: auto; animation: dlg-in .22s ease-out both; }
 .dlg[hidden] { display: none; }
 @keyframes dlg-in { from { opacity: 0; transform: translateY(6px); } }
-.dlg-name { position: relative; z-index: 1; margin: 0 0 -2px 6px; padding: 5px 14px 4px; background: var(--dlg-navy); color: var(--dlg-ink);
+.dlg-name { position: relative; z-index: 1; margin: 0 0 -2px 4px; padding: 4px 16px 3px; background: var(--dlg-navy); color: var(--dlg-ink);
   border: 2px solid var(--dlg-edge); border-bottom: 0; border-radius: 7px 7px 0 0; box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9);
-  font: 15px/18px var(--dlg-tab-font); letter-spacing: .02em; }
+  font: 600 16px/18px var(--dlg-font); letter-spacing: .01em; }
 .dlg-name[hidden] { display: none; }
-.dlg-box { position: relative; align-self: stretch; min-height: 92px; padding: 14px 18px 22px; background: var(--dlg-navy); color: var(--dlg-ink);
+.dlg-box { position: relative; align-self: stretch; min-height: 98px; box-sizing: border-box; padding: 11px 16px 24px; background: var(--dlg-navy); color: var(--dlg-ink);
   border: 2px solid var(--dlg-edge); border-radius: 8px;
   box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), inset 0 0 0 3px rgba(184, 201, 236, .22), 0 6px 18px rgba(0, 0, 0, .35); }
-.dlg-text { margin: 0; font: 20px/30px var(--dlg-font); letter-spacing: .03em; word-break: keep-all; overflow-wrap: break-word; }
+.dlg-text { margin: 0; font: 400 21px/27px var(--dlg-font); letter-spacing: .005em; word-break: keep-all; overflow-wrap: break-word; }
 .dlg-rest { visibility: hidden; }
-.dlg-more { position: absolute; right: 14px; bottom: 8px; width: 0; height: 0; border: 7px solid transparent; border-top: 9px solid var(--dlg-ink); border-bottom: 0; visibility: hidden; }
+.dlg-more { position: absolute; right: 16px; bottom: 9px; width: 0; height: 0; border: 8px solid transparent; border-top: 10px solid var(--dlg-ink); border-bottom: 0; visibility: hidden; }
 .dlg-box.done .dlg-more { visibility: visible; animation: dlg-blink .9s steps(2) infinite; }
 @keyframes dlg-blink { 50% { opacity: 0; } }
 .dlg-choices { align-self: stretch; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .dlg-choices[hidden] { display: none; }
 button.dlg-choice { position: relative; margin: 0; padding: 12px 18px 12px 38px; text-align: left; cursor: pointer; background: var(--dlg-navy); color: var(--dlg-ink);
   border: 2px solid var(--dlg-edge); border-radius: 8px; box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 4px 12px rgba(0, 0, 0, .3);
-  font: 20px/24px var(--dlg-font); letter-spacing: .03em; -webkit-font-smoothing: none; }
+  font: 400 20px/24px var(--dlg-font); }
 button.dlg-choice::before { content: ""; position: absolute; left: 16px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-left: 9px solid var(--dlg-ink); border-right: 0; opacity: 0; }
 button.dlg-choice:hover::before, button.dlg-choice:focus-visible::before, button.dlg-choice:active::before, button.dlg-choice.armed::before { opacity: 1; }
 button.dlg-choice:active { transform: translateY(1px); }
@@ -1215,29 +1212,29 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .sq-wall { position: absolute; left: 7%; right: 7%; top: 64px; z-index: 3; }
 .sq-room .sq-card { margin: 0; background: #f2efe6; color: #24262c; border: 2px solid #d9d4c6; border-radius: 10px; padding: 12px 14px 14px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, .35); transform-origin: 50% 100%; }
-.sq-room .sq-kicker { font: 15px/18px var(--dlg-tab-font); letter-spacing: .06em; color: #4a3d8f; -webkit-font-smoothing: none; }
+.sq-room .sq-kicker { font: 700 13px/16px var(--dlg-font); letter-spacing: .12em; color: #4a3d8f; }
 .sq-room .sq-text { font: 800 21px/27px var(--f-sys); margin-top: 4px; transition: font-size .4s, line-height .4s; }
 .sq-room .sq-card.small { padding: 8px 12px 10px; }
 .sq-room .sq-card.small .sq-text { font-size: 15.5px; line-height: 20px; }
 .sq-room .sq-lv { border-radius: 4px; font: 700 10px/14px var(--f-sys); letter-spacing: .06em; text-transform: uppercase; }
 /* the bottom: the panel (clock, verdict) over the dialog box */
-.sq-low { position: absolute; left: 10px; right: 10px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 4; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.sq-low { position: absolute; left: 9px; right: 9px; bottom: max(28px, calc(10px + env(safe-area-inset-bottom))); z-index: 4; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .sq-low > * { pointer-events: auto; }
 .sq-ui:empty { display: none; }
 .sq-panel { box-sizing: border-box; padding: 10px 12px 12px; text-align: center; color: var(--dlg-ink); background: var(--dlg-navy); border: 2px solid var(--dlg-edge); border-radius: 8px;
   box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 6px 16px rgba(0, 0, 0, .3); animation: dlg-in .22s ease-out both; }
 .sq-panel.chip { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 12px; }
-.sq-room .sq-clock { margin: 0; font: 40px/1 var(--dlg-tab-font); color: var(--dlg-ink); text-shadow: none; font-variant-numeric: tabular-nums; -webkit-font-smoothing: none; }
+.sq-room .sq-clock { margin: 0; font: 600 40px/1 var(--dlg-font); color: var(--dlg-ink); text-shadow: none; font-variant-numeric: tabular-nums; }
 .sq-room .sq-clock.small { font-size: 20px; }
 .sq-room .sq-clock.urgent { color: #ff8a8a; }
-.sq-room .sq-film { color: #ff8a8a !important; font: 14px/1 var(--dlg-tab-font) !important; letter-spacing: .06em; text-align: left; }
-.sq-note { margin: 4px 0 0; font: 14px/18px var(--dlg-tab-font); color: #c9d4f0; -webkit-font-smoothing: none; }
+.sq-room .sq-film { color: #ff8a8a !important; font: 600 13px/1 var(--dlg-font) !important; letter-spacing: .06em; text-align: left; }
+.sq-note { margin: 4px 0 0; font: 14px/18px var(--dlg-font); color: #c9d4f0; }
 .sq-panel.chip .sq-note { margin: 0; }
 .sq-room .sq-stars { margin: 0 auto; font-size: 40px; text-shadow: none; }
 .sq-room .sq-st-bg { color: rgba(244, 247, 255, .18); } .sq-room .sq-st-fg { color: #ffd23f; }
-.sq-room .sq-avg b { font: 30px var(--dlg-tab-font); color: var(--dlg-ink); } .sq-room .sq-avg span { color: #c9d4f0; }
-.sq-room .sq-pts { display: inline-block; margin-left: 10px; font: 30px var(--dlg-tab-font) !important; font-style: normal; color: #9dff6a; }
-.sq-room .sq-stamp { margin: 2px auto 4px; border-color: #ff8a8a; color: #ff8a8a; font: 26px var(--dlg-tab-font); border-radius: 6px; }
+.sq-room .sq-avg b { font: 600 30px var(--dlg-font); color: var(--dlg-ink); } .sq-room .sq-avg span { color: #c9d4f0; }
+.sq-room .sq-pts { display: inline-block; margin-left: 10px; font: 600 30px var(--dlg-font) !important; font-style: normal; color: #9dff6a; }
+.sq-room .sq-stamp { margin: 2px auto 4px; border-color: #ff8a8a; color: #ff8a8a; font: 800 26px var(--dlg-font); border-radius: 6px; }
 .sq-room .sq-board { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
 .sq-room .sq-board li { display: flex; gap: 6px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .1); font: 600 12.5px var(--f-sys); }
 .sq-room .sq-board li.me { outline: 1.5px solid #ffd23f; }
@@ -1329,6 +1326,8 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 /* Side Quest's 3D back room (prophet.js): the canvas fills the room behind
    the UI and fades in once it's drawing */
 .sq-3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+/* drag on the room to look around, tap him / the ball / the lamp */
+.sq-3d .retro-canvas { pointer-events: auto; touch-action: none; }
 .sq-3d .retro-canvas { transition: opacity .6s ease-out; }
 
 /* Humiliation Ritual's 3D tent (retrorooms.js): the canvas fills the room;
