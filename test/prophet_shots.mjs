@@ -1,10 +1,10 @@
-// Side Quest's host, The Prophet (web/prophet.js): loads, then each beat of a
+// Side Quest's host, The Prophet, in the rooftop room (web/prophet.js, web/rooftop.js): loads, then each beat of a
 // turn shot at the reference's phone size, with the dialog box (dialog.js);
 // then looking around and the taps, driven with real pointer input:
 //   - a drag orbits the camera, it glides home ~3 s after letting go
 //   - hold(true) keeps it home (a drag does nothing)
 //   - a pinch zooms in a bit
-//   - taps on him, the ball and the lamp reach onTap
+//   - taps on him, the ball, the lamp and the TV reach onTap
 // node test/prophet_shots.mjs <dir> [only]
 import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -35,7 +35,7 @@ const shot = async (name, fn, wait = 1200) => {
 };
 // a stand-in face for the ball (in the game it's the player's own render)
 await pg.evaluate(() => { window.dot = c => { const k = document.createElement("canvas"); k.width = k.height = 64; const g = k.getContext("2d"); g.fillStyle = c; g.beginPath(); g.arc(32, 32, 28, 0, 7); g.fill(); g.fillStyle = "#222"; g.fillRect(20, 26, 6, 8); g.fillRect(38, 26, 6, 8); return k.toDataURL(); }; });
-await shot("0-default", () => { __dlg.say("Relax. The ball already knows who's next.", { instant: true }); }, 2500);
+await shot("0-default", () => { __dlg.say("Sit down, kid. Fate's got a job for you.", { instant: true }); }, 2500);
 await shot("1-idle", () => { __dlg.say("Relax. The ball already knows who's next.", { instant: true }); }, 1500);
 await shot("2-reveal", () => { __p.setPose("reveal"); __p.orb("spin"); __p.push(1); __dlg.say("...", { instant: true }); }, 1500);
 await shot("3-point", () => { __p.setPose("point"); __p.face(dot("#e9a"), true); __p.orb("landed"); __dlg.say("Relax. The ball already knows who's next... alice.", { instant: true }); }, 1500);
@@ -83,12 +83,14 @@ if (!ONLY || ONLY.startsWith("7")) {
   const ball = await pg.evaluate(() => __p.ballRect());
   await pg.mouse.click(ball.left + ball.width / 2, ball.top + ball.height / 2); await sleep(250);
   await pg.screenshot({ path: join(OUT, "8-tap-ball.png") }); console.log("  shot 8-tap-ball");
-  await pg.mouse.click(12, 300); await sleep(200);           // the lamp's shade, at the left edge
-  await pg.mouse.click(190, 290); await sleep(500);          // his chest
+  await pg.mouse.click(16, 290); await sleep(200);           // the lamp's shade, at the left edge
+  await pg.mouse.click(34, 118); await sleep(200);           // the TV
+  await pg.mouse.click(160, 232); await sleep(500);          // his face
   await pg.screenshot({ path: join(OUT, "8-tap-him.png") }); console.log("  shot 8-tap-him");
   const taps = await pg.evaluate(() => __taps);
   ok(taps.includes("ball"), "tap the ball: it pulses and swirls");
   ok(taps.includes("lamp"), "tap the lamp: it flickers");
+  ok(taps.includes("tv"), "tap the TV: a burst of static");
   ok(taps.includes("prophet"), "tap him: onTap('prophet') (a line and a nod or a puff)");
   ok(await pg.evaluate(() => document.querySelector(".dlg-text").textContent === "Patience."), "his quip shows in the dialog box");
   await sleep(2900);
