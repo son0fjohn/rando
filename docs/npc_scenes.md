@@ -229,7 +229,7 @@ right side `20ee521a-317b-4aac-bb3c-2c6cd7812d4d`, back
 | 1 | `c04ae68c-75f6-4316-8d82-9dbc7fcbf43e` | front, left (the side view mirrored, `0898032e…`), back, right | a good mesh, but his right hand is fused into his trouser pocket and the arm into the jacket: any pose that brings that arm forward (resting on the table, reaching, holding the capsule up, "shhh") tears the cloth | 12 |
 | 2 | `2ce28dab-b468-41ae-95f3-fabad9cf7b5e` | the same views edited first: both arms hanging a little away from the body, hands open, no cigar (front `9a05664b…`, back `9b007775…`, side `92e81755…` and its mirror `94d10176…`) | used: clean arm gaps; the cigar is a prop in his hand | 12 |
 
-The view edits are Flux Kontext (`flux_kontext`), 1.5 credits a request:
+The view edits are Flux Kontext (`flux_kontext`):
 an attempt at a true left-side view (`c13132d7…`, `f4cfd68f…`, both came
 back facing the wrong way, not used), the arms-down front and back
 (`26cb2930…`, `9a05664b…`, `67adcf72…`, `9b007775…`) and side (`aafdb20b…`,
