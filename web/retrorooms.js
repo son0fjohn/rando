@@ -1,34 +1,23 @@
 // The game scenes' rooms on the retro look kit (retrolook.js), each with its
 // own mood and the same DNA as the world map and Side Quest's nook:
 //
-//   tent   — Humiliation Ritual: a little circus tent at night, warm stage
-//            spotlights and a cool blue fill, string lights, confetti
 //   study  — Secret Diary: a cozy bedroom/study late at night, a warm desk
 //            lamp and moonlight through the window, floating dust
 //   lounge — Mask Off: a dim lounge, one overhead light, deep reds and
 //            purples, smoke haze
 //
-//   const room = await retroRoom("tent", hostEl);   // a canvas filling hostEl
+//   const room = await retroRoom("study", hostEl);   // a canvas filling hostEl
 //   room.stage   // the kit's stage (scene, camera, onFrame, attach, dispose)
 //
 // Props are generated low-poly meshes (web/games/rooms/<room>/*.glb, logged
 // in docs/npc_scenes.md); walls, floors, lights and particles are built here.
-import { retroStage, THREE, flat, bakeAO, pixelModel, lambertize, motes, flicker, breathe, blobShadow, mirrorDom, litCardMaterial } from "./retrolook.js";
+import { retroStage, THREE, flat, bakeAO, pixelModel, lambertize, motes, flicker, breathe, blobShadow } from "./retrolook.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
 const ROOMS = new URL("./games/rooms/", import.meta.url).href;
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 export const MOODS = {
-  tent: {
-    bg: 0x0b0814,
-    fog: { color: 0x1a1030, near: 5, far: 13 },
-    ambient: { sky: 0x4a3070, ground: 0x1a0c10, intensity: 0.55 },
-    key: { color: 0xffb070, intensity: 0.5, pos: [0, 4, 4] },
-    fill: { color: 0x3c6cff, intensity: 0.9, pos: [-3, 2.5, -2] },
-    bloom: { threshold: 0.68, strength: 1.0 },
-    grade: { tint: [1.07, 0.97, 0.94], sat: 0.95, contrast: 1.08, lift: 0.02 },
-  },
   study: {
     fps: 30,                 // behind the cards: ambient, no need for more
     bg: 0x0a0c18,
@@ -117,65 +106,6 @@ function stringLights(st, a, b, { n = 9, sag = 0.35, color = 0xffd27a } = {}) {
   st.scene.add(g);
   if (!reduce()) st.onFrame(t => bulbs.forEach((h, i) => { h.material.opacity = 0.45 + 0.15 * Math.sin(t * 2 + i * 1.3); }));
   return g;
-}
-
-// ---------------------------------------------------------------- the tent
-async function tent(st) {
-  const { scene } = st;
-  // the tent: a ring of red and cream canvas panels and a striped roof cone
-  const stripes = canvasTex(64, 8, (x, w, h) => { for (let i = 0; i < 16; i++) { x.fillStyle = i % 2 ? "#e9d8b8" : "#a8283a"; x.fillRect(i * 4, 0, 4, h); } });
-  stripes.wrapS = THREE.RepeatWrapping; stripes.repeat.set(2, 1);
-  const wallG = new THREE.CylinderGeometry(4.2, 4.6, 3.4, 32, 1, true, Math.PI * 0.55, Math.PI * 0.9);
-  const wall = new THREE.Mesh(wallG, new THREE.MeshLambertMaterial({ map: stripes, side: THREE.BackSide, flatShading: true, emissive: 0x2a0c14 }));
-  wall.position.set(0, 1.7, 0.6); scene.add(bakeAO(wall, { reach: 2, strength: 0.5 }));
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.6, 2.4, 32, 1, true), new THREE.MeshLambertMaterial({ map: stripes, side: THREE.BackSide, flatShading: true }));
-  roof.position.set(0, 4.6, 0.6); scene.add(roof);
-  // a warm wash on the back canvas so the stripes read
-  const wash = new THREE.PointLight(0xff9a60, 1.4, 6, 1.5); wash.position.set(0, 2.6, -1.4); scene.add(wash);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 6, 6), flat(0x6a4630)); pole.position.set(0, 3, -2.9); scene.add(pole);
-  // the floor: dark boards, the round stage on it
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(6, 30), flat(0x2e1c18)); floor.rotation.x = -Math.PI / 2; scene.add(floor);
-  const stageTop = canvasTex(64, 64, (x) => {
-    x.fillStyle = "#7a2a30"; x.beginPath(); x.arc(32, 32, 31, 0, 7); x.fill();
-    x.strokeStyle = "#e0b24a"; x.lineWidth = 3; x.beginPath(); x.arc(32, 32, 27, 0, 7); x.stroke();
-    x.fillStyle = "#e0b24a"; for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; x.fillRect(32 + Math.cos(a) * 20 - 1.5, 32 + Math.sin(a) * 20 - 1.5, 3, 3); }
-  });
-  const stage = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.8, 0.28, 24), [flat(0x8a2a34), new THREE.MeshLambertMaterial({ map: stageTop }), flat(0x4a1418)]);
-  stage.position.set(0, 0.14, -0.4); scene.add(bakeAO(stage, { reach: 0.3, strength: 0.4 }));
-  // props
-  await Promise.all([
-    prop(st, "tent", "spot", { pos: [-0.82, 0, 1.3], rot: 0.9, height: 0.9, shadow: 0.6 }),
-    prop(st, "tent", "spot", { pos: [0.85, 0, 1.2], rot: -2.3, height: 0.88, shadow: 0.6 }),
-    prop(st, "tent", "crates", { pos: [-1.35, 0, -1.9], rot: 0.4, height: 1.05, shadow: 0.9 }),
-  ]);
-  // the stage spotlights: warm cones from the lamps onto the stage
-  const target = new THREE.Object3D(); target.position.set(0, 0.3, -0.2); scene.add(target);
-  for (const [x, z] of [[-1.0, 1.25], [1.05, 1.15]]) {
-    const sp = new THREE.SpotLight(0xffc27a, 3.2, 9, 0.42, 0.55, 1.4);
-    sp.position.set(x, 0.85, z); sp.target = target; scene.add(sp);
-    flicker(st, sp, { amount: 0.06, speed: 3 });
-    beam(st, new THREE.Vector3(x * 0.95, 0.85, z), new THREE.Vector3(x * 0.1, 0.5, -0.5), { radius: 0.5, opacity: 0.16 });
-  }
-  // string lights across the top
-  stringLights(st, new THREE.Vector3(-3, 3.1, -1.5), new THREE.Vector3(3, 3.1, -1.5), { n: 11, sag: 0.45 });
-  stringLights(st, new THREE.Vector3(-2.6, 3.4, 0.6), new THREE.Vector3(2.6, 3.3, 0.4), { n: 9, sag: 0.35, color: 0xff9ac8 });
-  // confetti, drifting down
-  const N = 90, pos = new Float32Array(N * 3), col = new Float32Array(N * 3), C = [0xffc83d, 0xff5d8a, 0x3ee0d0, 0xffffff, 0x8ab4ff];
-  for (let i = 0; i < N; i++) { pos.set([(Math.random() - 0.5) * 5, Math.random() * 3.6, (Math.random() - 0.5) * 3], i * 3); new THREE.Color(C[i % C.length]).toArray(col, i * 3); }
-  const cg = new THREE.BufferGeometry(); cg.setAttribute("position", new THREE.BufferAttribute(pos, 3)); cg.setAttribute("color", new THREE.BufferAttribute(col, 3));
-  scene.add(new THREE.Points(cg, new THREE.PointsMaterial({ size: 0.045, vertexColors: true, transparent: true, opacity: 0.85 })));
-  if (!reduce()) st.onFrame((t, dt) => { for (let i = 0; i < N; i++) { let y = pos[i * 3 + 1] - dt * (0.12 + (i % 5) * 0.03); if (y < 0) y += 3.6; pos[i * 3 + 1] = y; pos[i * 3] += Math.sin(t + i) * dt * 0.05; } cg.attributes.position.needsUpdate = true; });
-  st.camera.fov = 44;
-  st.camera.position.set(0, 1.6, 6.4);
-  breathe(st, { amp: 0.012, target: new THREE.Vector3(0, 1.45, 0) });
-  // the game's stage pieces (the clown, the machine, the capsules) as cards
-  // in the tent: the spotlights' warm key, the night's blue on their far
-  // edges, a little warm bounce from the stage
-  const mirror = root => mirrorDom(st, root, {
-    distance: 6.2, fog: 0.12,
-    material: () => { const m = litCardMaterial(st.mood, { key: 0xffc890, rim: 0x5a7cff, ambient: 0x5a4a7a }); m.uniforms.glowAmt.value = 0.25; m.uniforms.glow.value.setHex(0xffa860); return m; },
-  });
-  return { stageTarget: target, mirror };
 }
 
 // ---------------------------------------------------------------- the study
@@ -269,7 +199,7 @@ async function lounge(st) {
   return {};
 }
 
-const BUILD = { tent, study, lounge };
+const BUILD = { study, lounge };
 export async function retroRoom(kind, host) {
   const st = await retroStage(host, MOODS[kind] ?? {});
   const extra = await BUILD[kind](st);

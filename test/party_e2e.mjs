@@ -262,13 +262,15 @@ try {
   ok(await until(C, () => !window.party.current.launched && document.getElementById("game-layer").hidden), "…on every phone");
   ok(await until(B, () => /Game 2 of 3/.test(document.getElementById("pt-next")?.textContent ?? "")), "an ended game isn't one of the 3: still Game 2 of 3");
 
-  head("Humiliation Ritual — the clown picks, only the performer gets the prompt, guesses feed the performer");
+  head("Humiliation Ritual — the Boss picks, only the performer gets the prompt, guesses feed the performer");
   await startGame(A, "ritual");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");
-  ok(await until(B, () => !!document.querySelector("#hr-show .hr-caps") && document.querySelectorAll("#hr-caps .hr-cap").length === 3, null, 8000), "the clown's show: everyone's capsule is up (3 players)");
-  const upLine = await C.waitForFunction(() => { const t = document.querySelector(".hr-room #np-bubble.on")?.textContent ?? ""; return /you're up!/.test(t) && t; }, null, { timeout: 12000 }).then(h => h.jsonValue()).catch(() => "");
-  ok(!!upLine, "the clown holds one up: \"[Name], you're up!\"");
-  const upName = upLine.replace(/, you're up!.*/, "").trim();
+  ok(await until(B, () => /Pick a capsule\. Any capsule\./.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 8000), "the Boss opens the turn: \"Pick a capsule. Any capsule.\"");
+  // (polled from here: a page drawing 3D in the background gets few animation frames)
+  let upLine = "";
+  for (let i = 0; i < 60 && !upLine; i++) { upLine = await C.evaluate(() => { const t = document.querySelector(".hr-room .dlg-text")?.textContent ?? ""; return /\. You're up\.$/.test(t) ? t : ""; }); if (!upLine) await sleep(250); }
+  ok(!!upLine, "he holds a capsule up: \"[Name]. You're up.\"");
+  const upName = upLine.replace(/\. You're up\.$/, "").trim();
   // the opening: a slip with the prompt on the performer's phone, "shhh" on the others
   let performer = null;
   for (let i = 0; i < 12 && !performer; i++) {
@@ -281,9 +283,10 @@ try {
     ok(await until(performer, () => /ACT IT OUT/.test(document.querySelector(".hr-slip .hr-kick")?.textContent ?? "") && (document.querySelector("#hr-slip-p")?.textContent ?? "").length > 1, null, 6000), "…ACT IT OUT, and the prompt");
     const slip = await text(performer, "#hr-slip-p");
     const perfName = new URL(performer.url()).searchParams.get("me");
-    ok(perfName === upName, `the performer is the one the clown named (${upName})`);
-    ok((await Promise.all(guessers.map(pg => pg.locator(".hr-slip, .hr-card").count()))).every(n => n === 0) && (await Promise.all(guessers.map(pg => pg.locator(".hr-shh").count()))).every(n => n === 1),
-      "everyone else gets the clown's \"shhh\", no slip");
+    ok(perfName === upName, `the performer is the one the Boss named (${upName})`);
+    ok((await Promise.all(guessers.map(pg => pg.locator(".hr-slip, .hr-card").count()))).every(n => n === 0)
+      && (await Promise.all(guessers.map(pg => until(pg, () => /^Shhh\.\.\. this one's just for you\.$/.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 5000)))).every(Boolean),
+      "everyone else gets his \"Shhh... this one's just for you.\", no slip");
     await shot(performer, "08a-ritual-slip");
     await shot(guessers[0], "08b-ritual-shh");
     // the prompt never reaches another phone: not in the synced game state, not in the page

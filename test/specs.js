@@ -646,15 +646,15 @@ group("Humiliation Ritual (4 players)");
   const leaks = () => [...Object.keys(t.s.players)].some(id => { const j = JSON.stringify(t.stateOf(id) ?? {}); return HR_POOL.some(p => j.includes(p.text) || j.includes(p.id)); });
   adv(500);
   ok(t.s.turns === 4, "default: everyone performs once (4 turns)");
-  ok(t.s.phase === "pick", "each turn opens with the clown's pick");
+  ok(t.s.phase === "pick", "each turn opens with the Boss's pick");
   const r0 = t.s.turn, perf = r0.performer;
   ok(!!perf && /^[0-9a-f]{24}$/.test(r0.key), "a performer is picked, and the turn gets a random key");
-  ok(Array.isArray(r0.cast) && r0.cast.length === 4 && r0.cast.includes(perf), "the clown juggles everyone's capsules (up to 5), the performer's among them");
+  ok(Array.isArray(r0.cast) && r0.cast.length === 4 && r0.cast.includes(perf), "the turn's cast: up to 5 players, the performer among them");
   ok(!("prompt" in r0) && !r0.answer && !leaks(), "the synced state carries no prompt and no prompt id, on any phone");
   for (let i = 0; i < 6; i++) { adv(400); await settle(); }
   ok(asked.length === 1 && asked[0].me === perf && asked[0].turn === r0.key && asked[0].room === "party-TEST" && asked[0].level === "spicy",
     `only the performer's phone asks the server for the prompt (${asked.map(a => a.me).join(",")} for ${asked[0]?.level})`);
-  ok(waitPhase(t, "open") && !leaks(), "the clown opens the capsule; still nothing in the state");
+  ok(waitPhase(t, "open") && !leaks(), "he twists the capsule open; still nothing in the state");
   ok(waitPhase(t, "act"), "then the acting starts");
   const [g1, g2] = Object.keys(t.s.players).filter(x => x !== perf);
   t.input(g1, "guess", { text: "completely wrong" });

@@ -3,10 +3,11 @@
 //   sidequest  3 phones (2 in the video): the host's setup, the Prophet
 //              and his crystal ball, a full turn (Accept, timer, ratings,
 //              verdict, his nod) and a Give-up turn
-//   ritual     3 phones: one full charades turn — the clown juggles, catches
-//              a capsule in his mouth, holds it up, opens it (the slip on the
-//              performer's phone, peek/wink/shhh on a guesser's), the live
-//              guess feed, a guesser typing, the performer tapping it
+//   ritual     3 phones (2 in the video): one full charades turn — the Boss
+//              reaches into his box, holds a capsule up ("[Name]. You're
+//              up."), twists it open (the slip on the performer's phone,
+//              peek/smirk/"Shhh..." on a guesser's), the live guess feed, a
+//              guesser typing, the performer tapping it, his nod
 //   maskoff    3 phones: the deck setup, a full Mask Off turn (hand, card,
 //              mask off, Same, Go deeper), a Pass turn, the "masks off" end
 //   party      4 phones: a full set of 3 games (skipped through) ending on the
@@ -320,7 +321,7 @@ async function ritual() {
   const P = await phones(["alice", "bob", "cy"]);
   const A = P.host;
   await sleep(1000);
-  // film every phone from the start (the clown's pick, the capsule, the
+  // film every phone from the start (the Boss's pick, the capsule, the
   // open), then keep the performer's and one guesser's side by side
   const all = new Map();
   // the lobby renders everyone's 3D look while they hang out (charrender.js)

@@ -1,13 +1,13 @@
 // The game scenes' rooms (web/retrorooms.js): each loads and is shot at
-// phone size. node test/rooms_shots.mjs <dir> [tent,study,lounge]
+// phone size. node test/rooms_shots.mjs <dir> [study,lounge]
 import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { serve } from "./appserve.mjs";
 const OUT = process.argv[2];
-if (!OUT) { console.error("usage: node test/rooms_shots.mjs <dir> [tent,study,lounge]"); process.exit(2); }
-const ROOMS = (process.argv[3] ?? "tent,study,lounge").split(",");
+if (!OUT) { console.error("usage: node test/rooms_shots.mjs <dir> [study,lounge]"); process.exit(2); }
+const ROOMS = (process.argv[3] ?? "study,lounge").split(",");
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve();
 const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";

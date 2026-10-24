@@ -1144,36 +1144,19 @@ body.hp-setup-wait #game-layer { display: none !important; }
 
 @keyframes hr-conf { from { transform: translate(0, 0) rotate(0); opacity: 1; } to { transform: translate(var(--x), calc(var(--y) + 220px)) rotate(var(--r)); opacity: 0; } }
 
-/* ---------------------------------------------------------------- NPC scenes (npcscene.js)
-   Side Quest and Humiliation Ritual, built like the Art Gallery: a painted
-   portrait room (full height, a centred column on wide screens), the NPC as
-   pose cutouts in a group placed in its own units, and the UI as objects in
-   the room. HUD on top, a status pill under it, the wall for the big card,
-   the NPC on the floor, host buttons bottom right. */
+/* ---------------------------------------------------------------- NPC scenes
+   Side Quest and Humiliation Ritual: a portrait room (full height, a centred
+   column on wide screens) with the host's 3D scene in it, and the UI as
+   objects in the room. HUD on top, a status pill under it, the wall for the
+   big card, the panel and the dialog box at the bottom. */
 #game-panel.np-full { top: 0; bottom: 0; max-height: none; overflow: hidden; padding: 0; background: #120d16; }
 #game-layer:has(#game-panel.np-full) #game-hud, #game-layer:has(#game-panel.np-full) #game-feed { z-index: 4; }
 .np-room { position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, 56.25vh); width: min(100%, 56.25dvh); overflow: hidden;
   background: #1a1220 center top / cover no-repeat; color: #f3e7c9; }
-.np-group { position: absolute; }
-.np-group > * { position: absolute; }
-.np-npc { transform-origin: 50% 100%; }
-.np-npc .np-body { position: absolute; inset: 0; transform-origin: 50% 100%; animation: np-breathe 3.4s ease-in-out infinite; }
-.np-pose { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: bottom; opacity: 0; transform: translateY(1.5%) scale(.975);
-  transition: opacity .14s ease, transform .5s cubic-bezier(.34, 1.56, .64, 1); pointer-events: none; user-select: none; -webkit-user-drag: none; }
-.np-pose.on { opacity: 1; transform: none; }
-.np-npc.np-bump { animation: np-bump .48s cubic-bezier(.34, 1.56, .64, 1); }
-@keyframes np-bump { 0% { transform: none } 22% { transform: scale(1.03, .955) } 58% { transform: scale(.985, 1.03) } 100% { transform: none } }
-@keyframes np-breathe { 0%, 100% { transform: none } 50% { transform: scale(1.006, .992) } }
-.np-prop { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; user-select: none; }
-/* the status pill and the NPC's speech bubble (Art Gallery style) */
+/* the status pill */
 .np-pill { position: absolute; left: 50%; top: 66px; transform: translateX(-50%); z-index: 3; max-width: 92%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: rgba(20, 16, 12, .74); color: #f3e7c9; font: 700 12px -apple-system, "Segoe UI", Helvetica, sans-serif; letter-spacing: .03em; border-radius: 999px; padding: 6px 12px; pointer-events: none; }
 .np-pill b { color: #ffd60a; } .np-pill:empty { display: none; }
-.np-bubble { position: absolute; z-index: 3; max-width: 62%; background: rgba(245, 240, 230, .97); color: #2a2620; border-radius: 12px 12px 12px 3px; padding: 9px 12px;
-  font: 600 13.5px/1.35 -apple-system, "Segoe UI", Helvetica, sans-serif; box-shadow: 0 2px 10px rgba(0, 0, 0, .3); opacity: 0; transform: scale(.7); transform-origin: 0 100%;
-  transition: opacity .18s, transform .32s cubic-bezier(.34, 1.56, .64, 1); pointer-events: none; }
-.np-bubble.on { opacity: 1; transform: none; }
-.np-bubble .np-rest { visibility: hidden; }
 /* the title of the moment: a small plaque high on the wall */
 .np-title { position: absolute; left: 50%; top: 100px; transform: translateX(-50%); z-index: 3; margin: 0; max-width: 90%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font: 800 19px/1.2 -apple-system, "Segoe UI", Helvetica, sans-serif; color: #fff4dc; text-shadow: 0 2px 0 rgba(0, 0, 0, .55), 0 0 18px rgba(0, 0, 0, .5); }
@@ -1192,7 +1175,6 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .np-confetti i { position: absolute; width: 8px; height: 12px; border-radius: 2px; animation: hr-conf 1.4s cubic-bezier(.2, .7, .4, 1) both; }
 /* a player's 3D look, pre-rendered (charrender.js) */
 .np-look { position: absolute; display: block; object-fit: contain; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .np-npc .np-body, .np-npc.np-bump { animation: none; } }
 
 /* Side Quest: the Prophet's back room (prophet.js) fills the screen, the
    quest card hangs over it once it has risen out of the ball, and he talks
@@ -1247,81 +1229,53 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 /* the host's skip sits just over the dialog, small, on the right */
 #game-panel.np-full .sq-low .ag-skip { position: static; align-self: flex-end; margin: 0; padding: 6px 12px; min-height: 0; font-size: 12px; }
 
-/* Humiliation Ritual's circus stage: the clown on the floor right of
-   centre, the gacha machine on its drum at his side, capsules with the
-   players' 3D heads inside their domes. The slip / answer card hangs on the
-   wall, the guess box and the feed sit on a plaque at the bottom. */
-.hr-group { left: 50%; bottom: 11%; width: min(98%, 48vh); width: min(98%, 48dvh); aspect-ratio: 760 / 900; transform: translateX(-50%); }
-.hr-group > .hr-caps { inset: 0; pointer-events: none; }
-.hr-cap { position: absolute; transform: scale(var(--s, 1)); transform-origin: 50% 50%; transition: opacity .3s; }
-.hr-cap > img { position: absolute; display: block; pointer-events: none; user-select: none; }
-.hr-cap-base { left: 0; top: 0; width: 100%; height: 100%; }
-.hr-cap-head { left: 19%; top: 3%; width: 62%; height: 54%; object-fit: contain; }
-.hr-cap-head:not([src]) { visibility: hidden; }
-.hr-cap-gloss { left: 0; top: 0; width: 100%; height: 58.7%; opacity: .42; }
-.hr-cap.hero:not(.out) { opacity: 0; }
-.hr-cap.inhand .hr-cap-base { opacity: 0; }
-.hr-cap.inhand .hr-cap-head { animation: sq-face-pop .6s cubic-bezier(.34, 1.56, .64, 1) both; }
-.hr-cap.gone, .hr-caps.away .hr-cap:not(.hero) { opacity: 0; }
-.hr-caps.shake .in-globe { animation: hr-rattle .16s ease-in-out infinite alternate; }
-.hr-caps.shake .in-globe:nth-child(2n) { animation-delay: -.08s; }
-@keyframes hr-rattle { from { transform: translate(-3%, 2%) rotate(-8deg) scale(var(--s)) } to { transform: translate(3%, -3%) rotate(8deg) scale(var(--s)) } }
-.hr-cap.in-globe.drop { animation: none; transform: translateY(120%) scale(var(--s)); opacity: 0; transition: transform .3s ease-in, opacity .3s ease-in; }
-.hr-dial { transform-origin: 50% 50%; transition: transform 1.7s cubic-bezier(.45, 0, .3, 1); }
-.hr-dial.turn { transform: rotate(720deg); }
-.hr-machine, .hr-pedestal, .hr-dial { transition: opacity .5s, transform 1.7s cubic-bezier(.45, 0, .3, 1); }
-.hr-group.acting .hr-machine, .hr-group.acting .hr-pedestal, .hr-group.acting .hr-dial { opacity: 0; }
-/* the performer, on stage while they act: their own 3D character in a spot */
-.hr-star { opacity: 0; transform: translateY(6%) scale(.96); transform-origin: 50% 100%; object-fit: contain; object-position: bottom; pointer-events: none;
-  filter: drop-shadow(0 0 22px rgba(255, 236, 190, .55)); transition: opacity .5s, transform .6s cubic-bezier(.34, 1.56, .64, 1); }
-.hr-star:not([src]) { visibility: hidden; }
-.hr-group.acting .hr-star { opacity: 1; transform: none; }
-.hr-group.acting::before { content: ""; position: absolute; left: -4%; top: -30%; width: 58%; height: 132%; pointer-events: none;
-  background: linear-gradient(to bottom, rgba(255, 240, 200, 0), rgba(255, 240, 200, .16) 40%, rgba(255, 240, 200, .26)); clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%); }
-.hr-lid { opacity: 0; pointer-events: none; }
-.hr-lid.on { opacity: 1; }
-.hr-lid.land { opacity: 0; transition: opacity .4s .3s; }
-.hr-cup { pointer-events: none; }
-.hr-bubble { left: 4%; top: 30%; max-width: 54%; border-radius: 12px 12px 3px 12px; transform-origin: 100% 100%; font-size: 15px; }
-.hr-shh { right: 6%; left: auto; top: 33%; font: 900 18px -apple-system, sans-serif; border-radius: 14px 14px 14px 3px; }
-.hr-wall { position: absolute; left: 7%; right: 7%; top: 136px; z-index: 3; }
-.hr-room .hr-slip, .hr-room .hr-reveal { position: relative; margin: 0; padding: 12px 14px 14px; text-align: center; color: #2a1218; border: 2px solid #b8902f; border-radius: 10px;
-  background: linear-gradient(#fbf3e1, #efdfbd); box-shadow: 0 0 0 4px rgba(60, 14, 28, .85), 0 0 34px rgba(255, 200, 110, .4), 0 14px 26px rgba(0, 0, 0, .45); transform-origin: 50% 100%; }
-.hr-room .hr-kick { font: 900 14px/18px -apple-system, "Segoe UI", sans-serif; letter-spacing: .16em; color: #d8344a; }
-.hr-room .hr-prompt { font: 900 30px/34px -apple-system, "Segoe UI", sans-serif; margin-top: 6px; overflow-wrap: anywhere; }
-.hr-room .hr-note { margin: 8px 0 0; font: 600 12px -apple-system, sans-serif; color: #8a5a3a; }
-.hr-room .hr-slip.small { padding: 8px 12px 10px; } .hr-room .hr-slip.small .hr-prompt { font-size: 24px; line-height: 28px; } .hr-room .hr-slip.small .hr-note { display: none; }
+/* Humiliation Ritual: The Boss's basement (boss.js) fills the screen, the
+   performer's slip / the answer hangs over it, and he talks through the
+   dialog box at the bottom, with the feed / guess box / points panel just
+   above it, in the dialog's own navy and font (like Side Quest's). */
+.hr-room { background: #3c3b3d; }
+.hr-wall { position: absolute; left: 7%; right: 7%; top: 64px; z-index: 3; }
+.hr-room .hr-slip, .hr-room .hr-reveal { position: relative; margin: 0; padding: 12px 14px 14px; text-align: center; color: #24262c; border: 2px solid #d9d4c6; border-radius: 10px;
+  background: #f2efe6; box-shadow: 0 10px 24px rgba(0, 0, 0, .35); transform-origin: 50% 100%; }
+.hr-room .hr-kick { font: 700 13px/16px var(--dlg-font); letter-spacing: .12em; color: #b8323f; }
+.hr-room .hr-prompt { font: 800 28px/33px var(--f-sys); margin-top: 4px; overflow-wrap: anywhere; }
+.hr-room .hr-note { margin: 8px 0 0; font: 13px/16px var(--dlg-font); color: #6a6460; }
+.hr-room .hr-slip.small { padding: 8px 12px 10px; } .hr-room .hr-slip.small .hr-prompt { font-size: 21px; line-height: 26px; } .hr-room .hr-slip.small .hr-note { display: none; }
 .hr-slip.unroll > * { animation: hr-unroll-in .9s cubic-bezier(.3, 1.2, .5, 1) both; }
 @keyframes hr-unroll-in { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
-.hr-room .hr-reveal small { display: block; font: 700 12px -apple-system, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #8a5a3a; }
-.hr-room .hr-reveal b { display: block; font: 900 32px/36px -apple-system, sans-serif; overflow-wrap: anywhere; }
+.hr-room .hr-reveal small { display: block; font: 700 12px/16px var(--dlg-font); letter-spacing: .1em; text-transform: uppercase; color: #6a6460; }
+.hr-room .hr-reveal b { display: block; font: 800 30px/35px var(--f-sys); overflow-wrap: anywhere; }
 .hr-room .hr-reveal.waiting b { opacity: .45; }
-.hr-ui { position: absolute; left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom)); z-index: 3; }
-.hr-ui .np-plaque { position: relative; margin: 0 5%; left: auto; right: auto; border-color: #c9583a; background: linear-gradient(rgba(52, 14, 26, .9), rgba(34, 10, 18, .93)); }
-.hr-plq-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 600 13px -apple-system, sans-serif; color: #f0c8b8; text-align: left; }
-.hr-plq-top b { color: #ffd60a; }
-.hr-room .hr-clock { font-size: 30px; margin: 0; color: #fff4dc; text-shadow: 0 2px 0 rgba(0, 0, 0, .5); }
-.hr-room .hr-clock.urgent { color: #ff5d6a; }
+/* the bottom: the panel (feed, guess box, points) over the dialog box */
+.hr-low { position: absolute; left: 9px; right: 9px; bottom: max(28px, calc(10px + env(safe-area-inset-bottom))); z-index: 4; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.hr-low > * { pointer-events: auto; }
+.hr-ui:empty { display: none; }
+.hr-ui .np-plaque { position: relative; left: auto; right: auto; margin: 0; padding: 10px 12px 12px; color: var(--dlg-ink); background: var(--dlg-navy); border: 2px solid var(--dlg-edge); border-radius: 8px;
+  box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 6px 16px rgba(0, 0, 0, .3); }
+.hr-plq-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 15px/18px var(--dlg-font); color: #c9d4f0; text-align: left; }
+.hr-plq-top b { color: var(--dlg-ink); font-weight: 600; }
+.hr-room .hr-clock { margin: 0; font: 600 28px/1 var(--dlg-font); color: var(--dlg-ink); text-shadow: none; font-variant-numeric: tabular-nums; }
+.hr-room .hr-clock.urgent { color: #ff8a8a; }
 .hr-room .gp-form { margin: 8px 0 0; }
 .hr-room .hr-feed { display: flex; flex-direction: column; gap: 5px; max-height: 30vh; overflow: auto; margin-top: 8px; }
-.hr-room .hr-g { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 6px 10px; text-align: left; color: #fff4dc; border: 1px solid rgba(255, 255, 255, .16); border-radius: 12px; background: rgba(255, 255, 255, .07); }
-.hr-room .hr-g b { font: 600 12px -apple-system, sans-serif; color: #f0a8b8; flex: 0 0 auto; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hr-room .hr-g span { flex: 1; font: 700 16px/20px -apple-system, sans-serif; overflow-wrap: anywhere; }
-.hr-room .hr-g em { font: 700 10px -apple-system, sans-serif; font-style: normal; padding: 2px 7px; border-radius: 999px; background: #ffc84d; color: #2a1218; flex: 0 0 auto; }
-.hr-room .hr-g.close { border-color: #ffc84d; }
-.hr-room .hr-g.match { border-color: #7dff5e; background: rgba(125, 255, 94, .12); } .hr-room .hr-g.match em { background: #7dff5e; }
-.hr-room .hr-g.picked { background: #7dff5e; color: #0b2a07; }
+.hr-room .hr-g { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 6px 10px; text-align: left; color: var(--dlg-ink); border: 1px solid rgba(255, 255, 255, .16); border-radius: 8px; background: rgba(255, 255, 255, .07); font-family: var(--dlg-font); }
+.hr-room .hr-g b { font: 600 12px var(--dlg-font); color: #c9d4f0; flex: 0 0 auto; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-room .hr-g span { flex: 1; font: 600 16px/20px var(--dlg-font); overflow-wrap: anywhere; }
+.hr-room .hr-g em { font: 700 10px var(--dlg-font); font-style: normal; padding: 2px 7px; border-radius: 999px; background: #ffd23f; color: #1a1c2c; flex: 0 0 auto; }
+.hr-room .hr-g.close { border-color: #ffd23f; }
+.hr-room .hr-g.match { border-color: #9dff6a; background: rgba(157, 255, 106, .12); } .hr-room .hr-g.match em { background: #9dff6a; }
+.hr-room .hr-g.picked { background: #9dff6a; color: #0b2a07; }
 .hr-room .hr-g:disabled:not(.picked) { opacity: .45; }
-.hr-room .hr-empty { text-align: center; color: #f0c8b8; padding: 12px 0; font: 600 13px -apple-system, sans-serif; }
+.hr-room .hr-empty { text-align: center; color: #c9d4f0; padding: 12px 0; font: 14px var(--dlg-font); }
 .hr-room .hr-mine { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0; } .hr-room .hr-mine:empty { display: none; }
-.hr-room .hr-mine span { padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .1); font: 600 12.5px -apple-system, sans-serif; color: #fff4dc; }
-.hr-room .hr-pts { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; font: 800 20px -apple-system, sans-serif; color: #9dff6a; }
-.hr-room .hr-pts b { color: #fff4dc; }
+.hr-room .hr-mine span { padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .1); font: 600 12.5px var(--dlg-font); color: var(--dlg-ink); }
+.hr-room .hr-pts { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; font: 600 22px var(--dlg-font); color: #9dff6a; }
+.hr-room .hr-pts b { color: var(--dlg-ink); font-weight: 600; }
 .hr-room .sq-board { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
-.hr-room .sq-board li { display: flex; gap: 6px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .08); font: 600 12.5px -apple-system, sans-serif; color: #fff4dc; }
-.hr-room .sq-board li.me { outline: 1.5px solid #ffc83d; } .hr-room .sq-board li span { color: #ffc83d; }
-.hr-end-clown { display: block; width: 120px; margin: 0 auto -6px; }
-@media (prefers-reduced-motion: reduce) { .hr-caps.shake .in-globe, .hr-slip.unroll > *, .hr-cap.inhand .hr-cap-head { animation: none; } .hr-dial { transition: none; } }
+.hr-room .sq-board li { display: flex; gap: 6px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .1); font: 600 12.5px var(--f-sys); color: var(--dlg-ink); }
+.hr-room .sq-board li.me { outline: 1.5px solid #ffd23f; } .hr-room .sq-board li span { color: #ffd23f; }
+#game-panel.np-full .hr-low .ag-skip { position: static; align-self: flex-end; margin: 0; padding: 6px 12px; min-height: 0; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .hr-slip.unroll > * { animation: none; } }
 
 /* Side Quest's 3D back room (prophet.js): the canvas fills the room behind
    the UI and fades in once it's drawing */
@@ -1330,14 +1284,9 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 .sq-3d .retro-canvas { pointer-events: auto; touch-action: none; }
 .sq-3d .retro-canvas { transition: opacity .6s ease-out; }
 
-/* Humiliation Ritual's 3D tent (retrorooms.js): the canvas fills the room;
-   once it's up, the painted stage goes and the clown, machine and capsules
-   are drawn in the tent (mirrored from these hidden elements) */
+/* ...and the Ritual's (boss.js) */
 .hr-3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-.hr-3d .retro-canvas { transition: opacity .6s ease-out; }
-.hr-room.r3d { background-image: none !important; background-color: #0b0814; }
-.hr-room.r3d .hr-group { visibility: hidden; }
-.hr-room.r3d .hr-group .np-confetti { visibility: visible; }
+.hr-3d .retro-canvas { pointer-events: auto; touch-action: none; transition: opacity .6s ease-out; }
 
 /* a game's 3D room behind its cards (hpkit roomBackdrop, retrorooms.js):
    fills the game layer under the HUD and the frosted cards */
