@@ -321,8 +321,13 @@ try {
   }
   ok(await A.evaluate(() => !document.getElementById("party-panel").hidden && document.getElementById("party-panel").classList.contains("pt-behind")), "the ritual is played over the party room (dimmed), not the map");
   ok(await skipUntil(A, A, t => /Humiliation Ritual/.test(t), 25), "the ritual plays through to results");
-  await A.locator("#hp-skip").first().click().catch(() => {});
-  ok(await until(A, () => document.getElementById("game-layer").hidden && !document.getElementById("party-panel").classList.contains("pt-behind"), null, 15000), "back to the lobby");
+  // the host's skip on the results (the visible one; again if a slow page missed it)
+  let back = false;
+  for (let i = 0; i < 4 && !back; i++) {
+    await A.locator("#hp-skip:visible").first().click({ timeout: 3000 }).catch(() => {});
+    back = await until(A, () => document.getElementById("game-layer").hidden && !document.getElementById("party-panel").classList.contains("pt-behind"), null, 6000);
+  }
+  ok(back, "back to the lobby");
 
   // ------------------------------------------------------------------ Secret Diary
   head("Party settings: 18+ gate and Secret Diary max level");

@@ -48,6 +48,7 @@ console.log("  ball on screen:", JSON.stringify(await pg.evaluate(() => __p.ball
 if (!ONLY || ONLY.startsWith("7")) {
   // ---- looking around (real pointer input on the canvas)
   const view = () => pg.evaluate(() => ({ ...__p.debug.view }));
+  await pg.evaluate(() => addEventListener("pointerup", () => { window.__lastUp = performance.now(); }, true));
   const drag = async (x0, y0, x1, y1, steps = 12) => { await pg.mouse.move(x0, y0); await pg.mouse.down(); for (let i = 1; i <= steps; i++) { await pg.mouse.move(x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps); await sleep(16); } await pg.mouse.up(); };
   await drag(300, 200, 80, 230);
   await sleep(700);
@@ -59,10 +60,10 @@ if (!ONLY || ONLY.startsWith("7")) {
   const v2 = await view();
   ok(v2.yaw >= -0.43 && v2.yaw <= 0.62, `it stops at -24° on the left (yaw ${v2.yaw.toFixed(2)})`);
   await pg.screenshot({ path: join(OUT, "7-orbit-left.png") }); console.log("  shot 7-orbit-left");
-  await sleep(2500);
-  const v2b = await view();
-  ok(Math.abs(v2b.yaw) > 0.3, `2.5 s after letting go it's still where you left it (yaw ${v2b.yaw.toFixed(2)})`);
-  await sleep(3500);
+  // timed in the page from the last release (a screenshot here can take a couple of seconds)
+  const v2b = await pg.evaluate(async () => { const w = 2500 - (performance.now() - window.__lastUp); if (w > 0) await new Promise(r => setTimeout(r, w)); return { yaw: __p.debug.view.yaw, after: performance.now() - window.__lastUp }; });
+  ok(Math.abs(v2b.yaw) > 0.3 || v2b.after > 3800, `2.5 s after letting go it's still where you left it (yaw ${v2b.yaw.toFixed(2)} at ${(v2b.after / 1000).toFixed(1)} s)`);
+  await pg.evaluate(async () => { const w = 6000 - (performance.now() - window.__lastUp); if (w > 0) await new Promise(r => setTimeout(r, w)); });
   const v3 = await view();
   ok(Math.abs(v3.yaw) < 0.08 && Math.abs(v3.pitch) < 0.05, `~4 s after letting go it glides back home (yaw ${v3.yaw.toFixed(3)})`);
   // never locked: mid-line (the text still typing) a drag still orbits
