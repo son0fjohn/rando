@@ -30,8 +30,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
   for Korean) and frosted-glass panels; pixel art only in the room art and
-  sprites, never in text, buttons or panels, except the NPC dialog box,
-  `web/dialog.js`).
+  sprites, never in text, buttons or panels).
 - **House party:** `web/party.js` (party + lobby: chat, players vote for the
   next game, the host's "Game votes" sheet starts one; the TV opens the same
   sheet), `web/hplobby.js` (the
@@ -49,10 +48,13 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   card; art in `web/games/ritual/`, see `docs/npc_scenes.md`),
   `web/prophet.js` (Side Quest's host, The Prophet: a rigged low-poly 3D
   model, `web/games/sidequest/prophet/prophet.glb`, in a plain gray back
-  room, procedural idle / reveal / point / nod, the crystal ball),
-  `web/dialog.js` (the shared NPC dialog box: navy, name tab, typed pixel
-  text with a blip, ▼, choice boxes; the one place pixel text is allowed
-  outside the room art, styles `.dlg-*` in theme.css), `web/retrolook.js`
+  room, procedural idle / reveal / point / nod, the crystal ball; drag to
+  orbit the camera, pinch to zoom, it glides home and holds still for the
+  pick and the reveal; tap him / the ball / the lamp; its default view is
+  framed on the reference image, see `docs/npc_scenes.md`),
+  `web/dialog.js` (the shared NPC dialog box: navy, name tab, text typed in
+  the app font with a blip, ▼, choice boxes, `quip()` for a passing line;
+  styles `.dlg-*` in theme.css), `web/retrolook.js`
   (the retro look kit every game scene's 3D layer uses: mood lights, fog,
   emissive bloom, low-res nearest upscale, grade + dither + vignette +
   grain, quality tiers; `smooth` + `msaa` for the Prophet's soft look),
@@ -93,7 +95,7 @@ npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Dia
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
-node test/prophet_shots.mjs <dir> [only]   # Side Quest's Prophet on his own: loads, every pose, the dialog box (EN + KO)
+node test/prophet_shots.mjs <dir> [only]   # Side Quest's Prophet on his own: every pose, the dialog box (EN + KO), drag-to-orbit / glide home / hold / pinch, taps
 node test/rooms_shots.mjs <dir> [tent,study,lounge]   # the other game rooms on their own: each loads, a shot each
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
 node test/charturn_shots.mjs <dir> [--hair=none,f2,m1] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit

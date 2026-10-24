@@ -37,8 +37,19 @@ front of him. It's a real 3D scene, not a painted backdrop:
 - **Style:** smooth low-poly, soft rounded blocks, flat solid colours (only
   his face is a painted texture), muted palette. Soft even light (hemisphere
   ambient, a warm key, a cool fill), gentle baked AO and blob shadows, low
-  contrast, no coloured lights, no outlines, no bloom. Drawn at 0.75× and
-  softly upscaled with 4× MSAA (`retrolook.js` with `smooth: true`, `msaa`).
+  contrast, no coloured lights, no outlines, no bloom. Drawn at 1.5× CSS
+  pixels (capped at 760 px wide) and softly upscaled with 4× MSAA
+  (`retrolook.js` with `smooth: true`, `msaa`). No shadow maps: whatever is
+  under the table (his legs, the floor, the chair) darkens in its material,
+  from the table's known footprint, back the way the key light throws it.
+- **The default view is the reference image.** The camera (`VIEW`), the room
+  and the props were placed by solving the reference's perspective (eye level
+  from the door, the floor line and his eyes: camera 1.53 up, 11.5° down,
+  39.4° vertical field at 9:16, the back wall ~5 m behind him), then each prop
+  unprojected from where it sits in the picture; his arms were solved on the
+  rig for the reference's elbows and fists, and his colours compared point by
+  point. A taller phone keeps the same width in view. The side-by-side is
+  `prophet_shots`' `0-default` next to the reference.
 - **Him:** one rigged mesh, 4,600 triangles, 20 joints (root, hips, spine,
   chest, neck, head, shoulder/upperarm/forearm/hand and thigh/shin/foot per
   side). The hat, durag tails, glasses and pipe are weighted to the head, the
@@ -49,6 +60,18 @@ front of him. It's a real 3D scene, not a painted backdrop:
   nod (a smug double dip to close the turn). A thin wisp of pipe smoke, the
   ball's glow (brighter on the reveals) and a slow camera push-in on the key
   moments.
+- **Look around:** drag on the room to orbit the camera around him and the
+  table (±60° left/right, a little up and down, never under the table or
+  through a wall; pinch to zoom in a bit), eased, with a little momentum.
+  ~3 s after the last touch it glides home; during the pick and the reveal
+  the game holds it home. His head turns a little toward the camera. The
+  room is closed on every side (walls, ceiling, a second shelf, boxes, a fuse
+  box), and from the far left the lamp fades rather than hide the ball. On
+  phones that report their tilt without a prompt, a very slight parallax
+  (`?tilt=0` turns it off).
+- **Taps:** him (between beats: a short line in the dialog box, `quip()`,
+  and a nod or a pipe puff), the ball (it pulses and swirls), the lamp (it
+  flickers). None of them block the game or the host's controls.
 - **Turn:** the ball flicks through everyone's 3D heads (`charrender.js`,
   lit with a neutral rim to match the room) and lands on the chosen one; he
   points: "Relax. The ball already knows who's next... [Name]." Then the
@@ -57,15 +80,17 @@ front of him. It's a real 3D scene, not a painted backdrop:
   nod all happen in the dialog box.
 - **Dialog box** (`web/dialog.js`, shared: the Ritual's clown and the map
   NPCs are next): navy at ~86%, a thin light bevelled border, the speaker's
-  name on a tab, big pixel text (RandoPixel, Latin + Hangul) typed letter by
-  letter with a soft blip (tap to skip), a blinking ▼, choices as boxes in
+  name on a tab (semibold), big regular text in the app's font (SF Pro,
+  Apple SD Gothic Neo for Korean) typed letter by letter with a soft blip
+  (tap to skip), a blinking ▼, choices as boxes in
   the same style (stacked, or a row for a rating). His lines are in English
   or Korean by the phone's language.
 - **No 3D:** if WebGL or the model can't load, the room is plain gray with a
   simple glowing ball; never the old wizard, never a picture of him.
 
 `node test/prophet_shots.mjs <dir>` shoots every pose with the dialog box
-(and a Korean line); `node test/games_rec.mjs <dir> sidequest` records turns.
+(and a Korean line) and checks looking around and the taps with real
+pointer input; `node test/games_rec.mjs <dir> sidequest` records turns.
 
 ### The Prophet's model
 
@@ -83,8 +108,18 @@ right `99576e4e-0d4d-49d9-93bd-6ce1ed7416db`):
 Total: 24 credits, 2 of the 3 allowed attempts. Cleanup (scripted, not by
 hand): welded and simplified to 4,600 triangles (meshoptimizer); the texture posterized to a flat palette (nearest colour in Lab,
 per body region) except a face mask painted from the UV layout, so only the
-face keeps its texture (1024 px PNG); then rigged in code with procedural
-skin weights by region and distance to each bone segment. 339 KB.
+face keeps its texture; then rigged in code with procedural skin weights by
+region and distance to each bone segment.
+
+To match the reference the face was repainted: the texture went to 2048 px,
+a straight-on orthographic render of the head was made from it (the mesh
+rasterized in UV space, so every texel knows its 3D spot), the half-lidded
+anime eyes and the small round shades low on the nose were painted in that
+front view, and the paint was projected back onto only the texels of the
+visible front of the face (so it sits right from every angle). The hat's
+stars went from bright gold to the reference's muted tan (the chain keeps its
+gold). In the scene his hands and head are scaled up a little (the
+reference's big fists and hat) and the jacket 7% wider. 406 KB.
 
 ## Humiliation Ritual (`web/games/ritual/`)
 
