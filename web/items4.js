@@ -16,4 +16,10 @@ export const RARITY4 = { common: { glow: "#9fb4d8" }, rare: { glow: "#5fb8ff" },
 // (rest-pose heights, base height 1). hairCut: a hat clips hair above it.
 // scalp: the head under the hair takes the hair colour.
 export const ITEMS4 = {
+  "middle-part": { cat: "hair", name: "Messy middle part", file: "hair_middlepart.glb", doubleSide: true, scalp: true,
+    tint: hairTint([107, 78, 63]), rarity: "common", price: 0 },
+  "sweat-babyblue": { cat: "top", name: "Baby blue sweatshirt", file: "top_sweat_babyblue.glb", hides: { tee: 1, arms: 1 }, doubleSide: true,
+    tint: [[[160, 177, 195], [172, 206, 246]]], rarity: "common", price: 0 },
+  "skate-blue": { cat: "shoes", name: "Chunky skate shoes", file: "shoes_skate_blue.glb", hides: { below: 0.085 }, doubleSide: true,
+    rarity: "common", price: 0 },
 };
