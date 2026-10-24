@@ -30,7 +30,8 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
   for Korean) and frosted-glass panels; pixel art only in the room art and
-  sprites, never in text, buttons or panels).
+  sprites, never in text, buttons or panels, except the NPC dialog box,
+  `web/dialog.js`).
 - **House party:** `web/party.js` (party + lobby: chat, players vote for the
   next game, the host's "Game votes" sheet starts one; the TV opens the same
   sheet), `web/hplobby.js` (the
@@ -43,14 +44,19 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots; its
   `finish()` hands the final standings to the party),
   `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/npcscene.js`
-  (Side Quest's wizard and the Ritual's clown, built like the Art Gallery:
-  painted backdrop, NPC pose cutouts, props on gravity arcs, a prop that
-  flies up to become the card; art in `web/games/sidequest|ritual/`, see
-  `docs/npc_scenes.md`), `web/retrolook.js` (the retro look kit
-  every game scene's 3D layer uses: mood lights, fog, emissive bloom,
-  low-res nearest upscale, grade + dither + vignette + grain, quality tiers),
-  `web/sqnook.js` (Side Quest's 3D fortune-teller nook on that kit;
-  `SIDEQUEST.NOOK_3D`, `?nook=0` pins the painted parlour), `web/retrorooms.js`
+  (the Ritual's clown, built like the Art Gallery: painted backdrop, NPC
+  pose cutouts, props on gravity arcs, a prop that flies up to become the
+  card; art in `web/games/ritual/`, see `docs/npc_scenes.md`),
+  `web/prophet.js` (Side Quest's host, The Prophet: a rigged low-poly 3D
+  model, `web/games/sidequest/prophet/prophet.glb`, in a plain gray back
+  room, procedural idle / reveal / point / nod, the crystal ball),
+  `web/dialog.js` (the shared NPC dialog box: navy, name tab, typed pixel
+  text with a blip, ▼, choice boxes; the one place pixel text is allowed
+  outside the room art, styles `.dlg-*` in theme.css), `web/retrolook.js`
+  (the retro look kit every game scene's 3D layer uses: mood lights, fog,
+  emissive bloom, low-res nearest upscale, grade + dither + vignette +
+  grain, quality tiers; `smooth` + `msaa` for the Prophet's soft look),
+  `web/retrorooms.js`
   (the other rooms on the kit: the Ritual's circus tent, with the clown and
   props mirrored in from the DOM; Secret Diary's study and Mask Off's lounge
   behind their cards via `roomBackdrop()`; `RITUAL.TENT_3D`, `?tent=0`,
@@ -87,7 +93,7 @@ npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Dia
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
-node test/nook_shots.mjs <dir>       # Side Quest's 3D nook on its own: loads, every beat of a turn
+node test/prophet_shots.mjs <dir> [only]   # Side Quest's Prophet on his own: loads, every pose, the dialog box (EN + KO)
 node test/rooms_shots.mjs <dir> [tent,study,lounge]   # the other game rooms on their own: each loads, a shot each
 node test/charsprite_shots.mjs <dir>   # 3 test characters as room sprites, every facing + walk frame
 node test/charturn_shots.mjs <dir> [--hair=none,f2,m1] [--scale=2] [--only=close-up|motion]   # the player character turned 360° at map / Style / close-up zoom, live idle + walk, with an outfit
