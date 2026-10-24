@@ -1199,8 +1199,8 @@ body.hp-setup-wait #game-layer { display: none !important; }
    through the dialog box (dialog.js) at the bottom, with the clock / rating
    panel just above it. One focal point a phase: the ball (who), the card
    (what), the dialog (accept / rate / verdict). */
-.sq-room { background: #77797c; }
-.sq-orb { position: absolute; left: 50%; top: 58%; width: 72px; height: 72px; margin: -36px 0 0 -36px; z-index: 1; border-radius: 50%; pointer-events: none;
+.sq-room { background: #24172c; }
+.sq-orb { position: absolute; left: 52%; top: 52%; width: 72px; height: 72px; margin: -36px 0 0 -36px; z-index: 1; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle at 38% 32%, #f1ebff, #b9a6ec 45%, #7d68c4 100%); box-shadow: 0 0 22px rgba(200, 180, 255, .55); display: grid; place-items: center; overflow: hidden; }
 .sq-room.r3d .sq-orb { display: none; }
 .sq-face { width: 86%; height: 86%; object-fit: contain; opacity: .92; transition: opacity .2s; }

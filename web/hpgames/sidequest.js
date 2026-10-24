@@ -50,7 +50,7 @@ const KO = /^ko\b/i.test(globalThis.navigator?.language ?? "");
 const LINES = {
   en: {
     name: "The Prophet", kicker: "SIDE QUEST:",
-    wait: "The host is picking tonight's quests. Sit tight.",
+    wait: "Sit down, kid. Fate's got a job for you.",
     relax: "Relax. The ball already knows who's next...",
     quest: q => `SIDE QUEST: ${q}`,
     accept: "Accept", giveUp: "Give up", again: "Tap again to give up",
@@ -70,7 +70,7 @@ const LINES = {
   },
   ko: {
     name: "예언자", kicker: "사이드 퀘스트:",
-    wait: "호스트가 오늘의 퀘스트를 고르는 중이야. 기다려.",
+    wait: "앉아, 꼬마야. 운명이 너한테 시킬 일이 있어.",
     relax: "진정해. 공은 이미 다음이 누군지 알고 있어...",
     quest: q => `사이드 퀘스트: ${q}`,
     accept: "수락", giveUp: "포기", again: "한 번 더 누르면 포기",
@@ -161,6 +161,7 @@ export const SIDE_QUEST = {
     const onTap = kind => {
       if (kind === "ball") { sfx.chime(); return true; }
       if (kind === "lamp") { sfx.cursor(); return true; }
+      if (kind === "tv") { sfx.blip(); return true; }
       if (kind !== "prophet" || ["spin", "quest", "end"].includes(phaseNow) || !dlg.done) return false;
       dlg.quip(T.quips[quipN++ % T.quips.length]);
       sfx.blip(); buzz(15);
