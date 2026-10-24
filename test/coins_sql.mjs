@@ -1,6 +1,6 @@
 // The coin and shop rules, run for real: supabase/migrations/013_coins_shop.sql
 // (+ 014_mask_off.sql), and Humiliation Ritual's server-side prompt draw
-// (015_ritual_prompts.sql)
+// (015_ritual_prompts.sql), and the new wardrobe's shop (016_wardrobe4.sql)
 // in an embedded Postgres (PGlite, WASM — no server), with a tiny stand-in
 // for Supabase's auth schema (auth.users, auth.uid() from a setting).
 //   node test/coins_sql.mjs
@@ -23,6 +23,7 @@ await db.exec(`
 await db.exec(await readFile(`${ROOT}supabase/migrations/013_coins_shop.sql`, "utf8"));
 await db.exec(await readFile(`${ROOT}supabase/migrations/014_mask_off.sql`, "utf8"));
 await db.exec(await readFile(`${ROOT}supabase/migrations/015_ritual_prompts.sql`, "utf8"));
+await db.exec(await readFile(`${ROOT}supabase/migrations/016_wardrobe4.sql`, "utf8"));
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 for (let i = 1; i <= 9; i++) { await db.query("insert into auth.users values ($1)", [U(i)]); await db.query("insert into profiles (id, handle) values ($1, $2)", [U(i), `p${i}`]); }
@@ -87,6 +88,20 @@ ok(r2.ok && r2.coins === 25, "buying it again doesn't charge again");
 ok((await err(as(2, "update profiles set avatar = '{\"shoes\": \"clog-pink\"}' where id = $1", [U(2)])))?.includes("locked"), "you can't put on a shop item you don't own");
 ok(await err(as(1, "update profiles set avatar = '{\"shoes\": \"clog-pink\"}' where id = $1", [U(1)])) === null, "…and can once you own it");
 ok(await err(as(2, "update profiles set avatar = '{\"shoes\": \"loafer-black\"}' where id = $1", [U(2)])) === null, "free items stay free");
+
+head("The new wardrobe's shop (016)");
+{
+  const { ITEMS4, HAIRCOLOR_SHOP } = await import(`${ROOT}web/items4.js`);
+  const want = [...Object.entries(ITEMS4).filter(([, d]) => d.price > 0).map(([id, d]) => `${d.cat}/${id}/${d.price}/${d.rarity}`),
+    ...Object.entries(HAIRCOLOR_SHOP).map(([c, t]) => `hairColor/${c}/${t.price}/${t.rarity}`)].sort();
+  const vals = new Set(want.map(w => w.split("/").slice(0, 2).join("/")));
+  const rows = (await as(1, "select slot, value, price, rarity from shop_items")).filter(r => vals.has(`${r.slot}/${r.value}`));
+  const got = rows.map(r => `${r.slot}/${r.value}/${r.price}/${r.rarity}`).sort();
+  ok(JSON.stringify(got) === JSON.stringify(want), `the shop's rows match web/items4.js's prices and rarity (${want.length} items)`);
+  await as(null, "update wallets set coins = 0 where user_id = $1", [U(3)]);
+  ok((await err(as(3, "update profiles set avatar = '{\"head\": \"earmuffs\"}' where id = $1", [U(3)])))?.includes("locked"), "the lock covers the new slots: no earmuffs (head) you don't own");
+  ok(await err(as(3, "update profiles set avatar = '{\"head\": \"bucket\", \"top\": \"varsity\"}' where id = $1", [U(3)])) === null, "free items (a starter outfit's) go on freely");
+}
 
 head("Humiliation Ritual: the prompt is drawn on the server, for the caller only");
 const POOL = JSON.parse(await readFile(`${ROOT}web/data/ritual_prompts.json`, "utf8")).prompts;

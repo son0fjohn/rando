@@ -4,18 +4,17 @@
 // its face UV set (TEXCOORD_1), so it's lit and skinned with the head: never
 // a floating plane. Expressions live in the eyes only.
 import * as THREE from "https://esm.sh/three@0.160.0";
+import { EYE_SHAPES, IRIS4 } from "./items4.js";
+export { EYE_SHAPES, IRIS4 };
 
 export const FACE4_SIZE = 512;
 // the face UV box on the base head: u 0..1 = x -0.1..0.1, v 0..1 = y 0.76..0.96
 // (model units). The eyes sit at x ±0.04, y 0.864.
 const EYE_U = 0.3, EYE_V = 0.52;
 
-export const EYE_SHAPES = ["sharp", "round", "sleepy", "narrow", "sparkly", "tired", "cat", "droopy"];
-export const IRIS4 = {
-  lightblue: [126, 176, 222], brown: [120, 84, 60], black: [44, 40, 44], green: [92, 150, 96],
-  gray: [128, 126, 124], amber: [200, 140, 52], violet: [146, 108, 200], pink: [222, 128, 168],
-};
 export const EXPRESSIONS4 = ["neutral", "blink", "happy", "angry", "surprised", "sleepy", "sad", "wink"];
+// older callers ask for these
+export const EXPR_ALIAS = { smile: "happy", laugh: "happy", shock: "surprised", tired: "sleepy" };
 
 // per shape (canvas fractions): w / h half width and height of the eye,
 // tilt (inner corner down, outer corner up), lash (lid line thickness at
@@ -146,21 +145,52 @@ function star(g, x, y, r) {
   g.closePath(); g.fill();
 }
 
+// face accessories drawn on the face layer (they move and light with the head)
+// u, v in the face UV box; canvas y = (1 - v)
+function drawDecal(g, S, id) {
+  const P = (u, v) => [u * S, (1 - v) * S];
+  g.save();
+  if (id === "band-aid") {
+    const [x, y] = P(0.8, 0.33);
+    g.translate(x, y); g.rotate(-0.5);
+    g.fillStyle = "#f2c79a"; g.strokeStyle = "rgba(120,80,50,.45)"; g.lineWidth = S * 0.004;
+    g.beginPath(); g.roundRect(-S * 0.085, -S * 0.03, S * 0.17, S * 0.06, S * 0.03); g.fill(); g.stroke();
+    g.fillStyle = "#e7b384"; g.fillRect(-S * 0.03, -S * 0.026, S * 0.06, S * 0.052);
+    g.fillStyle = "rgba(150,100,60,.5)";
+    for (const dx of [-0.015, 0, 0.015]) for (const dy of [-0.01, 0.01]) { g.beginPath(); g.arc(dx * S, dy * S, S * 0.0035, 0, 7); g.fill(); }
+  } else if (id === "star-sticker") {
+    const [x, y] = P(0.25, 0.36), r = S * 0.04;
+    g.translate(x, y); g.fillStyle = "#ffd23f"; g.strokeStyle = "#fff6c8"; g.lineWidth = S * 0.006;
+    g.beginPath();
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+    g.closePath(); g.fill(); g.stroke();
+  } else if (id === "nose-ring") {
+    const [x, y] = P(0.545, 0.31);
+    g.strokeStyle = "#d8dde6"; g.lineWidth = S * 0.009;
+    g.beginPath(); g.arc(x, y, S * 0.018, -0.3, Math.PI + 0.3, false); g.stroke();
+    g.strokeStyle = "rgba(255,255,255,.9)"; g.lineWidth = S * 0.003;
+    g.beginPath(); g.arc(x, y, S * 0.018, 0.5, 1.2); g.stroke();
+  }
+  g.restore();
+}
+
 // the face, drawn into a 2D context of size S (also used for 2D thumbs)
-export function drawFace4(g, S, { eyes = "sharp", iris = "gray", expr = "neutral" } = {}) {
+export function drawFace4(g, S, { eyes = "sharp", iris = "gray", expr = "neutral", decal = null } = {}) {
   const st = SHAPES[eyes] ?? SHAPES.sharp, ic = IRIS4[iris] ?? IRIS4.gray;
   const cy = (1 - EYE_V) * S;
+  expr = EXPR_ALIAS[expr] ?? expr;
   drawEye(g, EYE_U * S, cy, S, st, ic, -1, expr);
   drawEye(g, (1 - EYE_U) * S, cy, S, st, ic, 1, expr);
+  if (decal) drawDecal(g, S, decal);
 }
 
 const cache = new Map();
-export function faceTexture4(look = {}, expr = "neutral") {
-  const key = `${look.eyes}|${look.iris}|${expr}`;
+export function faceTexture4(look = {}, expr = "neutral", decal = null) {
+  const key = `${look.eyes}|${look.iris}|${expr}|${decal}`;
   if (cache.has(key)) return cache.get(key);
   const cv = document.createElement("canvas");
   cv.width = cv.height = FACE4_SIZE;
-  drawFace4(cv.getContext("2d"), FACE4_SIZE, { eyes: look.eyes, iris: look.iris, expr });
+  drawFace4(cv.getContext("2d"), FACE4_SIZE, { eyes: look.eyes, iris: look.iris, expr, decal });
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
