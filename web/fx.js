@@ -72,6 +72,16 @@ export const sfx = {
   confirm() { try { tone(988, 0.06, { type: "square", gain: 0.06 }); tone(1480, 0.1, { type: "square", gain: 0.06, at: 0.06 }); } catch {} },
   back() { try { tone(740, 0.06, { type: "square", gain: 0.05 }); tone(494, 0.09, { type: "square", gain: 0.05, at: 0.05 }); } catch {} },
   stamp() { try { noise(0.12, { gain: 0.25, lp: 1500, lpEnd: 400 }); tone(180, 0.12, { gain: 0.2, slide: 90 }); } catch {} },
+  // the game hosts' reveals: a snare roll that builds for `secs`, a heavy
+  // stamp thud, the name slamming onto the screen
+  drumroll(secs = 3) {
+    try {
+      let t = 0, gap = 0.07;
+      while (t < secs) { noise(0.05, { gain: 0.05 + 0.13 * (t / secs), lp: 2600, lpEnd: 900, at: t }); t += gap; gap = Math.max(0.035, gap * 0.985); }
+    } catch {}
+  },
+  thud() { try { tone(90, 0.28, { gain: 0.32, slide: 45 }); noise(0.18, { gain: 0.28, lp: 900, lpEnd: 120 }); } catch {} },
+  slam() { try { tone(140, 0.35, { gain: 0.28, slide: 55 }); noise(0.3, { gain: 0.22, lp: 1800, lpEnd: 150 }); tone(784, 0.25, { gain: 0.08, at: 0.05 }); } catch {} },
 };
 export function buzz(pattern = 60) { try { navigator.vibrate?.(pattern); } catch {} }
 

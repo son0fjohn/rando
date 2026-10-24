@@ -6,8 +6,9 @@ the default view looks almost exactly like that picture and you can still
 look around. They share:
 
 - `web/npcstage.js`: the look-around camera (one component, one set of
-  settings: ±35°, a little up and down, pinch to zoom in a bit, momentum,
-  home ~3 s after the last touch, `hold()` for the key moments), tap picking,
+  settings: -24° to the left, 35° to the right, a little up and down, pinch
+  to zoom in a bit, momentum, home ~4 s after the last touch; never locked,
+  not even during a pick or a reveal), tap picking,
   the head that follows the camera, the shader bits that put a live-lit
   character into a painted room (`encode`, `underTable`), the smoke wisp.
 - `web/projroom.js`: the camera mapping (the projector, its depth map, the
@@ -19,9 +20,18 @@ look around. They share:
   corners and what it sees almost edge-on take the side views, blended by
   how squarely each one sees the surface.
   Each side view's alpha masks out the table and what's on it (they never
-  line up with the room's own props). The orbit stops at ±35°: past that
-  the props near the table, which only the front picture shows, would
-  stretch.
+  line up with the room's own props).
+  **Layers** (the basement): the room's shell (walls, floor, ceiling, the
+  door, the shelves) is painted from `empty.webp`, the approved picture with
+  the table, chair, lamp and what's on the table taken out (Nano Banana Pro,
+  edited from the picture itself; pixel-aligned with it), using depth maps
+  that leave the furniture out; the furniture is painted from the picture.
+  So looking around, nothing of the table, the cup or the chair legs is ever
+  smeared on the floor or the wall behind them (the "ghost doubles" the
+  orbit used to show). Sides of furniture no picture saw take a tile of the
+  picture (its cardboard, its table top) in its own tones.
+  The orbit stops at -24° on the left (further, the table lamp stands in
+  front of the Boss's box and the Prophet's ball) and 35° on the right.
 - `web/dialog.js`: the dialog box (below).
 - `web/npcscene.js`: the DOM side: `Beats` (beats fired off the synced game
   clock), `flyFrom` (a card flying out of the scene to where it lives),
@@ -79,11 +89,9 @@ anyone moves the camera) looks almost exactly like it.
   point (right arm out at the camera), nod. Pipe smoke, the ball's glow, a
   slow camera push-in on the key moments.
 - **Look around** (`npcstage.js`, the same camera as the Boss's): drag to
-  orbit (±35°, a little up and down; pinch to zoom in a bit), eased with a
-  little momentum, gliding home ~3 s after the last touch; Side Quest holds it
-  home for the pick and the reveal. His head turns
-  a little toward the camera. From the far left the lamp fades rather than
-  hide the ball. A slight tilt parallax where the browser allows it without
+  orbit (-24° … 35°, a little up and down; pinch to zoom in a bit), eased with
+  a little momentum, gliding home ~4 s after the last touch, never mid-drag
+  and never locked. His head turns a little toward the camera. A slight tilt parallax where the browser allows it without
   a prompt (`?tilt=0` turns it off).
 - **Taps:** him (between beats: a short line in the dialog box and a nod or a
   pipe puff), the ball (pulse and swirl), the lamp (flicker), the TV (a burst
@@ -96,6 +104,20 @@ anyone moves the camera) looks almost exactly like it.
   a row for a rating). His lines are in English or Korean by the phone's
   language; while the host picks the quests: "Sit down, kid. Fate's got a job
   for you."
+- **The pick** (`hpgames/sidequest.js`, ~4.7 s): faces flick through the
+  ball like a slot machine, fast then slowing, a tick each over a drumroll
+  (~3 s). It lands: a flash from the ball, a light shake, a chime, and the
+  name slams onto everyone else's screen in big gold letters (~1.5 s) with a
+  "[Name] got picked" banner; the chosen player's own phone goes gold, "THE
+  BALL PICKED YOU", with a strong buzz. Their own 3D character pops in
+  beside his table under a warm spotlight (`guestSpot` in `npcstage.js`),
+  surprised, and stays for the turn; he points at them (`aim`): "Relax. The
+  ball already knows who's next... [Name]."
+- **The reveal** (~5 s): he takes a big drag and blows a swirl of smoke over
+  the ball that gathers into a glowing card, flips round to the camera
+  (`smokeCard()`) and becomes the quest card; "SIDE QUEST" is stamped on it
+  with a thud and a puff of dust. Then 3, 2, 1, GO; the clock starts and
+  their character cheers. The host's skip button reads "skip ▸▸" during both.
 - **No 3D:** if WebGL or the room can't load, the screen is plain with a
   simple glowing ball; never the old wizard, never a picture of him.
 
@@ -203,12 +225,21 @@ exactly like it, without its crystal ball.
 - **The turn** (`hpgames/ritual.js`, the same game logic): "Pick a capsule.
   Any capsule." He reaches into the box and comes out with a capsule, holds
   it up to the camera with the performer's face and name: "[Name]. You're
-  up." He twists it open, pop, confetti. On the performer's phone a folded
-  slip unrolls out of it toward the camera and becomes the ACT IT OUT card;
-  everyone else sees him peek, smirk and go "Shhh... this one's just for
-  you.", then the guess box. The camera is held home for the pick and the
-  open. While they act he sits back with his cigar; a slow approving nod and a
-  line close the turn. Lines in English or Korean by the phone's language.
+  up." Held up, the capsule spins with players' faces flicking through it
+  like a slot machine, slowing over a drumroll, and lands on the performer's:
+  a flash, a light shake, the name slams in (everyone else also gets "[Name]
+  is performing"); the performer's phone goes to a red spotlight, "YOU'RE
+  UP", with a strong buzz. Their own 3D character pops in in front of his
+  table under one harsh white spotlight (a visible beam) and stays for the
+  turn; he takes a slow drag on his cigar. Then he twists the capsule open,
+  pop, confetti. On the performer's phone the slip unrolls out of it and
+  flies at the camera, filling the screen, and a red ACT IT OUT stamp slams
+  onto it; everyone else sees him peek, smirk and go "Shhh.", then the guess
+  box slides up. Pick + reveal ≈ 8 s (the host can skip). Never locked: the
+  name, the stamps and the cards are screen-space overlays (`npcscene.js`),
+  readable from any angle. While they act he sits back with his cigar; a
+  slow approving nod and a line close the turn. Lines in English or Korean
+  by the phone's language.
 - **Taps** (never during the pick or the open, never in the game state): him
   (a line: "Patience. Business takes time." / "You owe me a laugh, kid." /
   "Nobody leaves until somebody performs.", and a drag on the cigar or a slow

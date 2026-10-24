@@ -3,10 +3,20 @@
 // He sits in his back room behind a folding table with a crystal ball on it
 // (prophet.js) and talks through the dialog box at the bottom of the screen
 // (dialog.js). Each turn the ball first flicks through everyone's faces
-// (their own 3D characters, charrender.js) and lands on whoever is up
-// (random but fair — see fairpick.js): "Relax. The ball already knows who's
-// next... [name]." He points at them. Then the quest card rises out of the
-// ball and stays on screen for the rest of the turn: "SIDE QUEST: [dare]".
+// (their own 3D characters, charrender.js) like a slot machine, fast then
+// slowing, over a drumroll, and lands on whoever is up (random but fair, see
+// fairpick.js): a flash from the ball, a little shake, a chime, and their
+// name slams onto the screen in big gold letters. Their own 3D character pops
+// in beside his table under a warm spotlight (surprised) and stays for the
+// turn; he points at them: "Relax. The ball already knows who's next...
+// [name]." Their phone goes gold, "THE BALL PICKED YOU"; everyone else's
+// says "[name] got picked". Then he takes a drag and blows a swirl of smoke
+// over the ball that turns into a glowing card, flips round and becomes the
+// quest card ("SIDE QUEST" stamped on it with a thud), which stays on screen
+// for the turn. 3, 2, 1, GO: the clock starts, their character cheers.
+// The pick and the reveal take about 8 s; the host can skip ahead. Players
+// can look around (orbit) the whole time: the big name, the stamp and the
+// card are screen-space, readable from any angle.
 //
 // The one on the quest gets Accept / Give up and 3 minutes, out in the
 // world, while the others film on their own phones. Rating opens the moment
@@ -27,7 +37,7 @@ import { sfx, buzz } from "./../fx.js";
 import { SIDEQUEST } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash } from "./../hpkit.js";
 import { fairPick } from "./../fairpick.js";
-import { Beats, flyFrom } from "./../npcscene.js";
+import { Beats, flyFrom, impact, nameSlam, takeover, banner, stampOn, countdown } from "./../npcscene.js";
 import { dialogBox } from "./../dialog.js";
 import { renderLook } from "./../charrender.js";
 
@@ -36,10 +46,12 @@ const params = new URLSearchParams(location.search);
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
 
 const SETUP_MS = 5 * 60 * 1000;   // nobody taps Start: go with what's on
-const SPIN_MS = 6800;
-const SPIN_LAND_MS = 3200;        // of SPIN_MS: faces flick past, it lands, he names them, a beat
-const QUEST_MS = 5600;
-const SWIRL_MS = 1700;            // of QUEST_MS: the ball swirls again, then the card
+export const SPIN_MS = 4700;
+export const SPIN_LAND_MS = 3000;   // of SPIN_MS: faces flick past (a drumroll), it lands; the name holds ~1.5 s
+export const QUEST_MS = 5000;
+const CARD_AT = 1900;               // of QUEST_MS: his smoke becomes a card (0 .. 1.9 s), the quest card takes over
+const STAMP_AT = 2300;              // "SIDE QUEST", stamped on it
+const COUNT_AT = [2700, 3250, 3800, 4350];   // 3, 2, 1, GO
 const RESULT_MS = 8000;
 const END_MS = 22000;
 const STARS = SIDEQUEST.STARS, PPS = SIDEQUEST.POINTS_PER_STAR;
@@ -52,6 +64,7 @@ const LINES = {
     name: "The Prophet", kicker: "SIDE QUEST:",
     wait: "Sit down, kid. Fate's got a job for you.",
     relax: "Relax. The ball already knows who's next...",
+    picked: "THE BALL PICKED YOU", gotPicked: n => `${n} got picked`, stamp: "SIDE QUEST", go: ["3", "2", "1", "GO"], skip: "skip ▸▸",
     quest: q => `SIDE QUEST: ${q}`,
     accept: "Accept", giveUp: "Give up", again: "Tap again to give up",
     go: "Clock's running. Go. They're filming.",
@@ -72,6 +85,7 @@ const LINES = {
     name: "예언자", kicker: "사이드 퀘스트:",
     wait: "앉아, 꼬마야. 운명이 너한테 시킬 일이 있어.",
     relax: "진정해. 공은 이미 다음이 누군지 알고 있어...",
+    picked: "공이 너를 골랐어", gotPicked: n => `${n} 당첨`, stamp: "사이드 퀘스트", go: ["3", "2", "1", "GO"], skip: "넘기기 ▸▸",
     quest: q => `사이드 퀘스트: ${q}`,
     accept: "수락", giveUp: "포기", again: "한 번 더 누르면 포기",
     go: "시간 간다. 가. 다들 찍고 있어.",
@@ -118,7 +132,7 @@ const sceneHtml = ctx => `<div class="np-room sq-room">
     <div class="sq-wall" id="sq-wall"></div>
     <div class="sq-low">${hostSkip(ctx)}<div class="sq-ui" id="sq-ui"></div><div class="sq-dlg" id="sq-dlg"></div></div>
   </div>`;
-const cardHtml = (q, cls = "") => `<div class="sq-card ${cls}"><div class="sq-kicker">${esc(T.kicker)}</div><div class="sq-text">${esc(q?.text ?? "…")}</div>${q?.level && q.level !== "mild" ? `<em class="sq-lv ${esc(q.level)}">${esc(q.level)}</em>` : ""}</div>`;
+const cardHtml = (q, cls = "") => `<div class="sq-card ${cls}"><div class="sq-text">${esc(q?.text ?? "…")}</div>${q?.level && q.level !== "mild" ? `<em class="sq-lv ${esc(q.level)}">${esc(q.level)}</em>` : ""}</div>`;
 const starsHtml = (fill, cls = "") => `<div class="sq-stars ${cls}" style="--fill:${Math.max(0, Math.min(1, fill)) * 100}%"><span class="sq-st-bg">${"★".repeat(STARS)}</span><span class="sq-st-fg">${"★".repeat(STARS)}</span></div>`;
 // the players' faces in the ball, lit like his room: soft, no coloured rim
 const LOOK_RIM = 0xe8e8ee;
@@ -144,7 +158,7 @@ export const SIDE_QUEST = {
     const AVAIL = questsFor(POOL, meta);
     const cats = CATS.filter(c => AVAIL.some(q => q.category === c.id));
     let lastHud = 0, lastTurn = null, myVote = null, giveUpArmed = 0, accepted = null, openCats = new Set(), spinTok = 0;
-    let sceneTi = null, uiKey = null, dlgKey = null, chKey = null;
+    let sceneTi = null, uiKey = null, dlgKey = null, chKey = null, cd = null;
     const beats = new Beats(), looks = new Map();
     // one Prophet and one dialog box for the whole game, moved into each
     // turn's freshly built scene. He loads (model, room, shaders) as soon as
@@ -156,7 +170,7 @@ export const SIDE_QUEST = {
     const loadProphet = () => (prophetP ??= import("./../prophet.js").then(m => m.prophetScene(holder)).then(p => { prophet = p; return p; })
       .catch(e => { console.warn("[sidequest] no 3D back room, the plain one stays:", e?.message ?? e); return null; }));
     loadProphet();
-    let lastPose = "idle", lastOrb = "idle", lastFace = null, lastPush = 0, lastHold = false, phaseNow = "setup", quipN = Math.floor(Math.random() * 5);
+    let lastPose = "idle", lastOrb = "idle", lastFace = null, lastPush = 0, lastGuest = null, phaseNow = "setup", quipN = Math.floor(Math.random() * 5);
     // taps on the scene: him (a line, between beats only), the ball, the lamp
     const onTap = kind => {
       if (kind === "ball") { sfx.chime(); return true; }
@@ -174,7 +188,8 @@ export const SIDE_QUEST = {
         const first = !p.stage.canvas.isConnected && !room$()?.classList.contains("r3d");
         if (first) p.stage.canvas.style.opacity = "0";   // the first time: fade in over the plain room
         p.attach(at);
-        p.setPose(lastPose); p.orb(lastOrb); p.push(lastPush); p.hold(lastHold); if (lastFace) p.face(lastFace);
+        p.setPose(lastPose); p.orb(lastOrb); p.push(lastPush); if (lastFace) p.face(lastFace);
+        if (lastGuest) p.guest.show(lastGuest.id, lastGuest.avatar, { pop: false });
         p.onTap = onTap;
         globalThis.__prophet = p;                          // for the tests
         requestAnimationFrame(() => requestAnimationFrame(() => { p.stage.canvas.style.opacity = ""; room$()?.classList.add("r3d"); }));
@@ -323,7 +338,7 @@ export const SIDE_QUEST = {
     const room$ = () => $("game-panel")?.querySelector(".sq-room");
     function scene(s) {
       if (sceneTi === s.ti && room$()) return false;
-      sceneTi = s.ti; uiKey = null;
+      sceneTi = s.ti; uiKey = null; cd = null;
       ui.panel(sceneHtml(ctx), "np-full");
       bindHostSkip(game);
       dlg.attach($("sq-dlg"));
@@ -333,8 +348,15 @@ export const SIDE_QUEST = {
     const pose = name => { lastPose = name === "nod" ? "idle" : name; prophet?.setPose(name); };
     const orb = mode => { lastOrb = mode; prophet?.orb(mode); const o = $("sq-orb"); if (o) o.className = `sq-orb ${mode}`; };
     const push = k => { lastPush = k; prophet?.push(k); };
-    // the key moments (the pick, the reveal): the camera glides home and stays
-    const hold = on => { if (on !== lastHold) { lastHold = on; prophet?.hold(on); } };
+    // the one on the quest, standing by his table (null: nobody)
+    const guest = (s, id, { pop = false, react = null } = {}) => {
+      if (!id) { if (lastGuest) { lastGuest = null; prophet?.guest.hide(); } return; }
+      if (lastGuest?.id === id && !pop && !react) return;
+      lastGuest = { id, avatar: avatarOf(s, id) };
+      prophet?.guest.show(id, lastGuest.avatar, { pop, react });
+    };
+    // the host's skip, labelled for what it skips
+    const skipLabel = txt => { const b = $("hp-skip"); if (b && b.textContent !== txt) b.textContent = txt; };
     const face = (s, id, pop = false) => {
       const img = $("sq-face"), url = lookOf(s, id);
       if (url) { lastFace = url; prophet?.face(url, pop); }
@@ -365,16 +387,19 @@ export const SIDE_QUEST = {
     };
     const noChoices = () => { if (chKey) { chKey = null; dlg.clearChoices(); } };
     // the quest card; the first time it rises out of the ball
-    function card(t, { rise = false, small = false } = {}) {
+    function card(t, { rise = false, small = false, stamped = true } = {}) {
       const w = $("sq-wall");
-      if (!w || !t?.quest) return;
+      if (!w || !t?.quest) return null;
       let c = w.querySelector(".sq-card");
       if (!c) {
         w.innerHTML = cardHtml(t.quest);
         c = w.querySelector(".sq-card");
-        if (rise) { const o = prophet ? prophet.ballRect() : $("sq-orb")?.getBoundingClientRect(); flyFrom(c, o && { left: o.left, top: o.top, width: o.width, height: o.height * 0.6 }, { ms: 1000, tilt: 75 }); }
+        // it comes out of the smoke card over the ball (or the plain room's orb)
+        if (rise) { const o = prophet ? prophet.cardRect() : $("sq-orb")?.getBoundingClientRect(); flyFrom(c, o && { left: o.left, top: o.top, width: o.width, height: o.height }, { ms: 700, tilt: 30 }); }
       }
+      if (stamped && !c.querySelector(".np-stamp")) stampOn(c, T.stamp, { late: true });
       c.classList.toggle("small", small);
+      return c;
     }
 
     // ---- the flick: the ball shows everyone's heads, slowing down, and
@@ -383,10 +408,11 @@ export const SIDE_QUEST = {
       const tok = ++spinTok;
       const steps = [];
       let t = 0, d = 70, i = Math.floor(Math.random() * ids.length);
-      while (t + d < SPIN_LAND_MS - 120) { steps.push([t, ids[i++ % ids.length]]); t += d; d *= 1.17; }
+      d = 55;
+      while (t + d < SPIN_LAND_MS - 120) { steps.push([t, ids[i++ % ids.length]]); t += d; d *= 1.12; }
       for (const [at, id] of steps) {
         if (at < elapsed) continue;
-        setTimeout(() => { if (tok === spinTok) { face(s, id); sfx.cursor(); } }, at - elapsed);
+        setTimeout(() => { if (tok === spinTok) { face(s, id); sfx.tick(); } }, at - elapsed);
       }
       face(s, steps.find(([at]) => at >= elapsed)?.[1] ?? target);
     }
@@ -397,7 +423,6 @@ export const SIDE_QUEST = {
       const tk = `${s.ti}:${s.phase}`;
       if (tk !== lastTurn) { lastTurn = tk; if (s.phase !== "do") myVote = null; giveUpArmed = 0; }
       phaseNow = s.phase;
-      hold(s.phase === "spin" || s.phase === "quest");
       const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
@@ -461,52 +486,79 @@ export const SIDE_QUEST = {
       const pk = `${s.ti}:${s.phase}`;
       const name = s.players?.[t.who]?.handle ?? "you";
 
+      if (["spin", "quest"].includes(s.phase)) skipLabel(T.skip);
+      else if ($("hp-skip")?.textContent === T.skip) skipLabel("host: skip ahead");
+
       if (s.phase === "spin") {
         // 1. who. Anticipation: he leans in, hands over the ball, the camera
-        // pushes in, and he starts his line. Action: heads flick past in the
-        // ball, slowing. Hold: it lands on them and he points: "...[name]."
+        // pushes in, and he starts his line. Action: faces flick through the
+        // ball like a slot machine, fast then slowing, over a drumroll and a
+        // tick each. Hit: a flash from the ball, a shake, a chime, their name
+        // in big gold letters; their character pops in by the table and he
+        // points at them: "...[name]."
         const elapsed = SPIN_MS - s.left;
         if (fresh || uiKey !== pk) {
           panel(pk, "");
+          guest(s, null);                                  // last turn's player leaves
           pose("reveal"); orb("spin"); push(1);
           const ids = P.filter(p => !p.gone).map(p => p.id);
-          if (elapsed < SPIN_LAND_MS) { flick(s, ids.length ? ids : [t.who], t.who, elapsed); line(pk, T.relax, { late: elapsed > 1800 }); }
+          if (elapsed < SPIN_LAND_MS) {
+            flick(s, ids.length ? ids : [t.who], t.who, elapsed); line(pk, T.relax, { late: elapsed > 1500 });
+            if (elapsed < 400) sfx.drumroll((SPIN_LAND_MS - elapsed) / 1000 - 0.1);
+          }
         }
         beats.at("land", pk, SPIN_LAND_MS, elapsed, late => {
           spinTok++;
           face(s, t.who, !late);
-          orb("landed");
-          pose("point");
+          orb(late ? "landed" : "burst"); setTimeout(() => { if (phaseNow === "spin") orb("landed"); }, 700);
+          pose("aim");
+          guest(s, t.who, { pop: !late, react: late ? null : "surprised" });
           line(`${pk}:who`, `${T.relax} ${name}.`, { late, cont: true });
-          if (!late) { sfx.chime(); if (t.who === ctx.me.id) buzz([60, 40, 120]); }
+          const room = room$(), mine = t.who === ctx.me.id;
+          if (!late) { sfx.chime(); sfx.slam(); impact(room, { from: prophet?.ballRect() ?? null }); }
+          // held ~1.5 s from the landing; a phone that got here late still shows it, briefly
+          const ms = Math.max(600, SPIN_LAND_MS + 1500 - elapsed), msT = Math.max(700, SPIN_LAND_MS + 2000 - elapsed);
+          if (mine) { takeover(room, T.picked, { kind: "gold", late, ms: msT }); if (!late) buzz([90, 40, 220]); }
+          else { nameSlam(room, name, { late, ms }); banner(room, T.gotPicked(name), { ms: msT + 400 }); }
         });
         // the chosen head keeps resolving in while its render finishes
         if (elapsed >= SPIN_LAND_MS) face(s, t.who);
 
       } else if (s.phase === "quest") {
-        // 2. what. Anticipation: hands back over the ball, it swirls hard.
-        // Action: the ball flares and the card rises out of it. Hold: it
-        // stays on screen for the rest of the turn while he reads it out.
+        // 2. what. He takes a drag and blows a swirl of smoke over the ball;
+        // it gathers into a glowing card that flips round to face you and
+        // becomes the quest card, "SIDE QUEST" stamped on it with a thud and
+        // a puff of dust. Then 3, 2, 1, GO, and their character cheers.
         const elapsed = QUEST_MS - s.left;
         if (fresh || uiKey !== pk) {
           panel(pk, "");
           face(s, t.who);
-          if (elapsed < SWIRL_MS) { pose("reveal"); orb("swirl"); push(1); }
+          guest(s, t.who);
+          if (elapsed < CARD_AT) { pose("reveal"); orb("swirl"); push(1); if (elapsed < 600) { prophet?.puff(); prophet?.smokeCard(elapsed / 1000); sfx.whoosh(); } }
           if (fresh) line(`${s.ti}:spin:who`, `${T.relax} ${name}.`, { late: true });
         }
-        beats.at("rise", pk, SWIRL_MS, elapsed, late => {
-          pose("reveal");
-          orb("burst");
-          card(t, { rise: !late });
+        beats.at("card", pk, CARD_AT, elapsed, late => {
+          pose("idle"); orb("landed");
+          card(t, { rise: !late, stamped: late || elapsed > STAMP_AT });
           line(`${pk}:q`, T.quest(t.quest?.text ?? "…"), { late });
           if (!late) sfx.ping();
         });
-        beats.at("settle", pk, SWIRL_MS + 1400, elapsed, () => { pose("idle"); orb("landed"); push(0); });
+        beats.at("stamp", pk, STAMP_AT, elapsed, late => {
+          const c = card(t, { stamped: false });
+          if (c && !c.querySelector(".np-stamp")) stampOn(c, T.stamp, { late });
+          if (!late) { sfx.thud(); buzz(35); }
+        });
+        COUNT_AT.forEach((at, i) => beats.at(`n${i}`, pk, at, elapsed, late => {
+          if (late) return;
+          const go = i === COUNT_AT.length - 1;
+          (cd ??= countdown(room$())).show(T.go[i], { go });
+          if (go) { sfx.now(); buzz([30, 30, 60]); prophet?.guest.cheer(); push(0); } else sfx.tick();
+        }));
 
       } else if (s.phase === "do") {
         const mine = isMe(s);
         const held = t.votes[ctx.me.id] ?? myVote;
-        if (fresh || uiKey === null || !String(uiKey).startsWith(pk)) { card(t); face(s, t.who); orb("landed"); pose("idle"); push(0); }
+        if (fresh || uiKey === null || !String(uiKey).startsWith(pk)) { card(t); face(s, t.who); orb("landed"); pose("idle"); push(0); guest(s, t.who); }
         const key = `${pk}:${t.status ?? "-"}:${mine ? 1 : 0}:${held ?? "-"}`;
         if (mine) {
           if (t.status) { line(`${pk}:gu`, T.youGaveUp); noChoices(); panel(key, ""); }
@@ -550,6 +602,7 @@ export const SIDE_QUEST = {
         if (fresh || uiKey !== pk) {
           card(t, { small: true });
           face(s, t.who);
+          if (!t.skipped) guest(s, t.who); else guest(s, null);
           noChoices(); push(0);
           const board = P.slice().sort((a, b) => b.score - a.score).map(p => `<li class="${p.id === t.who ? "me" : ""}"><b>${esc(p.handle)}</b><span>${p.score}</span></li>`).join("");
           if (t.skipped) {
