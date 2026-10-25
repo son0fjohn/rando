@@ -521,6 +521,48 @@ group("Secret Diary — drop-safety, timers, a host who leaves, nobody tapping a
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 
+group("Secret Diary — a phone that reloads mid-game is put back in, not waited on");
+{
+  // iOS reloads a backgrounded tab: same id, back in presence, but the page
+  // never saw the launch. It must get the game back and be able to finish,
+  // so the round still ends the moment everyone's done, not on its timer.
+  const t = seatTable(SECRET_DIARY, 3);
+  adv(300); t.input("p1", "send"); adv(400);
+  ok(t.host.game.seated("p3") && !t.host.game.seated("stranger"), "the host knows who's seated in the game (and who isn't)");
+  answerAll(t, ["p1", "p2"]);
+  answerAll(t, ["p3"], { skip: (id, k) => k > 1 });          // p3 answers 2 of 5…
+  adv(400);
+  ok(t.rejoin("p3"), "…then p3's page reloads: the host re-launches the game for them");
+  adv(1000);
+  ok(t.stateOf("p3")?.phase === "answer" && t.stateOf("p3").batch.length === 5, "the reloaded phone renders the live answer window from the next snapshot");
+  ok(t.s.players.p3.gone === false && Object.keys(t.s.players.p3.answers).length === 2, "they're present, and the answers they gave before the reload are still saved");
+  answerAll(t, ["p3"], { skip: (id, k) => k <= 1 });
+  ["p1", "p2", "p3"].forEach(id => t.input(id, "submit"));
+  ok(waitPhase(t, "reveal", 4000), "they finish and submit: the reveal starts at once, not when the window runs out");
+  ok(t.s.qs.every(q => q.cands.includes("p3")), "all of p3's answers count");
+  adv(400);
+  ok(t.rejoin("p2"), "p2 reloads mid-reveal");
+  adv(1000);
+  ok(t.stateOf("p2")?.phase === t.s.phase && t.stateOf("p2")?.qi === t.s.qi, "and is back on the same question");
+  ok(lockThrough(t, ["p1", "p2", "p3"]), "every reveal still moves on as soon as all three lock in");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+{
+  // the host's own page reloads: hosting passes on, and the new host puts them back in
+  const t = seatTable(SECRET_DIARY, 3);
+  adv(300); t.input("p1", "send"); adv(400);
+  answerAll(t, ["p1", "p2", "p3"]);
+  adv(400);                                                   // (the next snapshot carries the answers, as when a host leaves)
+  ok(t.rejoin("p1"), "the host's page reloads mid-answer: the next player hosts and re-launches the game for them");
+  adv(1000);
+  ok(t.host?.me.id === "p2" && t.stateOf("p1")?.phase === "answer", "p2 carries the game on; p1 is back in it as a player");
+  ["p1", "p2", "p3"].forEach(id => t.input(id, "submit"));
+  ok(waitPhase(t, "reveal", 4000), "everyone submits, the old host too: the reveal starts at once");
+  ok(t.s.qs[0].cands.length === 3, "and every answer, the old host's included, counts");
+  ok(lockThrough(t, ["p1", "p2", "p3"]), "and plays through to the results");
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+}
+
 group("Secret Diary — odd counts and a full room (5 and 12 players)");
 for (const n of [5, 12]) {
   const t = seatTable(SECRET_DIARY, n);
@@ -1190,6 +1232,19 @@ group("Manhunt — win conditions");
   adv(500);
   ok(Object.values(t.s.players).filter(p => p.role === "hunter").length === 1, "4 players still yields a hunter");
   ok(Object.values(t.s.players).filter(p => p.role === "runner").length === 3, "and three runners");
+}
+
+// ===================================================================== rejoin
+group("Every game — a phone that reloads mid-game picks the game back up");
+for (const [g, n] of [[SECRET_DIARY, 3], [SIDE_QUEST, 3], [HUMILIATION_RITUAL, 3], [MASK_OFF, 3], [ART_GALLERY, 3], [MANHUNT_GAME, 4]]) {
+  const t = seatTable(g, n);
+  adv(6000);
+  const phase = t.s.phase;
+  const back = t.rejoin("p2");
+  adv(2000);
+  ok(back && t.stateOf("p2")?.phase === t.s.phase && t.s.players.p2.gone === false, `${g.title}: re-launched, rendering the host's ${phase} phase, counted as present`);
+  ok(t.errors().length === 0, `${g.title}: no errors: ` + (t.errors()[0] ?? "none"));
+  ok(runOut(t, 40 * 60 * 1000), `${g.title}: plays out`);
 }
 
 // ===================================================================== kit

@@ -109,7 +109,7 @@ export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, par
     room.join();
     return { me: p, room, ended: false };
   });
-  for (const c of clients) {
+  const launch = c => {
     const ctx = {
       room: c.room, me: c.me, humans, seed,
       isHost: () => c.room.isHost,
@@ -121,8 +121,9 @@ export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, par
       onEnd: r => { c.ended = true; c.results = r ?? null; },
     };
     gamedef.start(ctx);
-    c.game = window.__game;          // HostGame publishes itself for debugging
-  }
+    c.game = ctx.hostGame;           // HostGame hangs itself on ctx
+  };
+  for (const c of clients) launch(c);
   return {
     bus, clients,
     // a dropped client's presence is frozen at the moment it left, so it
@@ -135,6 +136,20 @@ export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, par
     stateOf(id) { return this.byId(id)?.game?.s ?? null; },
     input(id, type, payload = {}) { this.byId(id).game.input(type, payload); },
     drop(id) { const c = this.byId(id); c.room.leave(); c.dropped = true; },
+    // the page reloads mid-game: the old phone is gone, the same id comes back
+    // as the newest member, and (as party.js does) the host re-sends the
+    // launch to a seat it knows, so the phone starts the game fresh and picks
+    // up from the next snapshot. Returns false if the host wouldn't re-launch.
+    rejoin(id) {
+      const old = this.byId(id);
+      old.game?.stop(); old.room.leave();
+      const c = { me: old.me, room: new FakeRoom("party-TEST", old.me, bus, Date.now()), ended: false };
+      clients[clients.indexOf(old)] = c;
+      c.room.join();
+      if (!this.host?.game?.seated(id)) return false;
+      launch(c);
+      return true;
+    },
     errors() {
       return clients.flatMap(c => (c.game?.errs ?? []).map(e => `${c.me.id}: ${e.where}: ${e.msg.split("\n")[0]}`));
     },
