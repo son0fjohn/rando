@@ -1257,6 +1257,11 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .sq-orb.swirl .sq-face { opacity: .3; }
 .sq-orb.dim { filter: grayscale(.6) brightness(.8); }
 .sq-wall { position: absolute; left: 7%; right: 7%; top: 64px; z-index: 3; }
+/* the host's quest list (setup) over his rooftop, in the lower part so he
+   still shows above it: the card scrolls, the room around it still orbits */
+.sq-setup-ov { position: absolute; left: 4%; right: 4%; top: max(62px, 40%); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 5; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; pointer-events: none; }
+.sq-setup-ov .stage { pointer-events: auto; max-height: 100%; overflow: auto; overscroll-behavior: contain; box-sizing: border-box; }
+.sq-setup-ov .stage .st-body .sq-cat ul { max-height: none; overflow: visible; }
 .sq-room .sq-card { margin: 0; background: #f2efe6; color: #24262c; border: 2px solid #d9d4c6; border-radius: 10px; padding: 12px 14px 14px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, .35); transform-origin: 50% 100%; }
 .sq-room .sq-kicker { font: 700 13px/16px var(--dlg-font); letter-spacing: .12em; color: #4a3d8f; }
