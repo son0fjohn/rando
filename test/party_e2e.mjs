@@ -355,6 +355,11 @@ try {
   ok(await until(A, t => (document.querySelector(".sd-card .sd-ctext > div:last-child")?.textContent ?? "") !== t, firstCard), "Swap deals a different card");
   await A.click("#sd-send");
   ok((await Promise.all([A, B, C].map(pg => until(pg, () => document.querySelectorAll(".sd-q").length === 5)))).every(Boolean), "everyone gets the whole batch at once");
+  // bob's page reloads mid-answer (iOS does this to a backgrounded tab): he
+  // comes back by the same link, and the host puts him straight back into
+  // the game, so the round below still ends the moment all 3 submit
+  await B.reload();
+  ok(await until(B, () => !document.getElementById("game-layer").hidden && document.querySelectorAll(".sd-q").length === 5, null, 20000), "a phone that reloads mid-answer is put straight back into the game");
   const qTypes = await B.locator(".sd-q").evaluateAll(qs => qs.map(q => q.classList.contains("yesno") ? "yesno" : "written"));
   const w0 = qTypes.indexOf("written");
   // cy is mid-sentence while the others submit: it must survive

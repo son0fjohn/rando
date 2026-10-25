@@ -24,6 +24,9 @@ export class HostGame {
     ctx.hostGame = this;    // the party's host controls (Back / End game) reach the game here
   }
   get hosting() { return this.room.isHost; }
+  // a human seat in this game? Works on any phone: guests hold the latest
+  // snapshot (party.js re-launches the game for a seated phone that reloads)
+  seated(id) { const p = this.s?.players?.[id]; return !!p && !p.isBot; }
   start(initial) {
     this.running = true;
     this.s = initial;

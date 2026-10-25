@@ -153,8 +153,11 @@ async function sidequest() {
   await sleep(1500);
   await queue(A, "sidequest");
   await until(A, () => !!document.getElementById("sq-go"));
+  await until(A, () => !!document.querySelector(".sq-room.r3d"), null, 30000);
   await sleep(1500);
+  await A.screenshot({ path: join(OUT, "sidequest-0-setup.png") });    // the list over his rooftop
   await A.click('[data-open="anywhere"]'); await sleep(1200);
+  await A.screenshot({ path: join(OUT, "sidequest-0b-setup-open.png") });
   await A.locator(".sq-q").nth(5).click(); await sleep(900);          // one quest off
   await A.locator(".sq-q").nth(5).click(); await sleep(700);          // …and back on
   await A.click('[data-open="anywhere"]'); await sleep(500);

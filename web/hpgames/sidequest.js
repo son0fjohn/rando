@@ -158,7 +158,7 @@ export const SIDE_QUEST = {
     const AVAIL = questsFor(POOL, meta);
     const cats = CATS.filter(c => AVAIL.some(q => q.category === c.id));
     let lastHud = 0, lastTurn = null, myVote = null, giveUpArmed = 0, accepted = null, openCats = new Set(), spinTok = 0;
-    let sceneTi = null, uiKey = null, dlgKey = null, chKey = null, cd = null;
+    let sceneTi = null, uiKey = null, dlgKey = null, chKey = null, cd = null, setupKey = null;
     const beats = new Beats(), looks = new Map();
     // one Prophet and one dialog box for the whole game, moved into each
     // turn's freshly built scene. He loads (model, room, shaders) as soon as
@@ -439,13 +439,23 @@ export const SIDE_QUEST = {
         if (!isHost) {
           // he waits in his back room
           if (scene({ ti: "setup" })) { orb("idle"); pose("idle"); push(0); }
+          if ($("sq-setup-ov")) { $("sq-setup-ov").remove(); setupKey = null; dlgKey = null; }   // (no longer hosting)
           line("setup", T.wait);
           return;
         }
-        if (!ui.once(`su:${[...off].sort().join(",")}:${turns}:${[...openCats].join(",")}:${n}`, () => {})) return;
-        sceneTi = null;
+        // the host picks the quests over his rooftop: same room, a list on top
+        if (scene({ ti: "setup" })) { orb("idle"); pose("idle"); push(0); setupKey = null; }
+        const key = `${[...off].sort().join(",")}:${turns}:${[...openCats].join(",")}:${n}`;
+        if (setupKey === key) return;
+        setupKey = key;
+        let ov = $("sq-setup-ov");
+        if (!ov) {
+          // no line from him and no skip under the list: Start is the way on
+          ov = document.createElement("div"); ov.className = "sq-setup-ov"; ov.id = "sq-setup-ov";
+          room$().appendChild(ov); dlg.hide(); $("hp-skip")?.remove();
+        }
         const on = AVAIL.filter(q => !off.has(q.id)).length;
-        ui.stage("choose the quests", `
+        ov.innerHTML = `<div class="stage"><div class="st-sub">the Prophet's list</div><h2>choose the quests</h2><div class="st-body">
           <div class="sq-setup">
             <button type="button" class="pt-btn pt-primary sq-go" id="sq-go" ${on ? "" : "disabled"}>start · ${on} quest${on === 1 ? "" : "s"}</button>
             <div class="sq-turns"><span>turns</span>
@@ -462,12 +472,12 @@ export const SIDE_QUEST = {
               </section>`;
             }).join("")}
             ${meta?.settings?.adult ? "" : `<p class="ab-sub">unhinged quests appear when the party allows 18+</p>`}
-          </div>`, "the Prophet's list");
-        const panelEl = $("game-panel");
+          </div></div></div>`;
+        const panelEl = ov;
         $("sq-go").onclick = () => { sfx.confirm(); game.input("sq-go"); };
         panelEl.querySelectorAll("[data-turns]").forEach(b => b.onclick = () => { sfx.cursor(); game.input("sq-turns", { n: +b.dataset.turns }); });
         panelEl.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => { sfx.cursor(); game.input("sq-cat", { cat: b.dataset.cat, on: !b.classList.contains("on") }); });
-        panelEl.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { const id = b.dataset.open; if (openCats.has(id)) openCats.delete(id); else openCats.add(id); sfx.cursor(); ui.resetKey(); });
+        panelEl.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { const id = b.dataset.open; if (openCats.has(id)) openCats.delete(id); else openCats.add(id); sfx.cursor(); setupKey = null; });
         panelEl.querySelectorAll("[data-q]").forEach(b => b.onclick = () => { sfx.cursor(); game.input("sq-q", { id: b.dataset.q, on: !b.classList.contains("on") }); });
         return;
       }

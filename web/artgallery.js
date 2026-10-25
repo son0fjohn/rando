@@ -298,12 +298,16 @@ export const ART_GALLERY = {
       ui.hud(`<div class="hq"><b>ART GALLERY</b><span>${label}</span><span class="clk ${s.left < 8000 && s.phase !== "end" ? "urgent" : ""}">${ui.clock(s.left)}</span><span>${me?.score ?? 0} pts</span></div>`);
 
       if (s.phase === "photos") {
+        // a phone that reloaded mid-game lost its local list: the host's
+        // state still has the photos it sent (and the host resends the bytes)
+        for (const pid of me?.photos ?? []) if (!mine.includes(pid) && mine.length < PHOTOS_PER) mine.push(pid);
         const ready = active.filter(p => p.photos.length >= PHOTOS_PER).length;
-        if (!ui.once(`p:${mine.length}:${ready}:${active.length}:${busy ? 1 : 0}`, () => {})) return;
+        const shown = mine.filter(pid => srcOf(pid, s)).length;
+        if (!ui.once(`p:${mine.length}:${shown}:${ready}:${active.length}:${busy ? 1 : 0}`, () => {})) return;
         const inset = `top:${FRAME_INSET.t}%;right:${FRAME_INSET.r}%;bottom:${FRAME_INSET.b}%;left:${FRAME_INSET.l}%`;
         const frames = [0, 1, 2].map(i => {
-          const pid = mine[i];
-          const inner = pid ? `<img src="${photos.get(pid)}" alt="">` : `<span>${busy && i === mine.length ? "loading…" : "tap to add a photo"}</span>`;
+          const pid = mine[i], src = pid && srcOf(pid, s);
+          const inner = pid ? (src ? `<img src="${src}" alt="">` : "<span>photo loading…</span>") : `<span>${busy && i === mine.length ? "loading…" : "tap to add a photo"}</span>`;
           return `<div class="pt-box ag-frame ${pid ? "" : "ag-empty"}" data-i="${i}"><div class="ag-hang"><div class="ag-photo" style="${inset}">${inner}</div><img class="ag-frameimg" src="${ASSET}frame.png" alt=""></div></div>`;
         }).join("");
         ui.stage("fill your 3 frames", `<div class="ag-frames">${frames}</div><input type="file" id="ag-file" accept="image/*" hidden>
