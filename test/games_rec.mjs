@@ -400,6 +400,7 @@ async function artgallery() {
     await until(pg, () => !!document.getElementById("ag-file"));
     await pg.setInputFiles("#ag-file", join(ROOT, `web/games/captions/c${(k * 3 + i) % 8}.jpg`));
     await sleep(400);
+    if (k === 0 && i === 0) { await sleep(800); await pg.screenshot({ path: join(OUT, "artgallery-0-photos.png") }); }   // the frames card over the gallery wall
   }
   await phaseIs(A, "title", 30000);
   for (const pg of P.list) for (let n = 0; n < 6; n++) {
@@ -407,6 +408,7 @@ async function artgallery() {
     const t = await pg.locator("#game-panel h2").first().innerText().catch(() => "");
     if (!/title this piece/.test(t)) break;
     await until(pg, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
+    if (pg === P.host && n === 0) await pg.screenshot({ path: join(OUT, "artgallery-0b-title.png") });
     await pg.fill("#gp-in", ["a sad little sandwich", "my landlord at 3am", "the vibes were off", "museum of regret", "self portrait, monday", "do not perceive me"][(n + pg.label.length) % 6]);
     await pg.click("#game-panel .gp-form button");
     await until(pg, t => (document.querySelector("#game-panel h2")?.textContent ?? "") !== t, t, 5000);

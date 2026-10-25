@@ -392,7 +392,7 @@ export const party = {
     c.setupPhases = g.hostSetup ?? [];
     c.behind = behind;
     try { g.start(ctx); }
-    catch (e) { console.warn("[party] game start", e); c.launched = false; c.launchMsg = null; $("party-panel").hidden = false; $("party-panel").classList.remove("pt-behind"); this.err(`${g.title} failed to start`); return; }
+    catch (e) { console.warn("[party] game start", e); trash.flush("game failed to start"); c.launched = false; c.launchMsg = null; $("party-panel").hidden = false; $("party-panel").classList.remove("pt-behind"); this.err(`${g.title} failed to start`); return; }
     if (c.room.isHost) this._announce();
     this._watchGame(c);
     this._syncPause();
