@@ -58,6 +58,13 @@ export const ART_GALLERY = {
   start(ctx) {
     ui.show(); ui.theme("chill");
     const room = ctx.room;
+    // the gallery's wall behind every card (photos, titles, results), not
+    // the map; the gallery steps draw the full room over it
+    const wall = document.createElement("div");
+    wall.className = "game-bg ag-bg";
+    $("game-layer")?.prepend(wall);
+    requestAnimationFrame(() => wall.classList.add("on"));
+    trash.add(() => wall.remove());
     // every photo anyone shared dies when the party does (cleanup contract)
     trash.add(() => { photos.clear(); mine.length = 0; });
     let lastHud = 0, mine = [], myTitles = {}, myVote = null, busy = false;
