@@ -6,7 +6,7 @@
 //   ritual     3 phones (2 in the video): one full charades turn — the Boss
 //              reaches into his box, holds a capsule up ("[Name]. You're
 //              up."), twists it open (the slip on the performer's phone,
-//              peek/smirk/"Shhh..." on a guesser's), the live guess feed, a
+//              peek/smirk/"Shhh." on a guesser's), the live guess feed, a
 //              guesser typing, the performer tapping it, his nod
 //   maskoff    3 phones: the deck setup, a full Mask Off turn (hand, card,
 //              mask off, Same, Go deeper), a Pass turn, the "masks off" end
@@ -36,12 +36,12 @@ const browser = await chromium.launch({ executablePath: existsSync(CHROME) ? CHR
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const errors = [];
 const LOOKS = {
-  alice: { skin: "2", hair: "f1", hairColor: "brown", face: "f1", iris: "blue", top: "hoodie-maroon", bottom: "cargo-black", shoes: "sneaker-white-stripe" },
-  bob: { skin: "4", hair: "m1", hairColor: "black", face: "f3", iris: "brown", top: "tee-white-graphic", bottom: "jeans-baggy-blue", shoes: "sneaker-hitop-black" },
-  cy: { skin: "1", hair: "f2", hairColor: "red", face: "f2", iris: "green", top: "tee-baggy-black", bottom: "skirt-pleated-black", shoes: "clog-pink" },
-  dee: { skin: "3", hair: "m3", hairColor: "white", face: "f5", iris: "navy", top: "none", bottom: "track-navy", shoes: "boot-work-tan" },
+  alice: { skin: "2", eyes: "sparkly", iris: "lightblue", hairColor: "darkbrown", hair: "bob", head: "none", face: "none", top: "varsity", bottom: "plaid-wide", shoes: "white-chunky", neck: "none" },
+  bob: { skin: "4", eyes: "cool", iris: "brown", hairColor: "black", hair: "twists", head: "bucket", face: "none", top: "bomber-olive", bottom: "wide-jeans", shoes: "hightop", neck: "chain-gold" },
+  cy: { skin: "1", eyes: "fox", iris: "green", hairColor: "red", hair: "twin-buns", head: "none", face: "star-sticker", top: "crop-flannel", bottom: "skirt-pleated", shoes: "platform", neck: "none" },
+  dee: { skin: "3", eyes: "keen", iris: "gray", hairColor: "platinum", hair: "buzz", head: "durag", face: "shades-round", top: "track-purple", bottom: "track-pants", shoes: "combat", neck: "none" },
 };
-const until = (pg, fn, arg, ms = 20000) => pg.waitForFunction(fn, arg, { timeout: ms }).then(() => true).catch(() => false);
+const until = (pg, fn, arg, ms = 20000) => pg.waitForFunction(fn, arg, { timeout: ms, polling: 80 }).then(() => true).catch(() => false);
 const log = (...a) => console.log(...a);
 
 // ---------------------------------------------------------------- recording
@@ -144,7 +144,7 @@ const backInRoom = pg => until(pg, () => !document.getElementById("party-panel")
 // ---------------------------------------------------------------- Side Quest
 async function sidequest() {
   log("\nSide Quest");
-  const P = await phones(["alice", "bob", "cy"]);
+  const P = await phones(["alice", "bob", "cy"], { dpr: 1 })   // (3 phones of software GL on one CPU: keep them light);
   // the lobby renders everyone's 3D look while they hang out (charrender.js);
   // three phones doing that in software GL on one CPU take a while
   await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/charrender.js").then(m => m.warmLooks([])))));
@@ -169,12 +169,22 @@ async function sidequest() {
     const picked = P.list.find(pg => idOf(pg) === whoId);
     const other = P.list.find(pg => pg !== picked);
     first ??= [picked, other];
+    // the ball lands: their name slams in on everyone else's phone, theirs goes gold
+    if (turn === 1) {
+      await Promise.all([until(other, () => !!document.querySelector(".np-slam"), null, 15000), until(picked, () => !!document.querySelector(".np-take"), null, 15000)]);
+      await sleep(350);
+      await other.screenshot({ path: join(OUT, "sidequest-1-player-reveal.png") }); await picked.screenshot({ path: join(OUT, "sidequest-2-player-reveal-chosen.png") });
+    }
     await until(other, () => { const d = document.querySelector(".sq-room .dlg-box.done .dlg-text"); return d && /\.\.\. \S/.test(d.textContent); }, null, 15000);
-    if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-1-player-reveal.png") }), await picked.screenshot({ path: join(OUT, "sidequest-2-player-reveal-chosen.png") });
+    if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-1b-picked-in-room.png") });
     await phaseIs(A, "quest", 15000);
     await until(other, () => !!document.querySelector("#sq-wall .sq-card"), null, 10000);
-    await sleep(1600);
-    if (turn === 1) await other.screenshot({ path: join(OUT, "sidequest-3-quest-reveal.png") });
+    if (turn === 1) {
+      await until(other, () => !!document.querySelector("#sq-wall .np-stamp"), null, 6000); await sleep(250);
+      await other.screenshot({ path: join(OUT, "sidequest-3-quest-reveal.png") });
+      await until(other, () => !!document.querySelector(".np-count"), null, 6000);
+      await other.screenshot({ path: join(OUT, "sidequest-3b-countdown.png") });
+    }
     await phaseIs(A, "do", 40000);
     const s = await stateOn(A);
     const perf = P.list.find(pg => idOf(pg) === s.turn.who);
@@ -318,7 +328,7 @@ async function maskoff() {
 // ---------------------------------------------------------------- Humiliation Ritual
 async function ritual() {
   log("\nHumiliation Ritual");
-  const P = await phones(["alice", "bob", "cy"]);
+  const P = await phones(["alice", "bob", "cy"], { dpr: 1 })   // (3 phones of software GL on one CPU: keep them light);
   const A = P.host;
   await sleep(1000);
   // film every phone from the start (the Boss's pick, the capsule, the
@@ -336,7 +346,20 @@ async function ritual() {
   const perf = P.list.find(pg => idOf(pg) === s.turn.performer);
   const [g1, g2] = P.list.filter(pg => pg !== perf);
   log(`  performer: ${perf.label} (the state carries no prompt: ${!JSON.stringify(s).includes("prompt")})`);
+  // the capsule lands: the name slams in on a guesser's phone, the performer's goes to a red spotlight
+  await Promise.all([until(g1, () => !!document.querySelector(".np-slam"), null, 15000), until(perf, () => !!document.querySelector(".np-take"), null, 15000)]);
+  await sleep(350);
+  await g1.screenshot({ path: join(OUT, "ritual-1-pick.png") }); await perf.screenshot({ path: join(OUT, "ritual-2-pick-performer.png") });
+  await sleep(1600);
+  await g1.screenshot({ path: join(OUT, "ritual-3-on-stage.png") });
+  // the open: the slip fills the performer's screen, ACT IT OUT stamped on it; "Shhh." for the rest
+  await until(perf, () => !!document.querySelector(".hr-wall.full .hr-kick"), null, 10000); await sleep(400);
+  await perf.screenshot({ path: join(OUT, "ritual-4-slip.png") });
+  await until(g1, () => /^Shhh\.$/.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 8000);
+  await g1.screenshot({ path: join(OUT, "ritual-5-shhh.png") });
   await phaseIs(A, "act", 20000);
+  await sleep(900);
+  await g1.screenshot({ path: join(OUT, "ritual-6-guess.png") });
   const prompt = await perf.locator(".hr-card .hr-prompt").textContent();
   log(`  the performer's phone shows: ${prompt}`);
   await sleep(2500);

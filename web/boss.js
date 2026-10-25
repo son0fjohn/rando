@@ -18,20 +18,26 @@
 //   sip     a sip of his coffee (a tap on the cup)
 // Small life: a thin wisp from the cigar, a slow haze, a very subtle lamp
 // flicker (basement.js).
+// The pick: the capsule held up spins, players' faces flicking through it
+// like a slot machine (capsuleSpin(true) + capsule(url) for each face), and
+// lands on the performer's. The performer then stands in front of his table
+// under one harsh spotlight (guest: their own 3D character, npcstage.js
+// guestSpot) for their turn.
 //
 // Look around: the same camera as Side Quest's Prophet (npcstage.js): drag
-// to orbit, pinch, it glides home; hold(true) keeps it home for the pick
-// and the reveal. His head follows the camera a little.
+// to orbit, pinch, it glides home ~4 s after the last touch, never locked.
+// His head follows the camera a little.
 //
 //   const b = await bossScene(hostEl);
-//   b.capsule(faceUrl, "alice"); b.setPose("reach"); b.play("twist"); b.hold(true);
+//   b.capsule(faceUrl, "alice"); b.setPose("reach"); b.play("twist");
 //   b.onTap = kind => ...;   // "boss" | "box" | "cup" | "lamp" (true: he reacts)
 //   b.capsuleRect();          // the capsule on screen (the slip flies out of it)
+//   b.capsuleSpin(true); b.guest.show(id, avatar, { pop: true, react: "surprised" });
 //   b.attach(otherEl); b.dispose();
 import { retroStage, THREE } from "./retrolook.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { basementRoom, PROJ, TABLE, BOX, CUP, CHAIR } from "./basement.js";
-import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp } from "./npcstage.js";
+import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp, guestSpot } from "./npcstage.js";
 
 const ART = new URL("./games/ritual/boss/", import.meta.url).href;
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -89,6 +95,9 @@ const BONES = ["hips", "spine", "chest", "neck", "head", "upperarm_L", "upperarm
 // where he sits: in the chair (on its right-hand part, as in the picture),
 // facing the camera; the model is 1 tall, he's a big man
 export const SEAT = { x: -0.12, z: -0.66, turn: 0.0, scale: 2.05, wide: 1.06, hipY: 0.6 };
+// where the performer stands: in front of the table, off to the right of
+// the box, facing the camera
+export const STAGE = { x: 0.3, z: 0.72, face: -0.15 };
 
 export async function bossScene(host) {
   const st = await retroStage(host, BOSS_MOOD);
@@ -173,10 +182,17 @@ export async function bossScene(host) {
   const capAnchor = new THREE.Object3D(); capsule.add(capAnchor);
   const LID_COLS = [0x8ac8ff, 0xff8ab0, 0xffd060, 0x9ef08a, 0xc8a0ff];
   const texL = new THREE.TextureLoader();
+  // every face that's been in a capsule, kept (the slot-machine spin goes
+  // round them all several times)
+  const faceTex = new Map();
+  let wantFace = null;
   function setCapsule(url, name) {
     if (url && faceSp.material.map?.userData.url !== url) {
-      texL.load(url, t => { t.colorSpace = THREE.SRGBColorSpace; t.userData.url = url; const old = faceSp.material.map; faceSp.material.map = t; faceSp.material.needsUpdate = true; if (old && old !== t) old.dispose(); });
+      const use = t => { faceSp.material.map = t; faceSp.material.needsUpdate = true; };
+      if (faceTex.has(url)) { const t = faceTex.get(url); if (t) use(t); }
+      else { faceTex.set(url, null); texL.load(url, t => { t.colorSpace = THREE.SRGBColorSpace; t.userData.url = url; faceTex.set(url, t); if (wantFace === url) use(t); }); }
     }
+    wantFace = url;
     faceOn = url ? 1 : 0;
     const x = nameCv.getContext("2d");
     x.clearRect(0, 0, 256, 64);
@@ -190,7 +206,7 @@ export async function bossScene(host) {
     }
     nameTex.needsUpdate = true; nameOn = name ? 1 : 0;
   }
-  let faceOn = 0, nameOn = 0, capState = "hidden", lidT = 9;
+  let faceOn = 0, nameOn = 0, capState = "hidden", lidT = 9, spinOn = false, spinA = 0, spinV = 0;
   // "hidden" | "inhand" (shut) | "open" (the lid off)
   function capsuleState(s) {
     if (s === capState) return;
@@ -198,6 +214,9 @@ export async function bossScene(host) {
     if (s !== "open") { lid.position.set(0, 0, 0); lid.rotation.set(0, 0, 0); lid.visible = true; dome.material.opacity = 0.45; }
     capState = s; capsule.visible = s !== "hidden";
   }
+
+  // ---- the performer, in front of his table under one harsh spotlight
+  const guest = guestSpot(st, { at: [STAGE.x, 0, STAGE.z], face: STAGE.face, height: 0.8, cone: true, light: { color: 0xf4f6ff, intensity: 9, angle: 0.3, penumbra: 0.25 } });
 
   // ---- looking around (npcstage.js, shared with the Prophet)
   const orbit = orbitCamera(st, VIEW, { onTap: (x, y) => tap(x, y), rise: yaw => Math.max(0, -yaw - 0.35) * 0.3 });
@@ -307,6 +326,12 @@ export async function bossScene(host) {
       bp.copy(camera.position).sub(cp).normalize().lerp(UP, 0.35).normalize();
       capsule.parent.getWorldQuaternion(pq);
       capsule.quaternion.copy(pq.invert()).multiply(tmpQ.setFromUnitVectors(UP, bp));
+      // the slot-machine spin: round its own axis, fast while the faces
+      // flick, easing to a stop facing the camera
+      spinV += ((spinOn ? 18 : 0) - spinV) * Math.min(1, dt * (spinOn ? 6 : 3));
+      spinA += spinV * dt * (still ? 0 : 1);
+      if (!spinOn) spinA += ((Math.round(spinA / (Math.PI * 2)) * Math.PI * 2) - spinA) * Math.min(1, dt * 6);
+      capsule.quaternion.multiply(tmpQ.setFromAxisAngle(UP, spinA));
       nameSp.position.copy(cp).y -= 0.11;
     }
     faceSp.material.opacity += ((capState !== "hidden" ? faceOn * 0.95 : 0) - faceSp.material.opacity) * Math.min(1, dt * 8);
@@ -332,18 +357,19 @@ export async function bossScene(host) {
     // ---- smoke: the wisp off the ember; an exhale from his mouth
     wisp.update(tipAnchor, t, dt, 0, capState === "hidden" || poseName !== "shhh" ? 1 : 0.6);
     breath.update(mouth, t, dt, exhale);
+    guest.update(t, dt);
   });
 
   Object.defineProperty(api, "pose", { get: () => poseName });
   return Object.assign(api, {
     stage: st,
     setPose, play, capsule: setCapsule, capsuleState,
+    capsuleSpin: on => { spinOn = !!on; },
+    guest,
     push: orbit.push,
-    // glide back to the default view and stay there (the key moments)
-    hold: orbit.hold,
     capsuleRect: () => st.rectOf(capAnchor, CR * SEAT.scale * 1.6),
     attach: el => st.attach(el),
-    dispose: () => { orbit.dispose(); room.dispose(); smokeTex.dispose(); nameTex.dispose(); st.dispose(); },
+    dispose: () => { orbit.dispose(); guest.dispose(); for (const t of faceTex.values()) t?.dispose(); room.dispose(); smokeTex.dispose(); nameTex.dispose(); st.dispose(); },
     // for tests and tuning: the scene's parts
     debug: { scene, camera, model, bone, view, want, SIT, POSES, VIEW, SEAT, T: orbit.T, tap, rest, room, capsule, cigar, finger, lights: { lampLight, hemi: st.lights.hemi }, LIGHT, acts, cur },
   });

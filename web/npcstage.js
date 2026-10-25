@@ -4,27 +4,34 @@
 // settings: a tweak here applies to both games.
 //
 // Look around: drag on the scene to orbit the camera around the table
-// (about ±60° each way, a little up and down, pinch to zoom in a bit), with
-// easing and a little momentum; ~3 s after the last touch it glides back to
-// the default view. hold(true) glides it home and keeps it there (the games
-// do that for their pick and reveal). On phones that report their tilt
-// without asking, a very slight parallax (?tilt=0 turns it off).
+// (-24° to the left, 35° to the right, a little up and down, pinch to zoom
+// in a bit), with
+// easing and a little momentum; ~4 s after the last touch it glides gently
+// back to the default view (never while a finger is down). It's never
+// locked: players can look around through every line, pick and reveal (the
+// games put what has to be read in screen-space overlays). Only drags that
+// start on the scene move it: the dialog box and buttons sit above the
+// canvas and keep their taps. On phones that report their tilt without
+// asking, a very slight parallax (?tilt=0 turns it off).
 //
 //   const VIEW = viewFrom(PROJ);                        // the picture's camera
 //   const orbit = orbitCamera(stage, VIEW, { onTap: (x, y) => ... });
 //   stage.onFrame((t, dt) => orbit.update(t, dt));
-//   orbit.hold(true); orbit.push(1); orbit.view.yaw; orbit.dispose();
+//   orbit.push(1); orbit.view.yaw; orbit.dispose();
 import { THREE } from "./retrolook.js";
 
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 // how far you may look away from the default view, and how it comes back
 export const ORBIT = {
-  yawRange: [-0.61, 0.61],        // ±35°
+  // -24° … +35°: further left, the Boss's table lamp stands in front of his
+  // box (and the Prophet's in front of his ball); everything the camera can
+  // reach looks right (test/orbit_shots.mjs)
+  yawRange: [-0.42, 0.61],
   pitchRange: [-0.09, 0.2],       // a little lower (never under the table top), a little higher
   zoomRange: [0.72, 1.0],         // pinch: in a bit, never out past the default
   push: 0.84,                     // the push-in on key moments: distance × this
-  idleMs: 3000,                   // after the last touch, glide home
+  idleMs: 4000,                   // after the last touch, glide home
 };
 
 // the default view from a picture's solved camera (PROJ: pos, pitch, fov,
@@ -47,7 +54,7 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
   const want = { yaw: 0, pitch: 0, zoom: 1 };              // where the finger put it
   const vel = { yaw: 0, pitch: 0 };                        // momentum after a flick (rad/s)
   const tilt = { yaw: 0, pitch: 0 };                       // device tilt parallax
-  let held = false, lastTouch = -1e9, pushGoal = 0, pushNow = 0;
+  let lastTouch = -1e9, pushGoal = 0, pushNow = 0;
   const ptrs = new Map();
   let drag = null, pinch = null;
   const clampView = () => {
@@ -55,12 +62,11 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
     want.pitch = Math.max(V.pitchRange[0], Math.min(V.pitchRange[1], want.pitch));
     want.zoom = Math.max(V.zoomRange[0], Math.min(V.zoomRange[1], want.zoom));
   };
-  const free = () => !held;
   canvas.style.touchAction = "none";
   canvas.style.pointerEvents = "auto";
   const onDown = e => {
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    canvas.setPointerCapture?.(e.pointerId);
+    try { canvas.setPointerCapture?.(e.pointerId); } catch {}   // (a pointer the browser no longer knows: still orbit)
     lastTouch = performance.now();
     if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), lt: performance.now(), moved: 0 };
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: want.zoom }; if (drag) drag.moved = 99; }
@@ -72,14 +78,14 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
     lastTouch = performance.now();
     if (ptrs.size >= 2 && pinch) {
       const [a, b] = [...ptrs.values()];
-      if (free()) { want.zoom = pinch.z * pinch.d / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)); clampView(); }
+      want.zoom = pinch.z * pinch.d / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)); clampView();
       return;
     }
     if (!drag) return;
     const now = performance.now(), dx = e.clientX - drag.x, dy = e.clientY - drag.y, dt = Math.max(1, now - drag.lt) / 1000;
     drag.moved = Math.max(drag.moved, Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0));
     drag.x = e.clientX; drag.y = e.clientY; drag.lt = now;
-    if (!free() || drag.moved < 6) return;
+    if (drag.moved < 6) return;
     const k = 2.2 / Math.max(240, canvas.clientWidth);   // a swipe across the screen ≈ the whole range
     want.yaw -= dx * k; want.pitch += dy * k * 0.6; clampView();
     vel.yaw = vel.yaw * 0.6 + (-dx * k / dt) * 0.4; vel.pitch = vel.pitch * 0.6 + (dy * k * 0.6 / dt) * 0.4;
@@ -122,8 +128,8 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
       const f = Math.exp(-dt * 4.5); vel.yaw *= f; vel.pitch *= f;
     }
     const idle = ptrs.size === 0 && now - lastTouch > V.idleMs;
-    if (held || idle) {
-      const k = 1 - Math.exp(-dt * (held ? 3 : 1.8));
+    if (idle) {
+      const k = 1 - Math.exp(-dt * 1.6);
       want.yaw -= want.yaw * k; want.pitch -= want.pitch * k; want.zoom += (1 - want.zoom) * k;
       vel.yaw = vel.pitch = 0;
     }
@@ -142,8 +148,6 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
   }
   return {
     view, want, T, update,
-    // glide back to the default view and stay there (the key moments)
-    hold: (on = true) => { held = !!on; },
     push: (k = 1) => { pushGoal = Math.max(0, Math.min(1, k)); },
     dispose: () => {
       if (tiltOn) removeEventListener("deviceorientation", onTilt);
@@ -227,4 +231,103 @@ export function smokeWisp(scene, map, { n = 16, color = 0xe8e8ec, rise = 0.5, sp
       }
     },
   };
+}
+
+// ---- the chosen player, in the room: their own 3D character (avatar4.js)
+// standing by the table under a spotlight, lit live like the host. It pops
+// in (a quick overshoot and a puff), reacts, and stays for the turn.
+//   const g = guestSpot(stage, { at: [x, 0, z], face: 0.2, light: { color, angle, intensity }, cone: true });
+//   g.show(key, avatar, { pop: true }); g.react("surprised"); g.cheer(); g.hide(); g.update(t, dt) each frame
+// No 3D characters on this page (the test stubs): show() does nothing.
+const CHAR_UNITS = 15;          // avatar4's height in its own units
+export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, light = {}, cone = false, dim = 0 } = {}) {
+  const { scene } = st;
+  const L = { color: 0xffd8a0, intensity: 6, angle: 0.42, penumbra: 0.55, ...light };
+  const root = new THREE.Group(); root.position.set(...at); root.rotation.y = face; root.visible = false; scene.add(root);
+  const body = new THREE.Group(); root.add(body);
+  const spot = new THREE.SpotLight(L.color, 0, 4.5, L.angle, L.penumbra, 1.1);
+  spot.position.set(at[0] + 0.15, 2.6, at[2] + 0.45); spot.target = root; scene.add(spot);
+  // the pool of light on the floor, and (cone: true) the beam itself
+  const dot = softDot([[0, "rgba(255,255,255,.95)"], [0.45, "rgba(255,255,255,.35)"], [1, "rgba(255,255,255,0)"]]);
+  const add = { transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false };
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(0.5, 32), new THREE.MeshBasicMaterial({ map: dot, color: L.color, ...add }));
+  pool.material.onBeforeCompile = encode; pool.rotation.x = -Math.PI / 2; pool.position.y = 0.006; pool.renderOrder = 2; root.add(pool);
+  let beam = null;
+  if (cone) {
+    const g = new THREE.CylinderGeometry(0.04, 0.42, 2.6, 24, 1, true); g.translate(0, 1.3, 0);
+    beam = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L.color, side: THREE.DoubleSide, ...add }));
+    beam.material.onBeforeCompile = encode; beam.renderOrder = 7; root.add(beam);
+  }
+  // the pop's puff
+  const puffs = [];
+  for (let i = 0; i < 10; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dot, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+    sp.material.onBeforeCompile = encode; sp.renderOrder = 6; root.add(sp); puffs.push(sp);
+  }
+  let ch = null, key = null, want = false, popAt = -1e9, on = 0, tok = 0, wrapT = 0;
+  // the character's own shaders, made to write display-ready colour like
+  // everything else on this stage (its emote marks are added later: rechecked)
+  const wrap = () => body.traverse(o => {
+    const m = o.material;
+    if (!m || m.userData?.npcEnc) return;
+    const prev = m.onBeforeCompile, pk = m.customProgramCacheKey?.bind(m);
+    m.onBeforeCompile = (sh, r) => { prev?.call(m, sh, r); encode(sh); };
+    m.customProgramCacheKey = () => (pk ? pk() : "") + "|npc-enc";
+    m.userData.npcEnc = true; m.needsUpdate = true;
+  });
+  async function show(k, avatar, { pop = true, react = null } = {}) {
+    want = true;
+    if (k === key && ch) { root.visible = true; if (pop) popAt = performance.now(); if (react) api.react(react); return true; }
+    const my = ++tok;
+    let A = null;
+    try { A = await import("./avatar4.js"); } catch { return false; }
+    if (!A.makeCharacter4 || my !== tok) return false;
+    const c = await A.makeCharacter4(avatar ?? {});
+    await Promise.race([c.ready ?? Promise.resolve(), new Promise(r => setTimeout(r, 12000))]);
+    if (my !== tok) { c.dispose?.(); return false; }
+    if (ch) { body.remove(ch.group); ch.dispose?.(); }
+    ch = c; key = k;
+    ch.group.scale.setScalar(height / CHAR_UNITS);
+    body.add(ch.group);
+    wrap();
+    root.visible = want;
+    if (want && pop) popAt = performance.now();
+    if (want && react) api.react(react);
+    return true;
+  }
+  const api = {
+    root, spot, show, light: L,
+    get shown() { return want && !!ch; },
+    hide() { want = false; tok++; },
+    react(kind = "surprised") {
+      if (!ch) return;
+      if (kind === "surprised") { ch.react?.("surprised", 1.8); ch.emote?.("exclaim", 1.5); }
+      else ch.react?.(kind, 1.4);
+    },
+    // "let's go": a happy hop, sparkles
+    cheer() { if (!ch) return; ch.react?.("happy", 1.6); ch.emote?.("sparkles", 1.4); },
+    update(t, dt) {
+      const still = reduce();
+      on += ((want && ch ? 1 : 0) - on) * Math.min(1, dt * (want ? 10 : 5));
+      root.visible = on > 0.01;
+      if (!root.visible) return;
+      if (ch) { ch.tick?.(t); if ((wrapT += dt) > 0.5) { wrapT = 0; wrap(); } }
+      // the pop: in from nothing, a little overshoot, settle (wall-clock: in step with the game on a slow phone too)
+      const popT = (performance.now() - popAt) / 1000;
+      const k = Math.min(1, popT / 0.45);
+      const s = still ? 1 : k < 1 ? Math.max(0.001, 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2)) : 1;
+      body.scale.setScalar(s * on);
+      for (const [i, sp] of puffs.entries()) {
+        const a = (i / puffs.length) * Math.PI * 2, r = 0.08 + popT * 0.9;
+        sp.position.set(Math.cos(a) * r, 0.1 + popT * 0.5 + (i % 3) * 0.06, Math.sin(a) * r * 0.6);
+        sp.scale.setScalar(0.12 + popT * 0.35);
+        sp.material.opacity = still ? 0 : Math.max(0, 0.55 * (1 - popT / 0.7));
+      }
+      spot.intensity = L.intensity * on;
+      pool.material.opacity = 0.42 * on;
+      if (beam) beam.material.opacity = 0.05 * on;
+    },
+    dispose() { tok++; if (ch) ch.dispose?.(); scene.remove(root, spot); dot.dispose(); },
+  };
+  return api;
 }
