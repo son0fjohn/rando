@@ -10,8 +10,17 @@
 // Used by the rooms behind the game hosts: rooftop.js (Side Quest),
 // basement.js (the Ritual).
 //
-//   const pr = projRoom(stage, PROJ, plateTexture, { sides: [{ PROJ: orbitProj(PROJ, 2.5, -0.79), plate: left }, ...] });
+// Layers (optional): give the room an empty-room picture too (`shell`: the
+// same picture with the furniture taken out) and paint the room's shell
+// (walls, floor, ceiling, what stands against them) from it with
+// paint(c, { shell: true }). The shell's depth maps leave the furniture
+// out, so looking around, nothing of a table or a cup is ever smeared on
+// the wall or the floor behind it: those surfaces show the empty room, and
+// the furniture's paint lands on the furniture only.
+//
+//   const pr = projRoom(stage, PROJ, plateTexture, { shell: emptyTexture, sides: [{ PROJ: orbitProj(PROJ, 2.5, -0.79), plate: left }, ...] });
 //   pr.add(new THREE.BoxGeometry(1, 1, 1), pr.paint(0x808080), x, y, z);
+//   pr.add(wallGeo, pr.paint(0x808080, { shell: true }), x, y, z);
 //   pr.refreshDepth();   // once everything static is added
 import { THREE } from "./retrolook.js";
 
@@ -98,7 +107,7 @@ export function orbitProj(PROJ, dist, yaw) {
 
 // PROJ: the picture's camera (pos, pitch or target, vertical fov, aspect); plate: its texture;
 // sides: [{ PROJ, plate }, { PROJ, plate }] the views from round the left and the right
-export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], depthSize = [376, 672], sides = null } = {}) {
+export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], depthSize = [376, 672], sides = null, shell = null } = {}) {
   const { scene, renderer } = stage;
   const [DW, DH] = depthSize;
   const projector = P => {
@@ -107,8 +116,9 @@ export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], d
     if (P.target) cam.lookAt(...P.target);
     else cam.lookAt(P.pos[0], P.pos[1] - Math.sin(P.pitch), P.pos[2] - Math.cos(P.pitch));
     cam.updateMatrixWorld(); cam.updateProjectionMatrix();
-    const rt = new THREE.WebGLRenderTarget(DW, DH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
-    return { cam, rt, vp: new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse), pos: cam.position.clone() };
+    const mk = () => new THREE.WebGLRenderTarget(DW, DH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+    // rt: what it saw of everything; srt: of the shell alone (the layers)
+    return { cam, rt: mk(), srt: shell ? mk() : null, vp: new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse), pos: cam.position.clone() };
   };
   const front = projector(PROJ), proj = front.cam;
   const L = sides ? projector(sides[0].PROJ) : front, R = sides ? projector(sides[1].PROJ) : front;
@@ -119,12 +129,16 @@ export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], d
     sides: { value: sides ? 1 : 0 },
     depthTexel: { value: new THREE.Vector2(1 / DW, 1 / DH) }, lightDir: { value: new THREE.Vector3(...lightDir).normalize() },
   };
+  // the shell's projectors: the empty room, and depth maps without the furniture
+  const shellU = shell ? {
+    ...shared, plate: { value: shell }, depth: { value: front.srt.texture }, depthL: { value: L.srt.texture }, depthR: { value: R.srt.texture },
+  } : shared;
   const depthPos = { value: front.pos };
   const depthMat = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: DEPTH_FS, uniforms: { projPos: depthPos }, side: THREE.DoubleSide });
   // a projected material; the fallback is a colour, or a tile (times that colour)
-  const paint = (fb = 0x2a2030, { map = null, repeat = [1, 1], side = THREE.FrontSide } = {}) => new THREE.ShaderMaterial({
-    vertexShader: VS, fragmentShader: FS, side,
-    uniforms: { ...shared, fbMap: { value: map }, useFb: { value: map ? 1 : 0 }, fbRepeat: { value: new THREE.Vector2(...repeat) },
+  const paint = (fb = 0x2a2030, { map = null, repeat = [1, 1], side = THREE.FrontSide, shell: isShell = false } = {}) => new THREE.ShaderMaterial({
+    vertexShader: VS, fragmentShader: FS, side, userData: { shell: isShell && !!shell },
+    uniforms: { ...(isShell ? shellU : shared), fbMap: { value: map }, useFb: { value: map ? 1 : 0 }, fbRepeat: { value: new THREE.Vector2(...repeat) },
       fbColor: { value: fb?.isColor ? fb : new THREE.Color(fb) }, mul: { value: new THREE.Vector3(1, 1, 1) }, alpha: { value: 1 } },
   });
   const statics = [];
@@ -147,6 +161,11 @@ export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], d
     for (const P of sides ? [front, L, R] : [front]) {
       depthPos.value = P.pos;
       renderer.setRenderTarget(P.rt); renderer.setClearColor(0xffffff, 1); renderer.clear(); renderer.render(scene, P.cam);
+      if (!P.srt) continue;
+      // the shell alone: the furniture isn't there to hide anything
+      for (const o of statics) o.visible = !!o.material.userData?.shell;
+      renderer.setRenderTarget(P.srt); renderer.clear(); renderer.render(scene, P.cam);
+      for (const o of statics) o.visible = true;
     }
     renderer.setRenderTarget(prevTarget); scene.overrideMaterial = prevOverride; scene.background = prevBg;
     for (const [o, v] of vis) o.visible = v;
@@ -163,8 +182,8 @@ export function projRoom(stage, PROJ, plate, { lightDir = [-0.25, 0.85, 0.46], d
     fade(objs, a) { for (const o of objs) { const m = o.material; m.uniforms.alpha.value = a; m.transparent = a < 0.99; m.depthWrite = a > 0.98; } },
     sideCams: sides ? [L.cam, R.cam] : [],
     dispose() {
-      for (const P of new Set([front, L, R])) P.rt.dispose();
-      depthMat.dispose(); plate.dispose(); sides?.forEach(v => v.plate.dispose());
+      for (const P of new Set([front, L, R])) { P.rt.dispose(); P.srt?.dispose(); }
+      depthMat.dispose(); plate.dispose(); shell?.dispose(); sides?.forEach(v => v.plate.dispose());
     },
   };
 }

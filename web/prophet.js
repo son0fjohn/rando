@@ -9,26 +9,32 @@
 //   idle   slow breathing, a slight head tilt now and then, a pipe puff
 //   reveal leans in, hands hovering over the ball, the ball brightens
 //   point  points at the one the ball chose (at the camera: at you)
+//   aim    points at the chosen player standing by his table (guest)
 //   nod    a smug nod to close a turn
+// The chosen player stands by his table for their turn (guest: their own 3D
+// character under a warm spotlight, npcstage.js guestSpot). The quest comes
+// out of a puff of his smoke: it swirls over the ball into a glowing card
+// that flips toward the camera (smokeCard(); cardRect() is where the game's
+// card flies out from).
 // Small life: a thin wisp of smoke from the pipe, the ball's soft glow, the
 // lamp, the TV and the string lights, a slow camera push-in on the key moments.
 //
 // Look around (npcstage.js, the same camera as the Ritual's Boss): drag to
-// orbit, pinch to zoom a bit, it glides home ~3 s after the last touch;
-// hold(true) keeps it home (the game does that for the pick and the
-// reveal). His head turns a little toward the camera. Tap him (onTap("prophet")
+// orbit, pinch to zoom a bit, it glides home ~4 s after the last touch,
+// never locked. His head turns a little toward the camera. Tap him (onTap("prophet")
 // decides whether he reacts: a nod or a pipe puff), the ball (it pulses and
 // swirls), the lamp (it flickers) or the TV (a burst of static).
 //
 //   const p = await prophetScene(hostEl);
-//   p.setPose("reveal"); p.orb("spin"); p.face(url, pop); p.push(1); p.hold(true);
+//   p.setPose("reveal"); p.orb("spin"); p.face(url, pop); p.push(1);
 //   p.onTap = kind => kind === "prophet" && canTalk();   // "prophet" | "ball" | "lamp" | "tv"
 //   p.ballRect();  // the ball on screen, for the card to rise out of
+//   p.guest.show(id, avatar, { pop: true, react: "surprised" }); p.setPose("aim"); p.puff(); p.smokeCard(); p.cardRect();
 //   p.attach(otherEl); p.dispose();
 import { retroStage, THREE, blobShadow } from "./retrolook.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { rooftopRoom, PROJ, TABLE } from "./rooftop.js";
-import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp } from "./npcstage.js";
+import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp, guestSpot } from "./npcstage.js";
 
 const ART = new URL("./games/sidequest/prophet/", import.meta.url).href;
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -80,7 +86,14 @@ export const POSES = {
     upperarm_R: [-0.584, 0.847, -0.518], forearm_R: [1.338, -0.265, -0.623], hand_R: [-0.2, 0, 0] },
   // the nod itself is animated; this is its lean back
   nod: { spine: [-0.02, 0, 0], chest: [-0.04, 0, 0] },
+  // his left arm out to the side, at the one standing by his table (the
+  // point pose mirrored), his head turned to them
+  aim: { spine: [0.06, 0, 0], chest: [0, 0.2, 0], head: [-0.02, 0.32, 0.04],
+    upperarm_L: [-0.68, 0.3, 0.148], forearm_L: [0.294, 0.825, 0.026], hand_L: [-0.2, 0, 0] },
 };
+// where the chosen player stands: by the table's right-hand back corner,
+// beside him, facing the camera
+export const GUEST = { x: 0.47, z: -0.32, face: -0.25 };
 const BONES = ["hips", "spine", "chest", "neck", "head", "upperarm_L", "upperarm_R", "forearm_L", "forearm_R", "hand_L", "hand_R", "thigh_L", "thigh_R", "shin_L", "shin_R"];
 
 // where he sits: on the floor (a flat cushion), left of the ball, turned a little toward the camera
@@ -165,18 +178,76 @@ export async function prophetScene(host) {
   let orbNow = { glow: 0.0, col: new THREE.Color(0xb9a0ff) }, orbGoal = ORB.idle, burstT = 9, faceOn = 0, popT = 9;
   const texL = new THREE.TextureLoader();
   function orb(mode) { orbGoal = ORB[mode] ?? ORB.idle; if (mode === "burst") burstT = 0; }
+  // every face that's been in the ball, kept (the slot-machine flick goes
+  // round them all several times)
+  const faceTex = new Map();
   function setFace(url, pop) {
     if (!url) { faceOn = 0; return; }
     if (face.material.map?.userData.url !== url) {
-      texL.load(url, t => { t.colorSpace = THREE.SRGBColorSpace; t.userData.url = url; const old = face.material.map; face.material.map = t; face.material.needsUpdate = true; if (old && old !== t) old.dispose(); });
+      const use = t => { face.material.map = t; face.material.needsUpdate = true; };
+      if (faceTex.has(url)) { const t = faceTex.get(url); if (t) use(t); }
+      else { faceTex.set(url, null); texL.load(url, t => { t.colorSpace = THREE.SRGBColorSpace; t.userData.url = url; faceTex.set(url, t); if (wantFace === url) use(t); }); }
     }
+    wantFace = url;
     faceOn = 1; if (pop) popT = 0;
   }
+  let wantFace = null;
 
   // ---- looking around (npcstage.js); swinging round to the left, the
   // camera rises a little to look over the lamp
   const orbit = orbitCamera(st, VIEW, { onTap: (x, y) => tap(x, y), rise: yaw => Math.max(0, -yaw - 0.35) * 0.32 });
   const { view, want } = orbit;
+
+  // ---- the chosen player, standing by his table under a warm spotlight
+  const guest = guestSpot(st, { at: [GUEST.x, 0, GUEST.z], face: GUEST.face, height: 1.05, light: { color: 0xffd49a, intensity: 5, angle: 0.5, penumbra: 0.6 } });
+
+  // ---- the quest out of his smoke: a big swirl from his pipe over the ball,
+  // gathering into a glowing card that flips round to face the camera
+  const CARD = new THREE.Vector3(BALL.x, BALL.y + 0.2, BALL.z + 0.26);   // just over the ball, toward the camera
+  const cardCv = document.createElement("canvas"); cardCv.width = 192; cardCv.height = 256;
+  {
+    const x = cardCv.getContext("2d");
+    const glow = x.createRadialGradient(96, 128, 30, 96, 128, 130);
+    glow.addColorStop(0, "rgba(255,236,190,.55)"); glow.addColorStop(1, "rgba(255,200,120,0)");
+    x.fillStyle = glow; x.fillRect(0, 0, 192, 256);
+    x.fillStyle = "rgba(255,244,214,.92)"; x.beginPath(); x.roundRect(36, 40, 120, 176, 12); x.fill();
+    x.strokeStyle = "rgba(255,200,61,.95)"; x.lineWidth = 6; x.stroke();
+    x.fillStyle = "rgba(200,150,40,.6)"; for (let i = 0; i < 5; i++) x.fillRect(56, 84 + i * 22, 80 - (i % 2) * 22, 7);
+  }
+  const cardTex = new THREE.CanvasTexture(cardCv); cardTex.colorSpace = THREE.SRGBColorSpace;
+  const cardPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.28), new THREE.MeshBasicMaterial({ map: cardTex, transparent: true, opacity: 0, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+  cardPlane.material.onBeforeCompile = encode; cardPlane.renderOrder = 8; cardPlane.position.copy(CARD); scene.add(cardPlane);
+  const swirl = [];
+  for (let i = 0; i < 26; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: 0xf2e8ff, transparent: true, opacity: 0, depthWrite: false, depthTest: false, fog: false }));
+    sp.material.onBeforeCompile = encode; sp.renderOrder = 7; scene.add(sp); swirl.push(sp);
+  }
+  // wall-clock time (a slow phone's frames are capped: its animation would lag the game's clock)
+  let cardAt = -1e9;
+  const bowlW = new THREE.Vector3(), camQ = new THREE.Quaternion(), flipQ = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0);
+  function updateCard() {
+    const T0 = (performance.now() - cardAt) / 1000, still = reduce();
+    if (T0 > 3) { cardPlane.material.opacity = 0; for (const sp of swirl) sp.material.opacity = 0; return; }
+    bowl.getWorldPosition(bowlW);
+    // the swirl: from his pipe, spiralling in to the card's outline (0 .. 1.3 s)
+    swirl.forEach((sp, i) => {
+      const d = (i / swirl.length) * 0.45, u = Math.max(0, Math.min(1, (T0 - d) / 0.85));
+      const e = u * u * (3 - 2 * u), a = i * 2.39 + T0 * 7 * (1 - e);
+      // where it ends: a point on the card's edge
+      const q = (i / swirl.length) * 4, side = Math.floor(q), f = q - side;
+      const ex = [-0.09 + f * 0.18, 0.09, 0.09 - f * 0.18, -0.09][side], ey = [0.12, 0.12 - f * 0.24, -0.12, -0.12 + f * 0.24][side];
+      sp.position.set(bowlW.x + (CARD.x + ex - bowlW.x) * e + Math.cos(a) * 0.14 * (1 - e), bowlW.y + (CARD.y + ey - bowlW.y) * e + Math.sin(a) * 0.08 * (1 - e) + Math.sin(u * Math.PI) * 0.08, bowlW.z + (CARD.z - bowlW.z) * e);
+      sp.scale.setScalar(0.05 + 0.07 * Math.sin(u * Math.PI) + (1 - e) * 0.04);
+      sp.material.opacity = still ? 0 : u <= 0 ? 0 : Math.min(0.75, Math.sin(Math.min(1, u * 1.1) * Math.PI) * 0.75 + (T0 > 1 ? 0 : 0.2 * e)) * (T0 > 1.4 ? Math.max(0, 1 - (T0 - 1.4) / 0.3) : 1);
+    });
+    // the card: glows in (0.8 .. 1.3 s), flips round to the camera (1.3 .. 1.8 s), then the game's card takes over
+    const k = Math.max(0, Math.min(1, (T0 - 0.8) / 0.5)), fl = Math.max(0, Math.min(1, (T0 - 1.3) / 0.5));
+    cardPlane.material.opacity = (T0 < 1.9 ? k : Math.max(0, 1 - (T0 - 1.9) / 0.25)) * 0.95;
+    camera.getWorldQuaternion(camQ);
+    flipQ.setFromAxisAngle(Y, (1 - (fl * fl * (3 - 2 * fl))) * Math.PI * (still ? 0 : 1));
+    cardPlane.quaternion.copy(camQ).multiply(flipQ);
+    cardPlane.scale.setScalar(1 + fl * 0.35);
+  }
 
   // ---- taps: him, the ball, the lamp, the TV
   const targets = [{ kind: "ball", objs: [glass, stand] }, ...room.targets, { kind: "prophet", objs: hitMeshes }];
@@ -276,17 +347,22 @@ export async function prophetScene(host) {
     lampLight.intensity = LIGHT.lamp * fl;
     // ---- the smoke: rises, drifts, widens, fades; thicker right after a puff
     smoke.update(bowl, t, dt, puffK);
+    guest.update(t, dt);
+    updateCard();
   });
 
   return Object.assign(api, {
     stage: st,
     setPose, orb, face: setFace,
     push: orbit.push,
-    // glide back to the default view and stay there (the key moments)
-    hold: orbit.hold,
+    guest,
+    // a big drag on the pipe: the chin up, a thick cloud
+    puff: () => { puffK = 1.6; puffT = 6 + Math.random() * 3; },
+    smokeCard: (at = 0) => { cardAt = performance.now() - at * 1000; },
+    cardRect: () => st.rectOf(cardPlane, 0.16),
     ballRect: () => st.rectOf(ballAnchor, R),
     attach: el => st.attach(el),
-    dispose: () => { orbit.dispose(); room.dispose(); st.dispose(); },
+    dispose: () => { orbit.dispose(); guest.dispose(); for (const t of faceTex.values()) t?.dispose(); cardTex.dispose(); room.dispose(); st.dispose(); },
     get pose() { return poseName; },
     // for tests and tuning: the scene's parts
     debug: { scene, camera, model, bone, view, want, SIT, POSES, VIEW, SEAT, T: orbit.T, tap, rest, room, glass, stand, lights: { lampLight, tvLight, doorLight, stringLight, hemi: st.lights.hemi }, LIGHT },
