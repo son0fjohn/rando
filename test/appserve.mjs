@@ -52,7 +52,11 @@ export async function serve({ realAvatars = false, port = 0 } = {}) {
 // `npm run serve:test`: the same server on a fixed port, to play by hand.
 // Tabs in one browser form a party (BroadcastChannel), no Supabase needed.
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // (tabs only share a party within one origin: open every tab on the same
+  // host, localhost or 127.0.0.1, in the same browser window and profile)
   const { base } = await serve({ port: Number(process.env.PORT) || 8744 });
-  console.log(`offline party: ${base}/test/hpparty.html?me=alice  (create a party, then open ?me=bob&party=CODE and ?me=cy&party=CODE in more tabs)`);
-  console.log(`real app, Supabase faked: ${base}/app.html`);
+  const url = base.replace("127.0.0.1", "localhost");
+  console.log(`offline party: ${url}/test/hpparty.html?me=alice  (create a party, then open ?me=bob&party=CODE and ?me=cy&party=CODE in more tabs)`);
+  console.log(`real app, Supabase faked: ${url}/app.html`);
+  console.log("every tab on that same localhost address, in the same browser window: tabs only see each other within one origin");
 }
