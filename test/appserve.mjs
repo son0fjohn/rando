@@ -21,7 +21,7 @@ const IMPORTS = `<script type="importmap">
 } }
 </script>`;
 
-export async function serve({ realAvatars = false } = {}) {
+export async function serve({ realAvatars = false, port = 0 } = {}) {
   const server = createServer(async (req, res) => {
     try {
       const url = decodeURIComponent(req.url.split("?")[0]);
@@ -45,6 +45,14 @@ export async function serve({ realAvatars = false } = {}) {
       res.end(body);
     } catch { res.writeHead(404); res.end(); }
   });
-  await new Promise(r => server.listen(0, "127.0.0.1", r));
+  await new Promise(r => server.listen(port, "127.0.0.1", r));
   return { base: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
+}
+
+// `npm run serve:test`: the same server on a fixed port, to play by hand.
+// Tabs in one browser form a party (BroadcastChannel), no Supabase needed.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const { base } = await serve({ port: Number(process.env.PORT) || 8744 });
+  console.log(`offline party: ${base}/test/hpparty.html?me=alice  (create a party, then open ?me=bob&party=CODE and ?me=cy&party=CODE in more tabs)`);
+  console.log(`real app, Supabase faked: ${base}/app.html`);
 }

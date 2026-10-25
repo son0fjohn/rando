@@ -111,6 +111,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 ```
 npm ci && npx playwright install chromium   # once
 npm run serve              # http://localhost:8743
+npm run serve:test         # offline, no Supabase: http://localhost:8744/test/hpparty.html?me=alice (more tabs: ?me=bob&party=CODE), /app.html
 npm test                   # logic suites: all games + "you + 3 bots", the wardrobe rules, then the coin + ritual SQL in PGlite (≈1 min)
 npm run test:sql           # just the coin/shop + ritual_draw migrations, run in an embedded Postgres
 npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Diary, through the real UI (≈5 min)
