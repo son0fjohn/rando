@@ -63,7 +63,8 @@ export const ART_GALLERY = {
     const wall = document.createElement("div");
     wall.className = "game-bg ag-bg";
     $("game-layer")?.prepend(wall);
-    requestAnimationFrame(() => wall.classList.add("on"));
+    void wall.offsetWidth;          // styled at opacity 0 first, so it fades in
+    wall.classList.add("on");
     trash.add(() => wall.remove());
     // every photo anyone shared dies when the party does (cleanup contract)
     trash.add(() => { photos.clear(); mine.length = 0; });
@@ -225,7 +226,9 @@ export const ART_GALLERY = {
       },
       render(s) { renderAG(s); },
       onEvent(m) {
-        if (m.ev === "phase") { sfx.ping(); ui.toast("photos are in — now title them", "phase"); ui.resetKey(); }
+        // (no resetKey: the title screen has its own keys, and a late reset
+        // would rebuild a title box someone already started typing in)
+        if (m.ev === "phase") { sfx.ping(); ui.toast("photos are in — now title them", "phase"); }
         if (m.ev === "cover") { myVote = null; sfx.tick(); ui.resetKey(); }
         // no resetKey here: the render keys already change per step, and on the
         // host this event lands after the first render, so a reset would
@@ -329,7 +332,14 @@ export const ART_GALLERY = {
         const cur = todo[0];
         const done = active.filter(p => p.assigned.every(pid => p.titles[pid])).length;
         const has = cur ? !!srcOf(cur, s) : 0;
-        if (!ui.once(`t:${cur ?? "-"}:${has ? 1 : 0}:${done}:${active.length}`, () => {})) return;
+        // while there's a title box, only my own progress rebuilds it: other
+        // players finishing, or the photo arriving late, must not wipe a
+        // half-typed title (the photo is dropped into the frame in place)
+        if (!ui.once(cur ? `t:${cur}` : `t:-:${done}:${active.length}`, () => {})) {
+          const ph = cur && has ? $("game-panel").querySelector(".ag-photo") : null;
+          if (ph && !ph.querySelector("img")) ph.innerHTML = `<img src="${srcOf(cur, s)}" alt="">`;
+          return;
+        }
         if (cur) {
           const n = assigned.length - todo.length + 1;
           ui.stage(`title this piece (${n}/${assigned.length})`, scene(cur, s) + ui.prompt("give it a title…", text => { myTitles[cur] = text; game.input("title", { pid: cur, text }); sfx.pop(); ui.resetKey(); }, { maxlength: TITLE_LEN, submitLabel: "lock it" })

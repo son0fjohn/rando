@@ -432,6 +432,7 @@ try {
   head("Art Gallery — the dealer unveils the titles on wall plaques");
   await startGame(A, "artgallery");
   ok(await until(B, () => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "everyone fills 3 frames");
+  ok(await B.evaluate(() => !!document.querySelector("#game-layer > .ag-bg.on")), "the gallery wall is behind the setup cards, not the map");
   for (const [k, pg] of [A, B, C].entries()) for (let i = 0; i < 3; i++) {
     await until(pg, () => !!document.getElementById("ag-file"));
     await pg.setInputFiles("#ag-file", join(ROOT, `web/games/captions/c${(k * 3 + i) % 8}.jpg`));
@@ -441,14 +442,21 @@ try {
   // wait for each phone to draw its title screen before deciding it has
   // nothing to title — on a slow machine it may still show the photo step
   const titleStep = () => /title this piece|titles locked|nothing to title/.test(document.querySelector("#game-panel h2")?.textContent ?? "") || !!document.querySelector(".ag-room");
-  for (const pg of [A, B, C]) for (let k = 0; k < 6; k++) {
+  // A starts a title and leaves it half-typed while B and C finish all theirs
+  await until(A, titleStep);
+  const half = /title this piece/.test(await stageTitle(A)) && await until(A, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
+  if (half) await A.fill("#gp-in", "half-typed");
+  const titleAll = async pg => { for (let k = 0; k < 6; k++) {
     await until(pg, titleStep);
     const t = await stageTitle(pg);
     if (!/title this piece/.test(t)) break;
     await until(pg, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
     await pg.fill("#gp-in", `${pg.label} title ${k + 1}`); await pg.click("#game-panel .gp-form button");
     await until(pg, t => (document.querySelector("#game-panel h2")?.textContent ?? "") !== t, t, 5000);
-  }
+  } };
+  await titleAll(B); await titleAll(C);
+  if (half) ok(await A.inputValue("#gp-in").catch(() => "") === "half-typed", "others finishing their titles doesn't wipe a half-typed one");
+  await titleAll(A);
   const inRoom = await until(B, () => !!document.querySelector("#game-panel.ag-full .ag-room"), null, 30000);
   const where = inRoom ? "" : ` — host at ${await A.evaluate(() => `${window.__game?.s?.phase}/${window.__game?.s?.sub}`)}; screens: ${(await Promise.all([A, B, C].map(stageTitle))).join(" | ")}`;
   ok(inRoom, "the gallery is a full-screen room, no white card" + where);
@@ -518,6 +526,8 @@ try {
     await A.evaluate(() => document.getElementById("ag-skip")?.click()); await sleep(600);
   }
   ok(await until(A, () => /Art Gallery/.test(document.querySelector(".hp-res-title")?.textContent ?? ""), null, 30000), "the gallery plays out to its results screen");
+  await A.evaluate(() => document.getElementById("hp-skip")?.click());
+  ok(await until(B, () => !document.getElementById("party-panel").hidden && !document.querySelector(".ag-bg"), null, 30000), "back in the party room, the gallery wall is gone");
 } catch (e) {
   ok(false, "crashed: " + (e.stack || e).toString().split("\n").slice(0, 3).join(" | "));
 }
