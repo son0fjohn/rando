@@ -20,6 +20,14 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
   the style screen, NPC dialog),
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
+  the city map (`?city=tiles`, and what Manhunt plays on): `web/citytiles.js`
+  (chunks of buildings, roads, parks and water streamed round the camera
+  from `web/tiles/cities.pmtiles`, built in `web/citygen.worker.js` off
+  `web/citygen.js`, cached on the device by `web/citycache.js`; LOD rings,
+  lit windows at night, the see-through cut), `web/pmtiles.js` (the archive
+  reader), `web/data/heroes.json` (hand-made landmark glbs and where they
+  stand); baked by `scripts/fetch_overture.py` + `scripts/bake_city_tiles.py`
+  for the areas in `scripts/city_areas.json`,
   `web/charview.js` (a character in 3D, alive: drag to spin, pinch to zoom,
   double-tap to reset, Idle/Walk preview; the Style screen's lit stage),
   `web/avatar4.js` (the player character: one shared clay base,
@@ -50,7 +58,11 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   someone: 3D card, wave, report, block), `web/hpkit.js` (round machine, results screen, cleanup),
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots; its
   `finish()` hands the final standings to the party),
-  `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/npcscene.js`
+  `web/hpgames/*.js` and `web/artgallery.js` (the games; Manhunt also
+  `web/mhgeo.js`: zone, shrink, fuzzy circles, teams, points; `web/mhmap.js`:
+  the zone wall and the circles on the live map; `web/mhcrypt.js`: the team
+  channel; `web/mhscene.js` + `web/hunter.js` + `web/elevator.js`: its host,
+  The Hunter, in a camera-mapped elevator), `web/npcscene.js`
   (the game hosts' DOM beats: `Beats` off the synced clock, a card flying out
   of the scene, confetti), `web/npcstage.js` (what both hosts' 3D scenes
   share: the look-around camera, one component and one set of settings, tap
@@ -157,6 +169,9 @@ node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns] 
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
+node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
+node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps
+test/hunter.html                       # Manhunt's Hunter on his own: poses, doors, counter, orbit (open it on npm run serve:test)
 ```
 
 The test pages swap the network, 3D and audio modules for stubs in
@@ -227,8 +242,15 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   announced at all.
 - Explore mode reads your location on the phone only (and only if location
   is already allowed) to bound panning; it's never sent anywhere.
-- Manhunt must never send a coordinate off the phone. Only grid cells leave
-  the device, and per-player cells stay out of the synced state.
+- Manhunt never sends a player's position off the phone. Location is read
+  only during the head start and the hunt. At a ping (and every 5 s while
+  live, 30 s outside the zone) a runner's phone sends only a fuzzy circle
+  (`mhgeo.js` `fuzz`: 25–50 m, the centre moved a random way and snapped to
+  a 10 m grid, a fresh draw each time); teammates' circles and team chat are
+  end-to-end encrypted to the team (`mhcrypt.js`); Sprint Alert is sealed to
+  that runner and only buzzes. Circles are broadcast and kept in memory,
+  never in the synced state, never stored. The zone check runs on the
+  phone: only "in" / "out" goes to the host.
 - The prompt log (`diary_prompt_log`) must never contain user ids, handles or
   answer text.
 - Friendships only ever come from a verified in-person meetup (server-side).

@@ -1,4 +1,4 @@
-# NPC scenes: Side Quest's Prophet, the Ritual's Boss, the Art Gallery's Bunny
+# NPC scenes: Side Quest's Prophet, the Ritual's Boss, the Art Gallery's Bunny, Manhunt's Hunter
 
 Both games' hosts are rigged low-poly 3D characters, lit live, in a room
 that is real geometry painted with an approved picture (camera mapping), so
@@ -444,6 +444,71 @@ surface, seeded on each part. 553 KB.
 Credits for Bunny and the gala: 34 (the balance went from 237 to 203: 12 for
 Tripo, 4 for the two outpaints, the rest for 6 image edits and 6 background
 removals).
+
+## Manhunt: The Hunter in the elevator (`web/hunter.js`, `web/elevator.js`, `web/mhscene.js`)
+
+Manhunt is played on the live map; the Hunter only shows up for its
+moments, in a brushed-steel elevator. He's a bounty hunter in an off-white
+double-breasted suit (a fleck of red on it), gold aviators, a toothpick, a
+scar, a gold watch, slicked black hair, a handheld tracker with a green
+radar screen in his right hand, leaning back on the rail.
+
+- **The room** (`elevator.js`) is camera-mapped like the basement: the
+  picture's camera solved from the two walls' vanishing points (the rails,
+  the floor lines), the rail height and the floor's corner (`PROJ`: 1.62 m
+  up, 6.4° down, a 40.8° vertical field at 9:16; the camera stands well back,
+  a long lens). The cabin (4 × 3.6 × 2.48 m, rail at 0.87 m) is built big
+  enough that the ±40° look-around stays inside it; walls the picture never
+  saw take its steel as a tile. On top of the paint: a live red LED floor
+  counter (`counter()`: floors, the count-down, the head start's minutes),
+  the light panel's flicker, two door leaves in front of the camera that
+  slide open and shut (`doors()`).
+  - **The clean plate** (`games/manhunt/elevator/plate.webp`, 1080×1920):
+    the approved picture with him, his reflections and the dialog box taken
+    out.
+- **Him** (`hunter.js`): the rigged mesh (below), leaning on the back rail
+  (hips just off it, weight back), the tracker in his right hand. Lit by the
+  ceiling panel. Procedural animations on the bones (aimed limbs, blended
+  quickly): idle (breathing, the toothpick shifting, a glance at the tracker
+  now and then, his head following the camera a little), tie (straightens
+  his tie), tap (holds up the tracker and taps it twice: a green blip),
+  point (the tracker at you), smirk (a slow head cock), nod.
+- **When he shows** (`mhscene.js`, one scene reused):
+  - the start: full screen, the doors open on him, three short lines (the
+    rules), the doors close;
+  - the hunters' head start: "No peeking.", doors shut, the counter on the
+    minutes left;
+  - each ping (hunters): a small window slides up over the map, the counter
+    ticks 3, 2, 1, a ding (vibration only, unless sound is on), the doors
+    open, a short line, it slides away;
+  - the end: the doors open on him holding the WANTED posters, then the
+    full board and points.
+- **Taps:** him (a random line: "Everybody runs. Nobody hides forever." /
+  "Relax. It's sauce. Probably." / "I've never lost. Don't make it weird."),
+  the floor panel (a beep, a buzz), the light (a flicker), the counter.
+- **No 3D** (`?mh3d=0`, or WebGL won't start): the same moments as a card
+  with his dialog box.
+
+`test/hunter.html` (open it on `npm run serve:test`) shows him on his own:
+every pose, the doors, the counter, the orbit;
+`node test/manhunt_rec.mjs <dir>` records a whole game on 5 phones.
+
+### The Hunter's model (`web/games/manhunt/hunter/hunter.glb`)
+
+From the approved picture (`f561e3bd-4c11-489f-a737-6eb2044d85c7`):
+
+| Step | Model | Job | Credits |
+| --- | --- | --- | --- |
+| Turnaround sheet (front, left, back, right), the picture as the image input | `nano_banana_2` | `bd057927-ac22-4804-a657-ad8c4aaeae7a` | 2 |
+| 3D, attempt 1 of 3: the sheet cut into views (front `9daaa882…`, left `caa69780…`, back `c0b5c332…`, right `c4639b7d…`) | `tripo_h3_1_multiview_to_3d` | `65b0e374-c213-43f5-aa05-16b6dddf2bb5` | 12 |
+| The elevator's clean plate, the picture as the image input | `nano_banana_2` | `14a691f4-d474-4909-96bf-cc8337a6a8bc` | 2 |
+
+Total 16 credits; 1 of the 3 allowed Tripo attempts (the first was clean).
+Cleanup scripted like the Boss's: welded and simplified, the texture
+posterized to a flat palette (the suit's off-white, the gold, the tracker's
+green screen kept), a 20-joint skeleton at the model's own joints with
+geodesic skin weights; no non-uniform scale on any bone (it sheared his
+neck). 4,600 triangles, 3,780 vertices, 20 joints: 434 KB.
 
 ## Asset log
 
