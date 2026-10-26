@@ -6,9 +6,11 @@
 // is dealt so that each dealt photo gets exactly two competing titles from
 // two different players (never the photo's owner when avoidable), written on
 // a timer without knowing who else got the same photo.
-// Gallery: frames come up on the wall covered; the art dealer unveils each
-// one and both titles appear at once; everyone except the two writers votes;
-// each writer scores their share of the vote (100 pts split by votes).
+// Gallery: a candlelit masquerade gala (gala.js) hosted by Bunny (bunny.js),
+// deadpan in a white rabbit mask: each photo hangs in the big gold frame
+// under red velvet; she unveils it, bangs her gavel, and both titles are on
+// the plaques under it; everyone except the two writers votes; "Sold. To no
+// one." Each writer scores their share of the vote (100 pts split by votes).
 // Frames per round are capped so big parties don't drag.
 //
 // Runs on the HostGame kit: the host owns the state and broadcasts
@@ -20,6 +22,8 @@ import { HostGame, makeBots, ui } from "./gamekit.js";
 import { sfx, buzz } from "./fx.js";
 import { CAPTION_POOL } from "./bots.js";
 import { trash, showResults, hostSkip, bindHostSkip } from "./hpkit.js";
+import { dialogBox } from "./dialog.js";
+import { Beats } from "./npcscene.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -38,11 +42,40 @@ const ASSET = "games/artgallery/";
 const FRAME_INSET = { l: 22.8, t: 20.5, r: 23.0, b: 21.1 };
 const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
 
-const DEALER = {
-  cover: ["Collectors, gather round. The next piece is still under cloth.", "Patience. Great art is worth the wait.", "Ahem. Eyes on the wall, please.", "This one caused quite a stir in the back room."],
-  unveil: ["Behold. Two titles, one truth. Which speaks to you?", "The artist is anonymous. The titles are not — but you'll never know who wrote them.", "Vote with your heart. Or your spite. Both are valid here.", "I have my favourite. I am, of course, forbidden to say."],
-  result: ["The room has spoken.", "A decisive verdict.", "Art is subjective. Points are not.", "Sold — to the crowd."],
+// What Bunny says, in English or Korean (the phone's language): deadpan,
+// every terrible photo a priceless masterpiece. {n} is the exhibit's number.
+const KO = /^ko\b/i.test(globalThis.navigator?.language ?? "");
+const LINES = {
+  en: {
+    name: "Bunny",
+    open: "Welcome to the gallery. Masks on. Judge everything.",
+    cover: ["Exhibit {n}. Still under velvet. Contain yourselves.", "Next. Lower your expectations. Lower.", "Another acquisition. Try to look cultured."],
+    unveil: ["Exhibit {n}. Note the brushwork. Breathtaking.", "The artist was clearly going through something.", "Note the thumb over the lens. A bold choice.", "Priceless. Literally. No one would pay for it.", "A masterpiece of poor decisions."],
+    vote: "Two titles. One truth. Choose wisely.",
+    close: "Sold. To no one.",
+    result: ["The people have spoken. Tragically.", "Correct. You have taste. Barely."],
+    split: "A tie. How very modern.",
+    quips: ["Don't touch the art. Or me.", "I've seen worse. Not often.", "Shh. Appreciate."],
+  },
+  ko: {
+    name: "버니",
+    open: "갤러리에 오신 걸 환영해요. 가면 쓰고. 전부 심사하세요.",
+    cover: ["{n}번 작품. 아직 벨벳 아래에. 진정하세요.", "다음. 기대는 낮추세요. 더 낮게.", "새 소장품이에요. 교양 있는 척해 보세요."],
+    unveil: ["{n}번 작품. 붓터치를 보세요. 숨이 막히네요.", "작가가 분명 뭔가를 겪고 있었네요.", "렌즈를 가린 엄지를 보세요. 과감한 선택이에요.", "값을 매길 수 없죠. 진짜로요. 아무도 안 살 테니까.", "잘못된 선택들의 걸작이에요."],
+    vote: "제목은 둘. 진실은 하나. 잘 고르세요.",
+    close: "낙찰. 아무에게도.",
+    result: ["대중이 결정했어요. 비극적이게도.", "정답. 안목이 있네요. 겨우."],
+    split: "동점. 참 현대적이네요.",
+    quips: ["작품 만지지 마세요. 저도요.", "더 나쁜 것도 봤어요. 자주는 아니고.", "쉿. 감상하세요."],
+  },
 };
+const T = KO ? LINES.ko : LINES.en;
+export const bunnyLines = LINES;
+const fillN = (line, n) => line.replace("{n}", n);
+// where the photo's opening and the plaques are in the approved picture
+// (gala.js), for the room without 3D: the plate fitted to the room
+const FRAME_OPEN = { fx: [0.354, 0.655], fy: [0.214, 0.452] };
+const PLQ = { fx: [0.353, 0.663], fy: [0.551, 0.687] };
 
 // photo id -> data URL (humans) — outside the game state on purpose
 const photos = new Map();
@@ -83,61 +116,141 @@ export const ART_GALLERY = {
       if (now - (needAsked[pid] || 0) > 4000) { needAsked[pid] = now; room.send("agneed", { pid }); }
       return null;
     }
-    // ---- gallery scene (generated assets + code-driven tweens) ----
-    // The wall: gallery.jpg backdrop, the frame hung centre, the photo masked
-    // to the frame's measured opening, the cloth sprite on top, and the
-    // dealer sprite (idle / unveil crossfade) at the floor. `animate` plays
-    // the reveal tween (cloth slides off, dealer swaps pose) once per frame;
-    // rebuilds of the same frame render the settled state so votes coming in
-    // never replay it.
+    // ---- the title cards: the photo in the gold frame (frame.png)
     const framed = (pid, s, cls = "") => {
       const src = srcOf(pid, s);
       const inset = `top:${FRAME_INSET.t}%;right:${FRAME_INSET.r}%;bottom:${FRAME_INSET.b}%;left:${FRAME_INSET.l}%`;
-      return `<div class="ag-hang ${cls}"><div class="ag-photo" style="${inset}">${src ? `<img src="${src}" alt="">` : "<span>photo loading…</span>"}</div><img class="ag-frameimg" src="${ASSET}frame.png" alt=""><img class="ag-clothimg" src="${ASSET}cloth.png" alt=""></div>`;
+      return `<div class="ag-hang ${cls}"><div class="ag-photo" style="${inset}">${src ? `<img src="${src}" alt="">` : "<span>photo loading…</span>"}</div><img class="ag-frameimg" src="${ASSET}frame.png" alt=""></div>`;
     };
-    const scene = (pid, s, { covered = false, unveil = false, animate = false, line = "" } = {}) =>
-      `<div class="ag-scene ${covered ? "covered" : "revealed"} ${unveil ? "unveil" : ""} ${animate ? "ag-anim" : ""}">
-        ${framed(pid, s)}
-        <div class="ag-dealer"><img class="ag-pose ag-idle" src="${ASSET}dealer_idle.png" alt=""><img class="ag-pose ag-unveil" src="${ASSET}dealer_unveil.png" alt=""></div>
-        ${line ? `<div class="ag-bubble">${line}</div>` : ""}
-      </div>`;
-    // The gallery steps (covered → vote → result) are a full-screen room
-    // instead of a card: the painting on the wall, the two titles as brass
-    // plaques beneath it, the dealer on the floor. On reveal the cloth comes
-    // off the painting, then off plaque I, then plaque II (CSS delays, ~2 s
-    // total). Voting = tapping a plaque, which gets a red "sold" dot. The
-    // result step reuses the same plaques, now showing authors and points.
+    const scene = (pid, s) => `<div class="ag-scene">${framed(pid, s)}</div>`;
+
+    // ---- the gala (bunny.js + gala.js): one Bunny and one dialog box for
+    // the whole game, moved into the room when it's (re)built. She loads
+    // (model, room, shaders) as the game starts, while photos go up.
+    let bunny = null, bunnyP = null, dlgKey = null, quipN = Math.floor(Math.random() * 3), plaqueKey = null, track = 0;
+    const holder = document.createElement("div");
+    const dlg = dialogBox(document.createElement("div"), { name: T.name, blip: () => sfx.blip() });
+    const beats = new Beats();
+    const loadBunny = () => (bunnyP ??= import("./bunny.js").then(m => m.bunnyScene(holder)).then(b => {
+      bunny = b;
+      b.onBang = () => { sfx.thud(); buzz(18); };
+      b.onClap = () => sfx.pop();
+      b.onTap = onTap;
+      globalThis.__bunny = b;                             // for the tests
+      return b;
+    }).catch(e => { console.warn("[artgallery] no 3D gala, the painted room stays:", e?.message ?? e); return null; }));
+    loadBunny();
+    trash.add(() => { cancelAnimationFrame(track); dlg.dispose(); bunnyP?.then(b => b?.dispose()); bunny = null; bunnyP = null; if (globalThis.__bunny) globalThis.__bunny = null; });
+    // what the scene should show; re-applied whenever she's (re)mounted
+    const want = { drape: true, spot: 0, photo: null };
+    const room$ = () => $("ag-room");
+    // taps, between her lines: her (a line, and a sip or a slow nod), the
+    // frame (its spotlight flickers), a candle (it flickers), a guest (a toast)
+    const onTap = kind => {
+      if (kind === "frame") { sfx.tick(); return true; }
+      if (kind === "candle") { sfx.cursor(); return true; }
+      if (kind === "guestL" || kind === "guestR") { sfx.chime(); return true; }
+      if (kind !== "bunny" || !dlg.done || dlg.el.hidden) return false;
+      dlg.quip(T.quips[quipN++ % T.quips.length]);
+      sfx.blip(); buzz(12);
+      return true;
+    };
+    // the room: the 3D gala behind everything; the pill, the plaques on the
+    // wall under the frame, the dialog box at the bottom
+    function ensureRoom() {
+      if (room$()) return false;
+      dlgKey = null; plaqueKey = null;
+      ui.panel(`<div class="np-room ag-room covered" id="ag-room">
+          <div class="ag-3d" id="ag-3d"></div>
+          <div class="ag-photo2d" id="ag-photo2d"></div>
+          <div class="np-pill ag-pill" id="ag-pill"></div>
+          <div class="ag-plaques" id="ag-plaques"></div>
+          <div class="ag-low">${skipBtn()}<div class="ag-dlg" id="ag-dlg"></div></div>
+        </div>`, "np-full ag-full");
+      bindSkip();
+      dlg.attach($("ag-dlg"));
+      loadBunny().then(b => {
+        const at = $("ag-3d");
+        if (!b || !at) return;
+        const first = !b.stage.canvas.isConnected;
+        if (first) b.stage.canvas.style.opacity = "0";   // the first time: fade in over the painted room
+        b.attach(at);
+        b.room.drape(want.drape, { instant: true }); b.room.spot(want.spot); b.room.photo(want.photo);
+        requestAnimationFrame(() => requestAnimationFrame(() => { b.stage.canvas.style.opacity = ""; room$()?.classList.add("r3d"); }));
+      });
+      cancelAnimationFrame(track);
+      const follow = () => { if (!room$()) return; placePlaques(); track = requestAnimationFrame(follow); };
+      track = requestAnimationFrame(follow);
+      return true;
+    }
+    // the plaques hang under the frame: where the 3D wall puts them (they
+    // follow the orbit, always facing you), or where the picture has them;
+    // never narrower than readable
+    function placePlaques() {
+      const rm = room$(), pl = $("ag-plaques");
+      if (!rm || !pl) return;
+      const R = rm.getBoundingClientRect();
+      let x0, y0, x1;
+      if (bunny && rm.classList.contains("r3d")) {
+        const [a, b] = bunny.plaqueRects();
+        x0 = Math.min(a.left, b.left) - R.left; x1 = Math.max(a.left + a.width, b.left + b.width) - R.left; y0 = a.top - R.top;
+      } else {
+        const fit = picBox(R);
+        x0 = fit.x + PLQ.fx[0] * fit.w; x1 = fit.x + PLQ.fx[1] * fit.w; y0 = fit.y + PLQ.fy[0] * fit.h;
+      }
+      // (kept on screen, whatever the angle)
+      const w = Math.max(x1 - x0, R.width * 0.36), cx = Math.max(w / 2 + 8, Math.min(R.width - w / 2 - 8, (x0 + x1) / 2));
+      pl.style.left = `${Math.round(cx - w / 2)}px`; pl.style.top = `${Math.round(Math.max(90, Math.min(R.height * 0.66, y0)))}px`; pl.style.width = `${Math.round(w)}px`;
+    }
+    // the approved picture (9:16) fitted to cover the room, like its plate
+    const picBox = R => { const h = Math.max(R.height, R.width * 16 / 9), w = h * 9 / 16; return { x: (R.width - w) / 2, y: 0, w, h }; };
+    // the room without 3D: the photo in the painted frame
+    function photo2d(src) {
+      const el = $("ag-photo2d"), rm = room$();
+      if (!el || !rm) return;
+      const fit = picBox(rm.getBoundingClientRect());
+      Object.assign(el.style, { left: `${fit.x + FRAME_OPEN.fx[0] * fit.w}px`, top: `${FRAME_OPEN.fy[0] * fit.h}px`, width: `${(FRAME_OPEN.fx[1] - FRAME_OPEN.fx[0]) * fit.w}px`, height: `${(FRAME_OPEN.fy[1] - FRAME_OPEN.fy[0]) * fit.h}px` });
+      if (src && el.dataset.src !== src) { el.dataset.src = src; el.innerHTML = `<img src="${src}" alt="">`; }
+    }
+    // the scene's state, on her and on the painted room alike
+    const drape = (on, instant = false) => { want.drape = on; bunny?.room.drape(on, { instant }); room$()?.classList.toggle("draped", on); };
+    const spot = v => { want.spot = v; bunny?.room.spot(v); };
+    const setPhoto = src => { if (!src) return; want.photo = src; bunny?.room.photo(src); photo2d(src); };
+    // what she says, once per key: `late` (arrived mid-beat) shows it at once
+    const line = (key, text, { late = false } = {}) => {
+      if (dlgKey === key) return;
+      dlgKey = key;
+      dlg.show(); dlg.say(text, { instant: late });
+    };
+    // the two titles as plaques: Title I / II, a velvet cover on each that
+    // comes off one after the other right after the frame's; voting = tapping
+    // one; the result shows authors and points on the same plaques
     const ROMAN = ["I", "II"];
-    const galleryRoom = (f, s, { covered = false, animate = false, mode = "vote", line = "", pill = "" } = {}) => {
+    const plaquesHtml = (f, s, mode) => {
       const c = f.counts || [0, 0], pts = f.pts || [0, 0];
       const top = mode === "result" && c[0] !== c[1] ? (c[0] > c[1] ? 0 : 1) : null;
-      const plaques = f.titles.map((t, i) => {
+      return f.titles.map((t, i) => {
         const body = `<span class="ag-pl-eye">Title ${ROMAN[i]}</span><span class="ag-pl-t">“${esc(t.text)}”</span>` + (mode === "result"
           ? `<span class="ag-pl-by">— ${esc(s.players[t.by]?.handle ?? "?")}</span><span class="ag-pl-n">${c[i]} vote${c[i] === 1 ? "" : "s"} · <b data-count="${pts[i]}">+0</b></span>${top === i ? `<i class="ag-pl-win">winner</i>` : ""}`
           : `<i class="ag-pl-dot"></i><i class="ag-pl-tag">your vote</i>`);
         const cls = `ag-pl ${top === i ? "win" : ""} ${top !== null && top !== i ? "lose" : ""}`;
         return mode === "vote"
-          ? `<button type="button" class="${cls}" data-v="${i}">${body}<img class="ag-pl-cloth" src="${ASSET}cloth.png" alt=""></button>`
-          : `<div class="${cls}">${body}<img class="ag-pl-cloth" src="${ASSET}cloth.png" alt=""></div>`;
+          ? `<button type="button" class="${cls}" data-v="${i}">${body}<i class="ag-pl-cloth"></i></button>`
+          : `<div class="${cls}">${body}<i class="ag-pl-cloth"></i></div>`;
       }).join("");
-      return `<div class="ag-scene ag-room ${covered ? "covered" : "revealed unveil"} ${animate ? "ag-anim" : ""}">
-          ${framed(f.pid, s)}
-          <div class="ag-plaques">${plaques}</div>
-          <div class="ag-dealer"><img class="ag-pose ag-idle" src="${ASSET}dealer_idle.png" alt=""><img class="ag-pose ag-unveil" src="${ASSET}dealer_unveil.png" alt=""></div>
-          ${line ? `<div class="ag-bubble">“${esc(line)}”</div>` : ""}
-        </div><div class="ag-pill" id="ag-pill">${pill}</div>`;
     };
+    const setPlaques = (key, html) => { if (plaqueKey === key) return false; plaqueKey = key; const p = $("ag-plaques"); if (p) p.innerHTML = html; placePlaques(); return true; };
+    const pill = html => { const p = $("ag-pill"); if (p && p.innerHTML !== html) p.innerHTML = html; };
 
-    // reveal tween: the scene is built covered, then flipped on the next
-    // frame so the CSS transitions (cloth off, dealer pose) actually run
+    // reveal tween: the room flips from covered to revealed on the next frame
+    // so the plaques' covers actually transition off (frame first, then I, II)
     const revealed = new Set();
     function playReveal(fi) {
-      const el = $("game-panel").querySelector(".ag-scene");
+      const el = room$();
       if (!el) return;
       revealed.add(fi);
-      // reading offsetWidth makes sure the covered look was computed first,
-      // so the cloths still transition off even if no frame was painted yet
-      const flip = () => { void el.offsetWidth; el.classList.remove("covered"); el.classList.add("revealed", "unveil"); };
+      el.classList.add("ag-anim");
+      const flip = () => { void el.offsetWidth; el.classList.remove("covered"); el.classList.add("revealed"); };
       requestAnimationFrame(() => requestAnimationFrame(flip));
       // frames don't come in a tab that isn't drawing; a timer still runs, so
       // the unveil can't get stuck under the cloth
@@ -352,48 +465,68 @@ export const ART_GALLERY = {
       } else if (s.phase === "gallery") {
         const f = s.frames[s.fi]; if (!f) return;
         const owner = s.players[s.pool?.[f.pid]?.owner]?.handle ?? "?";
+        const fresh = ensureRoom();
+        const room = room$();
+        const src = srcOf(f.pid, s);              // (asks the room for it if we're missing it)
+        setPhoto(src);
+        const n = s.fi + 1, pk = `${s.sub}:${s.fi}`;
+        const lineOf = (pool, k = 0) => pool[(s.fi + k) % pool.length];
         if (s.sub === "covered") {
-          if (!ui.once(`c:${s.fi}`, () => {})) return;
-          srcOf(f.pid, s);   // warm the cache (asks the room now if we're missing it)
-          ui.panel(galleryRoom(f, s, { covered: true, line: DEALER.cover[s.fi % DEALER.cover.length], pill: `piece <b>${s.fi + 1}</b> of ${s.frames.length}` }), "ag-full");
+          // under velvet; she opens the show (or announces the next one)
+          const el = COVER_MS - s.left;
+          beats.at("cover", pk, 0, el, late => {
+            drape(true, late || fresh); spot(0); bunny?.setPose("idle");
+            room.classList.remove("revealed", "picked", "ag-anim"); room.classList.add("covered");
+            line(pk, s.fi === 0 ? T.open : fillN(lineOf(T.cover), n), { late });
+          });
+          setPlaques(`c:${s.fi}`, plaquesHtml(f, s, "read"));
+          pill(`piece <b>${n}</b> of ${s.frames.length}`);
         } else if (s.sub === "reveal") {
           const writer = f.titles.some(t => t.by === ctx.me.id);
           // my own tap wins over a host snapshot that hasn't caught up yet
           const voted = myVote ?? f.votes[ctx.me.id] ?? null;
-          const src = srcOf(f.pid, s);
           const eligible = active.filter(p => !f.titles.some(t => t.by === p.id)).length;
           const votesIn = Object.keys(f.votes).length;
+          const el = VOTE_MS - s.left;
+          // the unveil: the velvet slides off, the spotlight snaps on, she
+          // presents it with the gavel; then the gavel: voting is open
+          beats.at("unveil", pk, 0, el, late => {
+            drape(false, late); spot(1);
+            if (!late) { bunny?.setPose("unveil"); sfx.whoosh(); }
+            line(`${pk}:u`, fillN(lineOf(T.unveil), n), { late });
+          });
+          beats.at("gavel", pk, 2300, el, late => { bunny?.setPose("idle"); if (!late) bunny?.play("gavel"); line(`${pk}:g`, T.vote, { late }); });
+          beats.at("judge", pk, 9000, el, late => { if (!late) bunny?.play("judge"); });
           // Built once per piece: other people's votes, my own tap and a photo
           // that lands late are all patched in place below, so none of them
           // cut the unveil short.
-          if (ui.once(`v:${s.fi}:${writer ? 1 : 0}`, () => {})) {
-            const first = !revealed.has(s.fi);          // play the reveal tween once per frame
-            ui.panel(galleryRoom(f, s, { covered: first, animate: first, mode: writer ? "read" : "vote", line: DEALER.unveil[s.fi % DEALER.unveil.length] }) + skipBtn(), "ag-full");
-            if (first) playReveal(s.fi);
-            if (!writer) $("game-panel").querySelectorAll("[data-v]").forEach(b => b.onclick = () => {
+          if (setPlaques(`v:${s.fi}:${writer ? 1 : 0}`, plaquesHtml(f, s, writer ? "read" : "vote"))) {
+            if (!revealed.has(s.fi)) playReveal(s.fi);
+            else { room.classList.remove("covered"); room.classList.add("revealed"); }
+            if (!writer) $("ag-plaques").querySelectorAll("[data-v]").forEach(b => b.onclick = () => {
               myVote = +b.dataset.v; game.input("vote", { idx: myVote }); sfx.pop(); buzz(15); lastHud = 0; renderAG(s);
             });
-            bindSkip();
           }
-          const panel = $("game-panel");
-          const ph = panel.querySelector(".ag-room .ag-photo");
-          if (src && ph && !ph.querySelector("img")) ph.innerHTML = `<img src="${src}" alt="">`;
-          panel.querySelector(".ag-room")?.classList.toggle("picked", voted !== null);
-          panel.querySelectorAll(".ag-pl").forEach((el, i) => el.classList.toggle("on", voted === i));
-          const pill = writer ? `one of these is yours · <b>${votesIn}/${eligible}</b> votes in`
+          room.classList.toggle("picked", voted !== null);
+          room.querySelectorAll(".ag-pl").forEach((el, i) => el.classList.toggle("on", voted === i));
+          pill(writer ? `one of these is yours · <b>${votesIn}/${eligible}</b> votes in`
             : voted === null ? `tap a title to vote · <b>${votesIn}/${eligible}</b> votes in`
-            : `<b>✓ voted</b> · ${votesIn}/${eligible} in · tap the other to switch`;
-          const pe = $("ag-pill"); if (pe && pe.innerHTML !== pill) pe.innerHTML = pill;
+            : `<b>✓ voted</b> · ${votesIn}/${eligible} in · tap the other to switch`);
         } else if (s.sub === "result") {
-          const has = !!srcOf(f.pid, s);
-          if (!ui.once(`r:${s.fi}:${has ? 1 : 0}`, () => {})) return;
+          const el = RESULT_MS - s.left;
           const c = f.counts || [0, 0];
           const top = c[0] === c[1] ? null : (c[0] > c[1] ? 0 : 1);
-          const line = top === null
-            ? "A split decision. The room cannot agree — how very modern."
-            : `${s.players[f.titles[top].by]?.handle ?? "?"} takes it. ${DEALER.result[s.fi % DEALER.result.length]}`;
-          ui.panel(galleryRoom(f, s, { mode: "result", line, pill: `photo by <b>${esc(owner)}</b>` }), "ag-full");
-          countUp();
+          // the gavel: voting's closed. Then two slow, sarcastic claps
+          beats.at("sold", pk, 0, el, late => { drape(false, true); spot(1); bunny?.setPose("idle"); if (!late) bunny?.play("gavel"); line(`${pk}:s`, T.close, { late }); });
+          beats.at("clap", pk, 2200, el, late => {
+            if (!late) bunny?.play("applause");
+            line(`${pk}:r`, top === null ? T.split : lineOf(T.result), { late });
+          });
+          if (setPlaques(`r:${s.fi}`, plaquesHtml(f, s, "result"))) {
+            room.classList.remove("covered", "picked", "ag-anim"); room.classList.add("revealed");
+            countUp();
+          }
+          pill(`photo by <b>${esc(owner)}</b>`);
         }
       } else if (s.phase === "end") {
         if (!ui.once("end", () => {})) return;

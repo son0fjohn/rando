@@ -12,8 +12,11 @@
 //              mask off, Same, Go deeper), a Pass turn, the "masks off" end
 //   party      4 phones: a full set of 3 games (skipped through) ending on the
 //              podium with coins, then a shop purchase in the real app
+//   turns      2 phones + 3 bots: 10 Side Quest turns and 10 Ritual turns
+//              skipped through, looking around on both phones every turn,
+//              checking the chosen player (right one, one at a time)
 //
-//   node test/games_rec.mjs <dir> [sidequest|ritual|maskoff|party ...]
+//   node test/games_rec.mjs <dir> [sidequest|ritual|maskoff|party|turns ...]
 // Every phone is screencast; with FFMPEG=/path/to/ffmpeg each scene is also
 // written as <dir>/<scene>.mp4, the phones side by side on one timeline.
 import { mkdir, writeFile } from "node:fs/promises";
@@ -24,9 +27,9 @@ import { chromium } from "playwright";
 import { serve } from "./appserve.mjs";
 
 const args = process.argv.slice(2);
-const OUT = args.find(a => !a.startsWith("--") && !["sidequest", "ritual", "maskoff", "artgallery", "party"].includes(a));
+const OUT = args.find(a => !a.startsWith("--") && !["sidequest", "ritual", "maskoff", "artgallery", "party", "turns"].includes(a));
 if (!OUT) { console.error("usage: node test/games_rec.mjs <dir> [sidequest|ritual|party ...]"); process.exit(2); }
-const SCENES = args.filter(a => ["sidequest", "ritual", "maskoff", "artgallery", "party"].includes(a));
+const SCENES = args.filter(a => ["sidequest", "ritual", "maskoff", "artgallery", "party", "turns"].includes(a));
 if (!SCENES.length) SCENES.push("sidequest", "ritual", "maskoff", "artgallery", "party");
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve({ realAvatars: true });
@@ -103,7 +106,7 @@ async function newWindow(ctx) {
   await pg.setViewportSize({ width: 390, height: 844 });
   return pg;
 }
-async function phones(names, { coins = false, dpr = 2, qs: extra = {} } = {}) {
+async function phones(names, { coins = false, dpr = 2, qs: extra = {}, hostQs = "" } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: dpr, hasTouch: true });
   await ctx.addInitScript(() => { try { localStorage.setItem("rando-hint-v1", "1"); } catch {} });
   const pages = {};
@@ -117,24 +120,25 @@ async function phones(names, { coins = false, dpr = 2, qs: extra = {} } = {}) {
     pg.label = name;
     return pg;
   };
-  const host = pages[names[0]] = await open(names[0]);
+  const host = pages[names[0]] = await open(names[0], hostQs);
   await host.click("#party-btn");
   await host.fill("#pt-name", "Saturday night");
   await host.click("#pt-create");
   await until(host, () => /^[A-Z0-9]{4}$/.test(document.getElementById("pt-code-chip")?.textContent ?? ""));
   const code = (await host.locator("#pt-code-chip").innerText()).trim();
   for (const n of names.slice(1)) pages[n] = await open(n, `&party=${code}${extra[n] ?? ""}`);
-  await until(host, n => document.querySelectorAll(".lr-av").length === n, names.length, 30000);
+  await until(host, n => document.querySelectorAll(".lr-av").length >= n, names.length, 30000);
   return { ctx, pages, list: names.map(n => pages[n]), host };
 }
 const idOf = pg => `u-${pg.label}`;
 const stateOn = pg => pg.evaluate(() => { const s = window.__game?.s; return s ? JSON.parse(JSON.stringify(s)) : null; });
 const phaseIs = (pg, ph, ms = 30000) => until(pg, ph => window.__game?.s?.phase === ph, ph, ms);
-async function queue(host, game) {
+async function queue(host, game, opts = {}) {
   await host.click("#pt-vote");
   const title = host.locator(`[data-game="${game}"] .pv-t > b`);
   await title.waitFor({ state: "visible" });
   await sleep(700);                                       // the sheet slides up
+  for (const [k, v] of Object.entries(opts)) await host.locator(`[data-for="${game}"][data-opt="${k}"][data-val="${v}"]`).click().catch(() => {});
   await title.scrollIntoViewIfNeeded().catch(() => {});
   await title.click({ timeout: 10000 }).catch(() => title.evaluate(b => b.click()));
 }
@@ -385,6 +389,82 @@ async function ritual() {
   await P.ctx.close();
 }
 
+// ---------------------------------------------------------------- the chosen player, 10 turns
+// Side Quest and the Ritual, 10 turns each, on 2 phones with 3 bots (5
+// players), looking around on both phones during every turn. On both
+// phones, each turn: the chosen player shows up, the right person, and only
+// one at a time (the last one gone before the next pops in), never two
+// characters in the room. Each game's first full turn is recorded on both
+// phones (turns-sidequest, turns-ritual).
+async function guestTurns() {
+  let fails = 0;
+  const ok = (c, m) => { console.log(`  ${c ? "✓" : "✗"} ${m}`); if (!c) { fails++; errors.push(`turns: ${m}`); } };
+  for (const game of ["sidequest", "ritual"]) {
+    log(`\nThe chosen player, 10 turns: ${game === "sidequest" ? "Side Quest" : "the Ritual"}`);
+    const P = await phones(["alice", "bob"], { dpr: 1, hostQs: "&bots=3" });
+    const A = P.host;
+    await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/charrender.js").then(m => m.warmLooks([])))));
+    // every 60 ms, on each phone: who's on stage, how many characters are in the room
+    await Promise.all(P.list.map(pg => pg.evaluate(() => {
+      window.__gs = [];
+      setInterval(() => {
+        const sc = window.__prophet ?? window.__boss, s = window.__game?.s;
+        if (!sc || !s) return;
+        let bodies = 0;
+        sc.debug.scene.traverse(o => { if (o.userData?.part === "body" && o.visible) bodies++; });
+        window.__gs.push({ key: sc.guest.key, count: sc.guest.count(), bodies, ti: s.ti, who: s.turn?.who ?? s.turn?.performer ?? null, phase: s.phase });
+      }, 60);
+    })));
+    const casts = await Promise.all(P.list.map(screencast));
+    await queue(A, game, game === "ritual" ? { rounds: "2" } : {});
+    if (game === "sidequest") {
+      await until(A, () => !!document.getElementById("sq-go"));
+      for (let i = 0; i < 12 && (await A.locator(".sq-turns b").innerText().catch(() => "")) !== "10"; i++) { await A.locator('[data-turns]').last().click().catch(() => {}); await sleep(400); }
+      await A.click("#sq-go");
+    }
+    await until(A, () => window.__game?.s?.turns > 0, null, 30000);
+    const turns = (await stateOn(A)).turns;
+    log(`  ${turns} turns, ${Object.keys((await stateOn(A)).players).length} players`);
+    const from = Date.now() / 1000 - 0.3;
+    let recorded = false, lastSkip = 0, side = 1;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 15 * 60000) {
+      const s = await stateOn(A);
+      if (!s || s.phase === "end") break;
+      // the first turn, start to finish, on both phones
+      if (!recorded && s.ti >= 1) { recorded = true; await writeScene(`turns-${game}`, casts, { from }); }
+      // look around on both phones (a drag across the room, left then right)
+      side = -side;
+      await Promise.all(P.list.map(pg => (async () => {
+        await pg.mouse.move(195 + side * 120, 260); await pg.mouse.down();
+        for (let i = 1; i <= 8; i++) { await pg.mouse.move(195 + side * 120 - side * 30 * i, 260 + (i % 3) * 6); await sleep(20); }
+        await pg.mouse.up();
+      })()));
+      await sleep(900);
+      // the host moves things on, but gives every step a few seconds on screen
+      if (Date.now() - lastSkip > 3200) { lastSkip = Date.now(); await A.locator("#hp-skip").first().click({ timeout: 1000 }).catch(() => {}); }
+    }
+    if (!recorded) await writeScene(`turns-${game}`, casts, { from });
+    const end = await stateOn(A);
+    ok(end?.phase === "end", `${game}: played through all ${turns} turns to the end`);
+    for (const pg of P.list) {
+      const g = await pg.evaluate(() => window.__gs);
+      ok(g.length > 100 && g.every(x => x.count <= 1 && x.bodies <= 1), `${game} · ${pg.label}: never more than one character in the room (${g.length} samples, max ${Math.max(...g.map(x => x.bodies))})`);
+      let jumps = 0, wrong = 0;
+      for (let i = 1; i < g.length; i++) {
+        if (g[i].key && g[i - 1].key && g[i].key !== g[i - 1].key) jumps++;            // a new one in without the last one gone first
+        if (g[i].key && g[i].key !== g[i].who && g[i - 1].key !== g[i].key) wrong++;  // someone other than the turn's player popping in
+      }
+      ok(!jumps, `${game} · ${pg.label}: each one gone before the next pops in (${jumps} straight swaps)`);
+      ok(!wrong, `${game} · ${pg.label}: only ever the turn's own player pops in (${wrong} wrong)`);
+      const seen = new Set(g.filter(x => x.key && x.key === x.who).map(x => x.ti));
+      ok(seen.size >= Math.min(10, turns), `${game} · ${pg.label}: the chosen player was on stage in ${seen.size} of ${turns} turns`);
+    }
+    await P.ctx.close();
+  }
+  if (fails) log(`  ${fails} failed`);
+}
+
 // ---------------------------------------------------------------- Art Gallery
 // the template the NPC scenes follow: one piece, from the cover to the
 // result, on a voter's phone and a writer's side by side
@@ -418,10 +498,12 @@ async function artgallery() {
   let voter = null;
   for (let i = 0; i < 40 && !voter; i++) { for (const pg of P.list) if (await pg.locator(".ag-pl[data-v]").count() === 2) voter = pg; if (!voter) await sleep(250); }
   const writer = P.list.find(pg => pg !== voter);
-  await sleep(2500);
+  // let Bunny unveil it and bang the gavel before the vote comes in (the
+  // last vote ends the voting at once)
+  await sleep(6500);
   if (voter) await voter.locator('.ag-pl[data-v="1"]').click().catch(() => {});
   await until(A, () => document.querySelectorAll(".ag-room .ag-pl-n").length === 2, null, 30000);
-  await sleep(4500);
+  await sleep(5200);
   await writeScene("artgallery", [all.get(voter ?? P.list[1]), all.get(writer)], { from });
   for (const [pg, c] of all) if (pg !== voter && pg !== writer) await c.stop();
   log(`  one piece: the voter (${voter?.label}) and a writer (${writer.label})`);
@@ -495,7 +577,7 @@ async function partySet() {
 }
 
 for (const s of SCENES) {
-  try { await ({ sidequest, ritual, maskoff, artgallery, party: partySet })[s](); }
+  try { await ({ sidequest, ritual, maskoff, artgallery, party: partySet, turns: guestTurns })[s](); }
   catch (e) { errors.push(`${s}: ${e.message}`); console.log(`  ✗ ${s}: ${e.message}`); }
 }
 if (errors.length) console.log("page errors:\n" + errors.slice(0, 20).join("\n"));

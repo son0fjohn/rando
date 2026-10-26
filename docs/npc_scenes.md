@@ -1,4 +1,4 @@
-# NPC scenes: Side Quest's Prophet, the Ritual's Boss
+# NPC scenes: Side Quest's Prophet, the Ritual's Boss, the Art Gallery's Bunny
 
 Both games' hosts are rigged low-poly 3D characters, lit live, in a room
 that is real geometry painted with an approved picture (camera mapping), so
@@ -110,8 +110,10 @@ anyone moves the camera) looks almost exactly like it.
   name slams onto everyone else's screen in big gold letters (~1.5 s) with a
   "[Name] got picked" banner; the chosen player's own phone goes gold, "THE
   BALL PICKED YOU", with a strong buzz. Their own 3D character pops in
-  beside his table under a warm spotlight (`guestSpot` in `npcstage.js`),
-  surprised, and stays for the turn; he points at them (`aim`): "Relax. The
+  (a puff) sitting cross-legged on a floor cushion at his table's right end,
+  just behind its back corner, turned ~45° toward him, under a warm light
+  (`guestSpot` in `npcstage.js`), surprised; they stay for the turn, looking
+  between him and the camera now and then, and pop out the same way; he points at them (`aim`): "Relax. The
   ball already knows who's next... [Name]."
 - **The reveal** (~5 s): he takes a big drag and blows a swirl of smoke over
   the ball that gathers into a glowing card, flips round to the camera
@@ -229,9 +231,9 @@ exactly like it, without its crystal ball.
   like a slot machine, slowing over a drumroll, and lands on the performer's:
   a flash, a light shake, the name slams in (everyone else also gets "[Name]
   is performing"); the performer's phone goes to a red spotlight, "YOU'RE
-  UP", with a strong buzz. Their own 3D character pops in in front of his
-  table under one harsh white spotlight (a visible beam) and stays for the
-  turn; he takes a slow drag on his cigar. Then he twists the capsule open,
+  UP", with a strong buzz. Their own 3D character pops in (a puff) standing
+  at his table's right end, back by the door, turned ~45° toward him under a
+  soft spotlight, and stays for the turn, looking between him and the camera; he takes a slow drag on his cigar. Then he twists the capsule open,
   pop, confetti. On the performer's phone the slip unrolls out of it and
   flies at the camera, filling the screen, and a red ACT IT OUT stamp slams
   onto it; everyone else sees him peek, smirk and go "Shhh.", then the guess
@@ -294,6 +296,141 @@ the model's own joints with skin weights by distance along the surface
 (geodesic, seeded on each bone's own limb), so a sleeve never drags the
 jacket beside it. 4,600 triangles, 3,546 vertices, 20 joints, a 2048 px
 WebP texture: 427 KB.
+
+## Art Gallery: Bunny in the masquerade gala (`web/bunny.js`, `web/gala.js`)
+
+The mustache dealer is gone (his pose cut-outs, his models, the white
+gallery backdrop and the cloth sprite were deleted; they're in git history).
+The Art Gallery is now a candlelit masquerade gala at night, hosted by
+Bunny: the hostess of Seoul's most exclusive secret masquerade, where the
+only art on display is people's real camera rolls. A white rabbit
+half-mask with tall upright ears and gold around the eyes, long straight
+black hair, no visible mouth, a black off-the-shoulder lace-and-tulle dress,
+long black satin gloves, a pearl choker, black heels; thin, lanky,
+completely deadpan, a wooden gavel in her right hand and a champagne flute
+in her left. She treats every terrible photo like a priceless masterpiece.
+The approved picture is the target: the default view looks almost exactly
+like it.
+
+- **The room** (`gala.js`) is camera-mapped like the other two: the
+  picture's camera solved from the floor line (72.7% down), the floor
+  boards' vanishing point (the horizon 48% down) and the wainscot's top
+  (`PROJ`: 1.29 m up, a hair down, 46° vertical field at 9:16; the back wall
+  6.1 m away). The paint (`plate.webp`) is the picture widened to a square:
+  its middle 9/16 is the approved picture itself, with a clean plate only
+  where Bunny, the guests, the chandelier, the photo, the plaques and the
+  dialog box were; the sides are the same room outpainted (more velvet
+  curtains over tall windows, more damask), so it can be looked around
+  further. The room is built 7.2 m wide; the side walls the picture never
+  saw take tiles of it (damask above the wainscot's top, panels below) with
+  a curtained window and two candle sconces each.
+- **Layers on top of the paint:** the **guests**, two pairs cut out of the
+  picture (outpainted where they ran off its edges), standing at their own
+  depth (their feet on the floor), turned to the camera as it orbits, with
+  a slight sway; the **chandelier**, a cut-out hanging on a chain from the
+  ceiling at its depth; the **photo**, a plane in the frame's opening
+  (cover-fit); the **drape**, red velvet over the frame that slides down off
+  it on the unveil; the **spotlight**, a warm glow on the frame (behind the
+  photo, so the picture isn't washed out) from a small lamp on the ceiling;
+  the **candles**, a soft glow on every flame that flickers.
+- **Her** (`bunny.js`): the rigged mesh (below), standing where the
+  picture has her, lit live by the candles' warmth from the front right and
+  the windows' cool light behind her. Her limbs are aimed (directions in her
+  own frame, blended quickly, no float), the spine and head by small
+  rotations; the gavel and the flute ride her palms (placed each frame, aimed
+  along the pose's direction for them); a black marble pedestal with a gold
+  vein stands behind her right hip for the gavel. The mask's ears are rigid
+  (they're the head's); her hair and the tulle skirt sway a little on their
+  own bones.
+- **Animations:** idle (slow breathing, small head tilts, now and then a sip
+  of champagne), unveil (she turns to the frame and presents it with the
+  gavel), gavel (raised, two raps on the pedestal's block: a thud each),
+  judge (a slow head tilt toward the photo, one slow nod), applause (two
+  slow, sarcastic claps), sip, nod. Her head follows the camera a little.
+- **A piece** (`artgallery.js`, the same game logic, beats off the synced
+  clock): covered (3.5 s): under velvet, she opens the show ("Welcome to the
+  gallery. Masks on. Judge everything.") or announces the next exhibit.
+  Reveal: the drape slides off, the spotlight snaps on, she presents it
+  ("Exhibit 2. Note the brushwork. Breathtaking." and the rest of the pool);
+  2.3 s in, the gavel: "Two titles. One truth. Choose wisely."; the
+  plaques' velvet covers come off one after the other (I, then II) and the
+  non-writers tap one to vote; 9 s in she judges the photo. Result: the gavel
+  again, "Sold. To no one."; then two slow claps and "The people have spoken.
+  Tragically." / "Correct. You have taste. Barely." (a tie: "A tie. How very
+  modern."), the plaques showing authors, votes and points. Lines in English
+  or Korean by the phone's language.
+- **The plaques** are the game's DOM (cream, a gold tab, the title in italic
+  serif, like the picture's), placed every frame where the 3D wall puts them
+  under the frame, never narrower than readable and always on screen, so
+  voting works from any angle.
+- **Taps** (between her lines; never in the game state): her (a line:
+  "Don't touch the art. Or me." / "I've seen worse. Not often." / "Shh.
+  Appreciate.", and a sip or a slow nod), the frame (its spotlight
+  flickers), a candle (it flickers), a guest (they raise their glasses: a
+  quick crossfade to the same cut-out with the glasses up,
+  `guests_*_toast.webp`).
+- **Look around:** the same camera as the other hosts (`npcstage.js`: drag,
+  pinch, glide home after ~4 s, never locked), orbiting a point between her
+  and the back wall so the frame and the plaques stay in view however far
+  you look, and further than the other rooms: ±40°. (±57° was tried: the
+  frame swings off screen and the camera reaches the side walls.)
+- **No 3D:** the painted room (the plate) with the photo in its frame and
+  the plaques; never the old dealer.
+
+`node test/bunny_shots.mjs <dir> [only] [--photo=<url>]` shoots every beat,
+the default view (`0-default.png`, for the side-by-side with the picture)
+and the orbit's ends, and checks looking around, the plaques staying
+readable and the taps with real pointer input; `node test/games_rec.mjs
+<dir> artgallery` records a piece on two phones.
+
+### The gala's assets (`web/games/artgallery/gala/`)
+
+All Nano Banana Pro edits of the approved picture (uploaded as
+`30bfb32d-aafa-4453-8bd5-b339f17d1333`), one attempt each:
+
+- the empty room: everyone, the dialog box, the plaques and the photo
+  taken out (job `4827c7ff-2c45-4fc9-aa4c-1140289ae99d`), and the same
+  without the chandelier (`acab397f-aab3-4892-b1e2-556f80c65c5c`); both
+  registered back onto the picture (scale and offset fitted on the walls);
+- the guests without Bunny (`cce70ea2-e64f-4543-ade4-bd0efdda8a7a`);
+- both outpainted to a square (`4abb2950-d7d1-49fa-94b3-f5cfb55cecfd`,
+  `e0a014c5-e044-40da-b628-164402c9645d`; the picture comes back at 0.775×
+  at (432, 4)), for the sides of the room and the guests cut off by the
+  picture's edges;
+- `plate.webp` (1344×1344): the approved picture, the empty room composited
+  only where people, the photo, the plaques, the chandelier and the dialog
+  box were, pasted over the outpainted room's middle;
+- `guests_l.webp`, `guests_r.webp`, `chandelier.webp`: background removal
+  (`9e10dfde…`, `38b4d3cd…`, `a551fffe…`) on crops of the guests plate and
+  the picture;
+- `guests_*_toast.webp`: the same pairs raising their glasses (edits
+  `c36cd15f…` and, keyed off a flat green background because background
+  removal lost the woman twice, `d079b466…`), registered onto the
+  originals.
+
+### Bunny's model (`web/games/artgallery/bunny/bunny.glb`)
+
+Tripo H3.1 multi-view to 3D (`tripo_h3_1_multiview_to_3d`, no PBR, detailed
+texture, 12k face limit), from the supplied turnaround cut into views
+(front `2541917e-f021-47fe-8763-58759492d39f`, left = the side view as
+drawn `8a87c7a8-364b-472d-955a-618ab9869567`, back
+`353a2f4d-fb4b-4140-9d82-761a1571c587`, right = it mirrored
+`4430a24c-0e95-48da-b58e-e29cc6e00bed`):
+
+| Attempt | Job | Result | Credits |
+| --- | --- | --- | --- |
+| 1 | `ab09a49a-f4f6-4efe-adf6-c72346447d75` | used: the mask and ears, the hair, the lace, the tulle, the gloves and heels all read right | 12 |
+
+1 of the 3 allowed attempts. Cleanup (scripted): welded and simplified to
+**4,599 triangles** (meshoptimizer), 4,699 vertices; the texture kept as
+painted (2048 px WebP) except the tulle's pale hem, darkened like the
+picture's; smooth normals; a skeleton at her own joints (the Boss's 20 plus
+a skirt bone and a hair bone) with skin weights by distance along the
+surface, seeded on each part. 553 KB.
+
+Credits for Bunny and the gala: 34 (the balance went from 237 to 203: 12 for
+Tripo, 4 for the two outpaints, the rest for 6 image edits and 6 background
+removals).
 
 ## Asset log
 

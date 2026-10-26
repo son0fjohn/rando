@@ -348,7 +348,7 @@ export const SIDE_QUEST = {
     const pose = name => { lastPose = name === "nod" ? "idle" : name; prophet?.setPose(name); };
     const orb = mode => { lastOrb = mode; prophet?.orb(mode); const o = $("sq-orb"); if (o) o.className = `sq-orb ${mode}`; };
     const push = k => { lastPush = k; prophet?.push(k); };
-    // the one on the quest, standing by his table (null: nobody)
+    // the one on the quest, sitting at his table (null: nobody)
     const guest = (s, id, { pop = false, react = null } = {}) => {
       if (!id) { if (lastGuest) { lastGuest = null; prophet?.guest.hide(); } return; }
       if (lastGuest?.id === id && !pop && !react) return;

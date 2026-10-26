@@ -566,12 +566,47 @@ function build(cfg) {
     b.quaternion.premultiply(dq);
     b.updateMatrixWorld(true);
   };
+  // point a bone along a direction in the character frame (its child gives
+  // the bone's current direction), blended by w: the sitting pose is written
+  // as where each limb points, so it holds for every outfit and proportion
+  const va = new THREE.Vector3(), vb = new THREE.Vector3(), vw = new THREE.Vector3(), aq = new THREE.Quaternion(), iq = new THREE.Quaternion(), rq = new THREE.Quaternion();
+  const aim = (b, c, x, y, z, w = 1) => {
+    if (!b || !c || w <= 0) return;
+    b.getWorldPosition(va); c.getWorldPosition(vb);
+    rig.worldToLocal(va); rig.worldToLocal(vb);
+    aq.setFromUnitVectors(vb.sub(va).normalize(), vw.set(x, y, z).normalize());
+    iq.identity().slerp(aq, w);
+    rig.getWorldQuaternion(gq); b.parent.getWorldQuaternion(pq);
+    const rel = gq.invert().multiply(pq);
+    dq.copy(iq).premultiply(rq.copy(rel).invert()).multiply(rel);
+    b.quaternion.premultiply(dq);
+    b.updateMatrixWorld(true);
+  };
   const STRIDE = 7.2;
   const fold = x => Math.max(0, x);
+  // sitting cross-legged on a floor cushion (the game hosts' rooms): knees
+  // out to the sides, shins crossed in front, hands on the knees, a little
+  // lean in. It returns how far to lower the body for the seat to land on
+  // the group's origin (measured off the posed hips, so any outfit sits right).
+  const THIGH_R = 0.7, hipAt = new THREE.Vector3();
+  const sitPose = (t, w) => {
+    const br = Math.sin(t * 1.3) * 0.012;
+    turn(B.spine, (0.08 + br) * w, 0, 0);
+    turn(B.chest, 0.03 * w, 0, 0);
+    aim(B.thigh_L, B.shin_L, 0.62, -0.08, 0.78, w); aim(B.thigh_R, B.shin_R, -0.62, -0.08, 0.78, w);
+    aim(B.shin_L, B.foot_L, -0.92, -0.18, 0.18, w); aim(B.shin_R, B.foot_R, 0.92, -0.1, 0.12, w);
+    // the feet lie forward on their outer edge (with the thighs up they'd point at the ceiling)
+    turn(B.foot_L, 1.35 * w, 0, -0.35 * w); turn(B.foot_R, 1.35 * w, 0, 0.35 * w);
+    aim(B.upperarm_L, B.forearm_L, 0.3, -0.8, 0.45, w); aim(B.upperarm_R, B.forearm_R, -0.3, -0.8, 0.45, w);
+    aim(B.forearm_L, B.hand_L, 0.12, -0.42, 0.9, w); aim(B.forearm_R, B.hand_R, -0.12, -0.42, 0.9, w);
+    // how far to drop (character units) so the seat rests on the group's origin
+    B.thigh_L.getWorldPosition(hipAt); rig.worldToLocal(hipAt);
+    return -(hipAt.y * CHAR_H - THIGH_R);
+  };
   // idle: arms down from the A-pose, loose; a wider stance, weight on one
   // leg; a slow breathing sway, now and then a little nod. walk: thighs
   // swing, knees fold, arms swing against the legs, a springy bounce.
-  const applyMotion = (t, w, p) => {
+  const applyMotion = (t, w, p, sit = 0, gz = 0, u = 1) => {
     for (const [b, r] of rest) { b.quaternion.copy(r.q); b.position.copy(r.p); }
     rig.updateMatrixWorld(true);
     const i = 1 - w, sway = Math.sin(t * 1.15);
@@ -598,7 +633,11 @@ function build(cfg) {
     turn(B.forearm_R, -0.22 - w * 0.3 * fold(-sR), 0, 0.08);
     // the bob is written ABSOLUTE into group.position.y (the world adds the
     // terrain height after tick(), the same contract as avatar3)
-    group.position.y = i * (0.02 + sway * 0.02) + w * 0.3 * Math.abs(Math.sin(p)) + hop * 0.9;
+    // (u: the group's own scale, for a scaled-down character in a room; 1 on the map)
+    group.position.y = (i * (0.02 + sway * 0.02) + w * 0.3 * Math.abs(Math.sin(p)) + hop * 0.9) * u;
+    if (sit > 0) { const drop = sitPose(t, sit); group.position.y = group.position.y * (1 - sit) + (drop + hop * 0.4) * sit * u; }
+    // where they're looking: a turn of the head (yaw, + = to their left), the neck taking a little
+    if (gz) { turn(B.neck, 0, gz * 0.3, 0); turn(B.head, 0, gz * 0.7, 0); }
   };
   const faceTick = (t, walking) => {
     if (t > M.nextBlink) { M.blinkUntil = t + 0.13; M.nextBlink = t + 2.2 + Math.random() * 3; }
@@ -609,7 +648,7 @@ function build(cfg) {
   };
 
   paint(); dress(); applyMotion(0, 0, 0);
-  let lastT = null, walkW = 0, walkP = 0;
+  let lastT = null, walkW = 0, walkP = 0, sitW = 0, gazeNow = 0;
   const IDLE_LEN = 4, WALK_LEN = Math.PI * 2 / STRIDE;
   return {
     group,
@@ -647,13 +686,24 @@ function build(cfg) {
     },
     __rig: () => ({ turn, B, rest, rig, body, U }), // dev harness only
     walking: false,
+    // "stand" or "sit" (cross-legged on a floor cushion; eased in and out)
+    stance: "stand",
+    // where they look: head yaw in radians (+ = to their left), eased
+    gaze: 0,
+    // the group's scale when it's scaled down into a room (npcstage.js): the
+    // bob, hop and seat are offsets of the group, so they scale with it
+    unit: 1,
     phase: Math.random() * Math.PI * 2,
     tick(t) {
+      // the first frame takes the stance as it is (someone who pops in sitting doesn't sit down first)
+      if (lastT === null) sitW = this.stance === "sit" ? 1 : 0;
       const dt = lastT === null ? 0.016 : Math.min(0.1, Math.max(0, t - lastT));
       lastT = t;
       walkW += ((this.walking ? 1 : 0) - walkW) * Math.min(1, dt / 0.2);
       walkP += dt * STRIDE * Math.min(1, walkW * 1.5 + 0.2);
-      applyMotion(t, walkW, walkP);
+      sitW += ((this.stance === "sit" ? 1 : 0) - sitW) * Math.min(1, dt / 0.25);
+      gazeNow += (this.gaze - gazeNow) * Math.min(1, dt / 0.35);
+      applyMotion(t, walkW, walkP, sitW, gazeNow, this.unit);
       faceTick(t, this.walking);
       emoteTick(t);
     },

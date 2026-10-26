@@ -1,0 +1,45 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bunny</title>
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<!--INDEX_CSS-->
+<link rel="stylesheet" href="/web/theme.css">
+<style>html,body{margin:0;background:#000;height:100%} #w{position:relative;width:100vw;height:100vh;overflow:hidden} #d{position:absolute;left:9px;right:9px;bottom:30px}
+  #room { position:fixed; inset:0; pointer-events:none; } #room .ag-plaques { pointer-events:auto; }</style>
+</head><body>
+<!-- The Art Gallery's host on her own: test/bunny_shots.mjs drives her
+     (poses, the drape, the photo, the plaques, the dialog box) and shoots
+     each moment. The plaques are the game's (index.html's styles), placed
+     like artgallery.js places them. -->
+<div id="w"></div>
+<div id="room" class="ag-room revealed"><div class="ag-plaques" id="pl"></div></div>
+<div id="d"></div>
+<script type="module">
+  import { bunnyScene } from "/web/bunny.js";
+  import { dialogBox } from "/web/dialog.js";
+  window.__dlg = dialogBox(document.getElementById("d"), { name: "Bunny" });
+  const pl = document.getElementById("pl");
+  // __plaques(["museum of regret", "do not perceive me"], "vote" | "read") / __plaques(null)
+  window.__plaques = (titles, mode = "read") => {
+    pl.innerHTML = !titles ? "" : titles.map((t, i) => `<${mode === "vote" ? "button" : "div"} class="ag-pl" ${mode === "vote" ? `data-v="${i}"` : ""}><span class="ag-pl-eye">Title ${["I", "II"][i]}</span><span class="ag-pl-t">“${t}”</span><i class="ag-pl-dot"></i><i class="ag-pl-tag">your vote</i></${mode === "vote" ? "button" : "div"}>`).join("");
+  };
+  try {
+    window.__p = await bunnyScene(document.getElementById("w"));
+    const follow = () => {
+      const [a, b] = __p.plaqueRects(), W = innerWidth;
+      const x0 = Math.min(a.left, b.left), x1 = Math.max(a.left + a.width, b.left + b.width), w = Math.max(x1 - x0, W * 0.36), cx = Math.max(w / 2 + 8, Math.min(W - w / 2 - 8, (x0 + x1) / 2));
+      Object.assign(pl.style, { left: `${Math.round(cx - w / 2)}px`, top: `${Math.round(Math.max(90, Math.min(innerHeight * 0.66, a.top)))}px`, width: `${Math.round(w)}px` });
+      requestAnimationFrame(follow);
+    };
+    follow();
+    window.__ready = true;
+  } catch (e) { console.error(e); window.__failed = String(e?.message ?? e); }
+</script>
+</body></html>

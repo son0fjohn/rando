@@ -429,7 +429,7 @@ try {
   await A.click("#pp-again");
   ok((await Promise.all([A, B].map(pg => until(pg, () => !document.getElementById("pp") && /Game 1 of 3/.test(document.getElementById("pt-next")?.textContent ?? ""))))).every(Boolean), "a new set starts: game 1 of 3, the podium closes for everyone");
 
-  head("Art Gallery — the dealer unveils the titles on wall plaques");
+  head("Art Gallery — Bunny unveils each photo, the titles on wall plaques");
   await startGame(A, "artgallery");
   ok(await until(B, () => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "everyone fills 3 frames");
   ok(await B.evaluate(() => !!document.querySelector("#game-layer > .ag-bg.on")), "the gallery wall is behind the setup cards, not the map");
@@ -483,7 +483,9 @@ try {
         Math.max(...c.getAnimations().map(a => +a.effect.getTiming().delay || 0), 0));
       [400, 2400].forEach(t => setTimeout(() => { out[t] = op(); }, t));
       const t1 = Date.now();
-      const poll = () => { const o = op(); o.forEach((v, i) => { if (out.first[i] === null && v < 0.9) out.first[i] = Date.now() - t1; }); if (Date.now() - t1 < 2500) setTimeout(poll, 16); else res(out); };
+      // …and when they're both fully off (polled on, so a late start doesn't cut it short)
+      out.done = null;
+      const poll = () => { const o = op(); o.forEach((v, i) => { if (out.first[i] === null && v < 0.9) out.first[i] = Date.now() - t1; }); if (out.done === null && o.every(v => v < 0.05)) out.done = Date.now() - t1; if (Date.now() - t1 < 4500 && out.done === null) setTimeout(poll, 16); else res(out); };
       poll();
     };
     watch();
@@ -492,7 +494,11 @@ try {
   const [f1, f2] = seq.first ?? [];
   const [d1, d2] = seq.delays ?? [];
   ok(f1 !== null && f2 !== null && f1 <= f2 && d1 > 0 && d1 + 300 <= d2, `then plaque I, then plaque II — one by one (delays ${d1} / ${d2} ms; they start to fade at ${f1} / ${f2} ms)`);
-  ok(seq[2400]?.every(o => o < 0.05), "both plaques unveiled within ~2.5 s");
+  // ~2.5 s from the flip; a busy runner (three phones drawing the 3D gala in
+  // software) can start the whole unveil late, so it's timed from plaque I's
+  // own delay, not from the flip
+  const late = Math.max(0, (f1 ?? 0) - (d1 || 900));
+  ok(seq.done !== null && seq.done !== undefined && seq.done - late <= 2500, `both plaques unveiled within ~2.5 s (done at ${seq.done} ms, the unveil started ${Math.round(late)} ms late)`);
   // with 3 players each frame has 2 writers, so exactly one phone gets to vote
   let voter = null;
   for (let i = 0; i < 20 && !voter; i++) { for (const pg of [A, B, C]) if (await pg.locator(".ag-pl[data-v]").count() === 2) voter = pg; if (!voter) await sleep(250); }

@@ -9,10 +9,10 @@
 //   idle   slow breathing, a slight head tilt now and then, a pipe puff
 //   reveal leans in, hands hovering over the ball, the ball brightens
 //   point  points at the one the ball chose (at the camera: at you)
-//   aim    points at the chosen player standing by his table (guest)
+//   aim    points at the chosen player sitting at his table (guest)
 //   nod    a smug nod to close a turn
-// The chosen player stands by his table for their turn (guest: their own 3D
-// character under a warm spotlight, npcstage.js guestSpot). The quest comes
+// The chosen player sits on a cushion at his table's right end for their turn
+// (guest: their own 3D character under a warm light, npcstage.js guestSpot). The quest comes
 // out of a puff of his smoke: it swirls over the ball into a glowing card
 // that flips toward the camera (smokeCard(); cardRect() is where the game's
 // card flies out from).
@@ -34,7 +34,7 @@
 import { retroStage, THREE, blobShadow } from "./retrolook.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { rooftopRoom, PROJ, TABLE } from "./rooftop.js";
-import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp, guestSpot } from "./npcstage.js";
+import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp, guestSpot, screenBox } from "./npcstage.js";
 
 const ART = new URL("./games/sidequest/prophet/", import.meta.url).href;
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -86,14 +86,17 @@ export const POSES = {
     upperarm_R: [-0.584, 0.847, -0.518], forearm_R: [1.338, -0.265, -0.623], hand_R: [-0.2, 0, 0] },
   // the nod itself is animated; this is its lean back
   nod: { spine: [-0.02, 0, 0], chest: [-0.04, 0, 0] },
-  // his left arm out to the side, at the one standing by his table (the
+  // his left arm out to the side, at the one sitting at his table (the
   // point pose mirrored), his head turned to them
   aim: { spine: [0.06, 0, 0], chest: [0, 0.2, 0], head: [-0.02, 0.32, 0.04],
     upperarm_L: [-0.68, 0.3, 0.148], forearm_L: [0.294, 0.825, 0.026], hand_L: [-0.2, 0, 0] },
 };
-// where the chosen player stands: by the table's right-hand back corner,
-// beside him, facing the camera
-export const GUEST = { x: 0.47, z: -0.32, face: -0.25 };
+// where the chosen player sits: on a fat floor cushion at the table's
+// right-hand end, just behind its back corner (the table's far end is the
+// picture's right edge, so beside it they'd be off screen; behind it they
+// show from the chest up, like him), turned ~45° toward him, 3/4 to the
+// camera; the seat height, their height
+export const GUEST = { x: 0.5, z: -0.82, face: -0.6, seat: 0.22, height: 1.25 };
 const BONES = ["hips", "spine", "chest", "neck", "head", "upperarm_L", "upperarm_R", "forearm_L", "forearm_R", "hand_L", "hand_R", "thigh_L", "thigh_R", "shin_L", "shin_R"];
 
 // where he sits: on the floor (a flat cushion), left of the ball, turned a little toward the camera
@@ -198,8 +201,13 @@ export async function prophetScene(host) {
   const orbit = orbitCamera(st, VIEW, { onTap: (x, y) => tap(x, y), rise: yaw => Math.max(0, -yaw - 0.35) * 0.32 });
   const { view, want } = orbit;
 
-  // ---- the chosen player, standing by his table under a warm spotlight
-  const guest = guestSpot(st, { at: [GUEST.x, 0, GUEST.z], face: GUEST.face, height: 1.05, light: { color: 0xffd49a, intensity: 5, angle: 0.5, penumbra: 0.6 } });
+  // ---- the chosen player, on a cushion at the table's right end, under a warm light;
+  // they look between him and the camera
+  const cushion = new THREE.Mesh(new THREE.SphereGeometry(0.25, 20, 10), mat(0x5a2c52));
+  cushion.material.onBeforeCompile = encode;   // display-ready colour, like everything on this stage
+  cushion.scale.set(1, GUEST.seat / 0.25 * 0.55, 1); cushion.position.set(GUEST.x, GUEST.seat * 0.45, GUEST.z); scene.add(cushion);
+  const guest = guestSpot(st, { at: [GUEST.x, 0, GUEST.z], face: GUEST.face, height: GUEST.height, stance: "sit", seat: GUEST.seat,
+    look: [SEAT.x, 1.15, SEAT.z + 0.05], light: { color: 0xffd49a, intensity: 4, angle: 0.5, penumbra: 0.7 } });
 
   // ---- the quest out of his smoke: a big swirl from his pipe over the ball,
   // gathering into a glowing card that flips round to face the camera
@@ -365,6 +373,6 @@ export async function prophetScene(host) {
     dispose: () => { orbit.dispose(); guest.dispose(); for (const t of faceTex.values()) t?.dispose(); cardTex.dispose(); room.dispose(); st.dispose(); },
     get pose() { return poseName; },
     // for tests and tuning: the scene's parts
-    debug: { scene, camera, model, bone, view, want, SIT, POSES, VIEW, SEAT, T: orbit.T, tap, rest, room, glass, stand, lights: { lampLight, tvLight, doorLight, stringLight, hemi: st.lights.hemi }, LIGHT },
+    debug: { hostRect: () => screenBox(st, model), propRect: () => screenBox(st, glass), cushion, scene, camera, model, bone, view, want, SIT, POSES, VIEW, SEAT, T: orbit.T, tap, rest, room, glass, stand, lights: { lampLight, tvLight, doorLight, stringLight, hemi: st.lights.hemi }, LIGHT },
   });
 }

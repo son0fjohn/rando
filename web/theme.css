@@ -1372,7 +1372,7 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 #game-layer > .game-bg { position: absolute; inset: 0; opacity: 0; transition: opacity .7s ease-out; pointer-events: none; }
 #game-layer > .game-bg.on { opacity: 1; }
 /* Art Gallery: its wall, dimmed, behind the setup and results cards */
-#game-layer > .ag-bg { background: #16120e url(games/artgallery/gallery.jpg) center 44% / cover no-repeat; }
+#game-layer > .ag-bg { background: #1a0c0c url(games/artgallery/gala/plate.webp) center top / auto 100% no-repeat; }
 #game-layer > .ag-bg::after { content: ""; position: absolute; inset: 0; background: rgba(12, 9, 6, .45); }
 
 /* the Style screen: a tile that doesn't fit with what's on, and the note that says so */
