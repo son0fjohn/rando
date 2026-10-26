@@ -149,33 +149,53 @@ export const PICKER = { START: 1, GROW: 1, FLOOR: 0.25 };
 // (Humiliation Ritual's pool lives in web/data/ritual_prompts.json.)
 
 
-// ---------------------------------------------------------------- Manhunt geo
-/* ======================= PLACEHOLDER COORDINATES =======================
- * Every lat/lng below is a FAKE placeholder centred on an arbitrary point.
- * Do NOT play on these. Replace with vetted public off-road spots:
- *   - BOUNDARY: one fixed play area for the whole game.
- *   - SITES: 3+ bomb zones, 30-40 m radius, inside the boundary.
- * The code reads radius_m per site, so odd shapes are fine as long as the
- * radius covers the walkable part.
- * ==================================================================== */
+// ---------------------------------------------------------------- Manhunt
+// Hunters chase runners through real streets inside a zone the host draws
+// on the map. Privacy (AGENTS.md): your position never leaves your phone
+// as is. What leaves it, only while a round is on and never stored: a fuzzy
+// circle (FUZZ: at least MIN_M wide, its centre moved at random on your
+// phone and snapped to GRID_M), at ping time and (for your team, end-to-end
+// encrypted) now and then. The timings below are the setup screen's range
+// and default.
 export const MANHUNT = {
-  PLACEHOLDER_GEO: true,        // flips the in-game "demo coordinates" warning
-
-  // One fixed play-area boundary. Circle: centre + radius.
-  BOUNDARY: { lat: 53.5232, lng: -113.5263, radius_m: 400, label: "PLACEHOLDER play area" },
-
-  // Bomb sites. Runners see these; hunters never do.
-  SITES: [
-    { id: "s1", label: "PLACEHOLDER site A", lat: 53.5248, lng: -113.5281, radius_m: 35 },
-    { id: "s2", label: "PLACEHOLDER site B", lat: 53.5219, lng: -113.5225, radius_m: 35 },
-    { id: "s3", label: "PLACEHOLDER site C", lat: 53.5241, lng: -113.5232, radius_m: 30 },
-  ],
-
-  GAME_MS: 15 * 60 * 1000,      // runners must defuse everything before this
-  HEADSTART_MS: 60 * 1000,      // runners move, hunters held
-  DEFUSE_MS: 20 * 1000,         // stand in the zone this long
-  RADAR_MS: 60 * 1000,          // hunter radar refresh
-  CELL_M: 80,                   // radar cell size — coarse on purpose
-  HUNTER_RATIO: 4.5,            // ~1 hunter per 4-5 players
-  TAG_CONFIRM_MS: 45 * 1000,    // runner has this long to answer "were you tagged?"
+  MIN_PLAYERS: 3,
+  ROUND: { min: 10, max: 120, step: 5, def: 30 },        // minutes
+  PING: { min: 1, max: 15, step: 1, def: 5 },            // minutes between pings
+  HEADSTART: { min: 0, max: 10, step: 1, def: 3 },       // minutes runners get first
+  ZONE: { minR: 150, maxR: 3000, defR: 600, maxPts: 12 }, // metres; a drawn shape's corners
+  // the zone shrinks in steps (at this share of the round, to this share of
+  // its size), each announced a minute before
+  SHRINK: { steps: [{ at: 0.5, k: 0.8 }, { at: 0.7, k: 0.65 }, { at: 0.85, k: 0.5 }], WARN_MS: 60 * 1000 },
+  FUZZ: { START_M: 50, MIN_M: 25, GRID_M: 10 },          // ping circles: 50 m wide, tightening to 25 m
+  TEAM_EVERY_MS: 20 * 1000,                              // teammates see you (fuzzy) this often
+  OUTSIDE: { LIVE_MS: 30 * 1000, OUT_MS: 2 * 60 * 1000, EVERY_MS: 5000 },   // outside the zone: live after 30 s, out after 2 min
+  POWERS: {
+    decoy: { team: "runner", label: "Decoy", what: "your next ping lands somewhere else" },
+    ghost: { team: "runner", label: "Ghost", what: "you skip the next ping" },
+    sprint: { team: "runner", label: "Sprint Alert", what: "a buzz if a hunter gets within 100 m (60 s)", M: 100, MS: 60 * 1000 },
+    radar: { team: "hunter", label: "Radar", what: "everyone pings right now" },
+    lockon: { team: "hunter", label: "Lock-on", what: "one runner's next ping is a tight ~20 m circle", M: 20 },
+  },
+  TAG_CONFIRM_MS: 45 * 1000,     // the runner has this long to say "yes, I was tagged"
+  ELEVATOR_MS: 9000,             // the Hunter's opening
+  RULES_MS: 60 * 1000,           // the rules card: until everyone's in, or this
+  END_MS: 45 * 1000,             // the WANTED board
+  // points (they rank the game; coins come from the place, in SQL): a tag is
+  // worth TAG plus up to FAST more the earlier in the round it lands;
+  // runners get SURVIVE_MIN a minute free, UNCAUGHT for lasting to the end,
+  // LAST_SURVIVOR for the last one standing
+  POINTS: { TAG: 100, FAST: 100, SURVIVE_MIN: 10, UNCAUGHT: 150, LAST_SURVIVOR: 100 },
+  // the WANTED posters' bounty (for show): it grows with every ping survived
+  BOUNTY: { START: 50000, PER_PING: 10000 },
+  // the Hunter's lines (the dialog box)
+  LINES: {
+    start: ["Going down. Runners, you have a head start.", "Everybody runs. Nobody hides forever."],
+    ping: ["Ping in three... two... one.", "Found you. Sort of.", "Getting warmer."],
+    tag: ["Bounty collected.", "Another one."],
+    shrink: ["The city's getting smaller. Move."],
+    hunters: ["Told you. Nobody hides forever."],
+    runners: ["...Fine. Respect."],
+    tap: ["Everybody runs. Nobody hides forever.", "Relax. It's sauce. Probably.", "I've never lost. Don't make it weird."],
+    power: { decoy: "Cute. A decoy.", ghost: "Gone dark? Bold.", sprint: "Run, rabbit.", radar: "Everybody, smile.", lockon: "Locked on." },
+  },
 };

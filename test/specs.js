@@ -10,10 +10,11 @@ import { MASK_OFF, maskPool, nextAsker, canAsk, notAskedYet } from "/web/hpgames
 import { fairPick, chances } from "/web/fairpick.js";
 import { newSet, places, addGame, addPartial, standings, fullParticipants, nextGameNo } from "/web/partyset.js";
 import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
+import * as G from "/web/mhgeo.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { MANHUNT, DIARY, RITUAL, SIDEQUEST, MASKOFF, LEADERBOARD } from "/web/hpconfig.js";
 import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
-import { ui } from "/web/gamekit.js";
+import { ui, finalResults } from "/web/gamekit.js";
 import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
 import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
@@ -1171,101 +1172,224 @@ group("The Art Gallery (4 players)");
 }
 
 // ===================================================================== 5
-group("Manhunt (5 players)");
-{
-  const t = seatTable(MANHUNT_GAME, 5);
-  adv(500);
-  const P = Object.values(t.s.players);
-  const hunters = P.filter(p => p.role === "hunter"), runners = P.filter(p => p.role === "runner");
-  ok(hunters.length === 1, `~1 hunter per 4-5 players (5 players -> ${hunters.length})`);
-  ok(runners.length === 4, "everyone else runs");
-  ok(t.s.phase === "headstart", "runners get a head start");
-  ok(t.s.sites.length === MANHUNT.SITES.length, "bomb sites come from config");
-
-  // the state must never carry a coordinate — cells only
-  const json = JSON.stringify(t.s);
-  ok(!/"lat"|"lng"/.test(json), "no lat/lng anywhere in the broadcast state");
-  ok(!/"cell"/.test(json) || !t.s.players[runners[0].id].cell, "per-player cells are not in the state");
-
-  adv(MANHUNT.HEADSTART_MS + 2000);
-  ok(t.s.phase === "hunt", "the hunt opens after the head start");
-
-  // defusing: a runner reports standing in a zone, 20 s fills the bar
-  const r0 = runners[0].id, site = t.s.sites[0].id;
-  for (let i = 0; i < 12; i++) { t.input(r0, "zone", { site }); adv(2000); }
-  ok(t.s.sites[0].defused === true, "standing in a zone for ~20 s defuses the bomb");
-  ok(t.s.radar.pings.length > 0, "defusing pings the site's cell to the hunters");
-  ok(t.s.sites[0].by === r0, "the defuser is credited");
-
-  // leaving the zone resets an unfinished defuse
-  const site2 = t.s.sites[1].id;
-  t.input(runners[1].id, "zone", { site: site2 }); adv(4000);
-  const partial = t.s.sites[1].progress;
-  ok(partial > 0 && partial < 1, `partial progress accrues (${partial.toFixed(2)})`);
-  t.input(runners[1].id, "zone", { site: null }); adv(8000);
-  ok(t.s.sites[1].progress === 0, "walking away resets the progress bar");
-
-  // tagging: hunter nominates, runner confirms, runner becomes a hunter
-  t.input(hunters[0].id, "tag", { target: r0 });
-  adv(500);
-  ok(t.s.pending?.target === r0, "the tag waits on the runner's confirmation");
-  t.input(runners[1].id, "tagack", { yes: true });
-  adv(500);
-  ok(t.s.players[r0].tagged === false, "only the targeted runner can answer");
-  t.input(r0, "tagack", { yes: false });
-  adv(500);
-  ok(t.s.pending === null && t.s.players[r0].tagged === false, "saying no clears the tag and keeps them running");
-  t.input(hunters[0].id, "tag", { target: r0 });
+// Manhunt: a phone is "at" wherever its test hook puts it (__mhPhones[id].setPos)
+const MH = { c: [37.5346, 126.9946] };
+const mhAt = (east, north) => [MH.c[0] + north / 110540, MH.c[1] + east / (111320 * Math.cos(MH.c[0] * Math.PI / 180))];
+const mhPhone = id => window.__mhPhones?.[id];
+window.__mh3dOff = true;   // many phones in one page: the elevator plays as a card
+// (party.js empties the bin when a game ends; the harness doesn't: do it here,
+// so a host scene an earlier table was still loading doesn't render on behind us)
+trash.flush("spec: next game");
+// a table's done: end it for everyone, so its phones stop (timers, crypto, location)
+const mhDone = t => { t.host?.game?.endByHost(); adv(400); };
+// WebCrypto (the team channel) settles on real turns of the page, not on the fake clock
+const mhTurn = () => new Promise(r => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
+const mhSettle = async (n = 40) => { for (let i = 0; i < n; i++) { await mhTurn(); adv(50); } };
+function mhTable(n = 5, { teams = { p2: "hunter" }, round = 10, ping = 2, head = 1, powers = true, join = true } = {}) {
+  const t = seatTable(MANHUNT_GAME, n);
+  const sent = [];
+  const deliver = t.bus.deliver.bind(t.bus);
+  t.bus.deliver = m => { if (/^mh-|^ev$|^input$/.test(m.type)) sent.push(m); deliver(m); };
+  t.sent = sent;
   adv(300);
-  t.input(r0, "tagack", { yes: true });
-  adv(500);
-  ok(t.s.players[r0].tagged === true && t.s.players[r0].role === "hunter", "a tagged runner joins the hunters");
+  t.input("p1", "mh-zonedef", { zone: { type: "circle", c: MH.c, r: 600 } });
+  for (const [k, v] of Object.entries({ round, ping, head, powers, join })) t.input("p1", "mh-set", { k, v });
+  for (const [id, team] of Object.entries(teams)) t.input("p1", "mh-team", { id, team });
+  t.input("p1", "mh-go"); adv(1600);
+  return t;
+}
+const mhHunt = t => {
+  for (const id of Object.keys(t.s.players)) t.input(id, "mh-ready");
+  adv(1600 + MANHUNT.ELEVATOR_MS + t.s.setup.head * 60000 + 400);
+};
+const runnersOf = t => Object.values(t.s.players).filter(p => p.wasRunner).map(p => p.id);
 
-  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+group("Manhunt — setup: the host draws the zone, sets the clock, picks the teams");
+{
+  const t = seatTable(MANHUNT_GAME, 5);
+  adv(300);
+  ok(t.s.phase === "setup" && MANHUNT_GAME.hostSetup.includes("setup") && MANHUNT_GAME.map, "it opens on the host's setup, played on the live map");
+  const S = () => t.s.setup;
+  ok(S().round === MANHUNT.ROUND.def && S().ping === MANHUNT.PING.def && S().head === MANHUNT.HEADSTART.def && S().shrink && S().powers && S().join,
+    `defaults: ${S().round} min round, a ping every ${S().ping} min, ${S().head} min head start, shrinking zone, powers, tagged runners join the hunters`);
+  t.input("p1", "mh-go"); adv(200);
+  ok(!S().go && /zone/.test(S().err), `no zone, no start ("${S().err}")`);
+  t.input("p1", "mh-zonedef", { zone: { type: "circle", c: MH.c, r: 60 } }); t.input("p1", "mh-go"); adv(200);
+  ok(!S().go && /bigger/.test(S().err), "a zone smaller than a few blocks is refused");
+  t.input("p1", "mh-zonedef", { zone: { type: "circle", c: MH.c, r: 5000 } }); t.input("p1", "mh-go"); adv(200);
+  ok(!S().go && /smaller/.test(S().err), "a zone over ~3 km across is refused");
+  t.input("p1", "mh-zonedef", { zone: { type: "poly", pts: [mhAt(-400, -300), mhAt(400, -300), mhAt(400, 300), mhAt(-400, 300)] } }); adv(200);
+  ok(G.zoneOk(S().zone)[0], "a drawn shape works too");
+  t.input("p1", "mh-set", { k: "round", v: 500 }); t.input("p1", "mh-set", { k: "round", v: 45 }); t.input("p1", "mh-set", { k: "ping", v: 0 }); t.input("p1", "mh-set", { k: "head", v: 0 }); adv(200);
+  ok(S().round === 45 && S().ping === MANHUNT.PING.def && S().head === 0, "settings stay inside their ranges (10 min–2 h, 1–15 min, 0–10 min)");
+  t.input("p3", "mh-set", { k: "round", v: 10 }); t.input("p3", "mh-go"); adv(200);
+  ok(S().round === 45 && !S().go, "only the host sets things up");
+  for (const id of ["p2", "p3", "p4"]) t.input("p1", "mh-team", { id, team: "hunter" });
+  t.input("p1", "mh-go"); adv(200);
+  ok(!S().go && /lopsided/.test(S().err), `badly lopsided teams don't start ("${S().err}")`);
+  t.input("p1", "mh-team", { id: "p3", team: "random" }); t.input("p1", "mh-team", { id: "p4", team: "runner" });
+  t.input("p1", "mh-go"); adv(1600);
+  ok(t.s.phase === "rules", "fixed teams start");
+  const roles = Object.values(t.s.players).map(p => p.role);
+  ok(roles.filter(r => r === "hunter").length === 1 && t.s.players.p2.role === "hunter", "Random fills the smaller team (1 hunter, 4 runners)");
+  const t3 = seatTable(MANHUNT_GAME, 2); adv(300);
+  t3.input("p1", "mh-zonedef", { zone: { type: "circle", c: MH.c, r: 600 } }); t3.input("p1", "mh-go"); adv(200);
+  ok(!t3.s.setup.go && /3 players/.test(t3.s.setup.err), "at least 3 players");
+  ok(t.errors().length === 0 && t3.errors().length === 0, "no errors: " + (t.errors()[0] ?? t3.errors()[0] ?? "none"));
+  mhDone(t); mhDone(t3);
 }
 
-// ===================================================================== 5b
-group("Manhunt — win conditions");
+group("Manhunt — the rules card, the Hunter's opening, the head start");
 {
-  // runners win: every bomb defused
-  const t = seatTable(MANHUNT_GAME, 5);
-  adv(MANHUNT.HEADSTART_MS + 2000);
-  const runners = Object.values(t.s.players).filter(p => p.role === "runner");
-  for (const site of t.s.sites.map(x => x.id)) {
-    for (let i = 0; i < 12; i++) { t.input(runners[0].id, "zone", { site }); adv(2000); }
-  }
-  ok(t.s.winner === "runners", `all bombs defused -> runners win (got ${t.s.winner})`);
-  ok(t.s.phase === "end", "the game ends on the win");
-  ok(runOut(t), "results close out");
+  const t = mhTable(5, { head: 1 });
+  ok(t.s.phase === "rules", "everyone gets the rules card");
+  for (const id of ["p1", "p2", "p3", "p4"]) t.input(id, "mh-ready");
+  adv(2000);
+  ok(t.s.phase === "rules", "it waits for everyone to tap in");
+  t.input("p5", "mh-ready"); adv(1600);
+  ok(t.s.phase === "intro", "then the elevator opens on the Hunter");
+  adv(MANHUNT.ELEVATOR_MS + 200);
+  ok(t.s.phase === "headstart", "then the head start");
+  adv(60000 + 400);
+  ok(t.s.phase === "hunt" && t.s.hunt.len === 10 * 60000, "then the hunt, for the round's length");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  mhDone(t);
 }
+
+group("Manhunt — privacy: positions stay on the phone; pings are fuzzy circles, never kept in the state");
 {
-  // hunters win: every runner tagged
-  const t = seatTable(MANHUNT_GAME, 5);
-  adv(MANHUNT.HEADSTART_MS + 2000);
-  const hunter = Object.values(t.s.players).find(p => p.role === "hunter").id;
-  for (const r of Object.values(t.s.players).filter(p => p.role === "runner").map(p => p.id)) {
-    t.input(hunter, "tag", { target: r }); adv(400);
-    t.input(r, "tagack", { yes: true }); adv(400);
-  }
-  ok(t.s.winner === "hunters", `all runners tagged -> hunters win (got ${t.s.winner})`);
+  const t = mhTable(5, { ping: 2 });
+  await mhSettle();
+  mhHunt(t);
+  const R = runnersOf(t), H = "p2";
+  const truth = { p1: mhAt(120, 80), p3: mhAt(-200, 40), p4: mhAt(30, -250), p5: mhAt(260, 210) };
+  for (const [id, pos] of Object.entries(truth)) mhPhone(id).setPos(pos);
+  mhPhone(H).setPos(mhAt(0, 0));
+  adv(2 * 60000 + 1000);
+  ok(t.s.hunt.no === 1, "a ping on schedule");
+  const pos = t.sent.filter(m => m.type === "mh-pos" && m.no === 1);
+  ok(pos.length === R.length && pos.every(m => R.includes(m.from)), `every runner's phone sent a circle (${pos.length}); no hunter's did`);
+  const off = pos.map(m => G.dist(m.c, truth[m.from]));
+  ok(pos.every((m, i) => m.r >= MANHUNT.FUZZ.MIN_M && m.r <= MANHUNT.FUZZ.START_M && off[i] <= m.r), `each circle is 25–50 m and contains its runner (radii ${pos.map(m => m.r).join(", ")})`);
+  ok(off.some(d => d > 5), `the circles are moved off the runner, not centred on them (offsets ${off.map(d => d.toFixed(0)).join(", ")} m)`);
+  ok(pos.every(m => Math.abs(Math.round(m.c[0] * 110540 / 10) * 10 - m.c[0] * 110540) < 0.6), "circle centres are snapped to a 10 m grid");
+  // the synced state: the zone is the only place in it
+  const st = JSON.parse(JSON.stringify(t.s)); delete st.zone; delete st.setup.zone;
+  const coord = /37\.5\d{2}|126\.9\d{2}/;
+  ok(!coord.test(JSON.stringify(st)), "the synced state carries no player's position (only the zone)");
+  ok(!t.sent.some(m => m.type === "input" && m.in !== "mh-zonedef" && coord.test(JSON.stringify(m))), "no phone ever sends its position to the host (only the host's zone, a place)");
+  // the hunter sees the circles; a runner only their own
+  ok(mhPhone(H).pings.size === R.length, "the hunter's phone has every runner's circle");
+  // a second ping: fresh draws (the exact spot can't be averaged back out of one fixed offset)
+  adv(2 * 60000 + 1000);
+  const pos2 = t.sent.filter(m => m.type === "mh-pos" && m.no === 2);
+  ok(pos2.length === R.length && pos2.some(m => { const a = pos.find(x => x.from === m.from); return a && (a.c[0] !== m.c[0] || a.c[1] !== m.c[1]); }), "each ping is a fresh fuzzy draw");
+  ok(pos2.every(m => m.r <= pos.find(x => x.from === m.from).r), "the circles tighten as the round goes on");
+  // teammates: sealed to the team; the other team can't open them
+  adv(25000); await mhSettle(); adv(21000); await mhSettle();
+  const team = t.sent.filter(m => m.type === "mh-team");
+  ok(team.length > 0 && team.every(m => Object.keys(m.box).every(id => t.s.players[id].role === t.s.players[m.from].role)), `team positions go out sealed, only to teammates (${team.length} messages)`);
+  ok(team.every(m => !coord.test(JSON.stringify(m.box))), "and as ciphertext: no coordinates readable on the wire");
+  ok(mhPhone("p1").mates.size >= 1 && ![...mhPhone("p1").mates.keys()].includes(H), "a runner sees teammates (fuzzy), never a hunter");
+  ok(![...mhPhone(H).mates.keys()].some(id => R.includes(id)), "a hunter's team view has no runners");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  mhDone(t);
 }
+
+group("Manhunt — leaving the zone: live to the hunters after 30 s, out after 2 minutes");
 {
-  // hunters win on the clock with a bomb still live
-  const t = seatTable(MANHUNT_GAME, 5);
-  adv(MANHUNT.HEADSTART_MS + 2000);
-  adv(MANHUNT.GAME_MS + 5000);
-  ok(t.s.winner === "hunters", `clock out with a live bomb -> hunters win (got ${t.s.winner})`);
-  ok(/bomb still live/.test(t.s.why ?? ""), "the reason is reported");
+  const t = mhTable(5, { ping: 15 });
+  mhHunt(t);
+  mhPhone("p3").setPos(mhAt(0, 0)); adv(1000);
+  mhPhone("p3").setPos(mhAt(900, 0)); adv(1000);
+  ok(t.s.players.p3.outside && !t.s.players.p3.live, "out of the zone: flagged, not yet live");
+  adv(31000); mhPhone("p3").setPos(mhAt(905, 0)); adv(6000); mhPhone("p3").setPos(mhAt(910, 0)); adv(500);
+  const live = t.sent.filter(m => m.type === "mh-pos" && m.from === "p3" && m.live);
+  ok(t.s.players.p3.live && live.length >= 1 && live.every(m => m.r === MANHUNT.FUZZ.MIN_M), `after 30 s the hunters see them live (a 25 m circle, ${live.length} sent)`);
+  mhPhone("p3").setPos(mhAt(100, 0)); adv(1000);
+  ok(!t.s.players.p3.outside && !t.s.players.p3.live, "back inside: not live any more");
+  mhPhone("p4").setPos(mhAt(1200, 0)); adv(2 * 60000 + 2000);
+  ok(t.s.players.p4.out && !t.s.players.p4.tagged, "2 minutes outside: out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  mhDone(t);
 }
+
+group("Manhunt — tags (in person, the runner confirms), SAFE, powers");
 {
-  // works from 4 for testing
-  const t = seatTable(MANHUNT_GAME, 4);
-  adv(500);
-  ok(Object.values(t.s.players).filter(p => p.role === "hunter").length === 1, "4 players still yields a hunter");
-  ok(Object.values(t.s.players).filter(p => p.role === "runner").length === 3, "and three runners");
+  const t = mhTable(5, { ping: 3 });
+  await mhSettle();
+  mhHunt(t);
+  for (const [id, e] of [["p1", 100], ["p3", -150], ["p4", 50], ["p5", 220], ["p2", 0]]) mhPhone(id).setPos(mhAt(e, 40));
+  t.input("p3", "mh-tag", { target: "p4" }); adv(300);
+  ok(!t.s.pending, "only a hunter can tag");
+  t.input("p2", "mh-tag", { target: "p4" }); adv(300);
+  ok(t.s.pending?.target === "p4", "a hunter's tag waits on the runner");
+  t.input("p5", "mh-tagack", { yes: true }); adv(300);
+  ok(!t.s.players.p4.tagged, "only that runner can answer");
+  t.input("p4", "mh-tagack", { yes: false }); adv(300);
+  ok(!t.s.pending && !t.s.players.p4.tagged, "'no' and it doesn't count");
+  t.input("p2", "mh-tag", { target: "p4" }); adv(MANHUNT.TAG_CONFIRM_MS + 1000);
+  ok(!t.s.pending && !t.s.players.p4.tagged, "no answer in 45 s: it doesn't count");
+  t.input("p2", "mh-tag", { target: "p4" }); adv(300); t.input("p4", "mh-tagack", { yes: true }); adv(400);
+  ok(t.s.players.p4.tagged && t.s.players.p4.role === "hunter" && t.s.tags.length === 1, "'yes': caught, and they hunt now");
+  // SAFE: hidden, can't be tagged, the clock stops for them; the host is told
+  t.input("p5", "mh-safe", { on: true }); adv(300);
+  t.input("p2", "mh-tag", { target: "p5" }); adv(300);
+  ok(t.s.players.p5.safe && !t.s.pending, "SAFE: can't be tagged");
+  const before = t.sent.filter(m => m.type === "mh-pos" && m.from === "p5").length;
+  adv(3 * 60000 + 500);
+  ok(t.sent.filter(m => m.type === "mh-pos" && m.from === "p5").length === before, "SAFE: no circle at the ping");
+  ok(t.sent.some(m => m.type === "ev" && m.ev === "mh-safe" && m.id === "p5" && m.on), "everyone (the host too) hears about it");
+  t.input("p5", "mh-safe", { on: false }); adv(300);
+  ok(!t.s.players.p5.safe && t.s.players.p5.safeMs >= 3 * 60000, "back in: their clock had stopped");
+  // powers: one each
+  const truthP1 = mhAt(100, 40);
+  t.input("p1", "mh-power", { p: "ghost" }); mhPhone("p1").me.ghost = true;     // (the button does both)
+  t.input("p3", "mh-power", { p: "decoy" }); mhPhone("p3").me.decoy = true;
+  t.input("p2", "mh-power", { p: "lockon", target: "p5" }); adv(300);
+  const no0 = t.s.hunt.no;
+  t.input("p2", "mh-power", { p: "radar" }); adv(500);
+  ok(t.s.hunt.no === no0 + 1, "Radar: everyone pings right now");
+  const radar = t.sent.filter(m => m.type === "mh-pos" && m.no === t.s.hunt.no);
+  ok(radar.find(m => m.from === "p1")?.none, "Ghost: skipped at the next ping");
+  ok(G.dist(radar.find(m => m.from === "p3").c, mhAt(-150, 40)) > 150, "Decoy: the circle lands somewhere else");
+  ok(radar.find(m => m.from === "p5")?.r === MANHUNT.POWERS.lockon.M, "Lock-on: that runner's next circle is ~20 m");
+  t.input("p2", "mh-power", { p: "radar" }); adv(500);
+  ok(t.s.hunt.no === no0 + 1, "a power works once a game");
+  t.input("p1", "mh-power", { p: "radar" }); adv(300);
+  ok(!t.s.players.p1.used.radar, "runners can't use hunters' powers");
+  // Sprint Alert: the hunters' phones send that runner their fuzzy circle, sealed to that phone only
+  t.input("p5", "mh-power", { p: "sprint" }); adv(300);
+  mhPhone("p2").setPos(mhAt(210, 40)); adv(6000); await mhSettle(); mhPhone("p2").setPos(mhAt(212, 41)); adv(500); await mhSettle();
+  const near = t.sent.filter(m => m.type === "mh-near");
+  ok(near.length >= 1 && near.every(m => Object.keys(m.box).join() === "p5"), `Sprint Alert: the hunters' circles go only to that runner (${near.length})`);
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  mhDone(t);
+}
+
+group("Manhunt — the end: who wins, points, the location stops");
+{
+  const t = mhTable(5, { round: 10, ping: 2 });
+  mhHunt(t);
+  for (const id of ["p1", "p3", "p4", "p5"]) mhPhone(id).setPos(mhAt(50, 50));
+  adv(3 * 60000);
+  for (const r of ["p1", "p3", "p4"]) { t.input("p2", "mh-tag", { target: r }); adv(300); t.input(r, "mh-tagack", { yes: true }); adv(300); }
+  adv(60000);
+  t.input("p2", "mh-tag", { target: "p5" }); adv(300); t.input("p5", "mh-tagack", { yes: true }); adv(1600);
+  ok(t.s.verdict === "hunters" && t.s.phase === "end", "every runner caught: the hunters win");
+  ok(t.s.last === "p5", "the last one caught is the Last Survivor");
+  ok(t.s.players.p2.score >= 4 * MANHUNT.POINTS.TAG && t.s.players.p2.score > t.s.players.p1.score, `the hunter's tags score, faster ones more (${t.s.players.p2.score})`);
+  ok(t.s.players.p5.score > t.s.players.p1.score, "lasting longer scores more");
+  const fr = finalResults(t.s);
+  ok(fr.completed, "it counts as a played game (one of the party's 3; coins)");
+  ok(["p1", "p2", "p3", "p4", "p5"].every(id => !mhPhone(id)?.me.pos && !mhPhone(id)?.me.watch), "every phone stopped reading its location");
+  ok(runOut(t), "the results close out");
+  const t2 = mhTable(4, { round: 10, ping: 5 });
+  mhHunt(t2);
+  adv(10 * 60000 + 3000);
+  ok(t2.s.verdict === "runners" && Object.values(t2.s.players).filter(p => p.wasRunner).every(p => p.score >= MANHUNT.POINTS.UNCAUGHT), "time's up with runners free: the runners win, and the free ones score");
+  ok(t.errors().length === 0 && t2.errors().length === 0, "no errors: " + (t.errors()[0] ?? t2.errors()[0] ?? "none"));
+  mhDone(t2);
 }
 
 // ===================================================================== rejoin

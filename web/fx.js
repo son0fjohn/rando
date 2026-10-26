@@ -62,6 +62,8 @@ export const sfx = {
   boom() { try { tone(120, 0.6, { type: "sine", gain: 0.3, slide: 30 }); noise(0.6, { gain: 0.3, lp: 600, lpEnd: 60 }); } catch {} },
   klaxon() { try { tone(320, 0.5, { type: "sawtooth", gain: 0.16, slide: 140 }); tone(320, 0.5, { type: "sawtooth", gain: 0.16, slide: 140, at: 0.55 }); } catch {} },
   whistle() { try { tone(2100, 0.35, { type: "triangle", gain: 0.14, slide: 2300 }); tone(2300, 0.3, { type: "triangle", gain: 0.14, at: 0.4, slide: 1900 }); } catch {} },
+  // the elevator's ding: a two-tone bell
+  ding() { try { tone(1319, 0.6, { gain: 0.1, release: 0.5 }); tone(1047, 0.8, { at: 0.3, gain: 0.1, release: 0.7 }); } catch {} },
   chime() { try { [1568, 2093, 2637].forEach((f, i) => tone(f, 0.6, { at: i * 0.09, gain: 0.08, release: 0.4 })); } catch {} },
   pop() { try { tone(700, 0.05, { gain: 0.12, slide: 1400 }); } catch {} },
   // the Ritual clown: a gacha capsule popping open

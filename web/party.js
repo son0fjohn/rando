@@ -415,6 +415,7 @@ export const party = {
       if (wait !== !!c.setupWait) {
         c.setupWait = wait;
         document.body.classList.toggle("hp-setup-wait", wait);
+        this._syncPause();
         $("party-panel").hidden = !wait && !c.behind;
         $("party-panel").classList.toggle("pt-behind", !wait && c.behind);
         this._renderNext();
@@ -608,7 +609,10 @@ export const party = {
   // the map underneath stops drawing while the party room or a game covers it
   _syncPause() {
     const c = this.current, shown = !$("party-panel").hidden;
-    world3d.setPaused?.(!!c && (c.launched || shown));
+    // a game played on the map (Manhunt) keeps it running under the game
+    const onMap = !!c?.launched && !!gameById(c.playingId)?.map && !c.setupWait;
+    world3d.setPaused?.(!!c && (c.launched || shown) && !onMap);
+    document.body.classList.toggle("hp-on-map", onMap);
     // the map's bar and chat stay out of the party room (and its games);
     // the Host tab is lit while the host-a-party menu is open, and while
     // you're in a party it's "My party" (its gold ring filled): it goes back
