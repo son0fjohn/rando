@@ -19,6 +19,11 @@ import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
 import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
 import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea } from "/web/citygen.js";
+import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
+import { EVENTS, clean, track } from "/web/analytics.js";
+import { starterLook, e164 } from "/web/onbkit.js";
+import { invitePage } from "/api/invite.mjs";
+import { STARTER_OUTFITS4, normalizeAvatar4 } from "/web/items4.js";
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -1540,6 +1545,39 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   ok(heroes.length >= 12 && heroes.every(h => h.id && h.label && Number.isFinite(h.lat) && Number.isFinite(h.lng) && "glb" in h && Array.isArray(h.offset)), "data/heroes.json: every hero has an id, a label, a spot, a model slot and an offset");
   ok(heroes.every(h => !h.fp || h.fp.every(([lng, lat]) => Math.abs(lng - h.lng) < 0.002 && Math.abs(lat - h.lat) < 0.002)), "hero footprints are lng/lat around their own pin");
 }
+}
+group("Onboarding — English and Korean, guest setup, invite links, analytics");
+{
+  const en = Object.keys(STRINGS.en), ko = Object.keys(STRINGS.ko);
+  const miss = en.filter(k => !(k in STRINGS.ko)), extra = ko.filter(k => !(k in STRINGS.en));
+  ok(!miss.length && !extra.length, `every string in both languages (${en.length} keys)${miss.length ? ` · no Korean: ${miss.join(", ")}` : ""}${extra.length ? ` · extra: ${extra.join(", ")}` : ""}`);
+  const vars = s => [...String(s).matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort().join(",");
+  ok(en.every(k => vars(STRINGS.en[k]) === vars(STRINGS.ko[k])), "the same {placeholders} in both languages");
+  ok(["sidequest", "ritual", "artgallery", "secretdiary", "mask_off", "manhunt"].every(g => Array.isArray(STRINGS.en[`intro.${g}`]) && STRINGS.en[`intro.${g}`].length <= 2 && STRINGS.ko[`intro.${g}`].length <= 2 && STRINGS.en[`host.${g}`]),
+    "every game's host has 1–2 first-time lines, in both languages");
+  const rng = (() => { let a = 7; return () => ((a = (a * 16807) % 2147483647) / 2147483647); })();
+  const names = Array.from({ length: 300 }, () => suggestName(rng, "en")).concat(Array.from({ length: 300 }, () => suggestName(rng, "ko")));
+  ok(names.every(n => n.length >= 2 && n.length <= 20 && n === n.trim()), "name suggestions always fit the server's rule (2–20, trimmed)");
+  ok(new Set(names).size > 150, `…and vary (${new Set(names).size} different in 600)`);
+  setLang("ko"); const k = tr("recap.with", { n: 3, names: tr.list(["재", "미나", "솔"]) }); setLang("en");
+  ok(k === "재, 미나, 솔랑 게임 3개를 했어요" && tr.list(["Jae", "Mina", "Sol"]) === "Jae, Mina and Sol", "lists and numbers read right in both");
+  setLang(lang0);
+  const looks = Array.from({ length: 60 }, () => starterLook(rng));
+  ok(looks.every(l => STARTER_OUTFITS4.some(o => o.top === l.top && o.bottom === l.bottom && o.shoes === l.shoes)), "a new character always wears one of the six starter outfits");
+  ok(looks.every(l => JSON.stringify(normalizeAvatar4(l)) === JSON.stringify(l)) && new Set(looks.map(l => l.skin)).size > 3 && new Set(looks.map(l => l.eyes)).size > 3, "…with a random skin, hair and eyes, and nothing that clashes");
+  ok(e164("010-1234-5678", "en") === "+821012345678" && e164("01012345678", "ko") === "+821012345678" && e164("+1 (555) 123-4567") === "+15551234567" && e164("5551234567", "en") === "+15551234567" && e164("12", "en") === null,
+    "phone numbers: Korean local -> +82, international kept, junk refused");
+  const page = invitePage({ code: "ab12", name: `Jae's <b>party</b>"`, count: 4 });
+  ok(/og:title" content="Jae&#39;s &lt;b&gt;party&lt;\/b&gt;&quot; · 4 inside"/.test(page) && !/<b>party/.test(page), "the invite link's preview: the party's name and who's in, escaped");
+  ok(/url=\/\?party=AB12&amp;from=invite/.test(page) && invitePage({ code: "bad!" }) === null, "…then on to the party (a bad code goes nowhere)");
+  ok(/파티 초대|참여 중/.test(invitePage({ code: "AB12", count: 2, lang: "ko-KR" })), "a Korean phone gets the Korean preview");
+  // analytics: only known events, only whitelisted props, no names, codes or places
+  const before = window.__events.length;
+  track("joined_party", { source: "invite_link", code: "ABCD", name: "Jae", lat: 37.5, ms: 1200, channel: "smoke-signal" });
+  track("made_up_event", {});
+  const row = window.__events.slice(before);
+  ok(row.length === 1 && JSON.stringify(Object.keys(row[0].props)) === JSON.stringify(["source", "ms"]) && row[0].device && !("user" in row[0]), "an event keeps only whitelisted props (no code, name or place), with an install id, no account");
+  ok(EVENTS.length === 17 && JSON.stringify(clean({ permission: "location", trigger: "host", count: 3 })) === JSON.stringify({ permission: "location", trigger: "host", count: 3 }), "the 17 onboarding events, and their props");
 }
 log("head", `\n${pass} passed, ${fail} failed`);
 window.__done = { pass, fail };

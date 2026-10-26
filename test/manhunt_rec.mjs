@@ -59,7 +59,7 @@ async function phone(name, qs = "", light = false) {
   pg.label = name;
   const av = encodeURIComponent(JSON.stringify(LOOKS[name]));
   if (light) { await pg.goto(`${base}/test/hpparty.html?me=${name}&av=${av}${qs}${MH}&mh3d=0`); await pg.waitForFunction(() => window.__ready); }
-  else { await pg.goto(`${base}/app.html?me=${name}&av=${av}&devlat=37.5347&devlng=126.9945${qs}${MH}`); await pg.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 60000 }); }
+  else { await pg.goto(`${base}/app.html?onb=0&me=${name}&av=${av}&devlat=37.5347&devlng=126.9945${qs}${MH}`); await pg.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 60000 }); }
   return pg;
 }
 async function cast(pg) {

@@ -15,12 +15,22 @@
 //             you with N coins
 //   ritual    ritual_draw (migrations/015): a prompt for the caller only, no
 //             repeats per room on this phone (the real SQL: test/coins_sql.mjs)
+//   fresh     no ?me=: a new guest, like a real first open (anonymous
+//             sign-in): an id kept in this browser context's storage, an
+//             auto handle (rando-xxxxxx), no look yet: the onboarding runs
+//   phone     ?verify=1 (or localStorage stub-verify=1): the server "has SMS",
+//             so verification gates are on; the code is always 123456;
+//             +821000000000 is "already registered"
+//   events    the onboarding's analytics land in db.events (window.__db)
 import { StubChannel } from "./bcchannel.js";
 import { ITEMS4, HAIRCOLOR_SHOP, STARTER_OUTFITS4 } from "/web/items4.js";
 
 const q = new URLSearchParams(location.search);
-const handle = q.get("me") || "tester";
-const myId = `u-${handle}`;
+const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const fresh = !q.get("me");
+const freshId = fresh ? (ls.get("stub-guest") ?? (() => { const h = Math.random().toString(16).slice(2, 8).padEnd(6, "0"); ls.set("stub-guest", h); return h; })()) : null;
+const handle = q.get("me") || `rando-${freshId}`;
+const myId = q.get("me") ? `u-${handle}` : `u-guest-${freshId}`;
 let myAvatar = {};
 try { myAvatar = JSON.parse(q.get("av") || "{}"); } catch {}
 
@@ -45,12 +55,13 @@ const strangers = Array.from({ length: crowd }, (_, i) => ({
 
 const db = {
   zones: ZONES,
-  profiles: [{ id: myId, handle, avatar: myAvatar }, ...strangers.map(s => ({ id: s.user_id, handle: s.handle, avatar: s.avatar }))],
+  profiles: [{ id: myId, handle: ls.get(`stub-handle-${myId}`) ?? handle, avatar: JSON.parse(ls.get(`stub-avatar-${myId}`) ?? "null") ?? myAvatar }, ...strangers.map(s => ({ id: s.user_id, handle: s.handle, avatar: s.avatar }))],
   presence: [],
   public_messages: [
     { id: 1, sender: "u-mina", handle: "mina", body: "anyone at hamilton rn?", zone_id: "hamilton-alley", created_at: "2026-10-21T10:00:00Z" },
     { id: 2, sender: "u-jae", handle: "jae", body: "coffee line is insane lol", zone_id: "itaewon-station", created_at: "2026-10-21T10:01:00Z" },
   ],
+  events: [],
   matches: [], match_queue: [], messages: [], friend_messages: [], encounter_confirms: [], reports: [], diary_prompt_log: [],
   // the shop as migrations/016 makes it
   shop_items: [
@@ -146,6 +157,7 @@ class Query {
             return { data: null, error: { message: `locked: ${it.name} is in the shop (${it.price} coins)` } };
       }
       out.forEach(r => Object.assign(r, this.patch));
+      if (this.t === "profiles") for (const r of out) if (r.id === myId) { if (this.patch.handle) ls.set(`stub-handle-${myId}`, this.patch.handle); if (this.patch.avatar) ls.set(`stub-avatar-${myId}`, JSON.stringify(this.patch.avatar)); }
     } else if (this.op === "delete") {
       out = T.filter(match); db[this.t] = T.filter(r => !match(r));
     } else {
@@ -216,16 +228,32 @@ const RPC = {
   encounter_status: () => [{ i_confirmed: false, encounter_complete: false, encounter_verified: false }],
 };
 
-const session = { user: { id: myId }, access_token: "stub" };
+const phone0 = ls.get(`stub-phone-${myId}`);
+const session = { user: { id: myId, is_anonymous: !phone0, phone: phone0 ?? "", phone_confirmed_at: phone0 ? new Date().toISOString() : null }, access_token: "stub" };
 const authListeners = new Set();
+let pendingPhone = null;
+const phoneAuth = (q.get("verify") ?? ls.get("stub-verify")) === "1";
 export function createClient() {
   return {
     auth: {
       getSession: async () => ({ data: { session } }),
       onAuthStateChange(cb) { authListeners.add(cb); return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } }; },
       signInAnonymously: async () => ({ data: { session }, error: null }),
-      signInWithOtp: async () => ({ error: null }),
-      verifyOtp: async () => ({ error: null }),
+      signInWithOtp: async ({ phone } = {}) => { pendingPhone = phone; return { error: null }; },
+      // a guest linking a number (type phone_change) keeps its id: nothing is lost
+      updateUser: async ({ phone } = {}) => {
+        if (!phone) return { data: { user: session.user }, error: null };
+        if (phone === "+821000000000") return { data: null, error: { message: "Phone number already registered" } };
+        pendingPhone = phone; return { data: { user: session.user }, error: null };
+      },
+      verifyOtp: async ({ phone, token } = {}) => {
+        if (!phoneAuth) return { error: null };
+        if (token !== "123456" || phone !== pendingPhone) return { error: { message: "Token has expired or is invalid" } };
+        Object.assign(session.user, { phone, phone_confirmed_at: new Date().toISOString(), is_anonymous: false });
+        ls.set(`stub-phone-${myId}`, phone);
+        for (const cb of authListeners) setTimeout(() => cb("USER_UPDATED", session), 0);
+        return { data: { session }, error: null };
+      },
       signOut: async () => ({ error: null }),
     },
     from: t => new Query(t),
@@ -234,6 +262,7 @@ export function createClient() {
       return withCoins(() => { try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; } });
     },
     channel: (name, cfg) => new StubChannel(name, cfg),
+    __phoneAuth: phoneAuth,
     removeChannel: ch => ch.close(),
   };
 }

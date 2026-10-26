@@ -26,7 +26,7 @@ const LOOK = { skin: "3", hair: "m1", hairColor: "black", face: "f3", iris: "bro
 
 async function phone(ctx) {
   const pg = await ctx.newPage();
-  await pg.goto(`${base}/app.html?me=tony&av=${encodeURIComponent(JSON.stringify(LOOK))}&devlat=37.5347&devlng=126.9945`);
+  await pg.goto(`${base}/app.html?onb=0&me=tony&av=${encodeURIComponent(JSON.stringify(LOOK))}&devlat=37.5347&devlng=126.9945`);
   await pg.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 30000 });
   await pg.waitForFunction(() => !document.getElementById("navbar")?.hidden, null, { timeout: 30000 });
   return pg;

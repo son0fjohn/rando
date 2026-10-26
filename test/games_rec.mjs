@@ -593,7 +593,7 @@ async function partySet() {
   // the shop: same browser storage, so the coins the stub "server" paid are there
   const app = await newWindow(P.ctx);
   app.on("pageerror", e => errors.push(`app: ${e.message}`));
-  await app.goto(`${base}/app.html?me=alice&av=${encodeURIComponent(JSON.stringify(LOOKS.alice))}&devlat=37.5347&devlng=126.9945`);
+  await app.goto(`${base}/app.html?onb=0&me=alice&av=${encodeURIComponent(JSON.stringify(LOOKS.alice))}&devlat=37.5347&devlng=126.9945`);
   await app.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 40000 });
   const shop = [await screencast(app)];
   await sleep(5000);
