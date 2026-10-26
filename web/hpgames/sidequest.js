@@ -331,6 +331,8 @@ export const SIDE_QUEST = {
       }
       const p = s.players[t.who];
       if (p) p.score += t.pts;
+      // the party's best moment so far (the first party's recap): the top-rated quest
+      if (p && t.n && t.avg > 0 && (!s.highlight || t.avg > s.highlight.score)) s.highlight = { kind: "quest", text: t.quest?.text ?? "", by: p.handle, score: t.avg };
     }
 
     // ---- the scene: built once per turn, then patched phase by phase, so

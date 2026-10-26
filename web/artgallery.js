@@ -24,6 +24,7 @@ import { CAPTION_POOL } from "./bots.js";
 import { trash, showResults, hostSkip, bindHostSkip } from "./hpkit.js";
 import { dialogBox } from "./dialog.js";
 import { Beats } from "./npcscene.js";
+import { prePrompt } from "./permissions.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -347,6 +348,9 @@ export const ART_GALLERY = {
             const total = counts[0] + counts[1];
             f.counts = counts; f.pts = counts.map(c => total ? Math.round(100 * c / total) : 0);
             f.titles.forEach((t, i) => { if (s.players[t.by]) s.players[t.by].score += f.pts[i]; });
+            // the party's best moment so far (the first party's recap): the most-voted winning title
+            const w = counts[0] === counts[1] ? -1 : counts[0] > counts[1] ? 0 : 1;
+            if (w >= 0 && (!s.highlight || f.pts[w] > s.highlight.score)) s.highlight = { kind: "title", text: f.titles[w].text, by: s.players[f.titles[w].by]?.handle ?? "", score: f.pts[w] };
             s.sub = "result"; s.left = RESULT_MS; game.emit("result", { fi: s.fi }); return;
           }
           if (s.sub === "result") {
@@ -468,7 +472,12 @@ export const ART_GALLERY = {
         ui.stage("fill your 3 frames", `<div class="ag-frames">${frames}</div><input type="file" id="ag-file" accept="image/*" hidden>
           <p class="ab-sub">${mine.length}/${PHOTOS_PER} of yours in · ${ready}/${active.length} players ready · take a photo or pick one from your camera roll</p>${skipBtn()}`, `setup · ${ui.clock(s.left)}`);
         const inp = $("ag-file");
-        $("game-panel").querySelectorAll(".ag-empty").forEach(b => b.onclick = () => { if (!busy && mine.length < PHOTOS_PER) inp.click(); });
+        $("game-panel").querySelectorAll(".ag-empty").forEach(b => b.onclick = async () => {
+          if (busy || mine.length >= PHOTOS_PER) return;
+          // the first time on this phone: what the photos are for, then the picker
+          if (!localStorage.getItem("rando-perm-camera")) { if (!(await prePrompt("camera"))) return; try { localStorage.setItem("rando-perm-camera", "1"); } catch {} }
+          inp.click();
+        });
         inp.onchange = e => { const f = e.target.files?.[0]; e.target.value = ""; onFile(f); };
         bindSkip();
       } else if (s.phase === "title") {

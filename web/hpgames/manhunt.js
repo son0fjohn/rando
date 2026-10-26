@@ -37,6 +37,8 @@ import { teamBox } from "./../mhcrypt.js";
 import { mhMap, majorRoads } from "./../mhmap.js";
 import { mhScene } from "./../mhscene.js";
 import { renderLook } from "./../charrender.js";
+import { askPermission } from "./../permissions.js";
+import { t } from "./../i18n.js";
 
 const params = new URLSearchParams(location.search);
 const SIM = params.get("mhsim");
@@ -578,7 +580,7 @@ export const MANHUNT_GAME = {
       const el = $("mh-in"); if (el) el.textContent = `${inN} / ${all} in`;
     }
     // ask for location now (a tap), so the hunt doesn't stall on a prompt later
-    function askLocation() { if (!SIM) navigator.geolocation?.getCurrentPosition(() => {}, () => ui.toast("Location is off: you'll show as 'no signal' at pings.", "bad"), { timeout: 10000 }); }
+    function askLocation() { if (!SIM) askPermission("location", { body: t("perm.loc.mh") }).then(ok => { if (!ok) ui.toast("Location is off: you'll show as 'no signal' at pings.", "bad"); }); }
 
     // ---- the Hunter's opening (once)
     let introShown = false;

@@ -35,6 +35,10 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#0b0d24">
+<script>
+  // a first open (no onboarding done on this phone yet) sees the city at night
+  try { if (!localStorage.getItem("rando-onb-v1")) window.__RANDO_FIRST_NIGHT = true; } catch {}
+</script>
 <style>
   :root {
     color-scheme: dark;
@@ -763,48 +767,6 @@
     position: absolute;
     transform: translate(-50%, -100%);
     pointer-events: none;
-  }
-
-  /* --- First-run hint card: the "what do I do" beat --- */
-  #hint-card {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 260;
-    width: min(76%, 290px);
-    background: rgba(24, 20, 26, 0.94);
-    border-radius: 18px;
-    padding: 20px 18px 16px;
-    box-shadow: 0 12px 40px rgba(8, 11, 16, 0.55);
-    backdrop-filter: blur(6px);
-    text-align: left;
-  }
-  #hint-card[hidden] { display: none; }
-  #hint-card .hc-title {
-    font-size: 17px;
-    font-weight: 800;
-    color: #ffe9c4;
-    margin-bottom: 10px;
-    text-align: center;
-  }
-  #hint-card .hc-line {
-    font-size: 12.5px;
-    line-height: 1.5;
-    color: #e6e0d4;
-    margin: 7px 0;
-  }
-  #hint-card #hint-got {
-    display: block;
-    margin: 14px auto 0;
-    border: none;
-    border-radius: 12px;
-    padding: 11px 34px;
-    font-size: 14px;
-    font-weight: 700;
-    background: var(--apple-blue);
-    color: #fff;
-    cursor: pointer;
   }
 
   /* --- Nickname sheet (mirrors the auth sheet look) --- */
@@ -1944,6 +1906,7 @@
         <span class="nav-lbl">Style</span></button>
     </div>
     <button id="nav-backtome" class="y-btn small dim" type="button" hidden>&#9678; Back to me</button>
+    <button id="nav-home" type="button" aria-label="Home" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg></button>
     <div id="npc-dlg"></div>
     <div id="party-card" hidden></div>
 
@@ -2004,15 +1967,6 @@
       <div class="mc-sub">they're in your zone &middot; say hi</div>
       <button id="mc-chat" type="button">Chat</button>
       <button id="mc-dismiss" type="button">Later</button>
-    </div>
-
-    <div id="hint-card" hidden>
-      <div class="hc-title">Welcome to Itaewon</div>
-      <div class="hc-line">&#127747; Glowing venue names are the meet-up spots</div>
-      <div class="hc-line">&#128172; Tap someone with a blue name to say hi</div>
-      <div class="hc-line">&#128065; Tap the eye (bottom left) so people can find you</div>
-      <div class="hc-line">&#127968; Host a party from the big button</div>
-      <button id="hint-got" type="button">Got it</button>
     </div>
 
     <div id="nick-scrim" hidden></div>
@@ -2157,6 +2111,10 @@
     </div>
   </div>
 
+  <!-- the onboarding, Home, the invite sheet, verification, permission
+       pre-prompts, the recap (onboard.js renders into it) -->
+  <div id="onb" hidden></div>
+
   <div id="game-layer" hidden>
     <div id="game-hud"></div>
     <div id="game-feed"></div>
@@ -2164,16 +2122,6 @@
   </div>
 
   <script type="module" src="backend.js"></script>
-<script type="module">
-  // first-run hint (localStorage-gated); UI-only, no backend coupling
-  const hintCard = document.getElementById("hint-card");
-  if (hintCard && !localStorage.getItem("rando-hint-v1")) {
-    setTimeout(() => { hintCard.hidden = false; }, 1800);
-    document.getElementById("hint-got").addEventListener("click", () => {
-      localStorage.setItem("rando-hint-v1", "1");
-      hintCard.hidden = true;
-    });
-  }
-</script>
+
 </body>
 </html>

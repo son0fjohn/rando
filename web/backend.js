@@ -12,6 +12,9 @@ import { mountCharView } from "./charview.js";
 import { PART_OPTIONS4, DEFAULT_AVATAR4, normalizeAvatar4, avatarThumb4, SKIN4_RGB, HAIR4_RGB, pieceThumb4 } from "./avatar4.js";
 import { ITEMS4, IRIS4, EYE_NAMES, STARTER_OUTFITS4, HAIRCOLOR_SHOP, randomAvatar4, LOOK_KEYS4, clash4 } from "./items4.js";
 import { drawFace4 } from "./face4.js";
+import { onboard } from "./onboard.js";
+import { setSink } from "./analytics.js";
+import { askPermission } from "./permissions.js";
 // the new player character (avatar4) everywhere; the old names stay local so
 // the rest of this file reads unchanged
 const DEFAULT_AVATAR = DEFAULT_AVATAR4;
@@ -77,7 +80,7 @@ async function refreshStatus() {
   showAuth(false);
   let { data: profile } = await sb
     .from("profiles")
-    .select("handle")
+    .select("handle, avatar")
     .eq("id", session.user.id)
     .maybeSingle();
   if (!profile) {
@@ -85,7 +88,7 @@ async function refreshStatus() {
     const { data: created } = await sb
       .from("profiles")
       .insert({ id: session.user.id, handle })
-      .select("handle")
+      .select("handle, avatar")
       .maybeSingle();
     profile = created;
   }
@@ -109,10 +112,8 @@ async function refreshStatus() {
     await sb.auth.signOut();
   });
   statusEl.append(out);
-  // first run: an auto-generated handle means no nickname was chosen yet
-  if (profile && /^rando-[0-9a-f]{6}$/.test(profile.handle) && !nickname.dismissed) {
-    nickname.show(profile.handle);
-  }
+  // (a first run's name and character: onboard.js asks, in its own screens)
+  me.profile = { handle: profile?.handle ?? "rando", avatar: profile?.avatar && Object.keys(profile.avatar).length ? normalizeAvatar(profile.avatar) : null };
   presence.onSignedIn();
   // demo build: identity for rooms/quests (avatar fills in when it loads)
   // (rooms.init() — the NPC raid lobbies — stays off: raids aren't available)
@@ -162,9 +163,79 @@ async function refreshStatus() {
       const z = presence.myZone ?? await presence.resolveZone();
       return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;
     };
+    // the onboarding's moments (onboard.js): an invite link's landing, phone
+    // verification where it matters, the invite sheet, the first game's
+    // safety card and host lines, hints, the first party's recap
+    Object.assign(party.hooks, {
+      holdInvite: code => onboard.holdInvite(code),
+      gate: trigger => onboard.requireVerified(trigger),
+      invite: c => onboard.invite(c),
+      joined: c => onboard.joined(c),
+      beforeGame: (g, c) => onboard.beforeGame(g, c),
+      gameEnded: (c, g, r) => onboard.gameEnded(c, g, r),
+      setEnded: (c, rows) => onboard.setEnded(c, rows),
+    });
     party.init();
+    onboard.start(onboardEnv);
   }
 }
+
+// ===================== what the onboarding needs from the server =====================
+const me = { profile: null };
+const onboardEnv = {
+  profile: () => ({ handle: rooms.me?.handle ?? me.profile?.handle, avatar: me.profile?.avatar ?? null }),
+  async saveName(name) {
+    const { data: { session } } = await sb.auth.getSession();
+    const { error } = await sb.from("profiles").update({ handle: name }).eq("id", session.user.id);
+    if (error) return { error: error.message };
+    me.profile.handle = name;
+    if (rooms.me) rooms.me.handle = name;
+    nickname.dismissed = true;
+    return {};
+  },
+  async saveAvatar(look) {
+    const { data: { session } } = await sb.auth.getSession();
+    const { error } = await sb.from("profiles").update({ avatar: look }).eq("id", session.user.id);
+    if (error) { console.warn("[rando] look not saved:", error.message); return { error: error.message }; }
+    me.profile.avatar = look;
+    avatar.mine = normalizeAvatar(look);
+    if (rooms.me) rooms.me.avatar = avatar.mine;
+    avatar.applyOwn();
+    return {};
+  },
+  // the map: hidden and exploring (around you, if location is allowed now)
+  openMap() {
+    party.togglePanel(false);
+    if (!presence.myZone) explore.enter();
+    world3d.recenter();
+  },
+  openStyle() { styleView.open(); },
+  friendParties: () => party.nearby.filter(r => party.hooks.isFriend?.(r.hostId)).map(r => ({ id: r.id, name: r.name ?? r.hostName, hostName: r.hostName, count: r.count })),
+  // phone verification: a guest (anonymous) account gets the number linked,
+  // so its character, coins and friends stay; another phone signs in with it
+  verify: {
+    _avail: null,
+    // only where the server has an SMS provider: until then nothing is gated
+    available() {
+      if (typeof sb.__phoneAuth === "boolean") return Promise.resolve(sb.__phoneAuth);
+      return this._avail ??= fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_ANON_KEY } })
+        .then(r => r.json()).then(j => !!j?.external?.phone).catch(() => false);
+    },
+    async user() { return (await sb.auth.getSession()).data.session?.user ?? null; },
+    async isVerified() { const u = await this.user(); return !!(u?.phone_confirmed_at || (u?.phone && u.is_anonymous === false)); },
+    async phone() { return (await this.user())?.phone ?? ""; },
+    async send(phone) { const { error } = await sb.auth.updateUser({ phone }); if (error) throw error; },
+    async confirm(phone, token) { const { error } = await sb.auth.verifyOtp({ phone, token, type: "phone_change" }); if (error) throw error; },
+    async signInSend(phone) { const { error } = await sb.auth.signInWithOtp({ phone, options: { shouldCreateUser: false } }); if (error) throw error; },
+    async signInConfirm(phone, token) { const { error } = await sb.auth.verifyOtp({ phone, token, type: "sms" }); if (error) throw error; },
+  },
+};
+// onboarding analytics -> the insert-only events table (migrations/017); the
+// server stamps the time
+setSink(async rows => {
+  const { error } = await sb.from("events").insert(rows.map(({ at, ...r }) => r));
+  if (error) throw new Error(error.message);
+});
 
 // ===================== nickname =====================
 const nickScrim = document.getElementById("nick-scrim");
@@ -587,7 +658,7 @@ exploreBtn.addEventListener("click", async () => {
   sfx.confirm();
   try {
     if (presence.myZone) await presence.goClosed();
-    else await presence.goOpen();
+    else if (params.get("devlat") || await askPermission("location")) await presence.goOpen();
     matching.renderButton();
   } catch (e) {
     alert(e.message || String(e));
@@ -884,6 +955,8 @@ export const encounter = {
   },
 
   async confirm() {
+    // friends come from here: verified numbers only
+    if (!(await onboard.requireVerified("friends"))) return;
     const { data: { session } } = await sb.auth.getSession();
     // proximity is checked server-side once both sides have confirmed;
     // this reading is used for that one comparison and then scrubbed
@@ -1635,6 +1708,7 @@ export const wallet = {
   },
   async buy(id) {
     const it = this.items.find(i => i.id === id); if (!it) return;
+    if (!(await onboard.requireVerified("coins"))) return;
     const note = document.getElementById("shop-note");
     const { data, error } = await sb.rpc("buy_item", { p_item: id });
     if (error || !data?.ok) { sfx.back(); if (note) note.textContent = data?.why ?? error?.message ?? "couldn't buy that"; return; }
@@ -1907,6 +1981,8 @@ const nav = {
     sfx.ping();
   },
 };
+// back to Home (onboard.js) from the map
+document.getElementById("nav-home")?.addEventListener("click", () => { sfx.back(); onboard.home(); });
 // Host: the gold ring fills with a little sparkle burst, then the host flow
 // (or, while you're in a party, back to its room) opens
 document.getElementById("nav-host").addEventListener("click", e => {

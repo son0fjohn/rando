@@ -140,8 +140,10 @@ export const ARCH_NPC_DEFS = [
 // Palettes are the law from assets/world/STYLE.md.
 const modeParam = new URLSearchParams(location.search).get("mode");
 const hourNow = new Date().getHours();
+// (a first open is always night: the onboarding's flyover is the night
+// city; index.html sets __RANDO_FIRST_NIGHT before any module loads)
 export const NIGHT = modeParam === "night" ||
-  (modeParam !== "day" && (hourNow >= 19 || hourNow < 6.5));
+  (modeParam !== "day" && (!!globalThis.__RANDO_FIRST_NIGHT || hourNow >= 19 || hourNow < 6.5));
 // ONE lighting rig for every scene, from theme.js — plus per-mode extras
 const L = NIGHT ? THEME.lighting.night : THEME.lighting.day;
 const M = {

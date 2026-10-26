@@ -200,5 +200,7 @@ export async function shareText(text) {
 export function finalResults(s) {
   const players = Object.values(s?.players ?? {}).map(p => ({ id: p.id, handle: p.handle, score: Math.round(p.score ?? 0), gone: !!p.gone, bot: !!p.isBot }));
   const completed = s?.phase === "end" && !s.why && !s.aborted && players.filter(p => !p.gone).length >= 2;
-  return { players, completed };
+  // (a game can name its best moment: Side Quest's top-rated quest, Art Gallery's winning title)
+  const highlight = s?.highlight?.text ? { kind: s.highlight.kind, text: String(s.highlight.text).slice(0, 140), by: s.highlight.by ?? "" } : null;
+  return { players, completed, highlight };
 }

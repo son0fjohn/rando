@@ -47,6 +47,8 @@ import { muteButton, popIn } from "./retro.js";
 import { newSet, addGame, addPartial, standings, nextGameNo } from "./partyset.js";
 import { showPodium, closePodium, showCoins, coinBurst } from "./partyboard.js";
 import { warmLooks } from "./charrender.js";
+import { t } from "./i18n.js";
+import { qrSvg } from "./qr.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -80,7 +82,18 @@ function saveBlocked(set) { try { localStorage.setItem(BLOCK_KEY, JSON.stringify
 // a party session id: the coin ledger keys a party's games by it (codes repeat)
 const sessionId = () => crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 function makeCode() { let c = ""; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
-const inviteLink = code => `${location.origin}${location.pathname}?party=${code}`;
+// an invite link: on the app itself /p/CODE (api/invite.mjs: a link preview
+// with the party's name and how many are in, then on to ?party=CODE); the
+// name and count ride in the link because parties live in no table
+export const inviteLink = (code, { name = "", count = 0 } = {}) => {
+  if (!/^\/(index\.html|app\.html)?$/.test(location.pathname)) return `${location.origin}${location.pathname}?party=${code}`;
+  const q = new URLSearchParams();
+  if (name) q.set("n", name.slice(0, 40));
+  if (count) q.set("c", String(count));
+  return `${location.origin}/p/${code}${q.size ? `?${q}` : ""}`;
+};
+// the game suggested to a new group (a "Great first game" badge on its row)
+export const FIRST_GAME = "ritual";
 const minFor = g => g?.minPlayers ?? MIN_PLAYERS;
 // a game's options with defaults filled in
 function defaultsFor(g) {
@@ -111,7 +124,14 @@ export const party = {
   //   ritualDraw({ room, turn, level }) -> { id, text }: Humiliation Ritual's
   //   prompt, drawn on the server and sent to the calling (performer's) phone
   //   only (migrations/015); null = the performer's phone draws it itself
-  hooks: { isFriend: null, report: null, beaconZone: null, coins: null, ritualDraw: null },
+  //   onboarding (onboard.js, real app only; every one optional):
+  //   holdInvite(code) -> true: the invite landing takes this link over
+  //   gate(trigger) -> Promise<bool>: phone verification where it matters
+  //   ("host", "public"); false = don't
+  //   invite(c) -> the invite sheet · joined(c) · beforeGame(g, c) ·
+  //   gameEnded(c, g, results) · setEnded(c, rows)
+  hooks: { isFriend: null, report: null, beaconZone: null, coins: null, ritualDraw: null,
+    holdInvite: null, gate: null, invite: null, joined: null, beforeGame: null, gameEnded: null, setEnded: null },
   _view: null,
   _inited: false,
 
@@ -129,13 +149,15 @@ export const party = {
     this.render();
     // ?party=CODE — join straight from a shared link
     const code = params.get("party");
-    if (code) { this.togglePanel(true); setTimeout(() => this.joinByCode(code), 600); }
+    if (code && !this.hooks.holdInvite?.(code)) { this.togglePanel(true); setTimeout(() => this.joinByCode(code), 600); }
   },
 
   // ---------------------------------------------------------------- host / join / leave
   async create() {
     const { vibe } = this.form;
     const privacy = FLAGS.PUBLIC_PARTIES && this.form.privacy === "public" ? "public" : "private";
+    // phone verification only where it matters: hosting (and a public party)
+    if (this.hooks.gate && !(await this.hooks.gate(privacy === "public" ? "public" : "host"))) return false;
     const cap = Math.max(PARTY.CAP_MIN, Math.min(PARTY.CAP_MAX, +this.form.cap || PARTY.CAP_DEFAULT));
     const name = (this.form.name || "").trim().slice(0, PARTY.NAME_MAX) || `${this.me.handle}'s party`;
     this.err("");
@@ -158,6 +180,7 @@ export const party = {
     this._announce();
     sfx.open(); buzz([30, 40, 30]);
     this.render();
+    return true;
   },
 
   async join(id, meta = null) {
@@ -187,6 +210,8 @@ export const party = {
     this.current.room.send("hello", {});       // nudge the host to send meta + queue
     sfx.ping();
     this.render();
+    this.hooks.joined?.(this.current);
+    return true;
   },
   joinByCode(code) {
     code = String(code || "").trim().toUpperCase();
@@ -250,6 +275,17 @@ export const party = {
       this.render();
     };
     room.on("hello", m => { if (room.isHost) { this._sendMeta(); this._resume(m.from); } });
+    // someone looking at an invite link (net.js peekRoom): who's here, what's on.
+    // Only what joining would show them anyway.
+    room.on("peek", m => {
+      if (!room.isHost || !/^peek-/.test(m.from ?? "")) return;
+      const ms = room.members;
+      room.send("peekinfo", { to: m.from, info: {
+        name: c.meta.name, hostName: this.me.handle, vibe: c.meta.vibe, cap: c.meta.cap, count: ms.length,
+        members: ms.slice(0, 8).map(x => ({ id: x.id, handle: x.handle, avatar: x.avatar })),
+        playing: c.launched ? c.playing ?? null : null,
+      } });
+    });
     room.on("meta", m => {
       if (room.isHost) return;
       c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) }, playing: m.playing ?? null };
@@ -389,6 +425,7 @@ export const party = {
       again: () => { c.again = true; },
     };
     c.ctx = ctx;
+    this.hooks.beforeGame?.(g, c);
     c.setupPhases = g.hostSetup ?? [];
     c.behind = behind;
     try { g.start(ctx); }
@@ -477,6 +514,8 @@ export const party = {
   // can run the same game again or pick the next one
   _onGameEnd(c, results = null) {
     if (this.current !== c) return;
+    this._lastGame = c.playingId;
+    if (results?.completed) (c.played ??= []).push({ game: c.playingId, highlight: results.highlight ?? null, with: results.players.filter(p => !p.bot && !p.gone && p.id !== this.me.id).map(p => p.handle) });
     // the set: a completed game counts (party points, coins); a game cut
     // short doesn't. The host owns the set and shares it with the meta.
     if (results?.completed && !c.set.done) {
@@ -505,6 +544,7 @@ export const party = {
     this.render();
     if (results?.ended && !results.backout) this._toast(c.room.isHost ? "You ended the game." : "The host ended the game.");
     if (c.again) { c.again = false; if (c.room.isHost) setTimeout(() => { if (this.current === c && !c.launched) this.launch(); }, 400); }
+    this.hooks.gameEnded?.(c, gameById(this._lastGame), results);
     if (c.room.isHost) this._announce();
     this._syncPause();
   },
@@ -556,6 +596,7 @@ export const party = {
       onEnd: () => { if (!c.room.isHost) return; sfx.back(); c.room.send("partyend", {}); setTimeout(() => this.leave(), 300); },
     });
     sfx.win?.();
+    this.hooks.setEnded?.(c, rows);
     // what I earned this party, from the server's ledger. The host reward
     // lands when the last player confirms game 3, which can trail the
     // podium, so look again a couple of times and update if it grew.
@@ -601,7 +642,10 @@ export const party = {
     el.hidden = false;
     sfx.open();
     $("pc-close").onclick = () => { sfx.back(); closePartyCard(); };
-    $("pc-join").onclick = () => { closePartyCard(); this.togglePanel(true); this.join(r.id); };
+    $("pc-join").onclick = async () => {
+      if (this.hooks.gate && !(await this.hooks.gate("public"))) return;
+      closePartyCard(); this.togglePanel(true); this.join(r.id);
+    };
     el.onclick = e => { if (e.target === el) closePartyCard(); };
   },
   _card: null,
@@ -694,21 +738,22 @@ export const party = {
           <b id="pt-title">party</b>
           <span id="pt-mute"></span>
           <button id="pt-hide" type="button" class="pt-icon" aria-label="Back to the map">&#9660;</button>
-          <button id="pt-leave" type="button" class="pt-leave">Leave</button>
+          <button id="pt-leave" type="button" class="pt-leave">${t("room.leave")}</button>
         </div>
         <div class="pt-top-row">
           <div id="pt-sub" class="rp-sub"></div>
-          <span class="pt-invite">Invite</span><button id="pt-code-chip" type="button" class="pt-code-chip" title="share the invite" aria-label="invite code — tap to share"></button>
+          <span class="pt-invite">${t("room.invite")}</span><button id="pt-code-chip" type="button" class="pt-code-chip" title="share the invite" aria-label="invite code — tap to share"></button>
         </div>
       </div>
       <div class="pt-floor-wrap">
         <div id="pt-floor"></div>
         <div id="pt-chat-feed" class="pt-chat-float"></div>
+        <div id="pt-empty" class="pt-empty-card" hidden></div>
       </div>
       <div class="pt-bottom">
         <div id="pt-next" class="pt-next"></div>
         <div id="pt-err" class="pt-err"></div>
-        <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="Say something&hellip;" autocomplete="off"><button type="submit" aria-label="send">&#8593;</button><button type="button" id="pt-vote" class="y-btn small host pt-vote"></button></form>
+        <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="${t("room.say")}" autocomplete="off"><button type="submit" aria-label="send">&#8593;</button><button type="button" id="pt-vote" class="y-btn small host pt-vote"></button></form>
       </div>
       <div id="pt-picker" class="pt-picker" hidden></div>`;
   },
@@ -738,16 +783,38 @@ export const party = {
       this.create();
     });
     p.querySelector("#pt-code-form")?.addEventListener("submit", e => { e.preventDefault(); this.joinByCode($("pt-code").value); });
-    p.querySelector("#pt-code-chip")?.addEventListener("click", () => {
-      const c = this.current; if (!c) return;
-      shareText(`join my party "${c.meta.name}" on Rando — code ${c.meta.code} · ${inviteLink(c.meta.code)}`);
-    });
+    p.querySelector("#pt-code-chip")?.addEventListener("click", () => this.invite());
     p.querySelector("#pt-vote")?.addEventListener("click", () => { this.pickerOpen = true; sfx.open(); this._renderPicker(); });
     p.querySelector("#pt-chat-form")?.addEventListener("submit", e => {
       e.preventDefault();
       const inp = $("pt-chat-input"), text = inp.value.trim().slice(0, 160);
       if (text && this.current) { this.current.room.send("chat", { text }); inp.value = ""; inp.blur(); }
     });
+  },
+
+  // the invite: the sheet (onboard.js: share, messages, copy, QR, contacts),
+  // or the phone's share sheet where there's none
+  invite() {
+    const c = this.current; if (!c) return;
+    if (this.hooks.invite) { this.hooks.invite(c); return; }
+    shareText(`${t("inv.msg", { name: c.meta.name, url: this.link(c) })} (${c.meta.code})`);
+  },
+  link(c = this.current) { return c ? inviteLink(c.meta.code, { name: c.meta.name, count: c.room.members.length }) : ""; },
+
+  // alone in your own party: the invite, big, with the QR for friends right here
+  _renderEmpty() {
+    const c = this.current, el = $("pt-empty"); if (!c || !el) return;
+    const alone = c.room.isHost && c.room.members.length + BOTS_N < 2 && !c.launched && !c.set.done && !c.emptyDismissed;
+    if (el.hidden === !alone && el.dataset.code === c.meta.code) return;
+    el.hidden = !alone; el.dataset.code = c.meta.code;
+    if (!alone) { el.innerHTML = ""; return; }
+    el.innerHTML = `<button type="button" class="pt-empty-x" aria-label="Close">&#10005;</button>
+      <b>${esc(t("room.empty"))}</b>
+      <div class="pt-empty-qr">${qrSvg(this.link(c))}</div>
+      <p>${esc(t("inv.qr"))}</p>
+      <button type="button" class="y-btn host pt-empty-inv">${esc(t("room.invite"))}</button>`;
+    el.querySelector(".pt-empty-x").onclick = () => { c.emptyDismissed = true; sfx.back(); this._renderEmpty(); };
+    el.querySelector(".pt-empty-inv").onclick = () => { sfx.confirm(); this.invite(); };
   },
 
   _renderList() {
@@ -764,7 +831,7 @@ export const party = {
     const c = this.current;
     const host = c.room.presence[c.room.hostId]?.handle ?? c.meta.hostName;
     $("pt-title").textContent = c.meta.name;
-    $("pt-sub").textContent = `${c.meta.vibe} · ${host} is hosting · ${c.room.members.length}/${c.meta.cap}${BOTS_N ? ` (+${BOTS_N} bots)` : ""}`;
+    $("pt-sub").textContent = `${c.meta.vibe} · ${t("room.hosting", { host })} · ${c.room.members.length}/${c.meta.cap}${BOTS_N ? ` (+${BOTS_N} bots)` : ""}`;
     const chip = $("pt-code-chip");
     if (chip.textContent !== c.meta.code) chip.innerHTML = [...c.meta.code].map(ch => `<span>${esc(ch)}</span>`).join("");
     c.lobby?.setBackground(LOBBY_BG[c.meta.vibe] ?? LOBBY_BG.chill);
@@ -776,6 +843,7 @@ export const party = {
     this._renderNext();
     this._renderPicker();
     this._renderSetEnd();
+    this._renderEmpty();
   },
 
   // under the room: one status line, then chat + the vote button
@@ -784,15 +852,15 @@ export const party = {
     const isHost = c.room.isHost, host = c.room.presence[c.room.hostId]?.handle ?? "the host";
     const playing = !isHost && c.meta.playing;      // a game started before you got here
     const nVotes = Object.keys(c.votes ?? {}).length, mine = c.votes?.[this.me.id];
-    const gameNo = `Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET}`;
-    const line = c.setupWait ? `${host} is setting up ${c.playing ?? "the next game"}…`
-      : playing ? `${playing} is on — you're in the next one`
-      : isHost ? `${gameNo} · ${nVotes ? `${nVotes} vote${nVotes === 1 ? "" : "s"} in — pick a game to start` : "pick a game to start"}`
-      : `${gameNo} · ${mine ? `you voted ${gameTitle(mine)}` : "vote for the next game"} · ${host} starts it`;
+    const gameNo = t("room.gameNo", { n: nextGameNo(c.set), of: PARTY.GAMES_PER_SET });
+    const line = c.setupWait ? t("room.lineSetup", { host, game: c.playing ?? "the next game" })
+      : playing ? t("room.linePlaying", { game: playing })
+      : isHost ? (nVotes ? t("room.lineHostVotes", { gameNo, votes: nVotes === 1 ? t("room.votes1") : t("room.votesN", { n: nVotes }) }) : t("room.lineHost", { gameNo }))
+      : mine ? t("room.lineVoted", { gameNo, game: gameTitle(mine), host }) : t("room.lineGuest", { gameNo, host });
     if (el.textContent !== line) el.textContent = line;
     const btn = $("pt-vote");
     if (btn) {
-      const label = isHost ? `Game votes${nVotes ? ` · ${nVotes}` : ""}` : mine ? "✓ Voted" : "Vote next game";
+      const label = isHost ? `${t("room.votes")}${nVotes ? ` · ${nVotes}` : ""}` : mine ? t("room.voted") : t("room.voteNext");
       if (btn.textContent !== label) btn.textContent = label;
       btn.disabled = !!(c.launched || c.set.done);
     }
@@ -863,7 +931,7 @@ export const party = {
       const attr = isHost ? `data-game="${g.id}"` : `data-vote="${g.id}"`;
       return `<div class="pv-row ${mine === g.id ? "mine" : ""} ${need && isHost ? "short" : ""} ${isHost && v && v === top ? "lead" : ""}" ${attr} role="button" tabindex="0" aria-label="${esc(g.title)}${v ? `, ${v} vote${v === 1 ? "" : "s"}` : ""}">
           <span class="pv-art" aria-hidden="true">${CHANNEL_ART[g.id] ?? ""}</span>
-          <span class="pv-t"><b>${esc(g.title)}</b><small>${mine === g.id ? "✓ your vote · " : ""}${need ? `needs ${need} more` : `${minFor(g)}+ players · ${esc(g.length ?? "")}`}</small>${optsFor(g)}</span>
+          <span class="pv-t"><b>${esc(g.title)}</b>${g.id === FIRST_GAME && !c.set.games.length && c.set.no === 1 ? `<em class="pv-first">${esc(t("room.firstGame"))}</em>` : ""}<small>${mine === g.id ? "✓ your vote · " : ""}${need ? `needs ${need} more` : `${minFor(g)}+ players · ${esc(g.length ?? "")}`}</small>${optsFor(g)}</span>
           <span class="pv-n ${v ? "" : "zero"}">${v}<i>${v === 1 ? "vote" : "votes"}</i></span>
         </div>`;
     }).join("");
@@ -883,7 +951,7 @@ export const party = {
           <small>${st.adult ? "" : "unhinged needs 18+ on · "}levels still build up: rounds 1-2 mild, 3-4 up to spicy, then up to this</small></div>` : ""}
       </div>`;
     el.innerHTML = `<div class="pt-picker-sheet pv-sheet">
-        <div class="pt-picker-head"><button type="button" class="pt-back" id="pt-picker-back" aria-label="Back to the lobby">&#8249; Back</button><b>${isHost ? "Game votes" : "Vote for the next game"}</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
+        <div class="pt-picker-head"><button type="button" class="pt-back" id="pt-picker-back" aria-label="Back to the lobby">&#8249; Back</button><b>${esc(isHost ? t("room.pickHost") : t("room.pickGuest"))}</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
         <p class="pv-sub">Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET} · ${isHost ? `${total} vote${total === 1 ? "" : "s"} so far · tap a game to start it` : `one vote each — you can change it until ${esc(host)} starts a game`}</p>
         <div id="pv-err" class="pv-err"></div>
         <div class="pv-list">${rows}</div>
