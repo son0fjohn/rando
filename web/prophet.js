@@ -204,6 +204,7 @@ export async function prophetScene(host) {
   // ---- the chosen player, on a cushion at the table's right end, under a warm light;
   // they look between him and the camera
   const cushion = new THREE.Mesh(new THREE.SphereGeometry(0.25, 20, 10), mat(0x5a2c52));
+  cushion.material.onBeforeCompile = encode;   // display-ready colour, like everything on this stage
   cushion.scale.set(1, GUEST.seat / 0.25 * 0.55, 1); cushion.position.set(GUEST.x, GUEST.seat * 0.45, GUEST.z); scene.add(cushion);
   const guest = guestSpot(st, { at: [GUEST.x, 0, GUEST.z], face: GUEST.face, height: GUEST.height, stance: "sit", seat: GUEST.seat,
     look: [SEAT.x, 1.15, SEAT.z + 0.05], light: { color: 0xffd49a, intensity: 4, angle: 0.5, penumbra: 0.7 } });

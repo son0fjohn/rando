@@ -317,23 +317,37 @@ export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, stance
     m.userData.npcEnc = true; m.needsUpdate = true;
   });
   async function show(k, avatar, { pop = true, react = null } = {}) {
+    // someone else is on: they pop out (the puff) while this one loads
+    if (ch && key !== k && key === wantKey && on > 0.5) outAt = performance.now();
     want = true; wantKey = k;
-    if (k === key && ch && !next) { if (pop) popAt = performance.now(); if (react) api.react(react); return true; }
+    if (k === key && ch) {
+      // back to the one already here: drop anyone still on their way in
+      if (next) { next.c.dispose?.(); next = null; }
+      if (loading) { tok++; loading = null; }
+      if (pop) popAt = performance.now(); if (react) api.react(react); return true;
+    }
     if (next?.key === k) { next.pop ||= pop; next.react ??= react; return true; }
-    if (loading === k) return true;               // already on its way
-    const my = ++tok; loading = k;
-    let A = null;
-    try { A = await import("./avatar4.js"); } catch { A = null; }
-    if (!A?.makeCharacter4 || my !== tok) { if (my === tok) loading = null; return false; }
-    const c = await A.makeCharacter4(avatar ?? {});
-    await Promise.race([c.ready ?? Promise.resolve(), new Promise(r => setTimeout(r, 12000))]);
+    if (loading?.key === k) { loading.pop ||= pop; loading.react ??= react; return true; }   // already on its way
+    const my = ++tok, ask = loading = { key: k, pop, react };
+    let c = null;
+    try {
+      const A = await import("./avatar4.js");
+      if (my !== tok) return false;
+      c = await A.makeCharacter4(avatar ?? {});
+      await Promise.race([c.ready ?? Promise.resolve(), new Promise(r => setTimeout(r, 12000))]);
+    } catch (e) {
+      // (no character this time: a later show() tries again)
+      c?.dispose?.(); if (my === tok) loading = null;
+      console.warn("[npcstage] the chosen player didn't load:", e?.message ?? e);
+      return false;
+    }
     if (my !== tok) { c.dispose?.(); return false; }   // (a newer pick or a hide took over)
     loading = null;
     c.group.scale.setScalar(height / CHAR_UNITS);
     c.unit = height / CHAR_UNITS; c.stance = stance;
     // it goes in on the next frame, once the last one is gone
     if (next) next.c.dispose?.();
-    next = { c, key: k, pop, react };
+    next = { c, key: k, pop: ask.pop, react: ask.react };
     return true;
   }
   const api = {
@@ -346,7 +360,7 @@ export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, stance
     rect: () => ch && root.visible ? screenBox(st, body) : null,
     place(x, z, f = root.rotation.y, y = seat) { root.position.x = x; root.position.z = z; root.rotation.y = f; seat = y; body.position.y = y; spot.position.set(x + 0.15, 2.6, z + 0.45); },
     hide() {
-      if (want && ch) outAt = performance.now();
+      if (want && ch && on > 0.5) outAt = performance.now();
       want = false; wantKey = null; tok++; loading = null;
       if (next) { next.c.dispose?.(); next = null; }
     },
@@ -361,6 +375,8 @@ export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, stance
     update(t, dt) {
       const still = reduce(), now = performance.now();
       // the swap: the next one goes in only once the last one has popped out
+      // (and only if they're still the one wanted)
+      if (next && next.key !== wantKey) { next.c.dispose?.(); next = null; }
       if (next && (!ch || on < 0.02)) {
         if (ch) { body.remove(ch.group); ch.dispose?.(); }
         ({ c: ch, key } = next);
@@ -369,9 +385,9 @@ export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, stance
         const r = next.react; next = null;
         if (r) api.react(r);
       }
-      const show = want && ch && key === wantKey ? 1 : 0;
-      on += (show - on) * Math.min(1, dt * (show ? 10 : 7));
-      if (!show && on < 0.01) on = 0;
+      const vis = want && ch && key === wantKey ? 1 : 0;
+      on += (vis - on) * Math.min(1, dt * (vis ? 10 : 7));
+      if (!vis && on < 0.01) on = 0;
       root.visible = on > 0;
       // popped out and nobody coming: gone from the scene, not just hidden
       if (!on && ch && !want && !next) { body.remove(ch.group); ch.dispose?.(); ch = null; key = null; }

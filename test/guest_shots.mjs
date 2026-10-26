@@ -69,9 +69,9 @@ for (const room of ["prophet", "boss"].filter(r => !ONLY || r === ONLY)) {
           const R = o => ({ l: o.left, t: o.top, r: o.right ?? o.left + o.width, b: o.bottom ?? o.top + o.height });
           const area = o => Math.max(0, o.r - o.l) * Math.max(0, o.b - o.t);
           const inter = (a, b) => area({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
-          if (!g) return null;
+          if (!g || !h || !prop) return null;
           const G = R(g), H = R(h), P = R(prop), D = R(d);
-          const front = h ? g.depth < h.depth : true;
+          const front = g.depth < h.depth;
           return {
             guest: { l: Math.round(G.l), t: Math.round(G.t), r: Math.round(G.r), b: Math.round(G.b) },
             inView: G.l >= 0 && G.r <= innerWidth && G.t >= 0 && G.b <= innerHeight,

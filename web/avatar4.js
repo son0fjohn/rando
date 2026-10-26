@@ -569,7 +569,7 @@ function build(cfg) {
   // point a bone along a direction in the character frame (its child gives
   // the bone's current direction), blended by w: the sitting pose is written
   // as where each limb points, so it holds for every outfit and proportion
-  const va = new THREE.Vector3(), vb = new THREE.Vector3(), vw = new THREE.Vector3(), aq = new THREE.Quaternion(), iq = new THREE.Quaternion();
+  const va = new THREE.Vector3(), vb = new THREE.Vector3(), vw = new THREE.Vector3(), aq = new THREE.Quaternion(), iq = new THREE.Quaternion(), rq = new THREE.Quaternion();
   const aim = (b, c, x, y, z, w = 1) => {
     if (!b || !c || w <= 0) return;
     b.getWorldPosition(va); c.getWorldPosition(vb);
@@ -578,7 +578,7 @@ function build(cfg) {
     iq.identity().slerp(aq, w);
     rig.getWorldQuaternion(gq); b.parent.getWorldQuaternion(pq);
     const rel = gq.invert().multiply(pq);
-    dq.copy(iq).premultiply(rel.clone().invert()).multiply(rel);
+    dq.copy(iq).premultiply(rq.copy(rel).invert()).multiply(rel);
     b.quaternion.premultiply(dq);
     b.updateMatrixWorld(true);
   };
