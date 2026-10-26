@@ -501,7 +501,13 @@ async function artgallery() {
   // let Bunny unveil it and bang the gavel before the vote comes in (the
   // last vote ends the voting at once)
   await sleep(6500);
-  if (voter) await voter.locator('.ag-pl[data-v="1"]').click().catch(() => {});
+  // the vote: a tap on plaque II where it hangs on the 3D wall (the DOM
+  // plaque over it is invisible and lets the tap through to the scene)
+  if (voter) {
+    const b = await voter.locator('.ag-pl[data-v="1"]').boundingBox().catch(() => null);
+    if (b) await voter.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+    log(`  tapped plaque II in the scene: ${await until(voter, () => document.querySelector('.ag-pl[data-v="1"]')?.classList.contains("on"), null, 3000) ? "voted" : "NOT voted"}`);
+  }
   await until(A, () => document.querySelectorAll(".ag-room .ag-pl-n").length === 2, null, 30000);
   await sleep(5200);
   await writeScene("artgallery", [all.get(voter ?? P.list[1]), all.get(writer)], { from });

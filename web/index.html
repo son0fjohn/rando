@@ -1504,10 +1504,14 @@
   .ag-low { position:absolute; left:9px; right:9px; bottom:max(28px, calc(10px + env(safe-area-inset-bottom))); z-index:4; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
   .ag-low > * { pointer-events:auto; }
   #game-panel.np-full .ag-low .ag-skip { position:static; align-self:flex-end; margin:0; padding:6px 12px; min-height:0; font-size:12px; }
-  /* the two titles: cream plaques with a gold tab, one under the other, the
-     same height (the taller one's) */
-  .ag-plaques { position:absolute; z-index:2; display:grid; grid-auto-rows:1fr; gap:6px; pointer-events:none; }
+  /* the two titles: cream plaques with a gold tab, side by side, the same
+     height (the taller one's). These are the room without 3D; with the 3D
+     wall (gala.js draws the plaques and takes the taps) they're invisible,
+     placed exactly over the 3D ones, and only mirror their state (.in3d) */
+  .ag-plaques { position:absolute; z-index:2; display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:1fr; gap:8px; pointer-events:none; }
   .ag-plaques > * { pointer-events:auto; }
+  .ag-plaques.in3d { display:block; }
+  .ag-plaques.in3d > .ag-pl { position:absolute; opacity:0 !important; pointer-events:none; transition:none; animation:none; transform:none; }
   .ag-pl { position:relative; min-width:0; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; font:inherit; color:#2a2016; text-align:center; cursor:pointer;
     background:linear-gradient(#f6eedc,#e6d8b8); border:2px solid #b8902f; border-radius:2px; padding:5px 8px 7px;
     box-shadow:0 1px 0 rgba(255,255,255,.55) inset, 0 6px 10px rgba(20,8,4,.45); transition:transform .2s, opacity .25s, filter .25s, box-shadow .25s; -webkit-tap-highlight-color:transparent; }
@@ -1517,13 +1521,15 @@
   .ag-pl-t { display:block; font-family:Georgia,"Times New Roman",serif; font-style:italic; font-size:12.5px; line-height:1.22; overflow-wrap:anywhere; }
   .ag-pl-by { display:block; font:600 11px -apple-system,"Segoe UI",Helvetica,sans-serif; color:#6a5a3a; margin-top:3px; }
   .ag-pl-n { display:block; font:800 11px -apple-system,"Segoe UI",Helvetica,sans-serif; margin-top:2px; } .ag-pl-n b { color:#1c7a3c; }
-  .ag-pl-dot { display:none; position:absolute; top:-8px; right:-8px; width:18px; height:18px; border-radius:50%; background:#d0192b; box-shadow:0 2px 4px rgba(0,0,0,.35), 0 0 0 2px #fff; animation:ag-pop .25s both; }
-  .ag-pl-tag, .ag-pl-win { display:none; position:absolute; right:-6px; top:50%; transform:translate(100%,-50%); white-space:nowrap; font:800 11px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal;
+  /* my vote: a red wax seal with a gold check on the plaque's corner */
+  .ag-pl-dot { display:none; position:absolute; top:-9px; right:-9px; width:22px; height:22px; border-radius:50%; font:900 12px/22px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal; color:var(--color-accent, #ffc83d);
+    background:radial-gradient(circle at 35% 30%, #c8342c, #8e1a1a 60%, #5a0c0e); box-shadow:0 2px 4px rgba(0,0,0,.4), inset 0 0 0 3px rgba(60,4,6,.45); animation:ag-pop .25s both; }
+  .ag-pl-win { display:none; position:absolute; left:50%; top:100%; transform:translate(-50%,4px); white-space:nowrap; font:800 11px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal;
     color:#1a1c2c; background:var(--color-accent, #ffc83d); border-radius:999px; padding:2px 9px; }
   .ag-pl-win { display:block; }
   .ag-room.picked .ag-pl:not(.on) { opacity:.55; filter:saturate(.5); }
   .ag-pl.on { transform:translateY(-2px); box-shadow:0 0 30px 8px rgba(255,200,61,.55), 0 8px 12px rgba(20,8,4,.45); }
-  .ag-pl.on .ag-pl-dot, .ag-pl.on .ag-pl-tag { display:block; }
+  .ag-pl.on .ag-pl-dot { display:block; }
   .ag-pl.win { animation:ag-plwin .7s .2s both; box-shadow:0 0 34px 10px rgba(255,200,61,.6), 0 8px 12px rgba(20,8,4,.45); }
   .ag-pl.lose { opacity:.6; filter:saturate(.6); }
   @keyframes ag-plwin { 0% { transform:none } 45% { transform:scale(1.06) } 100% { transform:translateY(-2px) } }

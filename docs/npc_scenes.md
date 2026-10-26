@@ -297,12 +297,12 @@ the model's own joints with skin weights by distance along the surface
 jacket beside it. 4,600 triangles, 3,546 vertices, 20 joints, a 2048 px
 WebP texture: 427 KB.
 
-## Art Gallery: Bunny in the masquerade gala (`web/bunny.js`, `web/gala.js`)
+## Art Gallery: Bunny in the masquerade gallery (`web/bunny.js`, `web/gala.js`)
 
 The mustache dealer is gone (his pose cut-outs, his models, the white
 gallery backdrop and the cloth sprite were deleted; they're in git history).
-The Art Gallery is now a candlelit masquerade gala at night, hosted by
-Bunny: the hostess of Seoul's most exclusive secret masquerade, where the
+The Art Gallery is now an intimate candlelit gallery at night, hosted by
+Bunny, the only one in the room: the hostess of Seoul's most exclusive secret masquerade, where the
 only art on display is people's real camera rolls. A white rabbit
 half-mask with tall upright ears and gold around the eyes, long straight
 black hair, no visible mouth, a black off-the-shoulder lace-and-tulle dress,
@@ -310,7 +310,9 @@ long black satin gloves, a pearl choker, black heels; thin, lanky,
 completely deadpan, a wooden gavel in her right hand and a champagne flute
 in her left. She treats every terrible photo like a priceless masterpiece.
 The approved picture is the target: the default view looks almost exactly
-like it.
+like it, with two changes asked for: no chandelier and none of the
+picture's guests (Bunny is the only character), and the titles on real 3D
+plaques mounted on the wall, side by side, instead of stacked UI.
 
 - **The room** (`gala.js`) is camera-mapped like the other two: the
   picture's camera solved from the floor line (72.7% down), the floor
@@ -319,16 +321,15 @@ like it.
   6.1 m away). The paint (`plate.webp`) is the picture widened to a square:
   its middle 9/16 is the approved picture itself, with a clean plate only
   where Bunny, the guests, the chandelier, the photo, the plaques and the
-  dialog box were; the sides are the same room outpainted (more velvet
-  curtains over tall windows, more damask), so it can be looked around
-  further. The room is built 7.2 m wide; the side walls the picture never
-  saw take tiles of it (damask above the wainscot's top, panels below) with
-  a curtained window and two candle sconces each.
-- **Layers on top of the paint:** the **guests**, two pairs cut out of the
-  picture (outpainted where they ran off its edges), standing at their own
-  depth (their feet on the floor), turned to the camera as it orbits, with
-  a slight sway; the **chandelier**, a cut-out hanging on a chain from the
-  ceiling at its depth; the **photo**, a plane in the frame's opening
+  dialog box were (so the room has no guests and no chandelier); the sides
+  are the same room outpainted (more velvet curtains over tall windows,
+  more damask), so it can be looked around further. The room is built
+  10.8 m wide, all of it in 3D: what the picture never saw takes tiles of
+  it (a seamless damask patch above the wainscot's top, panels below), a
+  dark wood coffered ceiling, a cornice round the top of every wall, a rail
+  on the wainscot, a curtained window and two candle sconces on each side
+  wall and one more each side of the back wall past the picture's edge.
+- **Layers on top of the paint:** the **photo**, a plane in the frame's opening
   (cover-fit); the **drape**, red velvet over the frame that slides down off
   it on the unveil; the **spotlight**, a warm glow on the frame (behind the
   photo, so the picture isn't washed out) from a small lamp on the ceiling;
@@ -359,28 +360,43 @@ like it.
   Tragically." / "Correct. You have taste. Barely." (a tie: "A tie. How very
   modern."), the plaques showing authors, votes and points. Lines in English
   or Korean by the phone's language.
-- **The plaques** are the game's DOM (cream, a gold tab, the title in italic
-  serif, like the picture's), placed every frame where the 3D wall puts them
-  under the frame, never narrower than readable and always on screen, so
-  voting works from any angle.
+- **The plaques** (`gala.js`) are 3D, mounted on the wall under the frame,
+  side by side (a little right of the frame's middle: Bunny stands at its
+  left): a thin gold frame round a cream card. The card's text is a canvas
+  drawn at 1024 px across (a gold "TITLE I" / "TITLE II" tab, the title in
+  italic serif, as big as fits: wrapped by word, broken inside a word only
+  if it can't fit a line, shrunk until it fits; Korean too), and the stage
+  renders at twice the CSS pixels so it stays sharp. Each has a velvet
+  cover that comes off after the frame's (I at 0.9 s, II at 1.35 s, on the
+  clock, not the frame rate). Voting: tap a plaque in the scene (a raycast,
+  `plaque0` / `plaque1`; a drag is never a tap; writers can't vote; tap the
+  other to switch). My vote gets a soft gold glow and a red wax seal with a
+  gold check on its corner. The result writes the author and "N votes ·
+  +points" (counting up) on each, lights the winner and dims the other.
+  When voting opens, the camera glides back to the default view
+  (`orbit.home()`). The DOM plaques are still there: the room without 3D
+  (side by side where the picture has them), and with 3D invisible over
+  the 3D ones, mirroring their state (keyboard, screen readers, tests).
 - **Taps** (between her lines; never in the game state): her (a line:
   "Don't touch the art. Or me." / "I've seen worse. Not often." / "Shh.
   Appreciate.", and a sip or a slow nod), the frame (its spotlight
-  flickers), a candle (it flickers), a guest (they raise their glasses: a
-  quick crossfade to the same cut-out with the glasses up,
-  `guests_*_toast.webp`).
+  flickers), a candle sconce (it flickers). What's hidden can't be tapped
+  (`pickTap` skips it: the drape, slid off below the frame, would otherwise
+  sit over the plaques).
 - **Look around:** the same camera as the other hosts (`npcstage.js`: drag,
   pinch, glide home after ~4 s, never locked), orbiting a point between her
   and the back wall so the frame and the plaques stay in view however far
-  you look, and further than the other rooms: ±40°. (±57° was tried: the
-  frame swings off screen and the camera reaches the side walls.)
+  you look: ±60° left and right here (the room is built wide enough that
+  the camera never leaves it), a little up and down.
 - **No 3D:** the painted room (the plate) with the photo in its frame and
   the plaques; never the old dealer.
 
 `node test/bunny_shots.mjs <dir> [only] [--photo=<url>]` shoots every beat,
 the default view (`0-default.png`, for the side-by-side with the picture)
-and the orbit's ends, and checks looking around, the plaques staying
-readable and the taps with real pointer input; `node test/games_rec.mjs
+and the orbit's ends, and checks the plaques (covers in order, the glow
+and seal, the winner lit), looking around, the glide home, the plaques
+staying in view and the taps (a plaque, the frame, a sconce, her; a drag
+from a plaque isn't a tap) with real pointer input; `node test/games_rec.mjs
 <dir> artgallery` records a piece on two phones.
 
 ### The gala's assets (`web/games/artgallery/gala/`)
@@ -399,14 +415,11 @@ All Nano Banana Pro edits of the approved picture (uploaded as
   picture's edges;
 - `plate.webp` (1344×1344): the approved picture, the empty room composited
   only where people, the photo, the plaques, the chandelier and the dialog
-  box were, pasted over the outpainted room's middle;
-- `guests_l.webp`, `guests_r.webp`, `chandelier.webp`: background removal
-  (`9e10dfde…`, `38b4d3cd…`, `a551fffe…`) on crops of the guests plate and
-  the picture;
-- `guests_*_toast.webp`: the same pairs raising their glasses (edits
-  `c36cd15f…` and, keyed off a flat green background because background
-  removal lost the woman twice, `d079b466…`), registered onto the
-  originals.
+  box were, pasted over the outpainted room's middle.
+
+(The first version also had the guests and the chandelier as cut-outs,
+with a glasses-up toast; they were taken out of the room and their files
+deleted, so they're in git history.)
 
 ### Bunny's model (`web/games/artgallery/bunny/bunny.glb`)
 

@@ -1,11 +1,14 @@
 // The Art Gallery's host, Bunny, in the masquerade gala (web/bunny.js,
 // web/gala.js): loads, then each beat of a piece shot at the reference's
-// phone size, with the plaques and the dialog box (dialog.js); the orbit's
-// ends; then looking around and the taps, driven with real pointer input
-// (the same camera as the Prophet's and the Boss's, npcstage.js):
-//   - a drag orbits the camera (as far as ±40° here), it glides home ~4 s after letting go
+// phone size, with the 3D title plaques on the wall and the dialog box
+// (dialog.js); the orbit's ends; then looking around and the taps, driven
+// with real pointer input (the same camera as the Prophet's and the
+// Boss's, npcstage.js):
+//   - a drag orbits the camera (as far as ±60° here), it glides home ~4 s after letting go
+//   - home() glides it back at once (voting opens)
 //   - a pinch zooms in a bit
-//   - taps on her, the frame, a candle and a guest reach onTap
+//   - taps on her, the frame, a candle sconce and a plaque reach onTap; a
+//     drag that starts on a plaque is never a tap
 // node test/bunny_shots.mjs <dir> [only] [--photo=<url>]
 import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -24,6 +27,8 @@ const pg = await browser.newPage({ viewport: { width: 376, height: 672 }, device
 const errs = [];
 let fails = 0;
 const ok = (c, m) => { console.log(`  ${c ? "✓" : "✗"} ${m}`); if (!c) fails++; };
+// (the beats' checks need every beat before them: only on a full run)
+const beatOk = (c, m) => { if (!ONLY) ok(c, m); };
 pg.on("pageerror", e => errs.push(e.message));
 pg.on("response", r => { if (r.status() >= 400 && !/favicon/.test(r.url())) console.log("  [" + r.status() + "]", r.url()); });
 pg.on("console", m => { if (m.type() === "error" && !/favicon|404/.test(m.text())) console.log("  [page]", m.text()); });
@@ -38,18 +43,30 @@ const shot = async (name, fn, wait = 1200) => {
 };
 await pg.evaluate(p => { __p.room.photo(p); }, PHOTO);
 // the default view: the photo unveiled, the plaques, her opening line (the approved picture)
-await shot("0-default", () => { __p.room.drape(false, { instant: true }); __p.room.spot(1); __plaques(["museum of regret", "do not perceive me"]); __dlg.say("Welcome to the gallery. Masks on. Judge everything.", { instant: true }); }, 2500);
+await shot("0-default", () => { __p.room.drape(false, { instant: true }); __p.room.spot(1); __plaques(["museum of regret", "do not perceive me"], "read", { instant: true }); __dlg.say("Welcome to the gallery. Masks on. Judge everything.", { instant: true }); }, 2500);
 await shot("1-covered", () => { __p.room.drape(true, { instant: true }); __p.room.spot(0); __plaques(null); __dlg.say("Exhibit 2. Still under velvet. Contain yourselves.", { instant: true }); }, 1400);
-await shot("2-unveil", () => { __p.room.drape(false); __p.room.spot(1); __p.setPose("unveil"); __dlg.say("Exhibit 2. Note the brushwork. Breathtaking.", { instant: true }); }, 1100);
+beatOk(await pg.evaluate(() => __p.room.plaqueInfo().cover.every(c => c === 1)), "covered: velvet on both plaques");
+await shot("2-unveil", () => { __p.room.drape(false); __p.room.spot(1); __p.setPose("unveil"); __plaques(["museum of regret", "do not perceive me"]); setTimeout(() => { window.__c1 = __p.room.plaqueInfo().cover; }, 1500); __dlg.say("Exhibit 2. Note the brushwork. Breathtaking.", { instant: true }); }, 1100);
+// (read 1.5 s after the frame's drape starts off, in the page: a screenshot takes a while)
+const c1 = await pg.evaluate(async () => { for (let i = 0; i < 150 && !window.__c1; i++) await new Promise(r => setTimeout(r, 20)); return window.__c1 ?? [1, 1]; });
+beatOk(c1[0] < c1[1] && c1[1] > 0.5, `the unveil: the frame first, then plaque I's velvet comes off before plaque II's (${c1} at 1.5 s)`);
 await shot("2b-unveiled", null, 1500);
-await shot("3-gavel", () => { __p.setPose("idle"); __p.play("gavel"); __plaques(["museum of regret", "do not perceive me"], "vote"); __dlg.say("Two titles. One truth. Choose wisely.", { instant: true }); }, 700);
+beatOk(await pg.evaluate(() => __p.room.plaqueInfo().cover.every(c => c === 0)), "…then both are bare");
+await shot("3-gavel", () => { __p.setPose("idle"); __p.play("gavel"); __dlg.say("Two titles. One truth. Choose wisely.", { instant: true }); }, 700);
 await shot("3b-gavel-rap", null, 1600 * 0.72 - 700 + 40);
+await shot("3c-voted", () => { __plaques(["museum of regret", "do not perceive me"], "vote", { picked: 1 }); }, 900);
+const iv = await pg.evaluate(() => __p.room.plaqueInfo());
+beatOk(iv.seal[1] > 0.9 && iv.seal[0] === 0 && iv.glow[1] > 0.2 && iv.glow[0] < 0.02, `my vote: the soft gold glow and the wax seal on plaque II only (${JSON.stringify({ seal: iv.seal, glow: iv.glow })})`);
 await shot("4-judge", () => { __p.play("judge"); __dlg.hide(); }, 1300);
 await shot("5-sold", () => { __p.play("gavel"); __dlg.show(); __dlg.say("Sold. To no one.", { instant: true }); }, 1250);
-await shot("6-applause", () => { __p.play("applause"); __dlg.say("The people have spoken. Tragically.", { instant: true }); }, 1050);
+await shot("6-applause", () => { __p.play("applause"); __plaques(["museum of regret", "do not perceive me"], "result", { picked: 1, top: 1, by: ["mina", "jae"], votes: ["1 vote · +33", "2 votes · +67"] }); __dlg.say("The people have spoken. Tragically.", { instant: true }); }, 1400);
+const ir = await pg.evaluate(() => __p.room.plaqueInfo());
+beatOk(ir.top === 1 && ir.dim[1] > 1 && ir.dim[0] < 0.6, `the result: the winner lit, the other dimmed (${ir.dim})`);
 await shot("7-sip", () => { __p.play("sip"); __dlg.say("Correct. You have taste. Barely.", { instant: true }); }, 1300);
-await shot("8-korean", () => { __dlg.say("갤러리에 오신 걸 환영해요. 가면 쓰고. 전부 심사하세요.", { instant: true, name: "버니" }); }, 2400);
-await pg.evaluate(() => { __dlg.say("Welcome to the gallery. Masks on. Judge everything.", { instant: true, name: "Bunny" }); __p.setPose("idle"); __plaques(["museum of regret", "do not perceive me"]); });
+// long titles wrap and shrink to fit (60 characters, the most a title can be), Korean too
+await shot("7b-long", () => { __plaques(["a sandwich that has seen things no sandwich should ever see", "도저히 이해할 수 없는 마트의 치와와 한 마리와 나의 인생"], "read"); }, 900);
+await shot("8-korean", () => { __plaques(["후회의 박물관", "나를 쳐다보지 마"], "read"); __dlg.say("갤러리에 오신 걸 환영해요. 가면 쓰고. 전부 심사하세요.", { instant: true, name: "버니" }); }, 2400);
+await pg.evaluate(() => { __dlg.say("Welcome to the gallery. Masks on. Judge everything.", { instant: true, name: "Bunny" }); __p.setPose("idle"); __plaques(["museum of regret", "do not perceive me"], "read", { instant: true }); });
 // the orbit's ends (held down so it doesn't glide home): far left, centre, far right, low, high
 const [lo, hi] = await pg.evaluate(() => __p.debug.VIEW.yawRange), [plo, phi] = await pg.evaluate(() => __p.debug.VIEW.pitchRange);
 for (const [name, yaw, pitch] of [["o-far-left", lo, 0], ["o-centre", 0, 0], ["o-far-right", hi, 0], ["o-left-low", lo, plo], ["o-right-high", hi, phi]]) {
@@ -58,11 +75,11 @@ for (const [name, yaw, pitch] of [["o-far-left", lo, 0], ["o-centre", 0, 0], ["o
   await pg.evaluate(([y, p]) => Object.assign(__p.debug.want, { yaw: y, pitch: p, zoom: 1 }), [yaw, pitch]);
   await sleep(1500);
   await pg.screenshot({ path: join(OUT, `${name}.png`) }); console.log("  shot", name);
-  // the frame and the plaques stay in view and readable
+  // the frame and the plaques stay in view
   const fr = await pg.evaluate(() => __p.debug.frameRect());
   ok(fr.left >= -4 && fr.right <= 380 && fr.top >= 0, `${name}: the photo in the frame is in view (${Math.round(fr.left)}..${Math.round(fr.right)})`);
-  const r = await pg.evaluate(() => { const b = document.getElementById("pl").getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, w: b.width }; });
-  ok(r.l >= -2 && r.r <= 378 && r.t > 60 && r.b < 560 && r.w >= 130, `${name}: the plaques are on screen and readable (${Math.round(r.l)}..${Math.round(r.r)} × ${Math.round(r.t)}..${Math.round(r.b)})`);
+  const rs = await pg.evaluate(() => __p.plaqueRects());
+  ok(rs.every(r => r.left >= -2 && r.left + r.width <= 378 && r.top > 60 && r.top + r.height < 560 && r.width >= 30), `${name}: both plaques are on the wall in view (${rs.map(r => `${Math.round(r.left)}..${Math.round(r.left + r.width)}`).join(", ")})`);
   await pg.mouse.up();
 }
 await sleep(4500);
@@ -79,7 +96,7 @@ if (!ONLY || ONLY.startsWith("l")) {
   for (let i = 0; i < 3; i++) { await drag(330, 140, 40, 140); await sleep(150); }
   await sleep(900);
   const v2 = await view();
-  ok(v2.yaw > 0.65 && v2.yaw <= 0.701, `it goes as far as ~40° and stops there (yaw ${v2.yaw.toFixed(2)})`);
+  ok(v2.yaw > 1.0 && v2.yaw <= 1.051, `it goes as far as ~60° and stops there (yaw ${v2.yaw.toFixed(2)})`);
   await pg.evaluate(async () => { const w = 6000 - (performance.now() - window.__lastUp); if (w > 0) await new Promise(r => setTimeout(r, w)); });
   const v3 = await view();
   ok(Math.abs(v3.yaw) < 0.08 && Math.abs(v3.pitch) < 0.05, `~4 s after letting go it glides back home (yaw ${v3.yaw.toFixed(3)})`);
@@ -101,17 +118,29 @@ if (!ONLY || ONLY.startsWith("l")) {
   await pg.screenshot({ path: join(OUT, "l-pinch.png") }); console.log("  shot l-pinch");
   await sleep(5000);
   // ---- taps
+  // home(): voting opens -> it glides back from wherever it was looked
+  await drag(330, 140, 40, 150); await sleep(500);
+  await pg.evaluate(() => __p.home()); await sleep(2600);
+  const vh = await view();
+  ok(Math.abs(vh.yaw) < 0.06, `when voting opens the camera glides back to face the plaques (yaw ${vh.yaw.toFixed(3)}, 2.6 s after)`);
   await pg.evaluate(() => { __dlg.say("Welcome to the gallery. Masks on. Judge everything.", { instant: true }); window.__taps = []; __p.onTap = k => { __taps.push(k); if (k === "bunny") __dlg.quip("Don't touch the art. Or me."); return true; }; });
+  const centre = r => [r.left + r.width / 2, r.top + r.height / 2];
+  const [pl0, pl1] = await pg.evaluate(() => __p.plaqueRects());
+  // a drag that starts on a plaque orbits, it's not a vote
+  await drag(...centre(pl1), centre(pl1)[0] - 90, centre(pl1)[1]); await sleep(300);
+  ok(!(await pg.evaluate(() => __taps)).some(k => k.startsWith("plaque")), "a drag that starts on a plaque is never a tap");
+  await sleep(5200);
+  await pg.mouse.click(...centre(pl1)); await sleep(300);    // plaque II
+  await pg.mouse.click(...centre(pl0)); await sleep(300);    // plaque I
   await pg.mouse.click(190, 215); await sleep(300);           // the photo in the frame
-  await pg.mouse.click(290, 168); await sleep(300);           // a candle on the right sconce
-  await pg.mouse.click(318, 380); await sleep(400);           // the guests on the right
-  await pg.screenshot({ path: join(OUT, "t1-tap-guests.png") }); console.log("  shot t1-tap-guests");
-  await pg.mouse.click(88, 330); await sleep(500);            // her
+  await pg.mouse.click(290, 168); await sleep(400);           // a candle on the right sconce
+  await pg.screenshot({ path: join(OUT, "t1-tap-candle.png") }); console.log("  shot t1-tap-candle");
+  await pg.mouse.click(52, 330); await sleep(500);            // her
   await pg.screenshot({ path: join(OUT, "t2-tap-her.png") }); console.log("  shot t2-tap-her");
   const taps = await pg.evaluate(() => __taps);
+  ok(taps[0] === "plaque1" && taps[1] === "plaque0", `a clean tap on a plaque in the scene is a vote for it (${taps.slice(0, 2)})`);
   ok(taps.includes("frame"), "tap the frame: its spotlight flickers");
-  ok(taps.includes("candle"), "tap a candle: it flickers");
-  ok(taps.includes("guestR"), "tap a guest: they raise their glasses");
+  ok(taps.includes("candle"), "tap a candle sconce: it flickers");
   ok(taps.includes("bunny"), "tap her: onTap('bunny') (a line, and a sip or a slow nod)");
   ok(await pg.evaluate(() => document.querySelector(".dlg-text").textContent === "Don't touch the art. Or me."), "her quip shows in the dialog box");
   await sleep(2900);

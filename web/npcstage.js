@@ -54,7 +54,7 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
   const want = { yaw: 0, pitch: 0, zoom: 1 };              // where the finger put it
   const vel = { yaw: 0, pitch: 0 };                        // momentum after a flick (rad/s)
   const tilt = { yaw: 0, pitch: 0 };                       // device tilt parallax
-  let lastTouch = -1e9, pushGoal = 0, pushNow = 0;
+  let lastTouch = -1e9, pushGoal = 0, pushNow = 0, homing = false;
   const ptrs = new Map();
   let drag = null, pinch = null;
   const clampView = () => {
@@ -66,9 +66,12 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
   canvas.style.pointerEvents = "auto";
   const onDown = e => {
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    homing = false;
     try { canvas.setPointerCapture?.(e.pointerId); } catch {}   // (a pointer the browser no longer knows: still orbit)
     lastTouch = performance.now();
-    if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), lt: performance.now(), moved: 0 };
+    // (t0: when the finger went down, by the event's own clock: a long frame
+    // between down and up mustn't turn a quick tap into a press)
+    if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, lt: performance.now(), moved: 0 };
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: want.zoom }; if (drag) drag.moved = 99; }
     vel.yaw = vel.pitch = 0;
   };
@@ -96,7 +99,7 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
     lastTouch = performance.now();
     if (ptrs.size < 2) pinch = null;
     if (ptrs.size === 0 && drag) {
-      if (drag.moved < 8 && performance.now() - drag.t0 < 450) onTap?.(e.clientX, e.clientY);
+      if (drag.moved < 8 && e.timeStamp - drag.t0 < 450) onTap?.(e.clientX, e.clientY);
       if (performance.now() - drag.lt > 80) vel.yaw = vel.pitch = 0;   // held still before letting go: no flick
       drag = null;
     }
@@ -127,7 +130,7 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
       want.yaw += vel.yaw * dt; want.pitch += vel.pitch * dt; clampView();
       const f = Math.exp(-dt * 4.5); vel.yaw *= f; vel.pitch *= f;
     }
-    const idle = ptrs.size === 0 && now - lastTouch > V.idleMs;
+    const idle = ptrs.size === 0 && (homing || now - lastTouch > V.idleMs);
     if (idle) {
       const k = 1 - Math.exp(-dt * 1.6);
       want.yaw -= want.yaw * k; want.pitch -= want.pitch * k; want.zoom += (1 - want.zoom) * k;
@@ -149,6 +152,8 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
   return {
     view, want, T, update,
     push: (k = 1) => { pushGoal = Math.max(0, Math.min(1, k)); },
+    // glide back to the default view now (as it does ~4 s after a touch); a new touch takes over
+    home: () => { homing = true; vel.yaw = vel.pitch = 0; },
     dispose: () => {
       if (tiltOn) removeEventListener("deviceorientation", onTilt);
       canvas.removeEventListener("pointerdown", onDown); canvas.removeEventListener("pointermove", onMove);
@@ -163,7 +168,8 @@ export function pickTap(st, targets, cx, cy) {
   ray.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), st.camera);
   let best = null;
   for (const t of targets) {
-    const hit = ray.intersectObjects(t.objs, true)[0];
+    // (what's hidden can't be tapped: a slid-off drape, a prop put away)
+    const hit = ray.intersectObjects(t.objs, true).find(h => { for (let o = h.object; o; o = o.parent) if (!o.visible) return false; return true; });
     if (hit && (!best || hit.distance < best.d)) best = { kind: t.kind, d: hit.distance, point: hit.point };
   }
   return best;

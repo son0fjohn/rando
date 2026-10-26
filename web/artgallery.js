@@ -75,7 +75,7 @@ const fillN = (line, n) => line.replace("{n}", n);
 // where the photo's opening and the plaques are in the approved picture
 // (gala.js), for the room without 3D: the plate fitted to the room
 const FRAME_OPEN = { fx: [0.354, 0.655], fy: [0.214, 0.452] };
-const PLQ = { fx: [0.353, 0.663], fy: [0.551, 0.687] };
+const PLQ = { fx: [0.343, 0.777], fy: [0.548, 0.672] };
 
 // photo id -> data URL (humans) — outside the game state on purpose
 const photos = new Map();
@@ -142,14 +142,15 @@ export const ART_GALLERY = {
     loadBunny();
     trash.add(() => { cancelAnimationFrame(track); dlg.dispose(); bunnyP?.then(b => b?.dispose()); bunny = null; bunnyP = null; if (globalThis.__bunny) globalThis.__bunny = null; });
     // what the scene should show; re-applied whenever she's (re)mounted
-    const want = { drape: true, spot: 0, photo: null };
+    const want = { drape: true, spot: 0, photo: null, plaques: null, plState: { covered: true, picked: null, top: null } };
     const room$ = () => $("ag-room");
-    // taps, between her lines: her (a line, and a sip or a slow nod), the
-    // frame (its spotlight flickers), a candle (it flickers), a guest (a toast)
+    // taps in the scene: a plaque (a vote, while voting's open), and between
+    // her lines: her (a line, and a sip or a slow nod), the frame (its
+    // spotlight flickers), a candle sconce (it flickers)
     const onTap = kind => {
+      if (kind === "plaque0" || kind === "plaque1") return castVote(+kind.slice(-1));
       if (kind === "frame") { sfx.tick(); return true; }
       if (kind === "candle") { sfx.cursor(); return true; }
-      if (kind === "guestL" || kind === "guestR") { sfx.chime(); return true; }
       if (kind !== "bunny" || !dlg.done || dlg.el.hidden) return false;
       dlg.quip(T.quips[quipN++ % T.quips.length]);
       sfx.blip(); buzz(12);
@@ -176,6 +177,7 @@ export const ART_GALLERY = {
         if (first) b.stage.canvas.style.opacity = "0";   // the first time: fade in over the painted room
         b.attach(at);
         b.room.drape(want.drape, { instant: true }); b.room.spot(want.spot); b.room.photo(want.photo);
+        want.plaques?.forEach((c, i) => b.room.plaque(i, c)); b.room.plaqueState({ ...want.plState, instant: true });
         requestAnimationFrame(() => requestAnimationFrame(() => { b.stage.canvas.style.opacity = ""; room$()?.classList.add("r3d"); }));
       });
       cancelAnimationFrame(track);
@@ -183,24 +185,31 @@ export const ART_GALLERY = {
       track = requestAnimationFrame(follow);
       return true;
     }
-    // the plaques hang under the frame: where the 3D wall puts them (they
-    // follow the orbit, always facing you), or where the picture has them;
-    // never narrower than readable
+    // The plaques are the 3D wall's (gala.js): drawn in the scene, voted on
+    // by tapping them there. The DOM plaques under #ag-plaques are the room
+    // without 3D (where the picture has them, side by side); with the 3D
+    // wall they're invisible, sit exactly over the 3D ones and only mirror
+    // their state (keyboard, screen readers, tests).
     function placePlaques() {
       const rm = room$(), pl = $("ag-plaques");
       if (!rm || !pl) return;
       const R = rm.getBoundingClientRect();
-      let x0, y0, x1;
-      if (bunny && rm.classList.contains("r3d")) {
-        const [a, b] = bunny.plaqueRects();
-        x0 = Math.min(a.left, b.left) - R.left; x1 = Math.max(a.left + a.width, b.left + b.width) - R.left; y0 = a.top - R.top;
-      } else {
-        const fit = picBox(R);
-        x0 = fit.x + PLQ.fx[0] * fit.w; x1 = fit.x + PLQ.fx[1] * fit.w; y0 = fit.y + PLQ.fy[0] * fit.h;
+      const in3d = !!bunny && rm.classList.contains("r3d");
+      pl.classList.toggle("in3d", in3d);
+      if (in3d) {
+        Object.assign(pl.style, { left: "0px", top: "0px", width: `${Math.round(R.width)}px`, height: `${Math.round(R.height)}px` });
+        bunny.plaqueRects().forEach((r, i) => {
+          const el = pl.children[i];
+          if (el) Object.assign(el.style, { left: `${Math.round(r.left - R.left)}px`, top: `${Math.round(r.top - R.top)}px`, width: `${Math.round(r.width)}px`, height: `${Math.round(r.height)}px` });
+        });
+        return;
       }
-      // (kept on screen, whatever the angle)
-      const w = Math.max(x1 - x0, R.width * 0.36), cx = Math.max(w / 2 + 8, Math.min(R.width - w / 2 - 8, (x0 + x1) / 2));
-      pl.style.left = `${Math.round(cx - w / 2)}px`; pl.style.top = `${Math.round(Math.max(90, Math.min(R.height * 0.66, y0)))}px`; pl.style.width = `${Math.round(w)}px`;
+      for (const el of pl.children) el.style.cssText = "";
+      const fit = picBox(R);
+      const x0 = fit.x + PLQ.fx[0] * fit.w, x1 = fit.x + PLQ.fx[1] * fit.w, y0 = fit.y + PLQ.fy[0] * fit.h;
+      // (never narrower than readable, kept on screen)
+      const w = Math.max(x1 - x0, R.width * 0.5), cx = Math.max(w / 2 + 8, Math.min(R.width - w / 2 - 8, (x0 + x1) / 2));
+      Object.assign(pl.style, { left: `${Math.round(cx - w / 2)}px`, top: `${Math.round(Math.max(90, Math.min(R.height * 0.66, y0)))}px`, width: `${Math.round(w)}px`, height: "" });
     }
     // the approved picture (9:16) fitted to cover the room, like its plate
     const picBox = R => { const h = Math.max(R.height, R.width * 16 / 9), w = h * 9 / 16; return { x: (R.width - w) / 2, y: 0, w, h }; };
@@ -232,7 +241,7 @@ export const ART_GALLERY = {
       return f.titles.map((t, i) => {
         const body = `<span class="ag-pl-eye">Title ${ROMAN[i]}</span><span class="ag-pl-t">“${esc(t.text)}”</span>` + (mode === "result"
           ? `<span class="ag-pl-by">— ${esc(s.players[t.by]?.handle ?? "?")}</span><span class="ag-pl-n">${c[i]} vote${c[i] === 1 ? "" : "s"} · <b data-count="${pts[i]}">+0</b></span>${top === i ? `<i class="ag-pl-win">winner</i>` : ""}`
-          : `<i class="ag-pl-dot"></i><i class="ag-pl-tag">your vote</i>`);
+          : `<i class="ag-pl-dot">✓</i>`);
         const cls = `ag-pl ${top === i ? "win" : ""} ${top !== null && top !== i ? "lose" : ""}`;
         return mode === "vote"
           ? `<button type="button" class="${cls}" data-v="${i}">${body}<i class="ag-pl-cloth"></i></button>`
@@ -240,6 +249,26 @@ export const ART_GALLERY = {
       }).join("");
     };
     const setPlaques = (key, html) => { if (plaqueKey === key) return false; plaqueKey = key; const p = $("ag-plaques"); if (p) p.innerHTML = html; placePlaques(); return true; };
+    // ...and on the 3D wall: what each says (k: how far the points have counted up)
+    const plaques3d = (f, s, mode, k = 1) => {
+      const c = f.counts || [0, 0], pts = f.pts || [0, 0];
+      want.plaques = f.titles.map((t, i) => ({
+        label: `TITLE ${ROMAN[i]}`, title: t.text,
+        ...(mode === "result" ? { by: `— ${s.players[t.by]?.handle ?? "?"}`, votes: `${c[i]} vote${c[i] === 1 ? "" : "s"} · +${Math.round(pts[i] * k)}` } : {}),
+      }));
+      want.plaques.forEach((p, i) => bunny?.room.plaque(i, p));
+    };
+    const plState = (st, instant = false) => { Object.assign(want.plState, st); bunny?.room.plaqueState({ ...st, instant }); };
+    // a vote: a tap on a plaque in the scene (or the DOM one without 3D);
+    // writers can't, and only while voting's open
+    function castVote(i) {
+      const s = game.s;
+      if (!s || s.phase !== "gallery" || s.sub !== "reveal") return false;
+      const f = s.frames[s.fi];
+      if (!f || f.titles.some(t => t.by === ctx.me.id)) return false;
+      myVote = i; game.input("vote", { idx: i }); sfx.pop(); buzz(15); lastHud = 0; renderAG(s);
+      return true;
+    }
     const pill = html => { const p = $("ag-pill"); if (p && p.innerHTML !== html) p.innerHTML = html; };
 
     // reveal tween: the room flips from covered to revealed on the next frame
@@ -257,14 +286,17 @@ export const ART_GALLERY = {
       setTimeout(flip, 150);
     }
     // numeric count-up tween for the points
-    function countUp() {
+    // (on the 3D plaques too: `draw(k)` redraws them part way)
+    function countUp(draw = null) {
       const t0 = performance.now();
       const els = [...$("game-panel").querySelectorAll("[data-count]")];
       if (!els.length) return;
       const step = () => {
         const k = Math.min(1, (performance.now() - t0) / 800), e = 1 - Math.pow(1 - k, 3);
         for (const el of els) el.textContent = `+${Math.round(+el.dataset.count * e)}`;
+        draw?.(e);
         if (k < 1 && $("game-panel").contains(els[0])) requestAnimationFrame(step);
+        else draw?.(1);
       };
       requestAnimationFrame(step);
     }
@@ -479,7 +511,7 @@ export const ART_GALLERY = {
             room.classList.remove("revealed", "picked", "ag-anim"); room.classList.add("covered");
             line(pk, s.fi === 0 ? T.open : fillN(lineOf(T.cover), n), { late });
           });
-          setPlaques(`c:${s.fi}`, plaquesHtml(f, s, "read"));
+          if (setPlaques(`c:${s.fi}`, plaquesHtml(f, s, "read"))) { plaques3d(f, s, "read"); plState({ covered: true, picked: null, top: null }, true); }
           pill(`piece <b>${n}</b> of ${s.frames.length}`);
         } else if (s.sub === "reveal") {
           const writer = f.titles.some(t => t.by === ctx.me.id);
@@ -492,6 +524,8 @@ export const ART_GALLERY = {
           // presents it with the gavel; then the gavel: voting is open
           beats.at("unveil", pk, 0, el, late => {
             drape(false, late); spot(1);
+            // voting opens with it: the camera glides back to face the plaques
+            bunny?.home();
             if (!late) { bunny?.setPose("unveil"); sfx.whoosh(); }
             line(`${pk}:u`, fillN(lineOf(T.unveil), n), { late });
           });
@@ -501,14 +535,17 @@ export const ART_GALLERY = {
           // that lands late are all patched in place below, so none of them
           // cut the unveil short.
           if (setPlaques(`v:${s.fi}:${writer ? 1 : 0}`, plaquesHtml(f, s, writer ? "read" : "vote"))) {
+            plaques3d(f, s, "read");
+            // the 3D plaques' covers come off after the frame's (unless we
+            // arrived after that)
+            plState({ covered: false, top: null }, revealed.has(s.fi) || el > 2500);
             if (!revealed.has(s.fi)) playReveal(s.fi);
             else { room.classList.remove("covered"); room.classList.add("revealed"); }
-            if (!writer) $("ag-plaques").querySelectorAll("[data-v]").forEach(b => b.onclick = () => {
-              myVote = +b.dataset.v; game.input("vote", { idx: myVote }); sfx.pop(); buzz(15); lastHud = 0; renderAG(s);
-            });
+            if (!writer) $("ag-plaques").querySelectorAll("[data-v]").forEach(b => b.onclick = () => castVote(+b.dataset.v));
           }
           room.classList.toggle("picked", voted !== null);
           room.querySelectorAll(".ag-pl").forEach((el, i) => el.classList.toggle("on", voted === i));
+          if (want.plState.picked !== voted) plState({ picked: voted });
           pill(writer ? `one of these is yours · <b>${votesIn}/${eligible}</b> votes in`
             : voted === null ? `tap a title to vote · <b>${votesIn}/${eligible}</b> votes in`
             : `<b>✓ voted</b> · ${votesIn}/${eligible} in · tap the other to switch`);
@@ -524,7 +561,9 @@ export const ART_GALLERY = {
           });
           if (setPlaques(`r:${s.fi}`, plaquesHtml(f, s, "result"))) {
             room.classList.remove("covered", "picked", "ag-anim"); room.classList.add("revealed");
-            countUp();
+            // the winner lights up, the other dims; my seal stays on my vote
+            plState({ covered: false, top, picked: myVote ?? f.votes[ctx.me.id] ?? null }, true);
+            countUp(k => plaques3d(f, s, "result", k));
           }
           pill(`photo by <b>${esc(owner)}</b>`);
         }
