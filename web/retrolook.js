@@ -153,7 +153,7 @@ export async function retroStage(host, mood = {}) {
   resize();
 
   const frameFns = new Set();
-  let raf = 0, last = performance.now(), t0 = last, slow = 0, frames = 0, alive = true, paused = false;
+  let raf = 0, last = performance.now(), t0 = last, slow = 0, frames = 0, alive = true, paused = false, shrink = false;
   // a mood's fps caps the frame rate (a room behind cards needs no more)
   const minGap = M.fps ? 1000 / M.fps - 4 : 0, slowDt = M.fps ? 1.5 / M.fps : 0.034;
   function draw(now) {
@@ -162,6 +162,9 @@ export async function retroStage(host, mood = {}) {
     if (minGap && now - last < minGap) { if (!paused) raf = requestAnimationFrame(draw); return; }
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     const t = (now - t0) / 1000;
+    // a lower resolution takes effect before this frame draws: resizing clears
+    // the canvas, and after the draw it showed a black frame
+    if (shrink) { shrink = false; resize(); }
     for (const fn of frameFns) fn(t, dt);
     renderer.setRenderTarget(rtScene);
     renderer.render(scene, camera);
@@ -177,7 +180,7 @@ export async function retroStage(host, mood = {}) {
     frames++;
     if (dt > slowDt) slow++;
     if (frames >= (M.fps || 60) * 1.5) {
-      if (slow > (M.fps || 60) * 0.75) { if (bloomOn) bloomOn = false; else if (scale > FLOOR) { scale = Math.max(FLOOR, scale * 0.85); resize(); } }
+      if (slow > (M.fps || 60) * 0.75) { if (bloomOn) bloomOn = false; else if (scale > FLOOR) { scale = Math.max(FLOOR, scale * 0.85); shrink = true; } }
       frames = 0; slow = 0;
     }
     if (!paused) raf = requestAnimationFrame(draw);
