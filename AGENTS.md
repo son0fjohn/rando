@@ -74,6 +74,17 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   and finger props; the same look-around as the Prophet; tap him / the box /
   the cup / the lamp), `web/basement.js` (his gray basement, camera-mapped,
   haze, the lamp's flicker; assets in `web/games/ritual/basement/`),
+  `web/bunny.js` (the Art Gallery's host, Bunny: a rigged low-poly 3D model,
+  `web/games/artgallery/bunny/bunny.glb`, a white rabbit half-mask, black
+  lace-and-tulle dress, standing in the gala, lit live by its candles;
+  aimed-limb procedural idle with sips / unveil / gavel raps on a marble
+  pedestal / judge / two sarcastic claps; the gavel and the flute ride her
+  palms; the same look-around, ±40° here; tap her / the frame / a candle /
+  a guest), `web/gala.js` (her masquerade gala, camera-mapped from the
+  approved picture widened to a square; the guests and the chandelier as
+  cut-outs at their depth, the photo in the gold frame, the velvet drape,
+  the spotlight, candle glows; the title plaques are the game's DOM, placed
+  where the wall puts them; assets in `web/games/artgallery/gala/`),
   `web/dialog.js` (the shared NPC dialog box: navy, name tab, text typed in
   the app font with a blip, ▼, choice boxes, `quip()` for a passing line;
   styles `.dlg-*` in theme.css), `web/retrolook.js`
@@ -129,11 +140,12 @@ node test/glitch4.mjs <dir> [--only=hats,tophair,topbottom,neck,face] [--item=id
 node test/faces_shots.mjs <dir>        # every eye shape × expression on the 3D head, the iris tints
 node test/orbit_shots.mjs <dir> [prophet|boss]   # both hosts' rooms at the orbit's far left / mid / centre / far right, zoomed, high and low
 node test/guest_shots.mjs <dir> [prophet|boss] [--outfits=puffer,long,beanie,plain]   # the chosen player in both hosts' rooms (sitting on the rooftop, standing in the basement): each outfit at the default view and the orbit's ends; clear of the host, the ball / box and the dialog box; one at a time
+node test/bunny_shots.mjs <dir> [only] [--photo=<url>]   # the Art Gallery's Bunny on her own: every beat (covered, unveil, gavel, judge, sold, applause, sip), the dialog box (EN + KO), the plaques, the orbit's ends, drag / glide home / pinch, taps
 test/pose4.html                        # the player character sitting and standing, front / 3/4 / side / back (open it on npm run serve:test)
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
-node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (a full turn, a pass, the end) / a Ritual turn / an Art Gallery piece / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
+node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (a full turn, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → vote → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon

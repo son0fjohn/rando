@@ -429,7 +429,7 @@ try {
   await A.click("#pp-again");
   ok((await Promise.all([A, B].map(pg => until(pg, () => !document.getElementById("pp") && /Game 1 of 3/.test(document.getElementById("pt-next")?.textContent ?? ""))))).every(Boolean), "a new set starts: game 1 of 3, the podium closes for everyone");
 
-  head("Art Gallery — the dealer unveils the titles on wall plaques");
+  head("Art Gallery — Bunny unveils each photo, the titles on wall plaques");
   await startGame(A, "artgallery");
   ok(await until(B, () => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "everyone fills 3 frames");
   ok(await B.evaluate(() => !!document.querySelector("#game-layer > .ag-bg.on")), "the gallery wall is behind the setup cards, not the map");

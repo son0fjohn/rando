@@ -498,10 +498,12 @@ async function artgallery() {
   let voter = null;
   for (let i = 0; i < 40 && !voter; i++) { for (const pg of P.list) if (await pg.locator(".ag-pl[data-v]").count() === 2) voter = pg; if (!voter) await sleep(250); }
   const writer = P.list.find(pg => pg !== voter);
-  await sleep(2500);
+  // let Bunny unveil it and bang the gavel before the vote comes in (the
+  // last vote ends the voting at once)
+  await sleep(6500);
   if (voter) await voter.locator('.ag-pl[data-v="1"]').click().catch(() => {});
   await until(A, () => document.querySelectorAll(".ag-room .ag-pl-n").length === 2, null, 30000);
-  await sleep(4500);
+  await sleep(5200);
   await writeScene("artgallery", [all.get(voter ?? P.list[1]), all.get(writer)], { from });
   for (const [pg, c] of all) if (pg !== voter && pg !== writer) await c.stop();
   log(`  one piece: the voter (${voter?.label}) and a writer (${writer.label})`);
