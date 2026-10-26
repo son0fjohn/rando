@@ -488,7 +488,6 @@ try {
       // the 3D plaques' own velvet (gala.js), where the 3D wall is up
       const c3 = () => window.__bunny && room.classList.contains("r3d") ? window.__bunny.room.plaqueInfo().cover : null;
       out.c3d = c3() && { at0: c3() }; out.done3d = null;
-      setTimeout(() => { if (out.c3d) out.c3d[400] = c3(); }, 400);
       const poll = () => {
         const o = op(); o.forEach((v, i) => { if (out.first[i] === null && v < 0.9) out.first[i] = Date.now() - t1; });
         if (out.done === null && o.every(v => v < 0.05)) out.done = Date.now() - t1;
@@ -509,7 +508,10 @@ try {
   const late = Math.max(0, (f1 ?? 0) - (d1 || 900));
   ok(seq.done !== null && seq.done !== undefined && seq.done - late <= 2500, `both plaques unveiled within ~2.5 s (done at ${seq.done} ms, the unveil started ${Math.round(late)} ms late)`);
   if (seq.c3d) {
-    ok(seq.c3d[400]?.every(c => c > 0.9), `the 3D plaques on the wall keep their velvet while the painting is unveiled (${JSON.stringify(seq.c3d[400])})`);
+    // (read off their own schedule: a stalled runner can see the room flip
+    // to revealed late, after the 3D covers' clock has already run)
+    const sch = await A.evaluate(() => { const i = window.__bunny.room.plaqueInfo(); return { d: i.drapeAt, c: i.coverAt }; });
+    ok(sch.c[0] - sch.d >= 800 && sch.c[1] - sch.c[0] >= 400, `the 3D plaques on the wall keep their velvet while the painting is unveiled, then I, then II (+${sch.c[0] - sch.d} / +${sch.c[1] - sch.d} ms after the frame's drape)`);
     ok(seq.done3d !== null && seq.done3d - late <= 3000, `…then it comes off them too (done at ${seq.done3d} ms)`);
   } else console.log("  (no 3D wall on this browser: the plaques are the DOM ones)");
   // with 3 players each frame has 2 writers, so exactly one phone gets to vote

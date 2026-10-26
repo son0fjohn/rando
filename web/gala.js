@@ -432,7 +432,9 @@ export async function galaRoom(stage) {
     // the title plaques, where they are on screen (CSS px)
     plaqueRects: () => plaques.map(p => screenRect(p.card)),
     // what the plaques show, for the tests
-    plaqueInfo: () => ({ texts: plaques.map(p => p.key), cover: plaques.map(p => +p.coverT.toFixed(2)), picked: pst.picked, top: pst.top, glow: plaques.map(p => +p.glowM.opacity.toFixed(2)), seal: plaques.map(p => +p.sealM.opacity.toFixed(2)), dim: plaques.map(p => +p.lit.toFixed(2)) }),
+    plaqueInfo: () => ({ texts: plaques.map(p => p.key), cover: plaques.map(p => +p.coverT.toFixed(2)), picked: pst.picked, top: pst.top, glow: plaques.map(p => +p.glowM.opacity.toFixed(2)), seal: plaques.map(p => +p.sealM.opacity.toFixed(2)), dim: plaques.map(p => +p.lit.toFixed(2)),
+      // when the frame's drape and each cover start coming off (performance.now() ms)
+      drapeAt: Math.round(dr.at), coverAt: plaques.map(p => Math.round(p.cvAt)) }),
     targets: [
       { kind: "frame", objs: [photoMesh, drapeMesh] },
       { kind: "candle", objs: [...flames, ...sconces, ...sconceHits] },
