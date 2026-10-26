@@ -992,7 +992,7 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 .mo-end { text-align: center; color: #fff4e8; animation: mo-in 1.2s ease 1.4s both; margin-top: 40px; }
 .mo-end-k { font: 800 34px/40px var(--f-sys); letter-spacing: .02em; color: #ffd6a6; text-shadow: 0 0 24px rgba(255, 180, 120, .45), 0 2px 10px rgba(0, 0, 0, .8); }
 .mo-end-n { display: block; margin-top: 6px; font: 650 21px/28px var(--f-sys); text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
-.mo-room.ending .mo-chips { opacity: .85; }
+.mo-room.ending .mo-chips, .mo-room.ending .mo-seatbar { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .mo-game, .mo-card, .mo-hc.drawn, .mo-end, .mo-fly, .mo-motes i { animation: none !important; }
   .mo-hc { transition: none; }
