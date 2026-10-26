@@ -35,6 +35,10 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#0b0d24">
+<script>
+  // a first open (no onboarding done on this phone yet) sees the city at night
+  try { if (!localStorage.getItem("rando-onb-v1")) window.__RANDO_FIRST_NIGHT = true; } catch {}
+</script>
 <style>
   :root {
     color-scheme: dark;
@@ -763,48 +767,6 @@
     position: absolute;
     transform: translate(-50%, -100%);
     pointer-events: none;
-  }
-
-  /* --- First-run hint card: the "what do I do" beat --- */
-  #hint-card {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 260;
-    width: min(76%, 290px);
-    background: rgba(24, 20, 26, 0.94);
-    border-radius: 18px;
-    padding: 20px 18px 16px;
-    box-shadow: 0 12px 40px rgba(8, 11, 16, 0.55);
-    backdrop-filter: blur(6px);
-    text-align: left;
-  }
-  #hint-card[hidden] { display: none; }
-  #hint-card .hc-title {
-    font-size: 17px;
-    font-weight: 800;
-    color: #ffe9c4;
-    margin-bottom: 10px;
-    text-align: center;
-  }
-  #hint-card .hc-line {
-    font-size: 12.5px;
-    line-height: 1.5;
-    color: #e6e0d4;
-    margin: 7px 0;
-  }
-  #hint-card #hint-got {
-    display: block;
-    margin: 14px auto 0;
-    border: none;
-    border-radius: 12px;
-    padding: 11px 34px;
-    font-size: 14px;
-    font-weight: 700;
-    background: var(--apple-blue);
-    color: #fff;
-    cursor: pointer;
   }
 
   /* --- Nickname sheet (mirrors the auth sheet look) --- */
@@ -1646,7 +1608,7 @@
   .stage button { color:#1c1c1e; }
   .stage .pt-btn.pt-primary { background:#1c1c1e; border-color:#1c1c1e; color:#fff; }
   .stage .pt-btn.pt-primary:disabled { background:#c7c7cf; border-color:#c7c7cf; }
-  .stage .hr-heard, .stage .gp-form button, .stage .mh-tag, .stage .mh-tagged button.yes { color:#fff; }
+  .stage .hr-heard, .stage .gp-form button { color:#fff; }
   .sd-who button.on, .sd-tabs button.cur { color:#fff; }
 
   /* ===== Secret Diary ===== */
@@ -1907,43 +1869,6 @@
   .hr-who { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin:6px 0 10px; }
   .hr-who button { border:1px solid #c7c7cf; background:#fff; color:#1c1c1e; border-radius:12px; padding:14px 8px; font-size:15px; font-weight:800; cursor:pointer; }
 
-  /* ===== Manhunt ===== */
-  .mh-role { border-radius:14px; padding:14px 16px; margin:6px 0; color:#fff; text-align:center; }
-  .mh-role.hunter { background:linear-gradient(160deg,#7a1020,#b22a3a); }
-  .mh-role.runner { background:linear-gradient(160deg,#0b3a52,#1c7a8c); }
-  .mh-role b { display:block; font-size:24px; font-weight:900; letter-spacing:.04em; }
-  .mh-role span { font-size:13px; opacity:.92; }
-  .mh-radar { position:relative; width:100%; aspect-ratio:1; margin:6px 0; border-radius:14px; overflow:hidden;
-    background:#0a1a14 center/cover no-repeat; }
-  .mh-radar::after { content:""; position:absolute; inset:0; background:radial-gradient(circle at 50% 50%,transparent 55%,rgba(4,10,8,.65)); pointer-events:none; }
-  .mh-grid { position:absolute; inset:0; display:grid; }
-  .mh-cell { border:1px solid rgba(90,220,150,.12); }
-  .mh-cell.hit { background:rgba(60,230,140,.5); box-shadow:0 0 14px rgba(60,230,140,.6) inset; animation:mh-blip 1.6s ease-out infinite; }
-  .mh-cell.site { background:rgba(255,90,90,.45); animation:none; }
-  .mh-cell.me { outline:2px solid #ffd60a; outline-offset:-2px; }
-  @keyframes mh-blip { 0%,100% { opacity:.45 } 50% { opacity:1 } }
-  .mh-radar-note { position:absolute; left:8px; bottom:8px; z-index:2; color:#8ff0bf; font-size:10.5px;
-    font-family:"IBM Plex Mono",Consolas,monospace; letter-spacing:.06em; text-shadow:0 1px 4px #000; }
-  .mh-sites { display:flex; flex-direction:column; gap:6px; margin:6px 0; }
-  .mh-site { display:flex; align-items:center; gap:9px; background:#fff; border:1px solid #d5d5da; border-radius:10px; padding:8px 10px; font-size:13px; }
-  .mh-site.in { border-color:#ff2a4a; background:#fff4f5; }
-  .mh-site.done { opacity:.55; background:#f0f4f0; border-color:#1c7a3c; }
-  /* The generated icon is layered OVER a CSS sphere, so if
-     games/manhunt/bomb.png is missing the row still reads as a bomb rather
-     than showing a broken-image box. */
-  .mh-bomb { width:26px; height:26px; flex:none; border-radius:50%;
-    background-image:url(games/manhunt/bomb.png), radial-gradient(circle at 36% 32%,#5a6068,#1d2024 70%);
-    background-size:contain, contain; background-position:center; background-repeat:no-repeat; }
-  .mh-site-main { flex:1; min-width:0; } .mh-site-main b { display:block; font-size:13px; }
-  .mh-site-main small { color:#5b6b80; font-size:11px; }
-  .mh-warn { background:#fff4d6; border:1px solid #e0c870; border-radius:10px; padding:8px 10px; font-size:12px; line-height:1.4; margin:6px 0; }
-  .mh-big { font-size:17px; font-weight:800; text-align:center; margin:8px 0; }
-  .mh-tag { width:100%; border:none; background:#b22a3a; color:#fff; border-radius:14px; padding:16px; font-size:19px; font-weight:900; cursor:pointer; margin:8px 0; }
-  .mh-tagged { display:flex; gap:8px; margin:8px 0; } .mh-tagged button { flex:1; padding:14px 8px; font-size:15px; font-weight:800; border-radius:12px; border:1px solid #c7c7cf; background:#fff; color:#1c1c1e; cursor:pointer; }
-  .mh-tagged button.yes { background:#b22a3a; border-color:#b22a3a; color:#fff; }
-  .mh-roster { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
-  .mh-roster .rm { background:#e6e6ea; border-radius:999px; padding:4px 9px; font-size:11.5px; font-weight:700; }
-  .mh-roster .rm.hunter { background:#b22a3a; color:#fff; } .mh-roster .rm.out { opacity:.5; text-decoration:line-through; }
 
 </style>
 <!-- Y2K console theme: tokens, pixel fonts, components (after the base styles so it wins) -->
@@ -1981,6 +1906,7 @@
         <span class="nav-lbl">Style</span></button>
     </div>
     <button id="nav-backtome" class="y-btn small dim" type="button" hidden>&#9678; Back to me</button>
+    <button id="nav-home" type="button" aria-label="Home" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg></button>
     <div id="npc-dlg"></div>
     <div id="party-card" hidden></div>
 
@@ -2041,15 +1967,6 @@
       <div class="mc-sub">they're in your zone &middot; say hi</div>
       <button id="mc-chat" type="button">Chat</button>
       <button id="mc-dismiss" type="button">Later</button>
-    </div>
-
-    <div id="hint-card" hidden>
-      <div class="hc-title">Welcome to Itaewon</div>
-      <div class="hc-line">&#127747; Glowing venue names are the meet-up spots</div>
-      <div class="hc-line">&#128172; Tap someone with a blue name to say hi</div>
-      <div class="hc-line">&#128065; Tap the eye (bottom left) so people can find you</div>
-      <div class="hc-line">&#127968; Host a party from the big button</div>
-      <button id="hint-got" type="button">Got it</button>
     </div>
 
     <div id="nick-scrim" hidden></div>
@@ -2194,6 +2111,10 @@
     </div>
   </div>
 
+  <!-- the onboarding, Home, the invite sheet, verification, permission
+       pre-prompts, the recap (onboard.js renders into it) -->
+  <div id="onb" hidden></div>
+
   <div id="game-layer" hidden>
     <div id="game-hud"></div>
     <div id="game-feed"></div>
@@ -2201,16 +2122,6 @@
   </div>
 
   <script type="module" src="backend.js"></script>
-<script type="module">
-  // first-run hint (localStorage-gated); UI-only, no backend coupling
-  const hintCard = document.getElementById("hint-card");
-  if (hintCard && !localStorage.getItem("rando-hint-v1")) {
-    setTimeout(() => { hintCard.hidden = false; }, 1800);
-    document.getElementById("hint-got").addEventListener("click", () => {
-      localStorage.setItem("rando-hint-v1", "1");
-      hintCard.hidden = true;
-    });
-  }
-</script>
+
 </body>
 </html>

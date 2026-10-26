@@ -99,6 +99,33 @@ export class Room {
   }
 }
 
+// A look into a room before joining it (an invite link's landing screen):
+// listen on its channel without joining its presence, ask the host for a
+// summary, and read who's there. Resolves { name, hostName, count, members,
+// playing, cap } or null if nobody answers in time (an ended party).
+export function peekRoom(id, { timeout = 7000 } = {}) {
+  const me = `peek-${Math.random().toString(36).slice(2, 10)}`;
+  const ch = sb.channel(`room-${id}`, { config: { broadcast: { self: false, ack: false }, presence: { key: me } } });
+  return new Promise(res => {
+    let done = false, seen = null;
+    const finish = v => { if (done) return; done = true; clearTimeout(to); try { sb.removeChannel(ch); } catch {} res(v); };
+    // presence alone (an older host, or the host's answer lost): who's there, no name
+    const fromPresence = () => {
+      const st = ch.presenceState?.() ?? {};
+      const members = Object.values(st).map(m => m?.[0]).filter(m => m?.id).sort((a, b) => a.joined_at - b.joined_at);
+      return members.length ? { name: null, hostName: members[0].handle, count: members.length, members: members.map(m => ({ id: m.id, handle: m.handle, avatar: m.avatar })), playing: null } : null;
+    };
+    const to = setTimeout(() => finish(seen ?? fromPresence()), timeout);
+    ch.on("broadcast", { event: "msg" }, ({ payload: p }) => { if (p?.type === "peekinfo" && p.to === me) finish(p.info); });
+    ch.on("presence", { event: "sync" }, () => { seen = fromPresence() ?? seen; });
+    ch.subscribe(status => {
+      if (status !== "SUBSCRIBED") return;
+      const send = () => !done && ch.send({ type: "broadcast", event: "msg", payload: { type: "peek", from: me, t: Date.now() } });
+      send(); setTimeout(send, 1200); setTimeout(send, 3500);      // again, in case one went out before the host was listening
+    });
+  });
+}
+
 // ---------------------------------------------------------------- directory
 export const directory = {
   ch: null,

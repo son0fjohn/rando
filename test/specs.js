@@ -6,16 +6,24 @@ import * as CONFIG from "/web/hpconfig.js";
 import { promptLog } from "/web/hplog.js";
 import { HUMILIATION_RITUAL, judge, ritualPool, ritualPromptsFor, ritualPoints, PICK_MS, OPEN_MS } from "/web/hpgames/ritual.js";
 import { SIDE_QUEST, questPool, questsFor, questPoints } from "/web/hpgames/sidequest.js";
-import { MASK_OFF, maskPool, pickAnswerer, pickAsker } from "/web/hpgames/maskoff.js";
+import { MASK_OFF, maskPool, nextAsker, canAsk, notAskedYet } from "/web/hpgames/maskoff.js";
 import { fairPick, chances } from "/web/fairpick.js";
 import { newSet, places, addGame, addPartial, standings, fullParticipants, nextGameNo } from "/web/partyset.js";
 import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
+import * as G from "/web/mhgeo.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { MANHUNT, DIARY, RITUAL, SIDEQUEST, MASKOFF, LEADERBOARD } from "/web/hpconfig.js";
 import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
-import { ui } from "/web/gamekit.js";
+import { ui, finalResults } from "/web/gamekit.js";
 import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
+import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
+import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea } from "/web/citygen.js";
+import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
+import { EVENTS, clean, track } from "/web/analytics.js";
+import { starterLook, e164 } from "/web/onbkit.js";
+import { invitePage } from "/api/invite.mjs";
+import { STARTER_OUTFITS4, normalizeAvatar4 } from "/web/items4.js";
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -890,18 +898,13 @@ group("Mask Off — the deck");
     && MO.find(c => c.id === "mo-224")?.text === "What's something you've stopped telling people because they don't get it?"
     && MO.find(c => c.id === "mo-324")?.text === "What would it take for you to feel truly at peace?", "the supplied deck, in order");
   ok(!MO.some(c => /\bmask (on|off)\b|honesty|\brate\b/i.test(c.text)), "no leftover cards from the old game");
-  // the turn picking: everyone asked equally, never the asker
-  const rng = (() => { let x = 7; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
-  const asked = {}, P = ["a", "b", "c", "d"];
-  let w = {}, last = null, ai = 0, self = 0;
-  for (let i = 0; i < 12; i++) {
-    const who = pickAnswerer(asked, w, P, last, rng); w = who.weights; last = who.id;
-    asked[who.id] = (asked[who.id] ?? 0) + 1;
-    const ask = pickAsker(P, ai, who.id); ai = ask.next;
-    if (ask.id === who.id) self++;
-  }
-  ok(P.every(id => asked[id] === 3), `12 turns over 4 players: everyone answers 3 times (${P.map(id => asked[id]).join(" ")})`);
-  ok(self === 0, "nobody is ever asking themselves");
+  // the turn rules: round the table, never yourself, never the one just asked
+  const P = ["a", "b", "c", "d"];
+  ok([0, 1, 2, 3, 4].map(i => nextAsker(P, i, P).id).join("") === "abcda", "the asker goes round the table, clockwise");
+  ok(nextAsker(P, 1, ["a", "c", "d"]).id === "c", "…skipping whoever left");
+  ok(canAsk(P, "a", "b").join() === "c,d", "the asker can't pick themselves, or whoever was asked last turn");
+  ok(canAsk(["a", "b"], "a", "b").join() === "b", "…unless that leaves nobody");
+  ok(notAskedYet({ a: 1, b: 0, c: 1, d: 0 }, P).join() === "b,d", "whoever hasn't been asked yet glows");
 }
 
 // through the setup and into turn 1 (4 players unless said otherwise)
@@ -919,7 +922,7 @@ group("Mask Off — the host's setup");
   const t = seatTable(MASK_OFF, 4);
   adv(500);
   ok(t.s.phase === "setup" && MASK_OFF.hostSetup.includes("setup"), "opens on the host's setup screen (Back like every setup)");
-  ok(t.s.setup.levels.join() === "1,2" && t.s.setup.rounds === 2, "default: light + real, everyone answers twice");
+  ok(t.s.setup.levels.join() === "1,2" && t.s.setup.rounds === 2, "default: light + real, everyone asks twice");
   t.input("p2", "mo-lv", { l: 3, on: true }); t.input("p2", "mo-go");
   adv(400);
   ok(t.s.phase === "setup" && t.s.setup.levels.join() === "1,2", "only the host can change the deck or deal");
@@ -942,32 +945,47 @@ group("Mask Off — the host's setup");
   ok(all.every(x => typeof x === "string" && /^mo-\d{3}$/.test(x)), "hands are card ids only: no card text in the state until it's asked");
 }
 
-group("Mask Off — a turn: ask, answer, same, go deeper");
+group("Mask Off — a turn: pick someone, ask, answer, same, go deeper");
 {
   const t = moTable(4);
-  ok(waitPhase(t, "pick", 3000), "the app picks who's asking whom");
-  const { asker, who } = t.s.turn;
-  ok(asker && who && asker !== who, `${asker} → asking ${who}`);
-  ok(waitPhase(t, "choose", 6000), "the asker picks from their hand");
-  ok(t.s.left > MASKOFF.CHOOSE_MS - 1000, "a 30-second pick");
-  const hand = t.s.hands[asker].slice(), other = Object.keys(t.s.players).find(id => id !== asker);
-  t.input(other, "ask", { id: t.s.hands[other]?.[0] ?? hand[0] });
-  t.input(asker, "ask", { id: MO.find(c => !hand.includes(c.id)).id });
+  ok(waitPhase(t, "pick", 3000), "deal → the first turn: whose turn it is");
+  const asker = t.s.turn.asker;
+  ok(asker === t.s.order[0] && !t.s.turn.who, `the first one round the table asks (${asker}), nobody picked yet`);
+  ok(waitPhase(t, "choose", 6000), "they pick someone and a card");
+  ok(t.s.left > MASKOFF.CHOOSE_MS - 1000, "a 45-second pick");
+  const hand = t.s.hands[asker].slice(), others = t.s.order.filter(id => id !== asker);
+  t.input(asker, "ask", { id: hand[0] });
+  adv(400);
+  ok(t.s.phase === "choose" && !t.s.turn.card, "no card goes before someone's picked");
+  t.input(asker, "who", { who: asker });
+  t.input(others[0], "who", { who: others[1] });
+  adv(400);
+  ok(!t.s.turn.who, "nobody can pick themselves, and only the asker picks");
+  t.input(asker, "who", { who: others[1] });
+  adv(300);
+  ok(t.s.turn.who === others[1], "the asker taps someone at the table: picked (everyone sees it)");
+  t.input(asker, "who", { who: others[0] });
+  adv(300);
+  const who = others[0];
+  ok(t.s.turn.who === who, "…and can change their mind until they ask");
+  t.input(others[1], "ask", { id: t.s.hands[others[1]][0], who });
+  t.input(asker, "ask", { id: MO.find(c => !hand.includes(c.id)).id, who });
   adv(400);
   ok(t.s.phase === "choose" && !t.s.turn.card, "only the asker, and only a card from their own hand");
-  t.input(asker, "ask", { id: hand[2] });
-  ok(waitPhase(t, "talk", 3000), "they tap one: it flips up for everyone");
+  t.input(asker, "ask", { id: hand[2], who });
+  ok(waitPhase(t, "talk", 3000), "Ask: the card flips up in the middle of the table for everyone");
   ok(t.s.turn.card.id === hand[2] && !t.s.hands[asker].includes(hand[2]) && !t.s.turn.auto, "the card leaves their hand");
+  ok(t.s.hands[asker].length === 5, "…and they draw a new one: always 5 in hand");
   const L = Object.keys(t.s.players).filter(id => id !== who);
   t.input(L[0], "same");
   adv(400);
   ok(t.s.turn.same === 0, "nobody can tap Same before the answer starts");
   t.input(L[0], "answer");
   adv(400);
-  ok(!t.s.turn.status, "only the answerer can start the answer");
+  ok(!t.s.turn.status, "only the one asked can start the answer");
   t.input(who, "answer");
   adv(400);
-  ok(t.s.turn.status === "answering", "Answer: the mask comes off");
+  ok(t.s.turn.status === "answering", "Answer: their mask comes off");
   t.input(L[0], "same"); t.input(L[0], "same"); t.input(L[1], "same"); t.input(who, "same");
   adv(400);
   ok(t.s.turn.same === 2, `Same: one each, never the answerer's own (${t.s.turn.same})`);
@@ -984,44 +1002,56 @@ group("Mask Off — a turn: ask, answer, same, go deeper");
   t.input(L[1], "deeper"); adv(300); t.input(who, "deeper-pass"); adv(300); t.input(L[0], "deeper"); adv(300);
   ok(t.s.turn.deepers === MASKOFF.DEEPER_MAX && t.s.turn.deeper.state === "passed", `…or pass it; at most ${MASKOFF.DEEPER_MAX} per answer`);
   t.input(who, "done");
-  ok(waitPhase(t, "after", 3000), "Done ends the turn");
-  ok(t.s.hands[asker].length === 5, "the asker's hand refills to 5");
+  ok(waitPhase(t, "after", 3000), "Done ends the turn (the mask goes back on)");
   ok(t.s.players[who].score === 1 && t.s.sameTotal === 2, "an answer counts (no points beyond that); the Same taps add up");
-  // a pass
+  // the next one round the table; the one just asked can't be picked
   ok(waitPhase(t, "choose", 12000), "next turn");
   const t2 = t.s.turn;
-  t.input(t2.asker, "ask", { id: t.s.hands[t2.asker][0] });
-  ok(waitPhase(t, "talk", 3000), "asked");
-  const before = t.s.players[t2.who].score;
-  t.input(t2.who, "pass");
+  ok(t2.asker === t.s.order[1], "the turn passes clockwise");
+  t.input(t2.asker, "who", { who });
+  adv(300);
+  ok(!t.s.turn.who && t.s.lastWho === who, "the one just asked can't be picked again straight away");
+  const w2 = t.s.order.find(id => id !== t2.asker && id !== who);
+  t.input(t2.asker, "ask", { id: t.s.hands[t2.asker][0], who: w2 });
+  ok(waitPhase(t, "talk", 3000) && t.s.turn.who === w2, "asked (picking and asking in one tap works too)");
+  const before = t.s.players[w2].score;
+  t.input(w2, "pass");
   ok(waitPhase(t, "after", 3000) && t.s.turn.status === "passed", "Pass: the mask stays on, the turn moves on");
-  ok(t.s.players[t2.who].score === before && t.s.turn.same === 0, "no penalty, nothing counted");
-  // the clock picks a card
+  ok(t.s.players[w2].score === before && t.s.turn.same === 0, "no penalty, nothing counted");
+  // the clock picks: someone who hasn't been asked yet, and a card
   ok(waitPhase(t, "choose", 12000), "next turn");
-  const a3 = t.s.turn.asker, h3 = t.s.hands[a3].slice();
-  ok(waitPhase(t, "talk", MASKOFF.CHOOSE_MS + 2000), "nobody taps: after 30 s…");
-  ok(t.s.turn.auto && h3.includes(t.s.turn.card.id), "…a random card from their hand is played");
+  const a3 = t.s.turn.asker, h3 = t.s.hands[a3].slice(), fresh = notAskedYet(t.s.asked, canAsk(t.s.order, a3, t.s.lastWho));
+  ok(waitPhase(t, "talk", MASKOFF.CHOOSE_MS + 2000), "nobody taps: after 45 s…");
+  ok(t.s.turn.auto && h3.includes(t.s.turn.card.id) && fresh.includes(t.s.turn.who), "…the deck picks someone who hasn't been asked yet, and a card from their hand");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
 }
 
 group("Mask Off — a whole game");
 {
   const t = moTable(4, [["mo-lv", { l: 3, on: true }]]);
-  const asked = {}, cards = [];
-  let self = 0;
+  const asks = [], cards = [], whos = [];
+  let self = 0, twice = 0;
   while (!t.allEnded()) {
     const q = t.s?.turn;
     if (!q) { adv(1000); continue; }
-    if (t.s.phase === "choose" && !q.card) { if (q.asker === q.who) self++; t.input(q.asker, "ask", { id: t.s.hands[q.asker][0] }); }
+    if (t.s.phase === "choose" && !q.card) {
+      // the asker picks whoever's been asked least (as the glow suggests)
+      const ok2 = canAsk(t.s.order, q.asker, t.s.lastWho), pick = notAskedYet(t.s.asked, ok2)[0];
+      t.input(q.asker, "ask", { id: t.s.hands[q.asker][0], who: pick });
+    }
     if (t.s?.phase === "talk" && !q._seen) {
-      q._seen = true; asked[q.who] = (asked[q.who] ?? 0) + 1; cards.push(q.card.id);
+      q._seen = true; asks.push(q.asker); whos.push(q.who); cards.push(q.card.id);
+      if (q.asker === q.who) self++;
+      if (whos.length > 1 && whos.at(-1) === whos.at(-2)) twice++;
       t.input(q.who, q.who === "p4" ? "pass" : "answer");
     }
     if (t.s?.phase === "talk" && q.status === "answering") t.input(q.who, "done");
     adv(1000);
   }
-  ok(cards.length === 8 && Object.values(asked).every(n => n === 2), `everyone answers twice: 8 turns (${Object.values(asked).join(" ")})`);
-  ok(self === 0, "nobody ever asks themselves");
+  const counts = id => asks.filter(x => x === id).length;
+  ok(cards.length === 8 && ["p1", "p2", "p3", "p4"].every(id => counts(id) === 2), `everyone asks twice, in turn round the table: 8 turns (${asks.join(" ")})`);
+  ok(self === 0 && twice === 0, "nobody asks themselves, nobody is asked twice in a row");
+  ok(["p1", "p2", "p3", "p4"].every(id => whos.filter(x => x === id).length === 2), `picking whoever glows, everyone's asked twice (${whos.join(" ")})`);
   ok(new Set(cards).size === cards.length, "no card comes round twice");
   const r = t.host.results;
   ok(r?.completed, "it completes: one of the party's 3 games");
@@ -1030,13 +1060,23 @@ group("Mask Off — a whole game");
 }
 {
   const t = moTable(3);
-  ok(waitPhase(t, "talk", 50000), "into the first card");
+  ok(waitPhase(t, "talk", 60000), "into the first card");
   t.input(t.s.turn.who, "answer");
   adv(400);
   t.drop(t.s.turn.who);
   adv(3000);
   ok(t.s.phase !== "talk", "the answerer leaves: the turn ends, nobody waits");
   ok(runOut(t, 60 * 60 * 1000), "and the game still finishes (nobody taps: every turn runs to its backstop)");
+}
+{
+  const t = moTable(4);
+  ok(waitPhase(t, "choose", 10000), "a turn");
+  const { asker } = t.s.turn, who = t.s.order.find(id => id !== asker);
+  t.input(asker, "who", { who });
+  adv(300);
+  t.drop(who);
+  adv(3000);
+  ok(t.s.phase === "choose" && !t.s.turn.who, "the one picked leaves before the card: the asker just picks someone else");
 }
 
 group("The party set: 3 games, places, standings");
@@ -1072,8 +1112,8 @@ group("The host's controls: End game anytime, Back out of a setup screen");
 {
   const t = moTable(4);
   ok(waitPhase(t, "choose", 10000), "a Mask Off turn is on");
-  const { asker, who } = t.s.turn;
-  t.input(asker, "ask", { id: t.s.hands[asker][0] });
+  const { asker } = t.s.turn, who = t.s.order.find(id => id !== asker);
+  t.input(asker, "ask", { id: t.s.hands[asker][0], who });
   ok(waitPhase(t, "talk", 3000), "asked");
   t.input(who, "answer"); adv(300); t.input(who, "done");
   ok(waitPhase(t, "after", 4000) && t.s.players[who].score === 1, "someone has answered");
@@ -1137,101 +1177,230 @@ group("The Art Gallery (4 players)");
 }
 
 // ===================================================================== 5
-group("Manhunt (5 players)");
-{
-  const t = seatTable(MANHUNT_GAME, 5);
-  adv(500);
-  const P = Object.values(t.s.players);
-  const hunters = P.filter(p => p.role === "hunter"), runners = P.filter(p => p.role === "runner");
-  ok(hunters.length === 1, `~1 hunter per 4-5 players (5 players -> ${hunters.length})`);
-  ok(runners.length === 4, "everyone else runs");
-  ok(t.s.phase === "headstart", "runners get a head start");
-  ok(t.s.sites.length === MANHUNT.SITES.length, "bomb sites come from config");
-
-  // the state must never carry a coordinate — cells only
-  const json = JSON.stringify(t.s);
-  ok(!/"lat"|"lng"/.test(json), "no lat/lng anywhere in the broadcast state");
-  ok(!/"cell"/.test(json) || !t.s.players[runners[0].id].cell, "per-player cells are not in the state");
-
-  adv(MANHUNT.HEADSTART_MS + 2000);
-  ok(t.s.phase === "hunt", "the hunt opens after the head start");
-
-  // defusing: a runner reports standing in a zone, 20 s fills the bar
-  const r0 = runners[0].id, site = t.s.sites[0].id;
-  for (let i = 0; i < 12; i++) { t.input(r0, "zone", { site }); adv(2000); }
-  ok(t.s.sites[0].defused === true, "standing in a zone for ~20 s defuses the bomb");
-  ok(t.s.radar.pings.length > 0, "defusing pings the site's cell to the hunters");
-  ok(t.s.sites[0].by === r0, "the defuser is credited");
-
-  // leaving the zone resets an unfinished defuse
-  const site2 = t.s.sites[1].id;
-  t.input(runners[1].id, "zone", { site: site2 }); adv(4000);
-  const partial = t.s.sites[1].progress;
-  ok(partial > 0 && partial < 1, `partial progress accrues (${partial.toFixed(2)})`);
-  t.input(runners[1].id, "zone", { site: null }); adv(8000);
-  ok(t.s.sites[1].progress === 0, "walking away resets the progress bar");
-
-  // tagging: hunter nominates, runner confirms, runner becomes a hunter
-  t.input(hunters[0].id, "tag", { target: r0 });
-  adv(500);
-  ok(t.s.pending?.target === r0, "the tag waits on the runner's confirmation");
-  t.input(runners[1].id, "tagack", { yes: true });
-  adv(500);
-  ok(t.s.players[r0].tagged === false, "only the targeted runner can answer");
-  t.input(r0, "tagack", { yes: false });
-  adv(500);
-  ok(t.s.pending === null && t.s.players[r0].tagged === false, "saying no clears the tag and keeps them running");
-  t.input(hunters[0].id, "tag", { target: r0 });
+// Manhunt: a phone is "at" wherever its test hook puts it (__mhPhones[id].setPos)
+const MH = { c: [37.5346, 126.9946] };
+const mhAt = (east, north) => [MH.c[0] + north / 110540, MH.c[1] + east / (111320 * Math.cos(MH.c[0] * Math.PI / 180))];
+const mhPhone = id => window.__mhPhones?.[id];
+window.__mh3dOff = true;   // many phones in one page: the elevator plays as a card
+// (party.js empties the bin when a game ends; the harness doesn't: do it here,
+// so a host scene an earlier table was still loading doesn't render on behind us)
+trash.flush("spec: next game");
+// a table's done: end it for everyone, so its phones stop (timers, crypto, location)
+const mhDone = t => { t.host?.game?.endByHost(); adv(400); };
+// WebCrypto (the team channel) settles on real turns of the page, not on the fake clock
+const mhTurn = () => new Promise(r => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
+const mhSettle = async (n = 40) => { for (let i = 0; i < n; i++) { await mhTurn(); adv(50); } };
+function mhTable(n = 5, { teams = { p2: "hunter" }, round = 10, ping = 2, head = 1, powers = true, join = true } = {}) {
+  const t = seatTable(MANHUNT_GAME, n);
+  const sent = [];
+  const deliver = t.bus.deliver.bind(t.bus);
+  t.bus.deliver = m => { if (/^mh-|^ev$|^input$/.test(m.type)) sent.push(m); deliver(m); };
+  t.sent = sent;
   adv(300);
-  t.input(r0, "tagack", { yes: true });
-  adv(500);
-  ok(t.s.players[r0].tagged === true && t.s.players[r0].role === "hunter", "a tagged runner joins the hunters");
+  t.input("p1", "mh-zonedef", { zone: { type: "circle", c: MH.c, r: 600 } });
+  for (const [k, v] of Object.entries({ round, ping, head, powers, join })) t.input("p1", "mh-set", { k, v });
+  for (const [id, team] of Object.entries(teams)) t.input("p1", "mh-team", { id, team });
+  t.input("p1", "mh-go"); adv(1600);
+  return t;
+}
+const mhHunt = t => {
+  for (const id of Object.keys(t.s.players)) t.input(id, "mh-ready");
+  adv(1600 + MANHUNT.ELEVATOR_MS + t.s.setup.head * 60000 + 400);
+};
+const runnersOf = t => Object.values(t.s.players).filter(p => p.wasRunner).map(p => p.id);
 
-  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+group("Manhunt — setup: the host draws the zone, sets the clock, picks the teams");
+{
+  const t = seatTable(MANHUNT_GAME, 5);
+  adv(300);
+  ok(t.s.phase === "setup" && MANHUNT_GAME.hostSetup.includes("setup") && MANHUNT_GAME.map, "it opens on the host's setup, played on the live map");
+  const S = () => t.s.setup;
+  ok(S().round === MANHUNT.ROUND.def && S().ping === MANHUNT.PING.def && S().head === MANHUNT.HEADSTART.def && S().shrink && S().powers && S().join,
+    `defaults: ${S().round} min round, a ping every ${S().ping} min, ${S().head} min head start, shrinking zone, powers, tagged runners join the hunters`);
+  t.input("p1", "mh-go"); adv(200);
+  ok(!S().go && /zone/.test(S().err), `no zone, no start ("${S().err}")`);
+  t.input("p1", "mh-zonedef", { zone: { type: "circle", c: MH.c, r: 60 } }); t.input("p1", "mh-go"); adv(200);
+  ok(!S().go && /bigger/.test(S().err), "a zone smaller than a few blocks is refused");
+  t.input("p1", "mh-zonedef", { zone: { type: "circle", c: MH.c, r: 5000 } }); t.input("p1", "mh-go"); adv(200);
+  ok(!S().go && /smaller/.test(S().err), "a zone over ~3 km across is refused");
+  t.input("p1", "mh-zonedef", { zone: { type: "poly", pts: [mhAt(-400, -300), mhAt(400, -300), mhAt(400, 300), mhAt(-400, 300)] } }); adv(200);
+  ok(G.zoneOk(S().zone)[0], "a drawn shape works too");
+  t.input("p1", "mh-set", { k: "round", v: 500 }); t.input("p1", "mh-set", { k: "round", v: 45 }); t.input("p1", "mh-set", { k: "ping", v: 0 }); t.input("p1", "mh-set", { k: "head", v: 0 }); adv(200);
+  ok(S().round === 45 && S().ping === MANHUNT.PING.def && S().head === 0, "settings stay inside their ranges (10 min–2 h, 1–15 min, 0–10 min)");
+  t.input("p3", "mh-set", { k: "round", v: 10 }); t.input("p3", "mh-go"); adv(200);
+  ok(S().round === 45 && !S().go, "only the host sets things up");
+  for (const id of ["p2", "p3", "p4"]) t.input("p1", "mh-team", { id, team: "hunter" });
+  t.input("p1", "mh-go"); adv(200);
+  ok(!S().go && /lopsided/.test(S().err), `badly lopsided teams don't start ("${S().err}")`);
+  t.input("p1", "mh-team", { id: "p3", team: "random" }); t.input("p1", "mh-team", { id: "p4", team: "runner" });
+  t.input("p1", "mh-go"); adv(1600);
+  ok(t.s.phase === "rules", "fixed teams start");
+  const roles = Object.values(t.s.players).map(p => p.role);
+  ok(roles.filter(r => r === "hunter").length === 1 && t.s.players.p2.role === "hunter", "Random fills the smaller team (1 hunter, 4 runners)");
+  const t3 = seatTable(MANHUNT_GAME, 2); adv(300);
+  t3.input("p1", "mh-zonedef", { zone: { type: "circle", c: MH.c, r: 600 } }); t3.input("p1", "mh-go"); adv(200);
+  ok(!t3.s.setup.go && /3 players/.test(t3.s.setup.err), "at least 3 players");
+  ok(t.errors().length === 0 && t3.errors().length === 0, "no errors: " + (t.errors()[0] ?? t3.errors()[0] ?? "none"));
+  mhDone(t); mhDone(t3);
 }
 
-// ===================================================================== 5b
-group("Manhunt — win conditions");
+group("Manhunt — the rules card, the Hunter's opening, the head start");
 {
-  // runners win: every bomb defused
-  const t = seatTable(MANHUNT_GAME, 5);
-  adv(MANHUNT.HEADSTART_MS + 2000);
-  const runners = Object.values(t.s.players).filter(p => p.role === "runner");
-  for (const site of t.s.sites.map(x => x.id)) {
-    for (let i = 0; i < 12; i++) { t.input(runners[0].id, "zone", { site }); adv(2000); }
-  }
-  ok(t.s.winner === "runners", `all bombs defused -> runners win (got ${t.s.winner})`);
-  ok(t.s.phase === "end", "the game ends on the win");
-  ok(runOut(t), "results close out");
+  const t = mhTable(5, { head: 1 });
+  ok(t.s.phase === "rules", "everyone gets the rules card");
+  for (const id of ["p1", "p2", "p3", "p4"]) t.input(id, "mh-ready");
+  adv(2000);
+  ok(t.s.phase === "rules", "it waits for everyone to tap in");
+  t.input("p5", "mh-ready"); adv(1600);
+  ok(t.s.phase === "intro", "then the elevator opens on the Hunter");
+  adv(MANHUNT.ELEVATOR_MS + 200);
+  ok(t.s.phase === "headstart", "then the head start");
+  adv(60000 + 400);
+  ok(t.s.phase === "hunt" && t.s.hunt.len === 10 * 60000, "then the hunt, for the round's length");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  mhDone(t);
 }
+
+group("Manhunt — privacy: positions stay on the phone; pings are fuzzy circles, never kept in the state");
 {
-  // hunters win: every runner tagged
-  const t = seatTable(MANHUNT_GAME, 5);
-  adv(MANHUNT.HEADSTART_MS + 2000);
-  const hunter = Object.values(t.s.players).find(p => p.role === "hunter").id;
-  for (const r of Object.values(t.s.players).filter(p => p.role === "runner").map(p => p.id)) {
-    t.input(hunter, "tag", { target: r }); adv(400);
-    t.input(r, "tagack", { yes: true }); adv(400);
-  }
-  ok(t.s.winner === "hunters", `all runners tagged -> hunters win (got ${t.s.winner})`);
+  const t = mhTable(5, { ping: 2 });
+  await mhSettle();
+  mhHunt(t);
+  const R = runnersOf(t), H = "p2";
+  const truth = { p1: mhAt(120, 80), p3: mhAt(-200, 40), p4: mhAt(30, -250), p5: mhAt(260, 210) };
+  for (const [id, pos] of Object.entries(truth)) mhPhone(id).setPos(pos);
+  mhPhone(H).setPos(mhAt(0, 0));
+  adv(2 * 60000 + 1000);
+  ok(t.s.hunt.no === 1, "a ping on schedule");
+  const pos = t.sent.filter(m => m.type === "mh-pos" && m.no === 1);
+  ok(pos.length === R.length && pos.every(m => R.includes(m.from)), `every runner's phone sent a circle (${pos.length}); no hunter's did`);
+  const off = pos.map(m => G.dist(m.c, truth[m.from]));
+  ok(pos.every((m, i) => m.r >= MANHUNT.FUZZ.MIN_M && m.r <= MANHUNT.FUZZ.START_M && off[i] <= m.r), `each circle is 25–50 m and contains its runner (radii ${pos.map(m => m.r).join(", ")})`);
+  ok(off.some(d => d > 5), `the circles are moved off the runner, not centred on them (offsets ${off.map(d => d.toFixed(0)).join(", ")} m)`);
+  ok(pos.every(m => Math.abs(Math.round(m.c[0] * 110540 / 10) * 10 - m.c[0] * 110540) < 0.6), "circle centres are snapped to a 10 m grid");
+  // the synced state: the zone is the only place in it
+  const st = JSON.parse(JSON.stringify(t.s)); delete st.zone; delete st.setup.zone;
+  const coord = /37\.5\d{2}|126\.9\d{2}/;
+  ok(!coord.test(JSON.stringify(st)), "the synced state carries no player's position (only the zone)");
+  ok(!t.sent.some(m => m.type === "input" && m.in !== "mh-zonedef" && coord.test(JSON.stringify(m))), "no phone ever sends its position to the host (only the host's zone, a place)");
+  // the hunter sees the circles; a runner only their own
+  ok(mhPhone(H).pings.size === R.length, "the hunter's phone has every runner's circle");
+  // a second ping: fresh draws (the exact spot can't be averaged back out of one fixed offset)
+  adv(2 * 60000 + 1000);
+  const pos2 = t.sent.filter(m => m.type === "mh-pos" && m.no === 2);
+  ok(pos2.length === R.length && pos2.some(m => { const a = pos.find(x => x.from === m.from); return a && (a.c[0] !== m.c[0] || a.c[1] !== m.c[1]); }), "each ping is a fresh fuzzy draw");
+  ok(pos2.every(m => m.r <= pos.find(x => x.from === m.from).r), "the circles tighten as the round goes on");
+  // teammates: sealed to the team; the other team can't open them
+  adv(25000); await mhSettle(); adv(21000); await mhSettle();
+  const team = t.sent.filter(m => m.type === "mh-team");
+  ok(team.length > 0 && team.every(m => Object.keys(m.box).every(id => t.s.players[id].role === t.s.players[m.from].role)), `team positions go out sealed, only to teammates (${team.length} messages)`);
+  ok(team.every(m => !coord.test(JSON.stringify(m.box))), "and as ciphertext: no coordinates readable on the wire");
+  ok(mhPhone("p1").mates.size >= 1 && ![...mhPhone("p1").mates.keys()].includes(H), "a runner sees teammates (fuzzy), never a hunter");
+  ok(![...mhPhone(H).mates.keys()].some(id => R.includes(id)), "a hunter's team view has no runners");
+  // a locked screen: that phone sends nothing at the ping; the hunters see "no signal"
+  mhPhone("p3").me.asleep = true; t.input("p3", "mh-asleep", { on: true });
+  const at = t.s.hunt.next; adv(at - t.s.hunt.t + 1000);
+  const no3 = t.s.hunt.no;
+  ok(!t.sent.some(m => m.type === "mh-pos" && m.no === no3 && m.from === "p3") && t.sent.some(m => m.type === "mh-pos" && m.no === no3 && m.from === "p1"), "a locked phone sends nothing at a ping (the others do)");
+  ok(t.s.players.p3.asleep && !t.s.players.p1.asleep, "the state only says that phone went quiet (no place)");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  mhDone(t);
 }
+
+group("Manhunt — leaving the zone: live to the hunters after 30 s, out after 2 minutes");
 {
-  // hunters win on the clock with a bomb still live
-  const t = seatTable(MANHUNT_GAME, 5);
-  adv(MANHUNT.HEADSTART_MS + 2000);
-  adv(MANHUNT.GAME_MS + 5000);
-  ok(t.s.winner === "hunters", `clock out with a live bomb -> hunters win (got ${t.s.winner})`);
-  ok(/bomb still live/.test(t.s.why ?? ""), "the reason is reported");
+  const t = mhTable(5, { ping: 15 });
+  mhHunt(t);
+  mhPhone("p3").setPos(mhAt(0, 0)); adv(1000);
+  mhPhone("p3").setPos(mhAt(900, 0)); adv(1000);
+  ok(t.s.players.p3.outside && !t.s.players.p3.live, "out of the zone: flagged, not yet live");
+  adv(31000); mhPhone("p3").setPos(mhAt(905, 0)); adv(6000); mhPhone("p3").setPos(mhAt(910, 0)); adv(500);
+  const live = t.sent.filter(m => m.type === "mh-pos" && m.from === "p3" && m.live);
+  ok(t.s.players.p3.live && live.length >= 1 && live.every(m => m.r === MANHUNT.FUZZ.MIN_M), `after 30 s the hunters see them live (a 25 m circle, ${live.length} sent)`);
+  mhPhone("p3").setPos(mhAt(100, 0)); adv(1000);
+  ok(!t.s.players.p3.outside && !t.s.players.p3.live, "back inside: not live any more");
+  mhPhone("p4").setPos(mhAt(1200, 0)); adv(2 * 60000 + 2000);
+  ok(t.s.players.p4.out && !t.s.players.p4.tagged, "2 minutes outside: out");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  mhDone(t);
 }
+
+group("Manhunt — tags (in person, the runner confirms), SAFE, powers");
 {
-  // works from 4 for testing
-  const t = seatTable(MANHUNT_GAME, 4);
-  adv(500);
-  ok(Object.values(t.s.players).filter(p => p.role === "hunter").length === 1, "4 players still yields a hunter");
-  ok(Object.values(t.s.players).filter(p => p.role === "runner").length === 3, "and three runners");
+  const t = mhTable(5, { ping: 3 });
+  await mhSettle();
+  mhHunt(t);
+  for (const [id, e] of [["p1", 100], ["p3", -150], ["p4", 50], ["p5", 220], ["p2", 0]]) mhPhone(id).setPos(mhAt(e, 40));
+  t.input("p3", "mh-tag", { target: "p4" }); adv(300);
+  ok(!t.s.pending, "only a hunter can tag");
+  t.input("p2", "mh-tag", { target: "p4" }); adv(300);
+  ok(t.s.pending?.target === "p4", "a hunter's tag waits on the runner");
+  t.input("p5", "mh-tagack", { yes: true }); adv(300);
+  ok(!t.s.players.p4.tagged, "only that runner can answer");
+  t.input("p4", "mh-tagack", { yes: false }); adv(300);
+  ok(!t.s.pending && !t.s.players.p4.tagged, "'no' and it doesn't count");
+  t.input("p2", "mh-tag", { target: "p4" }); adv(MANHUNT.TAG_CONFIRM_MS + 1000);
+  ok(!t.s.pending && !t.s.players.p4.tagged, "no answer in 45 s: it doesn't count");
+  t.input("p2", "mh-tag", { target: "p4" }); adv(300); t.input("p4", "mh-tagack", { yes: true }); adv(400);
+  ok(t.s.players.p4.tagged && t.s.players.p4.role === "hunter" && t.s.tags.length === 1, "'yes': caught, and they hunt now");
+  // SAFE: hidden, can't be tagged, the clock stops for them; the host is told
+  t.input("p5", "mh-safe", { on: true }); adv(300);
+  t.input("p2", "mh-tag", { target: "p5" }); adv(300);
+  ok(t.s.players.p5.safe && !t.s.pending, "SAFE: can't be tagged");
+  const before = t.sent.filter(m => m.type === "mh-pos" && m.from === "p5").length;
+  adv(3 * 60000 + 500);
+  ok(t.sent.filter(m => m.type === "mh-pos" && m.from === "p5").length === before, "SAFE: no circle at the ping");
+  ok(t.sent.some(m => m.type === "ev" && m.ev === "mh-safe" && m.id === "p5" && m.on), "everyone (the host too) hears about it");
+  t.input("p5", "mh-safe", { on: false }); adv(300);
+  ok(!t.s.players.p5.safe && t.s.players.p5.safeMs >= 3 * 60000, "back in: their clock had stopped");
+  // powers: one each
+  const truthP1 = mhAt(100, 40);
+  t.input("p1", "mh-power", { p: "ghost" }); mhPhone("p1").me.ghost = true;     // (the button does both)
+  t.input("p3", "mh-power", { p: "decoy" }); mhPhone("p3").me.decoy = true;
+  t.input("p2", "mh-power", { p: "lockon", target: "p5" }); adv(300);
+  const no0 = t.s.hunt.no;
+  t.input("p2", "mh-power", { p: "radar" }); adv(500);
+  ok(t.s.hunt.no === no0 + 1, "Radar: everyone pings right now");
+  const radar = t.sent.filter(m => m.type === "mh-pos" && m.no === t.s.hunt.no);
+  ok(radar.find(m => m.from === "p1")?.none, "Ghost: skipped at the next ping");
+  ok(G.dist(radar.find(m => m.from === "p3").c, mhAt(-150, 40)) > 150, "Decoy: the circle lands somewhere else");
+  ok(radar.find(m => m.from === "p5")?.r === MANHUNT.POWERS.lockon.M, "Lock-on: that runner's next circle is ~20 m");
+  t.input("p2", "mh-power", { p: "radar" }); adv(500);
+  ok(t.s.hunt.no === no0 + 1, "a power works once a game");
+  t.input("p1", "mh-power", { p: "radar" }); adv(300);
+  ok(!t.s.players.p1.used.radar, "runners can't use hunters' powers");
+  // Sprint Alert: the hunters' phones send that runner their fuzzy circle, sealed to that phone only
+  t.input("p5", "mh-power", { p: "sprint" }); adv(300);
+  mhPhone("p2").setPos(mhAt(210, 40)); adv(6000); await mhSettle(); mhPhone("p2").setPos(mhAt(212, 41)); adv(500); await mhSettle();
+  const near = t.sent.filter(m => m.type === "mh-near");
+  ok(near.length >= 1 && near.every(m => Object.keys(m.box).join() === "p5"), `Sprint Alert: the hunters' circles go only to that runner (${near.length})`);
+  ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
+  mhDone(t);
+}
+
+group("Manhunt — the end: who wins, points, the location stops");
+{
+  const t = mhTable(5, { round: 10, ping: 2 });
+  mhHunt(t);
+  for (const id of ["p1", "p3", "p4", "p5"]) mhPhone(id).setPos(mhAt(50, 50));
+  adv(3 * 60000);
+  for (const r of ["p1", "p3", "p4"]) { t.input("p2", "mh-tag", { target: r }); adv(300); t.input(r, "mh-tagack", { yes: true }); adv(300); }
+  adv(60000);
+  t.input("p2", "mh-tag", { target: "p5" }); adv(300); t.input("p5", "mh-tagack", { yes: true }); adv(1600);
+  ok(t.s.verdict === "hunters" && t.s.phase === "end", "every runner caught: the hunters win");
+  ok(t.s.last === "p5", "the last one caught is the Last Survivor");
+  ok(t.s.players.p2.score >= 4 * MANHUNT.POINTS.TAG && t.s.players.p2.score > t.s.players.p1.score, `the hunter's tags score, faster ones more (${t.s.players.p2.score})`);
+  ok(t.s.players.p5.score > t.s.players.p1.score, "lasting longer scores more");
+  const fr = finalResults(t.s);
+  ok(fr.completed, "it counts as a played game (one of the party's 3; coins)");
+  ok(["p1", "p2", "p3", "p4", "p5"].every(id => !mhPhone(id)?.me.pos && !mhPhone(id)?.me.watch), "every phone stopped reading its location");
+  ok(runOut(t), "the results close out");
+  const t2 = mhTable(4, { round: 10, ping: 5 });
+  mhHunt(t2);
+  adv(10 * 60000 + 3000);
+  ok(t2.s.verdict === "runners" && Object.values(t2.s.players).filter(p => p.wasRunner).every(p => p.score >= MANHUNT.POINTS.UNCAUGHT), "time's up with runners free: the runners win, and the free ones score");
+  ok(t.errors().length === 0 && t2.errors().length === 0, "no errors: " + (t.errors()[0] ?? t2.errors()[0] ?? "none"));
+  mhDone(t2);
 }
 
 // ===================================================================== rejoin
@@ -1324,6 +1493,91 @@ group("Cleanup — nothing survives the party");
   ok(window.__game === null, "the debug handle no longer pins the state");
 }
 
+
+group("The map — city chunks: the archive, heights, roofs, heroes, detail rings");
+{
+  const buf = new Uint8Array(await (await fetch("/web/tiles/cities.pmtiles")).arrayBuffer());
+  // a server that honours byte ranges (R2, Vercel), and one that doesn't
+  let ranges = 0;
+  const ranged = new PMTiles("x", { fetch: async (u, o) => { ranges++; const [, a, b] = /bytes=(\d+)-(\d+)/.exec(o.headers.Range); return new Response(buf.slice(+a, +b + 1), { status: 206 }); } });
+  const whole = new PMTiles("x", { fetch: async () => new Response(buf.slice(), { status: 200 }) });
+  const meta = await ranged.metadata();
+  ok(meta.areas?.length === 6 && /OpenStreetMap/.test(meta.attribution), `the test archive: ${meta.areas.map(a => a.id).join(", ")}, with attribution`);
+  ok(zxyToTileId(0, 0, 0) === 0 && zxyToTileId(1, 0, 0) === 1 && zxyToTileId(16, 55886, 25386) === 4875776909, "tile ids follow the PMTiles Hilbert order");
+  const at = (lat, lng) => lngLatToTile(lng, lat, 16).map(Math.floor);
+  const [ix, iy] = at(37.5346, 126.9946);
+  const a1 = await ranged.tile(16, ix, iy), a2 = await whole.tile(16, ix, iy);
+  ok(a1 && a2 && a1.length === a2.length && ranges >= 2, `Itaewon's centre chunk reads the same over byte ranges (${ranges} requests) and from a whole-file reply`);
+  ok(await ranged.tile(16, ix + 400, iy) === null, "a chunk the archive doesn't have is null, not an error");
+  const chunk = JSON.parse(new TextDecoder().decode(a1));
+  ok(chunk.b.length > 300 && chunk.r.length > 20, `Itaewon's centre chunk: ${chunk.b.length} buildings, ${chunk.r.length} road pieces`);
+  const floorsOk = { h: [2, 4], a: [10, 20], c: [3, 6], o: [8, 20], v: [3, 5], i: [1, 3], s: [1, 1] };
+  const all = [];
+  for (const a of meta.areas) { const [x, y] = at(a.lat, a.lng); const t = await ranged.tile(16, x, y); if (t) all.push(...JSON.parse(new TextDecoder().decode(t)).b); }
+  const guessed = all.filter(b => !b.m), bad = guessed.filter(b => b.f < floorsOk[b.k][0] || b.f > floorsOk[b.k][1]);
+  ok(guessed.length > 100 && !bad.length, `buildings with no height in the data get one by type: houses 2-4 floors, apartments 10-20, commercial 3-6, offices 8-20 (${guessed.length} checked)`);
+  ok(all.some(b => b.m) && all.every(b => b.h > 2 && b.h < 650), "measured and registry heights are kept as they are");
+  const kinds = new Set(all.map(b => b.k)), roofs = new Set(all.map(b => b.r));
+  ok(["h", "a", "c", "o"].every(k => kinds.has(k)) && roofs.has("f") && (roofs.has("g") || roofs.has("h")), `types ${[...kinds].join("")} and roofs ${[...roofs].join("")} (flat, gabled, hipped)`);
+  ok(worldHeight(25) === 25 * 0.55 * 2.4 && worldHeight(200) < 200 * 0.55 * 2.4 && worldHeight(200) > worldHeight(100), "the map's 2.4x vertical up to 25 m, gentler above, never shrinking");
+  // geometry
+  const tri = earcut([[0, 0], [10, 0], [10, 10], [5, 4], [0, 10]]);
+  ok(tri.length === 9, "a concave footprint triangulates into n-2 triangles");
+  const ob = orientedBox([[0, 0], [20, 10], [15, 20], [-5, 10]]);
+  ok(ob && Math.abs(ob.L * ob.S - Math.abs(ringArea([[0, 0], [20, 10], [15, 20], [-5, 10]]))) < 1, "a rotated rectangle's oriented box is the rectangle itself");
+  const origin = [37.5346, 126.9946];
+  const near = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 0 });
+  const far = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1 });
+  const tris = o => Object.values(o.groups).reduce((n, g) => n + (g.idx ? g.idx.length / 3 : 0), 0);
+  ok(near.groups.shop && near.groups.sign && near.lamps.length > 0 && near.groups.lines, `up close: shopfronts (${near.stats.shops}), lit signs (${near.stats.signs}), lamps (${near.stats.lamps}), outlines`);
+  ok(!far.groups.shop && !far.groups.sign && !far.lamps.length && far.groups.wall_g && tris(far) < tris(near) * 0.7, `further out: walls and roofs only, ${tris(far)} triangles vs ${tris(near)}`);
+  const again = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 0 });
+  ok(again.groups.roof.pos.length === near.groups.roof.pos.length && again.groups.roof.pos.every((v, i) => v === near.groups.roof.pos[i]), "a chunk builds the same every time (you come back to the same street)");
+  const floats = Object.values(near.groups).flatMap(g => [g.pos]).every(p => p.every(Number.isFinite));
+  ok(floats, "no NaN or Infinity in any vertex");
+  // a hero model hides the procedural building under it; a label-only hero doesn't
+  const hero = { lat: 37.534673, lng: 126.994076, clear: 12, glb: "x.glb" };
+  const hid = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, heroes: [hero] });
+  ok(hid.stats.hidden > 0 && hid.stats.buildings === far.stats.buildings - hid.stats.hidden, `a hero with a model hides the procedural building(s) at its spot (${hid.stats.hidden})`);
+  const clr = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, clearAt: 14 });
+  ok(clr.stats.hidden > 0, "nothing stands on the spot you stand on");
+  const heroes = (await (await fetch("/web/data/heroes.json")).json()).heroes;
+  ok(heroes.length >= 12 && heroes.every(h => h.id && h.label && Number.isFinite(h.lat) && Number.isFinite(h.lng) && "glb" in h && Array.isArray(h.offset)), "data/heroes.json: every hero has an id, a label, a spot, a model slot and an offset");
+  ok(heroes.every(h => !h.fp || h.fp.every(([lng, lat]) => Math.abs(lng - h.lng) < 0.002 && Math.abs(lat - h.lat) < 0.002)), "hero footprints are lng/lat around their own pin");
+}
+}
+group("Onboarding — English and Korean, guest setup, invite links, analytics");
+{
+  const en = Object.keys(STRINGS.en), ko = Object.keys(STRINGS.ko);
+  const miss = en.filter(k => !(k in STRINGS.ko)), extra = ko.filter(k => !(k in STRINGS.en));
+  ok(!miss.length && !extra.length, `every string in both languages (${en.length} keys)${miss.length ? ` · no Korean: ${miss.join(", ")}` : ""}${extra.length ? ` · extra: ${extra.join(", ")}` : ""}`);
+  const vars = s => [...String(s).matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort().join(",");
+  ok(en.every(k => vars(STRINGS.en[k]) === vars(STRINGS.ko[k])), "the same {placeholders} in both languages");
+  ok(["sidequest", "ritual", "artgallery", "secretdiary", "mask_off", "manhunt"].every(g => Array.isArray(STRINGS.en[`intro.${g}`]) && STRINGS.en[`intro.${g}`].length <= 2 && STRINGS.ko[`intro.${g}`].length <= 2 && STRINGS.en[`host.${g}`]),
+    "every game's host has 1–2 first-time lines, in both languages");
+  const rng = (() => { let a = 7; return () => ((a = (a * 16807) % 2147483647) / 2147483647); })();
+  const names = Array.from({ length: 300 }, () => suggestName(rng, "en")).concat(Array.from({ length: 300 }, () => suggestName(rng, "ko")));
+  ok(names.every(n => n.length >= 2 && n.length <= 20 && n === n.trim()), "name suggestions always fit the server's rule (2–20, trimmed)");
+  ok(new Set(names).size > 150, `…and vary (${new Set(names).size} different in 600)`);
+  setLang("ko"); const k = tr("recap.with", { n: 3, names: tr.list(["재", "미나", "솔"]) }); setLang("en");
+  ok(k === "재, 미나, 솔랑 게임 3개를 했어요" && tr.list(["Jae", "Mina", "Sol"]) === "Jae, Mina and Sol", "lists and numbers read right in both");
+  setLang(lang0);
+  const looks = Array.from({ length: 60 }, () => starterLook(rng));
+  ok(looks.every(l => STARTER_OUTFITS4.some(o => o.top === l.top && o.bottom === l.bottom && o.shoes === l.shoes)), "a new character always wears one of the six starter outfits");
+  ok(looks.every(l => JSON.stringify(normalizeAvatar4(l)) === JSON.stringify(l)) && new Set(looks.map(l => l.skin)).size > 3 && new Set(looks.map(l => l.eyes)).size > 3, "…with a random skin, hair and eyes, and nothing that clashes");
+  ok(e164("010-1234-5678", "en") === "+821012345678" && e164("01012345678", "ko") === "+821012345678" && e164("+1 (555) 123-4567") === "+15551234567" && e164("5551234567", "en") === "+15551234567" && e164("12", "en") === null,
+    "phone numbers: Korean local -> +82, international kept, junk refused");
+  const page = invitePage({ code: "ab12", name: `Jae's <b>party</b>"`, count: 4 });
+  ok(/og:title" content="Jae&#39;s &lt;b&gt;party&lt;\/b&gt;&quot; · 4 inside"/.test(page) && !/<b>party/.test(page), "the invite link's preview: the party's name and who's in, escaped");
+  ok(/url=\/\?party=AB12&amp;from=invite/.test(page) && invitePage({ code: "bad!" }) === null, "…then on to the party (a bad code goes nowhere)");
+  ok(/파티 초대|참여 중/.test(invitePage({ code: "AB12", count: 2, lang: "ko-KR" })), "a Korean phone gets the Korean preview");
+  // analytics: only known events, only whitelisted props, no names, codes or places
+  const before = window.__events.length;
+  track("joined_party", { source: "invite_link", code: "ABCD", name: "Jae", lat: 37.5, ms: 1200, channel: "smoke-signal" });
+  track("made_up_event", {});
+  const row = window.__events.slice(before);
+  ok(row.length === 1 && JSON.stringify(Object.keys(row[0].props)) === JSON.stringify(["source", "ms"]) && row[0].device && !("user" in row[0]), "an event keeps only whitelisted props (no code, name or place), with an install id, no account");
+  ok(EVENTS.length === 17 && JSON.stringify(clean({ permission: "location", trigger: "host", count: 3 })) === JSON.stringify({ permission: "location", trigger: "host", count: 3 }), "the 17 onboarding events, and their props");
 }
 log("head", `\n${pass} passed, ${fail} failed`);
 window.__done = { pass, fail };

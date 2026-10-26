@@ -8,18 +8,38 @@ rule here stops matching the code, fix the rule.
 
 Rando is a **mobile web app** — no native build, no bundler, no build step.
 Everything the browser loads is static files in `web/`, deployed by Vercel
-from `main` (`vercel.json` publishes `web/`). Every merge to `main` goes live
+from `main` (`vercel.json` publishes `web/`). The one exception is
+`api/invite.mjs`, a tiny Vercel function behind `/p/CODE` (an invite link's
+preview, then on to `/?party=CODE`). Every merge to `main` goes live
 at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 
 - **Backend:** Supabase (auth, Realtime channels, a few tables). Client config
   is `web/config.js`; the anon key there is meant to be public.
 - **Multiplayer:** Supabase Realtime broadcast + presence (`web/net.js`). No
   database tables for game state: rooms, games and chat die with the room.
+- **Onboarding** (see `docs/onboarding.md`): `web/onboard.js` (first open
+  to playing in under a minute: an invite link's landing, name, character,
+  the intro, Home, the invite sheet with its QR, phone verification only
+  where it matters, Settings, the safety card before a first game, a game
+  host's first lines, one-time hints, the first party's recap),
+  `web/onbkit.js` (its pure parts), `web/i18n.js` (English and Korean, the
+  device's language, switchable), `web/permissions.js` (a pre-prompt before
+  every system permission dialog), `web/analytics.js` (privacy-safe events
+  -> `017_events.sql`), `web/qr.js` + `web/vendor/qrcode.js`, `web/stats.html`
+  (the admin-only dashboard). `?onb=0` turns it off.
 - **Map chrome:** `web/backend.js` (auth, presence, the navy bottom bar on
   the world screen only: Explore / Host / Style, flat against the map; Host
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
   the style screen, NPC dialog),
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
+  the city map (`?city=tiles`, and what Manhunt plays on): `web/citytiles.js`
+  (chunks of buildings, roads, parks and water streamed round the camera
+  from `web/tiles/cities.pmtiles`, built in `web/citygen.worker.js` off
+  `web/citygen.js`, cached on the device by `web/citycache.js`; LOD rings,
+  lit windows at night, the see-through cut), `web/pmtiles.js` (the archive
+  reader), `web/data/heroes.json` (hand-made landmark glbs and where they
+  stand); baked by `scripts/fetch_overture.py` + `scripts/bake_city_tiles.py`
+  for the areas in `scripts/city_areas.json`,
   `web/charview.js` (a character in 3D, alive: drag to spin, pinch to zoom,
   double-tap to reset, Idle/Walk preview; the Style screen's lit stage),
   `web/avatar4.js` (the player character: one shared clay base,
@@ -50,7 +70,11 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   someone: 3D card, wave, report, block), `web/hpkit.js` (round machine, results screen, cleanup),
   `web/gamekit.js` (`HostGame`: host-authoritative state + snapshots; its
   `finish()` hands the final standings to the party),
-  `web/hpgames/*.js` and `web/artgallery.js` (the games), `web/npcscene.js`
+  `web/hpgames/*.js` and `web/artgallery.js` (the games; Manhunt also
+  `web/mhgeo.js`: zone, shrink, fuzzy circles, teams, points; `web/mhmap.js`:
+  the zone wall and the circles on the live map; `web/mhcrypt.js`: the team
+  channel; `web/mhscene.js` + `web/hunter.js` + `web/elevator.js`: its host,
+  The Hunter, in a camera-mapped elevator), `web/npcscene.js`
   (the game hosts' DOM beats: `Beats` off the synced clock, a card flying out
   of the scene, confetti), `web/npcstage.js` (what both hosts' 3D scenes
   share: the look-around camera, one component and one set of settings, tap
@@ -94,8 +118,14 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   grain, quality tiers; `smooth` + `msaa` for a soft look, `encoded` for a
   display-ready buffer, as the camera-mapped rooms need),
   `web/retrorooms.js`
-  (the other rooms on the kit: Secret Diary's study and Mask Off's lounge
-  behind their cards via `roomBackdrop()`; `?rooms=0`), `web/charrender.js` (players' own 3D characters as
+  (the other rooms on the kit: Secret Diary's study behind its cards via
+  `roomBackdrop()`, and Mask Off's lounge if its table can't run; `?rooms=0`),
+  `web/roundtable.js` (Mask Off's room: no host, the players themselves,
+  each their own 3D character on a chair round a table under one low lamp,
+  candles, a window on the city; cream masks that slide off onto the table;
+  every phone first person from its own seat, `npcstage.js` `firstPerson`;
+  the picked one's spotlight, the "not asked yet" glow, the asked card on
+  the table, Same glows, the end lifting above the table), `web/charrender.js` (players' own 3D characters as
   pictures for those scenes, warmed in the lobby), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors, party/coin/game numbers),
   `web/partyset.js` (a party is a set of 3 games: places → party points),
@@ -113,6 +143,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 - **Ritual prompts:** `015_ritual_prompts.sql`: `ritual_draw()` deals the
   performer's phone its prompt; the prompts mirror
   `web/data/ritual_prompts.json` (the SQL test checks they match).
+- **Analytics:** `017_events.sql`: the insert-only `events` table and the
+  admin-only `onboarding_stats()` (the dashboard, `web/stats.html`; admins are
+  rows in `admins`, added by hand).
 - **Coins and the shop:** `013_coins_shop.sql`. Balances, payouts and purchases
   happen only in SQL functions (`report_game`, `confirm_game`, `buy_item`);
   the client only displays them. `016_wardrobe4.sql` is the new wardrobe's
@@ -146,10 +179,15 @@ test/pose4.html                        # the player character sitting and standi
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
-node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (a full turn, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
+node test/maskoff_shots.mjs <dir> [--bots=4]   # Mask Off round the table with real characters: first person from two seats, a pick by tapping someone, a raised card, the card on the table, looking round / glide back, the end; a 10-player party seats 8 + the seat bar
+node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (round the table, real characters: a pick, a card, an answer, Same, Go deeper, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
+node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the real app page, fresh phones each in their own browser context: Path A (invite link -> landing -> name -> character -> room -> first game) and Path B (intro -> Home -> verify -> throw a party -> invite) recorded, every screen in EN + KO, a declined location, an interrupted install, a guest verifying mid-party, tap -> first game for 5 fresh phones (FFMPEG=... for the mp4s)
+node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
+node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps
+test/hunter.html                       # Manhunt's Hunter on his own: poses, doors, counter, orbit (open it on npm run serve:test)
 ```
 
 The test pages swap the network, 3D and audio modules for stubs in
@@ -220,10 +258,23 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   announced at all.
 - Explore mode reads your location on the phone only (and only if location
   is already allowed) to bound panning; it's never sent anywhere.
-- Manhunt must never send a coordinate off the phone. Only grid cells leave
-  the device, and per-player cells stay out of the synced state.
+- Manhunt never sends a player's position off the phone. Location is read
+  only during the head start and the hunt. At a ping (and every 5 s while
+  live, 30 s outside the zone) a runner's phone sends only a fuzzy circle
+  (`mhgeo.js` `fuzz`: 25–50 m, the centre moved a random way and snapped to
+  a 10 m grid, a fresh draw each time); teammates' circles and team chat are
+  end-to-end encrypted to the team (`mhcrypt.js`); Sprint Alert is sealed to
+  that runner and only buzzes. Circles are broadcast and kept in memory,
+  never in the synced state, never stored. The zone check runs on the
+  phone: only "in" / "out" goes to the host.
 - The prompt log (`diary_prompt_log`) must never contain user ids, handles or
   answer text.
+- Analytics (`events`, `web/analytics.js`) carry a random per-install id,
+  never a user id, and only whitelisted props: never a location, a name, a
+  party code or anything typed. Clients can only insert; the numbers are
+  admin-only (`onboarding_stats()`).
+- An invite link carries the party's name and how many are in (parties live
+  in no table), never anyone's handle or location.
 - Friendships only ever come from a verified in-person meetup (server-side).
   There is no client "add friend" action; the profile card only shows status.
 - Reports (`reports`) are insert-only from clients and carry no message text.
@@ -249,11 +300,13 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   when the party's 18+ setting is on (`questsFor()`). Humiliation Ritual's
   prompts go up to `maxLevelFor()` (public parties: mild).
 - Mask Off's deck is exactly the supplied list (light, real, deep); the host
-  picks the levels (light + real by default). Hands are private: only the
-  asker's own phone ever shows their hand, and hands go in the state as card
+  picks the levels (light + real by default). Hands are private: only each
+  player's own phone ever shows their hand, and hands go in the state as card
   ids only. No card is dealt twice in a game. Answers are spoken out loud,
   never typed, sent or stored. "Same" taps are counted, never attributed: the
-  host keeps who tapped to itself and only the count is synced or shown.
+  host keeps who tapped to itself and only the count is synced or shown (the
+  table's Same glows rise from its middle, never from anyone's seat; only
+  your own phone shows your own glow).
 - Humiliation Ritual: the prompt only ever reaches the performer's phone. That
   phone draws it (`ritual_draw`, server-side; offline: from the pool on that
   phone); the host's game state never carries a prompt or a prompt id, and

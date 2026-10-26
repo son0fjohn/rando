@@ -2,6 +2,16 @@
   "buildCommand": "",
   "outputDirectory": "web",
   "redirects": [
-    { "source": "/web/:path*", "destination": "/:path*", "permanent": true }
+    {
+      "source": "/web/:path*",
+      "destination": "/:path*",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/p/:code",
+      "destination": "/api/invite?code=:code"
+    }
   ]
 }

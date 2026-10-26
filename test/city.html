@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>city chunks</title>
+<base href="/web/">
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<!--INDEX_CSS-->
+<link rel="stylesheet" href="/web/theme.css">
+<style>html,body{margin:0;background:#000;height:100%;overflow:hidden} .frame{position:fixed!important;inset:0!important;aspect-ratio:auto!important;width:100vw!important;height:100vh!important}</style>
+</head><body>
+<!-- The map's city mode on its own: world3d with ?city=tiles, the origin at
+     ?at=lat,lng, your character standing there (?me=0: nobody), ?mode=day|night.
+     test/city_shots.mjs drives it. -->
+<div class="frame"></div>
+<script type="module">
+  import { world3d } from "/web/world3d.js";
+  import { STARTER_OUTFITS4 } from "/web/items4.js";
+  const q = new URLSearchParams(location.search);
+  const [lat, lng] = (q.get("at") || "37.5346,126.9946").split(",").map(Number);
+  try {
+    world3d.init(document.querySelector(".frame"));
+    if (q.get("me") !== "0") world3d.setPlayer({ avatar: { ...STARTER_OUTFITS4[1] }, lat, lng });
+    window.__w = world3d;
+    window.__ready = true;
+  } catch (e) { console.error(e); window.__failed = String(e?.message ?? e); }
+</script>
+</body></html>

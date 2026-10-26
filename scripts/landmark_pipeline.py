@@ -9,7 +9,7 @@ Per spot (from scripts/sv_spots.json):
   3. submit to Tripo multiview-to-3D (TRIPO_API_KEY) or Meshy
      multi-image-to-3D (MESHY_API_KEY) — whichever key exists, Tripo first
   4. poll, download the GLB into web/world2/landmarks/<spot>.glb
-  5. point the spot's web/landmarks.json entry at the file (the engine
+  5. point the spot's web/data/heroes.json entry at the file (the engine
      applies the locked low-poly material pass + outline at load and
      suppresses the generic prisms on that plot)
   6. PURGE the Street View refs (one-time reference use, never archived)
@@ -31,7 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from fetch_streetview import OUTDIR, META, IMG, offset, bearing, get_json  # noqa: E402
 
-LANDMARKS = os.path.join(ROOT, "web", "landmarks.json")
+LANDMARKS = os.path.join(ROOT, "web", "data", "heroes.json")
 OUT_GLB_DIR = os.path.join(ROOT, "web", "world2", "landmarks")
 
 TRIPO = "https://api.tripo3d.ai/v2/openapi"
@@ -231,15 +231,16 @@ def main():
     out_path = os.path.join(OUT_GLB_DIR, f"{spot['id']}.glb")
     urllib.request.urlretrieve(glb_url, out_path)
     lm = json.load(open(LANDMARKS))
-    entry = next((l for l in lm["landmarks"] if l["id"] == spot["id"]), None)
+    entry = next((l for l in lm["heroes"] if l["id"] == spot["id"]), None)
     if entry is None:
-        entry = {"id": spot["id"], "lat": spot["lat"], "lng": spot["lng"],
-                 "yaw": 0, "h": 30, "clear": 34, "glb": None}
-        lm["landmarks"].append(entry)
+        entry = {"id": spot["id"], "label": spot.get("label", spot["id"]), "lat": spot["lat"], "lng": spot["lng"],
+                 "rot": None, "h": 22, "clear": 60, "glb": None, "scale": 1, "offset": [0, 0, 0], "status": "label"}
+        lm["heroes"].append(entry)
     entry["glb"] = f"world2/landmarks/{spot['id']}.glb"
-    with open(LANDMARKS, "w") as f:
-        json.dump(lm, f, indent=2)
-    print(f"  {out_path} ({os.path.getsize(out_path) // 1024}KB) -> landmarks.json")
+    entry["status"] = "live"
+    with open(LANDMARKS, "w", encoding="utf-8") as f:
+        json.dump(lm, f, indent=1, ensure_ascii=False)
+    print(f"  {out_path} ({os.path.getsize(out_path) // 1024}KB) -> data/heroes.json")
 
     print("[4/4] purge street view refs (one-time use)")
     shutil.rmtree(os.path.join(OUTDIR, spot["id"]), ignore_errors=True)

@@ -36,3 +36,5 @@ scripts/naver_usage.json
 # test output
 shots/
 sim-shots/
+scripts/overture_cache/
+test/tmp_glb/

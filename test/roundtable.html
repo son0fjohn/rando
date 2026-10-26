@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>round table</title>
+<script type="importmap">
+{ "imports": {
+  "https://esm.sh/three@0.160.0": "/node_modules/three/build/three.module.js",
+  "https://esm.sh/three@0.160.0/": "/node_modules/three/",
+  "three": "/node_modules/three/build/three.module.js"
+} }
+</script>
+<link rel="stylesheet" href="/web/theme.css">
+<style>html,body{margin:0;background:#000;height:100%} #w{position:relative;width:100vw;height:100vh;overflow:hidden}</style>
+</head><body>
+<!-- Mask Off's round table on its own (web/roundtable.js): ?n=6&seat=0
+     seats n players in the starter outfits and looks from seat `seat`.
+     test/maskoff_shots.mjs drives it. -->
+<div id="w"></div>
+<script type="module">
+  import { roundTable } from "/web/roundtable.js";
+  import { STARTER_OUTFITS4 } from "/web/items4.js";
+  const q = new URLSearchParams(location.search), n = +q.get("n") || 6, mine = +q.get("seat") || 0;
+  const NAMES = ["mina", "jae", "soo", "theo", "ari", "dani", "kai", "lu", "rin", "bo"];
+  const SKINS = [2, 5, 3, 7, 1, 4, 6, 8, 2, 5], HAIRC = ["darkbrown", "black", "blonde", "brown", "red", "black", "darkbrown", "pink", "navy", "black"];
+  window.__players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: NAMES[i % NAMES.length], avatar: { ...STARTER_OUTFITS4[i % STARTER_OUTFITS4.length], skin: SKINS[i % 10], hairColor: HAIRC[i % 10] } }));
+  try {
+    window.__rt = await roundTable(document.getElementById("w"));
+    __rt.seat(__players, `p${mine}`);
+    window.__ready = true;
+  } catch (e) { console.error(e); window.__failed = String(e?.message ?? e); }
+</script>
+</body></html>

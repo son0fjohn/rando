@@ -1,0 +1,585 @@
+{
+ "comment": "Hero landmarks: handmade models that replace (and hide) the procedural building at a spot. One entry per hero: where it is (lat/lng; fp = footprint [[lng,lat]...] when known; osm = the OSM way id 'w123' when known), the model (glb, relative to web/; null = the procedural building stays and only the label shows), how it sits (scale, rot = yaw in degrees or null to face the footprint's long side, offset = [east, up, north] metres), h = height in metres to fit to, clear = metres around the pin whose procedural buildings are hidden once the model is in, label + glow for the map. status: label (no model yet), live (model in), proposed (on the list, not approved). retired_glb = the old Tripo model kept for reference (not shown). Pipeline: scripts/hero_landmark.py; see docs/map_city.md.",
+ "heroes": [
+  {
+   "id": "hamilton-hotel",
+   "label": "Hamilton Hotel",
+   "lat": 37.534673,
+   "lng": 126.994076,
+   "fp": [
+    [
+     126.9941057,
+     37.5346378
+    ],
+    [
+     126.9940439,
+     37.5346345
+    ],
+    [
+     126.9940295,
+     37.534725
+    ],
+    [
+     126.9940933,
+     37.5347299
+    ],
+    [
+     126.9941057,
+     37.5346378
+    ]
+   ],
+   "h": 28.8,
+   "clear": 76.4,
+   "glb": null,
+   "scale": 1,
+   "rot": 180,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "osm": null,
+   "reg": "1117013000101230015009580",
+   "status": "label",
+   "retired_glb": "world2/landmarks/hamilton-hotel.glb"
+  },
+  {
+   "id": "itaewon-crossing-east",
+   "label": "Itaewon Crossing",
+   "lat": 37.53455,
+   "lng": 126.99465,
+   "h": 19.7,
+   "clear": 54.5,
+   "glb": null,
+   "scale": 1,
+   "rot": 270,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "osm": null,
+   "status": "label"
+  },
+  {
+   "id": "itaewon-station",
+   "label": "Itaewon Station",
+   "lat": 37.534473,
+   "lng": 126.993752,
+   "fp": [
+    [
+     126.993875,
+     37.5344322
+    ],
+    [
+     126.9935846,
+     37.5344141
+    ],
+    [
+     126.9935722,
+     37.5345342
+    ],
+    [
+     126.9938544,
+     37.5345523
+    ],
+    [
+     126.993875,
+     37.5344322
+    ]
+   ],
+   "h": 3.0,
+   "clear": 18.2,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#ffc84d",
+   "osm": null,
+   "reg": "1117013000101190023000001",
+   "status": "label",
+   "retired_glb": "world2/landmarks/itaewon-station.glb"
+  },
+  {
+   "id": "grand-ole-opry",
+   "label": "Grand Ole Opry",
+   "lat": 37.534086,
+   "lng": 126.996588,
+   "fp": [
+    [
+     126.9966391,
+     37.534021
+    ],
+    [
+     126.996532,
+     37.5340112
+    ],
+    [
+     126.9965093,
+     37.5341197
+    ],
+    [
+     126.9965876,
+     37.5341312
+    ],
+    [
+     126.9965855,
+     37.5341493
+    ],
+    [
+     126.9966226,
+     37.534151
+    ],
+    [
+     126.9966391,
+     37.534021
+    ]
+   ],
+   "h": 9.6,
+   "clear": 40.0,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#ff5d4d",
+   "osm": null,
+   "reg": "1117013000101360002009745",
+   "status": "label",
+   "retired_glb": "world2/landmarks/grand-ole-opry.glb"
+  },
+  {
+   "id": "jacks-bar",
+   "label": "Jack's Bar",
+   "lat": 37.535095,
+   "lng": 126.992379,
+   "fp": [
+    [
+     126.9924023,
+     37.5352004
+    ],
+    [
+     126.9924147,
+     37.5350885
+    ],
+    [
+     126.9924703,
+     37.5350902
+    ],
+    [
+     126.9924847,
+     37.5349865
+    ],
+    [
+     126.9924044,
+     37.5349783
+    ],
+    [
+     126.9923838,
+     37.5350161
+    ],
+    [
+     126.9923426,
+     37.5350737
+    ],
+    [
+     126.992322,
+     37.5350934
+    ],
+    [
+     126.9923241,
+     37.5351017
+    ],
+    [
+     126.9923282,
+     37.5351066
+    ],
+    [
+     126.9923302,
+     37.5351082
+    ],
+    [
+     126.9923199,
+     37.5351987
+    ],
+    [
+     126.9924023,
+     37.5352004
+    ]
+   ],
+   "h": 10.6,
+   "clear": 32.7,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#ff5d8a",
+   "osm": null,
+   "reg": "1117013000101160017009465",
+   "status": "label",
+   "retired_glb": "world2/landmarks/jacks-bar.glb"
+  },
+  {
+   "id": "soap",
+   "label": "Soap",
+   "lat": 37.533878,
+   "lng": 126.99492,
+   "fp": [
+    [
+     126.9949625,
+     37.5338319
+    ],
+    [
+     126.9948698,
+     37.5338253
+    ],
+    [
+     126.9948595,
+     37.5339338
+    ],
+    [
+     126.994911,
+     37.5339371
+    ],
+    [
+     126.9949563,
+     37.5339092
+    ],
+    [
+     126.9949625,
+     37.5338319
+    ]
+   ],
+   "h": 6.4,
+   "clear": 29.1,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#4da6ff",
+   "osm": null,
+   "reg": "1117013000101310001009788",
+   "status": "label",
+   "retired_glb": "world2/landmarks/soap.glb"
+  },
+  {
+   "id": "danco",
+   "label": "Danco",
+   "lat": 37.534967,
+   "lng": 126.994581,
+   "fp": [
+    [
+     126.9946185,
+     37.5349915
+    ],
+    [
+     126.9946185,
+     37.5349832
+    ],
+    [
+     126.9946453,
+     37.5349849
+    ],
+    [
+     126.9946556,
+     37.5349273
+    ],
+    [
+     126.994495,
+     37.5349109
+    ],
+    [
+     126.9944867,
+     37.5349602
+    ],
+    [
+     126.9945073,
+     37.5349816
+    ],
+    [
+     126.9946185,
+     37.5349915
+    ]
+   ],
+   "h": 9.6,
+   "clear": 29.1,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#ff5d3d",
+   "osm": null,
+   "reg": "1117013000101230007009219",
+   "status": "label",
+   "retired_glb": "world2/landmarks/danco.glb"
+  },
+  {
+   "id": "waikiki",
+   "label": "Waikiki",
+   "lat": 37.534966,
+   "lng": 126.994781,
+   "fp": [
+    [
+     126.9948842,
+     37.5349388
+    ],
+    [
+     126.9946865,
+     37.5349207
+    ],
+    [
+     126.9946762,
+     37.5349915
+    ],
+    [
+     126.9946824,
+     37.5349964
+    ],
+    [
+     126.9948739,
+     37.5350112
+    ],
+    [
+     126.9948842,
+     37.5349388
+    ]
+   ],
+   "h": 12.8,
+   "clear": 25.5,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#4de8c8",
+   "osm": null,
+   "reg": "1117013000101230005009512",
+   "status": "label",
+   "retired_glb": "world2/landmarks/waikiki.glb"
+  },
+  {
+   "id": "agave",
+   "label": "Agave",
+   "lat": 37.53506,
+   "lng": 126.994291,
+   "fp": [
+    [
+     126.9942293,
+     37.5350869
+    ],
+    [
+     126.9943734,
+     37.5351017
+    ],
+    [
+     126.9943796,
+     37.5350457
+    ],
+    [
+     126.9943611,
+     37.5350441
+    ],
+    [
+     126.9942869,
+     37.5350392
+    ],
+    [
+     126.9942375,
+     37.5350359
+    ],
+    [
+     126.9942354,
+     37.5350408
+    ],
+    [
+     126.9942293,
+     37.5350869
+    ]
+   ],
+   "h": 6.4,
+   "clear": 25.5,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#7dff5e",
+   "osm": null,
+   "reg": "1117013000101120006009482",
+   "status": "label",
+   "retired_glb": "world2/landmarks/agave.glb"
+  },
+  {
+   "id": "waikiki-beach-pub",
+   "label": "Waikiki Beach Pub",
+   "lat": 37.534855,
+   "lng": 126.993249,
+   "fp": [
+    [
+     126.9932612,
+     37.5348204
+    ],
+    [
+     126.9931623,
+     37.5348138
+    ],
+    [
+     126.9931459,
+     37.5349306
+    ],
+    [
+     126.9932736,
+     37.5349339
+    ],
+    [
+     126.9932983,
+     37.5349059
+    ],
+    [
+     126.9932921,
+     37.5348253
+    ],
+    [
+     126.9932797,
+     37.5348237
+    ],
+    [
+     126.9932653,
+     37.5348237
+    ],
+    [
+     126.9932612,
+     37.5348204
+    ]
+   ],
+   "h": 16.0,
+   "clear": 25.5,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#4db8ff",
+   "osm": null,
+   "reg": "1117013000101190007009523",
+   "status": "label",
+   "retired_glb": "world2/landmarks/waikiki-beach-pub.glb"
+  },
+  {
+   "id": "bolero",
+   "label": "Bolero",
+   "lat": 37.534805,
+   "lng": 126.9985,
+   "fp": [
+    [
+     126.9985752,
+     37.5347628
+    ],
+    [
+     126.9984948,
+     37.534725
+    ],
+    [
+     126.9983877,
+     37.5348681
+    ],
+    [
+     126.998464,
+     37.5349043
+    ],
+    [
+     126.9985752,
+     37.5347628
+    ]
+   ],
+   "h": 16.0,
+   "clear": 29.1,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#ff6a55",
+   "osm": null,
+   "reg": "1117013100107360015005234",
+   "addr": "서울특별시 용산구 이태원로 220",
+   "status": "label",
+   "retired_glb": "world2/landmarks/bolero.glb"
+  },
+  {
+   "id": "grainhaus",
+   "label": "Grainhaus",
+   "lat": 37.533733,
+   "lng": 126.99602,
+   "fp": [
+    [
+     126.99605,
+     37.5337085
+    ],
+    [
+     126.9959882,
+     37.5337036
+    ],
+    [
+     126.9959779,
+     37.533771
+    ],
+    [
+     126.9960377,
+     37.5337759
+    ],
+    [
+     126.99605,
+     37.5337085
+    ]
+   ],
+   "h": 16.0,
+   "clear": 29.1,
+   "glb": null,
+   "scale": 1,
+   "rot": null,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "glow": "#c8f04a",
+   "osm": null,
+   "reg": "1117013000101360046009799",
+   "addr": "서울특별시 용산구 우사단로 40",
+   "status": "label",
+   "retired_glb": "world2/landmarks/grainhaus.glb"
+  }
+ ]
+}

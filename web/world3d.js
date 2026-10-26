@@ -11,6 +11,7 @@ import { makeHumanCharacter, makeHumanCharacterSync, loadHumanTemplate,
          makeAnimatedCharacter } from "./avatar4.js";
 import { staticize, matteify } from "./avatar3.js";
 import { THEME } from "./theme.js";
+import { CityTiles, cityUniforms } from "./citytiles.js";
 
 // generated GLB characters are the default; ?glb=0 falls back to procedural
 // character system: the avatar4 clay character by default; ?legacy=glb keeps the old
@@ -32,9 +33,25 @@ export const CHAR_H = 15;
 
 // Geographic world: coordinates ARE real Itaewon geography, projected the
 // same way scripts/fetch_roads.py bakes the OSM roads.
-const GEO_CENTER = [37.5346, 126.9946]; // Itaewon station
+const GEO_CENTER = [37.5346, 126.9946]; // Itaewon station (city mode: wherever you are)
 const GEO_SCALE = 0.55;                 // world units per metre
-const WORLD_EDGE = 1050;                // far positions clamp to this radius
+// City mode: the map is streamed as procedural city chunks (citytiles.js)
+// around wherever you are, instead of the hand-baked Itaewon. ?city=tiles
+// turns it on; the first position (or ?at=lat,lng) becomes the origin.
+const CITY_Q = new URLSearchParams(location.search);
+export const CITY_MODE = CITY_Q.get("city") === "tiles";
+const CITY_URL = CITY_Q.get("tiles") || "tiles/cities.pmtiles";
+// (a game can switch the map to city mode and back mid-session:
+// world3d.enterCity / exitCity; Manhunt plays on the real streets)
+let cityOn = CITY_MODE;
+const ITAEWON = [GEO_CENTER[0], GEO_CENTER[1]];
+let WORLD_EDGE = CITY_MODE ? 12000 : 1050; // far positions clamp to this radius
+
+// world x,z -> [lat, lng] (geoPos's inverse, inside the edge)
+export function geoInv(x, z) {
+  const mLat = 110540.0, mLng = 111320.0 * Math.cos(GEO_CENTER[0] * Math.PI / 180);
+  return [GEO_CENTER[0] - z / (mLat * GEO_SCALE), GEO_CENTER[1] + x / (mLng * GEO_SCALE)];
+}
 
 export function geoPos(lat, lng) {
   const mLat = 110540.0, mLng = 111320.0 * Math.cos(GEO_CENTER[0] * Math.PI / 180);
@@ -81,6 +98,7 @@ export function pointInPoly(x, z, poly) {
 }
 
 export function terrainY(x, z) {
+  if (cityOn) return 0; // no elevation data for the whole world (yet): flat
   TERRAIN_ANCHORS ??= ZONE_FLAVOR.map(f => {
     const mLat = 110540.0, mLng = 111320.0 * Math.cos(GEO_CENTER[0] * Math.PI / 180);
     return { x: (f.lng - GEO_CENTER[1]) * mLng * GEO_SCALE,
@@ -122,8 +140,10 @@ export const ARCH_NPC_DEFS = [
 // Palettes are the law from assets/world/STYLE.md.
 const modeParam = new URLSearchParams(location.search).get("mode");
 const hourNow = new Date().getHours();
+// (a first open is always night: the onboarding's flyover is the night
+// city; index.html sets __RANDO_FIRST_NIGHT before any module loads)
 export const NIGHT = modeParam === "night" ||
-  (modeParam !== "day" && (hourNow >= 19 || hourNow < 6.5));
+  (modeParam !== "day" && (!!globalThis.__RANDO_FIRST_NIGHT || hourNow >= 19 || hourNow < 6.5));
 // ONE lighting rig for every scene, from theme.js — plus per-mode extras
 const L = NIGHT ? THEME.lighting.night : THEME.lighting.day;
 const M = {
@@ -223,7 +243,7 @@ export const world3d = {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(M.skyTop);
-    this.scene.fog = new THREE.Fog(M.fog, 340, 1250);
+    this.scene.fog = CITY_MODE ? new THREE.Fog(M.fog, 300, 980) : new THREE.Fog(M.fog, 340, 1250);
     this.camera = new THREE.PerspectiveCamera(50, w / h, 1, 2500);
 
     // IBL for the GLB characters (PBR materials only — the Lambert world
@@ -238,6 +258,11 @@ export const world3d = {
     this.scene.add(sun);
     this.sun = sun;
 
+    // the hand-baked Itaewon (terrain, roads, buildings, decor) lives in
+    // one group, so city mode can hide it and bring it back
+    this.worldRoot = new THREE.Group();
+    this.worldRoot.name = "itaewon";
+    this.scene.add(this.worldRoot);
     this.buildTerrain();
     this.scene.add(this.zoneRings);
     this.remoteGroup = new THREE.Group();
@@ -248,7 +273,14 @@ export const world3d = {
     if (!LEGACY_CHAR) {
       loadHumanTemplate().then(() => this.refreshChars(), () => {});
     }
-    this.loadWorld(); // async: real roads + zone-flavored buildings/trees
+    if (CITY_MODE) {
+      // the origin is the first place we're told about; ?at= pins it for tests
+      const at = (CITY_Q.get("at") || "").split(",").map(Number);
+      if (at.length === 2 && at.every(Number.isFinite)) this.startCity(at[0], at[1]);
+      else setTimeout(() => this.startCity(GEO_CENTER[0], GEO_CENTER[1]), 2500);
+    } else {
+      this.loadWorld(); // async: real roads + zone-flavored buildings/trees
+    }
 
     this.bindControls();
     window.addEventListener("resize", () => this.resize());
@@ -285,16 +317,19 @@ export const world3d = {
       sky.position.y = 430;
       sky.rotation.y = Math.PI / 2;
       this.scene.add(sky);
+      this.sky = sky;
       const cap = new THREE.Mesh(new THREE.CircleGeometry(1900, 72),
         new THREE.MeshBasicMaterial({ color: NIGHT ? 0x030b25 : 0x3072c7, fog: false }));
       cap.rotation.x = Math.PI / 2;
       cap.position.y = 1725;
       this.scene.add(cap);
+      this.skyCap = cap;
     });
 
     // ground: concrete paving within Itaewon proper (the reference's urban
     // floor), grass outside. The paved disc sits a hair above the grass
     // plane with a pale curb ring marking the transition.
+    if (CITY_MODE) { this.buildCityGround(); return; }
     const PAVED_R = 720;
     const groundMat = new THREE.MeshLambertMaterial({ color: M.grass });
     const gg = new THREE.PlaneGeometry(3000, 3000, 100, 100);
@@ -303,7 +338,7 @@ export const world3d = {
     for (let i = 0; i < gp.count; i++) gp.setY(i, terrainY(gp.getX(i), gp.getZ(i)));
     gg.computeVertexNormals();
     const ground = new THREE.Mesh(gg, groundMat);
-    this.scene.add(ground);
+    this.worldRoot.add(ground);
     this.loadImage("world2/road_grass.jpg").then(img => {
       const tex = this.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
       tex.repeat.set(38, 38); // block ≈ 80u of ground per repeat
@@ -339,9 +374,142 @@ export const world3d = {
       pgeo.computeVertexNormals();
       const paved = new THREE.Mesh(pgeo, new THREE.MeshLambertMaterial({ map: tex,
         color: NIGHT ? THEME.world.pavingNight : THEME.world.pavingDay }));
-      this.scene.add(paved);
+      this.worldRoot.add(paved);
       this.needsRender = true;
     }).catch(() => {});
+  },
+
+  // city mode: one flat paved plane that follows the camera (snapped to its
+  // texture period so the paving never swims); parks, water and roads are
+  // drawn over it by the chunks
+  buildCityGround() {
+    const SIZE = 6000, REP = 72;
+    this.groundPeriod = SIZE / REP;
+    const mat = new THREE.MeshLambertMaterial({ color: NIGHT ? THEME.world.pavingNight : THEME.world.pavingDay });
+    const g = new THREE.PlaneGeometry(SIZE, SIZE);
+    g.rotateX(-Math.PI / 2);
+    this.ground = new THREE.Mesh(g, mat);
+    this.scene.add(this.ground);
+    this.loadImage("world2/road_plaza.jpg").then(img => {
+      const tex = this.mirrorBlockTex(img, [0.05, 0.05, 0.27, 0.27]);
+      tex.repeat.set(REP, REP);
+      mat.map = tex;
+      mat.needsUpdate = true;
+      this.needsRender = true;
+    }).catch(() => {});
+  },
+
+  // city mode: pin the map's origin and start streaming chunks around it.
+  // Everything already placed against the old origin is placed again. A
+  // game can call it mid-session (Manhunt plays on the real streets of its
+  // zone) and exitCity() brings the Itaewon map back.
+  async enterCity(lat, lng) {
+    if (this.city) {
+      const [a0, b0] = this.city.origin;
+      if (Math.hypot((lat - a0) * 110540, (lng - b0) * 111320 * Math.cos(a0 * Math.PI / 180)) < 2500) return this.city;
+      this.city.dispose(); this.city = null;
+    }
+    if (this._cityStarting) return this._cityStarting;
+    let done;
+    this._cityStarting = new Promise(r => { done = r; });
+    cityOn = true; WORLD_EDGE = 12000;
+    GEO_CENTER[0] = lat; GEO_CENTER[1] = lng;
+    TERRAIN_ANCHORS = null;
+    if (this.worldRoot) this.worldRoot.visible = false;
+    for (const L of this.labels) if (L.old) L.hidden = true;
+    if (!this.ground) this.buildCityGround(); else this.ground.visible = true;
+    this.scene.fog = new THREE.Fog(M.fog, 300, 980);
+    this.target.set(0, 0, 0);
+    this.replaceAll();
+    this.heroes ??= (async () => { try { return (await (await fetch("data/heroes.json")).json()).heroes; } catch { return []; } })();
+    const heroes = await this.heroes;
+    this.city = new CityTiles(this, { url: CITY_URL, origin: [lat, lng], night: NIGHT, heroes });
+    if (!this._cityHeroes) { this._cityHeroes = true; this.cityHeroes(heroes); }
+    this._cityStarting = null;
+    done(this.city);
+    this.needsRender = true;
+    return this.city;
+  },
+  startCity(lat, lng) { return this.enterCity(lat, lng); },
+  // back to the hand-baked Itaewon (only when the session didn't start in city mode)
+  exitCity() {
+    if (!this.city || CITY_MODE) return;
+    this.city.dispose(); this.city = null;
+    cityOn = false; WORLD_EDGE = 1050;
+    GEO_CENTER[0] = ITAEWON[0]; GEO_CENTER[1] = ITAEWON[1];
+    TERRAIN_ANCHORS = null;
+    if (this.worldRoot) this.worldRoot.visible = true;
+    for (const L of this.labels) if (L.old) L.hidden = false;
+    if (this.ground) this.ground.visible = false;
+    this.scene.fog = new THREE.Fog(M.fog, 340, 1250);
+    this.target.set(0, 0, 0);
+    this.replaceAll();
+    this.needsRender = true;
+  },
+  get cityOn() { return cityOn; },
+  geo: (lat, lng) => geoPos(lat, lng),
+  ungeo: (x, z) => geoInv(x, z),
+  // your own character to where you really are (a game reading your GPS on
+  // your phone: Manhunt). It walks there, or jumps if it's far.
+  movePlayer(lat, lng) {
+    const rec = this.player;
+    if (!rec) return;
+    const p = geoPos(lat, lng), gp = rec.api.group.position;
+    if (gp.distanceTo(p) > 60) { gp.copy(p); rec.baseY = p.y; rec.walkTarget = null; rec.api.walking = false; }
+    else rec.walkTarget = p;
+    this.needsRender = true;
+  },
+  // the origin moved: put back everything that has a place on the map
+  replaceAll() {
+    if (this._lastZones) this.registerZones(this._lastZones);
+    if (this._lastRemotes) this.setRemotes(this._lastRemotes);
+    if (this._lastPlayerOpts) this.setPlayer(this._lastPlayerOpts);
+    if (this._lastExplore) this.setExplore(...this._lastExplore);
+    for (const def of ARCH_NPC_DEFS) {
+      const rec = this.archRecs?.[def.id];
+      if (rec) { const p = geoPos(def.lat, def.lng); rec.api.group.position.copy(p); rec.baseY = p.y; }
+    }
+  },
+
+  // city mode heroes (data/heroes.json): a label for every one; a model for
+  // the ones that have one, fitted to its height, turned and offset as the
+  // entry says, lit by the same night uniform as the procedural city
+  cityHeroes(heroes) {
+    const loader = new GLTFLoader();
+    for (const h of heroes) {
+      const pos = geoPos(h.lat, h.lng);
+      if (h.label) {
+        const top = new THREE.Vector3(pos.x, (h.h ?? 12) * GEO_SCALE * 2.4 + 6, pos.z);
+        this.addLabel(h.label, "hero", 3, () => top, h.glow);
+      }
+      if (!h.glb) continue;
+      loader.load(h.glb, gltf => {
+        const obj = gltf.scene;
+        const box = new THREE.Box3().setFromObject(obj);
+        const size = box.getSize(new THREE.Vector3());
+        const k = ((h.h ?? 12) * GEO_SCALE * 2.4) / Math.max(0.001, size.y) * (h.scale ?? 1);
+        obj.scale.setScalar(k);
+        const off = h.offset || [0, 0, 0];
+        obj.position.set(pos.x + off[0] * GEO_SCALE, -box.min.y * k + off[1] * GEO_SCALE * 2.4, pos.z - off[2] * GEO_SCALE);
+        obj.rotation.y = ((h.rot ?? 0) * Math.PI) / 180;
+        obj.traverse(o => {
+          if (!o.isMesh) return;
+          const old = o.material;
+          const mat = new THREE.MeshLambertMaterial({ map: old.map ?? null, color: old.color ?? 0xffffff, flatShading: true,
+            emissive: h.glow ? new THREE.Color(h.glow) : new THREE.Color(0), emissiveMap: old.emissiveMap ?? null });
+          mat.onBeforeCompile = sh => {
+            Object.assign(sh.uniforms, cityUniforms);
+            sh.fragmentShader = sh.fragmentShader
+              .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform vec3 uNightWall;")
+              .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.rgb *= mix(vec3(1.0), uNightWall, uNight);")
+              .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 0.6 * uNight;");
+          };
+          o.material = mat;
+        });
+        this.scene.add(obj);
+        this.needsRender = true;
+      }, undefined, err => console.warn("hero", h.id, err?.message || err));
+    }
   },
 
   loadImage(url) {
@@ -387,6 +555,7 @@ export const world3d = {
   // buildings placed along actual road frontage with density driven by
   // zone character (urban clusters), trees filling the green zones.
   async loadWorld() {
+    this._loadingOld = true;   // its labels belong to the Itaewon map (city mode hides them)
     let data;
     try {
       data = await (await fetch("roads.json")).json();
@@ -441,9 +610,9 @@ export const world3d = {
     const roadMat = new THREE.MeshLambertMaterial({ color: M.road });
     const roadMesh = new THREE.Mesh(mergeGeometries(roadGeos), roadMat);
     roadMesh.receiveShadow = true;
-    this.scene.add(roadMesh);
+    this.worldRoot.add(roadMesh);
     const jointMat = new THREE.MeshLambertMaterial({ color: M.road });
-    this.scene.add(new THREE.Mesh(mergeGeometries(jointGeos), jointMat));
+    this.worldRoot.add(new THREE.Mesh(mergeGeometries(jointGeos), jointMat));
     // plain asphalt for ribbons and junctions alike — no painted lines,
     // one dash-free crop shared so brightness always matches (straight
     // repeat: mirroring asphalt grain makes herringbone streaks)
@@ -598,9 +767,14 @@ export const world3d = {
     // so their clear-radius suppresses the generic prisms beneath them.
     let landmarks = [];
     try {
-      landmarks = (await (await fetch("landmarks.json")).json()).landmarks
-        .filter(l => l.lat != null && l.lng != null) // pending-pin entries stay parked
-        .map(l => ({ ...l, pos: geoPos(l.lat, l.lng) }));
+      // data/heroes.json is in metres and lng/lat; this loader works in
+      // world units (footprint, height, clear radius), so convert
+      landmarks = (await (await fetch("data/heroes.json")).json()).heroes
+        .filter(l => l.lat != null && l.lng != null && l.status !== "proposed")
+        .map(l => ({ ...l, name: l.label, yaw: l.rot ?? undefined, pos: geoPos(l.lat, l.lng),
+          h: (l.h ?? 12) * GEO_SCALE * 2.4, clear: (l.clear ?? 20) * GEO_SCALE,
+          fp: l.fp ? l.fp.slice(0, l.fp.length > 3 && l.fp[0][0] === l.fp.at(-1)[0] && l.fp[0][1] === l.fp.at(-1)[1] ? -1 : undefined)
+            .map(([lng, lat]) => { const q = geoPos(lat, lng); return [q.x, q.z]; }) : undefined }));
     } catch { /* optional */ }
     const nearLandmark = (x, z) => landmarks.some(l =>
       l.glb && (x - l.pos.x) ** 2 + (z - l.pos.z) ** 2 < l.clear * l.clear);
@@ -704,7 +878,7 @@ export const world3d = {
         const sm = new THREE.Mesh(mergeGeometries(shadowGeos),
           new THREE.MeshBasicMaterial({ color: 0x241c12, transparent: true,
             opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
-        this.scene.add(sm); // heights baked per-vertex against the terrain
+        this.worldRoot.add(sm); // heights baked per-vertex against the terrain
       }
       const lineMat = new THREE.LineBasicMaterial({
         color: NIGHT ? 0x39435c : 0x6b675e, transparent: true, opacity: 0.5 });
@@ -820,10 +994,10 @@ export const world3d = {
           emissiveIntensity: variant ? variant.e : 0,
           ...(variant ? { emissiveMap: variant.tex } : {}),
         }));
-        this.scene.add(mesh);
+        this.worldRoot.add(mesh);
         if (!roofGeos[i].length) { // class bucket may hold walls only
           const outline0 = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 40), lineMat);
-          this.scene.add(outline0);
+          this.worldRoot.add(outline0);
           risers.push([mesh, outline0]);
           return;
         }
@@ -833,9 +1007,9 @@ export const world3d = {
         if (NIGHT) rcol.multiply(NIGHT_WALL);
         const roof = new THREE.Mesh(rmerged, new THREE.MeshLambertMaterial({
           color: rcol, side: THREE.DoubleSide }));
-        this.scene.add(roof);
+        this.worldRoot.add(roof);
         const outline = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 40), lineMat);
-        this.scene.add(outline);
+        this.worldRoot.add(outline);
         risers.push([mesh, outline], [roof, roof]);
       });
       // loading flourish: each bucket rises from the ground, staggered.
@@ -999,7 +1173,7 @@ export const world3d = {
         polesPlaced.push({ x: px, z: pz });
       }
       const addMerged = (arr, mat) => {
-        if (arr.length) this.scene.add(new THREE.Mesh(mergeGeometries(arr), mat));
+        if (arr.length) this.worldRoot.add(new THREE.Mesh(mergeGeometries(arr), mat));
       };
       awnGeos.forEach((arr, i) => addMerged(arr, new THREE.MeshLambertMaterial({
         color: NIGHT ? new THREE.Color(AWN_COLS[i]).multiplyScalar(0.5) : AWN_COLS[i], flatShading: true })));
@@ -1015,7 +1189,7 @@ export const world3d = {
         color: NIGHT ? 0xffe2a0 : 0xf4e4c8,
         emissive: NIGHT ? 0xffc96e : 0x000000, emissiveIntensity: NIGHT ? 1.5 : 0 }));
       if (NIGHT && poolGeos.length) {
-        this.scene.add(new THREE.Mesh(mergeGeometries(poolGeos),
+        this.worldRoot.add(new THREE.Mesh(mergeGeometries(poolGeos),
           new THREE.MeshBasicMaterial({ color: 0xffb95e, transparent: true,
             opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false })));
       }
@@ -1024,7 +1198,7 @@ export const world3d = {
       if (wirePts.length) {
         const wg = new THREE.BufferGeometry();
         wg.setAttribute("position", new THREE.Float32BufferAttribute(wirePts, 3));
-        this.scene.add(new THREE.LineSegments(wg,
+        this.worldRoot.add(new THREE.LineSegments(wg,
           new THREE.LineBasicMaterial({ color: 0x2f2b26, transparent: true, opacity: 0.75 })));
       }
       console.log(`[rando] decor: ${awnings} awnings, ${acGeos.length} ACs, ${polesPlaced.length} poles`);
@@ -1099,7 +1273,7 @@ export const world3d = {
         if (fp && l.fp && !l.yaw) {
           // face the model along the footprint's longest edge (bbox fit
           // has no rotation; a diagonal-street building read as twisted).
-          // Explicit l.yaw in landmarks.json overrides per venue.
+          // An explicit rot in data/heroes.json overrides per venue.
           let bl = 0, bang = 0;
           for (let e2 = 0; e2 < fp.p.length; e2++) {
             const [ax, az] = fp.p[e2], [bx3, bz3] = fp.p[(e2 + 1) % fp.p.length];
@@ -1173,15 +1347,15 @@ export const world3d = {
           : (l._autoYaw ?? 0);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        this.scene.add(mesh);
+        this.worldRoot.add(mesh);
         const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 34),
           new THREE.LineBasicMaterial({ color: NIGHT ? 0x2b3441 : 0x5d6b76, transparent: true, opacity: 0.5 }));
         outline.position.copy(mesh.position);
         outline.rotation.copy(mesh.rotation);
-        this.scene.add(outline);
+        this.worldRoot.add(outline);
         occupy(l.pos.x, l.pos.z, l.clear);
         // nightlife venues ground their light: warm additive pool tinting
-        // the street around the hero at night (color from landmarks.json)
+        // the street around the hero at night (color from data/heroes.json)
         if (NIGHT && l.glow) {
           const R2 = l.clear * 1.7;
           const gcv = document.createElement("canvas");
@@ -1213,7 +1387,7 @@ export const world3d = {
           gg2.setAttribute("position", new THREE.Float32BufferAttribute(gpos, 3));
           gg2.setAttribute("uv", new THREE.Float32BufferAttribute(guv, 2));
           gg2.setIndex(gidx);
-          this.scene.add(new THREE.Mesh(gg2, new THREE.MeshBasicMaterial({
+          this.worldRoot.add(new THREE.Mesh(gg2, new THREE.MeshBasicMaterial({
             map: gtex, transparent: true, opacity: 0.5,
             blending: THREE.AdditiveBlending, depthWrite: false })));
         }
@@ -1265,7 +1439,7 @@ export const world3d = {
         if (!geos.length) return;
         const m = new THREE.Mesh(mergeGeometries(geos), mat);
         m.castShadow = false; m.receiveShadow = true;
-        this.scene.add(m);
+        this.worldRoot.add(m);
       };
       addM(exitRoof, new THREE.MeshLambertMaterial({
         color: NIGHT ? 0x6d7890 : 0x9aa1ab, flatShading: true }));
@@ -1313,7 +1487,7 @@ export const world3d = {
           barMesh.setMatrixAt(i, M4);
         });
         barMesh.renderOrder = 3;
-        this.scene.add(barMesh);
+        this.worldRoot.add(barMesh);
       }
 
       // STREET LIGHTS — OSM lamps first (zone returned none; array kept for
@@ -1375,7 +1549,7 @@ export const world3d = {
           M4.identity().setPosition(q.x, y + 6.9, q.z);
           headM.setMatrixAt(i, M4);
         });
-        this.scene.add(postM, headM);
+        this.worldRoot.add(postM, headM);
         if (NIGHT) {
           // warm pools under every lamp (additive, cheap)
           const pcv = document.createElement("canvas");
@@ -1398,7 +1572,7 @@ export const world3d = {
             poolM.setMatrixAt(i, M4);
           });
           poolM.renderOrder = 3;
-          this.scene.add(poolM);
+          this.worldRoot.add(poolM);
           // real point lights: budgeted to the nightlife core
           const core = geoPos(37.5346, 126.9937);
           const ranked = [...lampPts].sort((a, b2) =>
@@ -1407,7 +1581,7 @@ export const world3d = {
           for (const q of ranked.slice(0, 14)) {
             const pl = new THREE.PointLight(0xffd2a0, 1.15, 25, 1.8);
             pl.position.set(q.x, terrainY(q.x, q.z) + 6.6, q.z);
-            this.scene.add(pl);
+            this.worldRoot.add(pl);
           }
         }
       }
@@ -1467,7 +1641,7 @@ export const world3d = {
         map: tex, transparent: true, blending: THREE.AdditiveBlending,
         depthWrite: false }));
       m2.renderOrder = 1;
-      this.scene.add(m2);
+      this.worldRoot.add(m2);
     };
     for (const d of DISTRICTS) {
       const dp = geoPos(d.lat, d.lng);
@@ -1504,7 +1678,7 @@ export const world3d = {
         }
         beam.position.set(l.pos.x, l.pos.y + hgt / 2 + 2, l.pos.z);
         beam.renderOrder = 4;
-        this.scene.add(beam);
+        this.worldRoot.add(beam);
       }
     }
 
@@ -1550,7 +1724,7 @@ export const world3d = {
         if (!list.length) continue;
         const im = new THREE.InstancedMesh(lib[t].geo, lib[t].mat, list.length);
         list.forEach((mm, i) => im.setMatrixAt(i, mm));
-        this.scene.add(im);
+        this.worldRoot.add(im);
       }
       // the arcade landmark takes the station plaza rim, facing the center
       const st = flavors.reduce((a, b) => (a.p.lengthSq() < b.p.lengthSq() ? a : b));
@@ -1563,7 +1737,7 @@ export const world3d = {
         const landmark = new THREE.Mesh(lib.arcade.geo, lib.arcade.mat);
         landmark.position.set(px, 0, pz);
         landmark.rotation.y = Math.atan2(st.p.x - px, st.p.z - pz);
-        this.scene.add(landmark);
+        this.worldRoot.add(landmark);
         break;
       }
     }
@@ -1592,7 +1766,7 @@ export const world3d = {
         if (!list.length) continue;
         const im = new THREE.InstancedMesh(lib[t].geo, lib[t].mat, list.length);
         list.forEach((mm, i) => im.setMatrixAt(i, mm));
-        this.scene.add(im);
+        this.worldRoot.add(im);
       }
     }
 
@@ -1649,6 +1823,7 @@ export const world3d = {
     el.appendChild(document.createTextNode(text));
     this.labelLayer.appendChild(el);
     const rec = { el, getPos, pri, kind, len: text.length };
+    if (this._loadingOld && !this.city && ["street", "district", "hero", "exit"].includes(kind)) { rec.old = true; rec.hidden = cityOn; }
     this.labels.push(rec);
     return rec;
   },
@@ -1671,10 +1846,10 @@ export const world3d = {
       const dist = this.camera.position.distanceTo(pos);
       // npc tags never fade, shrink, or distance-cull — always readable
       const far = L.kind === "npc" ? Infinity
-        : L.kind === "district" ? 980 : L.kind === "zone" ? 640 : 460;
+        : L.kind === "ping" ? 2600 : L.kind === "district" ? 980 : L.kind === "zone" ? 640 : 460;
       if (dist > far) { L.el.style.display = "none"; continue; }
-      const s = L.kind === "npc" ? 1 : Math.max(0.6, Math.min(1.22, 170 / dist));
-      const op = L.kind === "npc" ? 1
+      const s = L.kind === "npc" || L.kind === "ping" ? 1 : Math.max(0.6, Math.min(1.22, 170 / dist));
+      const op = L.kind === "npc" ? 1 : L.kind === "ping" ? (L.alpha ?? 1)
         : Math.max(0, Math.min(1, (far - dist) / (far * 0.22)));
       placed.push({ L, x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H,
                     s, op, dist });
@@ -1701,6 +1876,7 @@ export const world3d = {
   },
 
   registerZones(zones) {
+    this._lastZones = zones;
     this.zoneRings.clear();
     for (const rec of this.labels.filter(l => l.kind === "zone")) this.removeLabel(rec);
     for (const z of zones.filter(z => z.kind !== "auto")) {
@@ -1888,6 +2064,7 @@ export const world3d = {
   },
 
   setPlayer(opts) { // { avatar, lat, lng } | null
+    if (CITY_MODE && opts && !this.city && !this._cityStarting) this.enterCity(opts.lat, opts.lng);
     this._lastPlayerOpts = opts || null;
     const prevPos = this.player ? this.player.api.group.position.clone() : null;
     if (this.player) {
@@ -2005,7 +2182,9 @@ export const world3d = {
   // explore mode: while invisible you can look around within radiusM metres
   // of your real location (read on this phone, never sent); null turns it off
   setExplore(lat, lng, radiusM = 1500) {
-    if (lat == null || lng == null) { this.homePos = null; this.exploreR = null; return; }
+    if (lat == null || lng == null) { this.homePos = null; this.exploreR = null; this._lastExplore = null; return; }
+    if (CITY_MODE && !this.city && !this._cityStarting) this.enterCity(lat, lng);
+    this._lastExplore = [lat, lng, radiusM];
     this.homePos = geoPos(lat, lng);
     this.exploreR = radiusM * GEO_SCALE;
     this.clampTarget();
@@ -2016,8 +2195,9 @@ export const world3d = {
       const dx = this.target.x - this.homePos.x, dz = this.target.z - this.homePos.z, d = Math.hypot(dx, dz);
       if (d > this.exploreR) { this.target.x = this.homePos.x + dx / d * this.exploreR; this.target.z = this.homePos.z + dz / d * this.exploreR; }
     }
-    this.target.x = Math.max(-1100, Math.min(1100, this.target.x));
-    this.target.z = Math.max(-1100, Math.min(1100, this.target.z));
+    const box = cityOn ? 8000 : 1100;
+    this.target.x = Math.max(-box, Math.min(box, this.target.x));
+    this.target.z = Math.max(-box, Math.min(box, this.target.z));
   },
   // how far the camera has wandered from where it would rest (world units)
   awayFromHome() {
@@ -2239,6 +2419,14 @@ export const world3d = {
       this.applyCamera();
     }
     for (const fn of this.tickHooks) { try { fn(t, dt); } catch (e) { console.warn("[rando] tick hook", e); } }
+    if (this.city) {
+      this.city.update(this.target);
+      // the ground and the sky go where you go (snapped: the paving stays put)
+      const P = this.groundPeriod || 80;
+      this.ground?.position.set(Math.round(this.target.x / P) * P, 0, Math.round(this.target.z / P) * P);
+      this.sky?.position.set(this.target.x, 430, this.target.z);
+      this.skyCap?.position.set(this.target.x, 1725, this.target.z);
+    }
     this.anchors = this.anchors.filter(a => this.placeAnchor(a));
     this.placeLabels();
     if (this.needsRender) {

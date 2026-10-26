@@ -1,4 +1,4 @@
-# NPC scenes: Side Quest's Prophet, the Ritual's Boss, the Art Gallery's Bunny
+# NPC scenes: Side Quest's Prophet, the Ritual's Boss, the Art Gallery's Bunny, Manhunt's Hunter
 
 Both games' hosts are rigged low-poly 3D characters, lit live, in a room
 that is real geometry painted with an approved picture (camera mapping), so
@@ -445,6 +445,71 @@ Credits for Bunny and the gala: 34 (the balance went from 237 to 203: 12 for
 Tripo, 4 for the two outpaints, the rest for 6 image edits and 6 background
 removals).
 
+## Manhunt: The Hunter in the elevator (`web/hunter.js`, `web/elevator.js`, `web/mhscene.js`)
+
+Manhunt is played on the live map; the Hunter only shows up for its
+moments, in a brushed-steel elevator. He's a bounty hunter in an off-white
+double-breasted suit (a fleck of red on it), gold aviators, a toothpick, a
+scar, a gold watch, slicked black hair, a handheld tracker with a green
+radar screen in his right hand, leaning back on the rail.
+
+- **The room** (`elevator.js`) is camera-mapped like the basement: the
+  picture's camera solved from the two walls' vanishing points (the rails,
+  the floor lines), the rail height and the floor's corner (`PROJ`: 1.62 m
+  up, 6.4° down, a 40.8° vertical field at 9:16; the camera stands well back,
+  a long lens). The cabin (4 × 3.6 × 2.48 m, rail at 0.87 m) is built big
+  enough that the ±40° look-around stays inside it; walls the picture never
+  saw take its steel as a tile. On top of the paint: a live red LED floor
+  counter (`counter()`: floors, the count-down, the head start's minutes),
+  the light panel's flicker, two door leaves in front of the camera that
+  slide open and shut (`doors()`).
+  - **The clean plate** (`games/manhunt/elevator/plate.webp`, 1080×1920):
+    the approved picture with him, his reflections and the dialog box taken
+    out.
+- **Him** (`hunter.js`): the rigged mesh (below), leaning on the back rail
+  (hips just off it, weight back), the tracker in his right hand. Lit by the
+  ceiling panel. Procedural animations on the bones (aimed limbs, blended
+  quickly): idle (breathing, the toothpick shifting, a glance at the tracker
+  now and then, his head following the camera a little), tie (straightens
+  his tie), tap (holds up the tracker and taps it twice: a green blip),
+  point (the tracker at you), smirk (a slow head cock), nod.
+- **When he shows** (`mhscene.js`, one scene reused):
+  - the start: full screen, the doors open on him, three short lines (the
+    rules), the doors close;
+  - the hunters' head start: "No peeking.", doors shut, the counter on the
+    minutes left;
+  - each ping (hunters): a small window slides up over the map, the counter
+    ticks 3, 2, 1, a ding (vibration only, unless sound is on), the doors
+    open, a short line, it slides away;
+  - the end: the doors open on him holding the WANTED posters, then the
+    full board and points.
+- **Taps:** him (a random line: "Everybody runs. Nobody hides forever." /
+  "Relax. It's sauce. Probably." / "I've never lost. Don't make it weird."),
+  the floor panel (a beep, a buzz), the light (a flicker), the counter.
+- **No 3D** (`?mh3d=0`, or WebGL won't start): the same moments as a card
+  with his dialog box.
+
+`test/hunter.html` (open it on `npm run serve:test`) shows him on his own:
+every pose, the doors, the counter, the orbit;
+`node test/manhunt_rec.mjs <dir>` records a whole game on 5 phones.
+
+### The Hunter's model (`web/games/manhunt/hunter/hunter.glb`)
+
+From the approved picture (`f561e3bd-4c11-489f-a737-6eb2044d85c7`):
+
+| Step | Model | Job | Credits |
+| --- | --- | --- | --- |
+| Turnaround sheet (front, left, back, right), the picture as the image input | `nano_banana_2` | `bd057927-ac22-4804-a657-ad8c4aaeae7a` | 2 |
+| 3D, attempt 1 of 3: the sheet cut into views (front `9daaa882…`, left `caa69780…`, back `c0b5c332…`, right `c4639b7d…`) | `tripo_h3_1_multiview_to_3d` | `65b0e374-c213-43f5-aa05-16b6dddf2bb5` | 12 |
+| The elevator's clean plate, the picture as the image input | `nano_banana_2` | `14a691f4-d474-4909-96bf-cc8337a6a8bc` | 2 |
+
+Total 16 credits; 1 of the 3 allowed Tripo attempts (the first was clean).
+Cleanup scripted like the Boss's: welded and simplified, the texture
+posterized to a flat palette (the suit's off-white, the gold, the tracker's
+green screen kept), a 20-joint skeleton at the model's own joints with
+geodesic skin weights; no non-uniform scale on any bone (it sheared his
+neck). 4,600 triangles, 3,780 vertices, 20 joints: 434 KB.
+
 ## Asset log
 
 Every image is `gpt_image_2_5` (1.5 credits each), one attempt each, with
@@ -531,12 +596,67 @@ The same kit, each with its own mood:
   moon and the map's night sky, moonlight coming in, a desk under a warm lamp,
   a bed, a bookshelf, posters, fairy lights, floating dust.
 - **Mask Off: a dim lounge.** One pendant light over a red velvet booth,
-  candles on two side tables, deep reds and purples, slow smoke haze.
+  candles on two side tables, deep reds and purples, slow smoke haze. (Only
+  behind Mask Off's cards on a phone that can't run its round table.)
 
-Secret Diary and Mask Off play on cards, so their room sits behind them
-(`roomBackdrop()` in `hpkit.js`) and the cards stay crisp and frosted on
-top; `?rooms=0` turns the rooms off. `node test/rooms_shots.mjs <dir>`
-shoots each room.
+Secret Diary plays on cards, so its room sits behind them (`roomBackdrop()`
+in `hpkit.js`) and the cards stay crisp and frosted on top; `?rooms=0`
+turns the rooms off. `node test/rooms_shots.mjs <dir>` shoots each room.
+
+## Mask Off: round the table (`web/roundtable.js`)
+
+No host: the players themselves sit round a table, and every phone sees it
+from its own seat.
+
+- **The room** is built in code (no picture to match): a warm, quiet room at
+  night, a round wooden table under one low hanging lamp that breathes a
+  little, three candles that flicker, a window onto the city's lights with
+  curtains, a bookshelf, a plant, a coffered-dark ceiling; soft and smooth
+  like the hosts' rooms (`retroStage`, smooth + MSAA, no bloom: the candles'
+  and the lamp's glows are their own).
+- **The seats:** everyone's own 3D character (`avatar4.js`, their current
+  outfit) on a chair, evenly spaced, in turn order (clockwise from above:
+  the next to ask sits on your left); up to 8 at the table, the rest in the
+  seat bar at the top. Seated with `stance: "chair"` (avatar4's new pose:
+  thighs forward, feet flat, forearms on the table's edge); they breathe,
+  blink, nod now and then and look at whoever's talking or deciding (`gaze`,
+  `tilt`).
+- **The masks:** a plain cream masquerade eye mask each (a canvas texture on
+  a curved plane), riding the head bone at the eyes. Answer: it slides off
+  and floats down onto the table in front of them; Done: back on. At the end
+  every mask is off.
+- **First person** (`npcstage.js` `firstPerson`): the camera sits back in
+  your chair at seated eye height looking at the table, the field of view a
+  little wider for 3–4 players (so the people either side are in view);
+  drag to turn your head (±80°), a little up and down, pinch to narrow, and
+  ~4 s after you let go it glides back to the table. Your own character
+  isn't drawn (until the end); your hands and cards are the page's: 5 cards
+  fanned in two hands in your skin tone, a deck beside them.
+- **Picking:** tap someone at the table (a raycast on their seat; a drag is
+  never a tap) or their name over their head; names out of view wait at the
+  screen's edge (‹ ›). The picked one gets a soft spotlight from above;
+  whoever hasn't been asked yet glows gently while you choose.
+- **The card:** Ask sends it from your hand (from the asker's seat on the
+  others' phones) to the middle of the table, where it lies face up; it's
+  also big over the table on every screen, always readable.
+- **Same:** warm motes rise from the middle of the table, one per tap (never
+  from a seat: who tapped stays unknown); your own phone shows your own glow
+  rising from where you sit.
+- **The end:** the camera lifts high above the table and drifts a little:
+  everyone together, you too, masks on the table; "12 moments you weren't
+  alone".
+- **Sound:** soft card flips and a shuffle (`fx.js` `flip`, `shuffle`) and a
+  very low pad of warm chords while you're at the table (`musicStart` /
+  `musicStop`); no buzzers, no stamps.
+- **No 3D characters** (the test pages' stubs): each seat gets a rounded
+  stand-in in the player's own colours, mask and all. **No WebGL:** the
+  cards, the names (tappable) and the lounge behind them.
+
+`node test/maskoff_shots.mjs <dir>` plays it with real characters (two
+phones and bots) and shoots both seats, a pick, a raised card, the card on
+the table, looking round and the end; `node test/games_rec.mjs <dir>
+maskoff` records a whole game on two phones; `test/roundtable.html?n=6&seat=0`
+is the table on its own.
 
 ### Room assets
 

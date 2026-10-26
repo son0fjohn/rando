@@ -3,12 +3,14 @@
 //   /app.html          the REAL app (web/index.html) with the CDN imports
 //                      mapped offline: three -> node_modules, supabase-js ->
 //                      test/stubs/supabase.js (see that file for the fake data)
+//   /p/CODE            an invite link (api/invite.mjs), on to /app.html?party=CODE
 //   test/*.html        test pages, with index.html's CSS inlined where they
 //                      say <!--INDEX_CSS--> (hpparty.html, diaryfit.html)
 // Pass { realAvatars: true } to keep the real avatar3 models on hpparty.html.
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
+import { invitePage } from "../api/invite.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".png": "image/png", ".jpg": "image/jpeg", ".css": "text/css", ".json": "application/json", ".woff2": "font/woff2", ".glb": "model/gltf-binary", ".svg": "image/svg+xml", ".webp": "image/webp", ".mp3": "audio/mpeg" };
@@ -26,6 +28,15 @@ export async function serve({ realAvatars = false, port = 0 } = {}) {
     try {
       const url = decodeURIComponent(req.url.split("?")[0]);
       let body, p;
+      // an invite link, as Vercel serves it (api/invite.mjs), on to the offline app page
+      const inv = /^\/p\/([A-Za-z0-9]{4})$/.exec(url);
+      if (inv) {
+        const q = new URL(req.url, "http://x").searchParams;
+        const html = invitePage({ code: inv[1], name: q.get("n"), count: q.get("c"), origin: `http://${req.headers.host}`, app: `/app.html`, lang: req.headers["accept-language"] ?? "en" });
+        res.writeHead(html ? 200 : 404, { "content-type": "text/html; charset=utf-8" });
+        res.end(html ?? "");
+        return;
+      }
       if (url === "/app.html") {
         p = "app.html";
         const html = await readFile(join(ROOT, "web/index.html"), "utf8");
@@ -41,7 +52,16 @@ export async function serve({ realAvatars = false, port = 0 } = {}) {
           body = Buffer.from(s);
         }
       }
-      res.writeHead(200, { "content-type": MIME[extname(p)] ?? "application/octet-stream" });
+      const type = MIME[extname(p)] ?? "application/octet-stream";
+      // byte ranges, like Vercel and R2: the city chunks (PMTiles) need them
+      const m = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range || "");
+      if (m) {
+        const a = +m[1], z = Math.min(body.length - 1, m[2] ? +m[2] : body.length - 1);
+        res.writeHead(206, { "content-type": type, "content-range": `bytes ${a}-${z}/${body.length}`, "accept-ranges": "bytes" });
+        res.end(body.subarray(a, z + 1));
+        return;
+      }
+      res.writeHead(200, { "content-type": type, "accept-ranges": "bytes" });
       res.end(body);
     } catch { res.writeHead(404); res.end(); }
   });

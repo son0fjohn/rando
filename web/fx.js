@@ -62,6 +62,8 @@ export const sfx = {
   boom() { try { tone(120, 0.6, { type: "sine", gain: 0.3, slide: 30 }); noise(0.6, { gain: 0.3, lp: 600, lpEnd: 60 }); } catch {} },
   klaxon() { try { tone(320, 0.5, { type: "sawtooth", gain: 0.16, slide: 140 }); tone(320, 0.5, { type: "sawtooth", gain: 0.16, slide: 140, at: 0.55 }); } catch {} },
   whistle() { try { tone(2100, 0.35, { type: "triangle", gain: 0.14, slide: 2300 }); tone(2300, 0.3, { type: "triangle", gain: 0.14, at: 0.4, slide: 1900 }); } catch {} },
+  // the elevator's ding: a two-tone bell
+  ding() { try { tone(1319, 0.6, { gain: 0.1, release: 0.5 }); tone(1047, 0.8, { at: 0.3, gain: 0.1, release: 0.7 }); } catch {} },
   chime() { try { [1568, 2093, 2637].forEach((f, i) => tone(f, 0.6, { at: i * 0.09, gain: 0.08, release: 0.4 })); } catch {} },
   pop() { try { tone(700, 0.05, { gain: 0.12, slide: 1400 }); } catch {} },
   // the Ritual clown: a gacha capsule popping open
@@ -80,9 +82,53 @@ export const sfx = {
       while (t < secs) { noise(0.05, { gain: 0.05 + 0.13 * (t / secs), lp: 2600, lpEnd: 900, at: t }); t += gap; gap = Math.max(0.035, gap * 0.985); }
     } catch {}
   },
+  // cards: a soft paper flip; a shuffle (a few riffled flips)
+  flip() { try { noise(0.09, { gain: 0.09, lp: 4200, lpEnd: 1800 }); tone(420, 0.06, { gain: 0.03, slide: 620 }); } catch {} },
+  shuffle() { try { for (let i = 0; i < 7; i++) noise(0.05, { gain: 0.06, lp: 3800, lpEnd: 1600, at: i * 0.045 }); } catch {} },
+  // soft music under a quiet game (Mask Off): a slow pad of warm chords,
+  // very low; musicStop() fades it. Silent while muted.
+  musicStart() { try { music.start(); } catch {} },
+  musicStop() { try { music.stop(); } catch {} },
   thud() { try { tone(90, 0.28, { gain: 0.32, slide: 45 }); noise(0.18, { gain: 0.28, lp: 900, lpEnd: 120 }); } catch {} },
   slam() { try { tone(140, 0.35, { gain: 0.28, slide: 55 }); noise(0.3, { gain: 0.22, lp: 1800, lpEnd: 150 }); tone(784, 0.25, { gain: 0.08, at: 0.05 }); } catch {} },
 };
+const music = (() => {
+  // Am9 · Fmaj7 · Cmaj7 · G6, a chord every 4.8 s, sine + a little triangle
+  const CHORDS = [[220, 261.6, 329.6, 392, 493.9], [174.6, 220, 261.6, 329.6, 440], [130.8, 196, 246.9, 329.6, 392], [196, 246.9, 293.7, 329.6, 392]];
+  let timer = 0, i = 0, bus = null;
+  const chord = () => {
+    if (isMuted()) return;
+    const c = ac(), t0 = c.currentTime, len = 5.6;
+    for (const [k, f] of CHORDS[i++ % CHORDS.length].entries()) {
+      for (const type of ["sine", "triangle"]) {
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = type; o.frequency.value = f * (type === "triangle" ? 1.002 : 1);
+        const peak = (type === "sine" ? 0.018 : 0.006) * (k ? 0.8 : 1);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(peak, t0 + 1.6);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+        o.connect(g).connect(bus); o.start(t0); o.stop(t0 + len + 0.05);
+      }
+    }
+  };
+  return {
+    start() {
+      if (timer) return;
+      const c = ac();
+      bus = c.createGain(); bus.gain.value = 1;
+      const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1400;
+      bus.connect(lp).connect(c.destination);
+      chord(); timer = setInterval(chord, 4800);
+    },
+    stop() {
+      if (!timer) return;
+      clearInterval(timer); timer = 0;
+      const c = ac(), b = bus; bus = null;
+      try { b.gain.setTargetAtTime(0.0001, c.currentTime, 0.6); setTimeout(() => b.disconnect(), 3000); } catch {}
+    },
+  };
+})();
+
 export function buzz(pattern = 60) { try { navigator.vibrate?.(pattern); } catch {} }
 
 // ---------------------------------------------------------------- screen fx

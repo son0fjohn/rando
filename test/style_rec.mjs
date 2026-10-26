@@ -26,7 +26,7 @@ const errors = [];
 const LOOK = { skin: "2", eyes: "sharp", iris: "brown", hair: "middle-part", hairColor: "black", top: "tee-white", bottom: "cargo-chain", shoes: "skate-blue" };
 const A = await ctx.newPage();
 A.on("pageerror", e => errors.push(e.message));
-await A.goto(`${base}/app.html?me=tony&coins=200&av=${encodeURIComponent(JSON.stringify(LOOK))}&devlat=37.5347&devlng=126.9945`);
+await A.goto(`${base}/app.html?onb=0&me=tony&coins=200&av=${encodeURIComponent(JSON.stringify(LOOK))}&devlat=37.5347&devlng=126.9945`);
 await A.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 40000 });
 await sleep(3000);
 

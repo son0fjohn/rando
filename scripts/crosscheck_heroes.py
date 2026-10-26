@@ -17,7 +17,7 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REG = json.load(open(os.path.join(ROOT, "web", "data", "registry_buildings.json")))
-LM = json.load(open(os.path.join(ROOT, "web", "landmarks.json")))
+LM = json.load(open(os.path.join(ROOT, "web", "data", "heroes.json"), encoding="utf-8"))
 OUT = os.path.join(ROOT, "web", "data", "street_labels.json")
 
 M_LAT = 110540.0
@@ -38,7 +38,7 @@ def centroid(fp):
     return (sum(p[1] for p in fp) / len(fp), sum(p[0] for p in fp) / len(fp))
 
 print("== hero pins vs registry buildings ==")
-for l in LM["landmarks"]:
+for l in LM["heroes"]:
     if not l.get("glb") or l.get("lat") is None:
         continue
     host = next((b for b in REG if inside(l["lat"], l["lng"], b["footprint"])), None)

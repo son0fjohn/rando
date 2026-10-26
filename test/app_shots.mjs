@@ -44,7 +44,7 @@ async function phone(name, qs = "") {
     return pg;
   }
   pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
-  await pg.goto(`${base}/app.html?me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}&devlat=37.5347&devlng=126.9945${qs}`);
+  await pg.goto(`${base}/app.html?onb=0&me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}&devlat=37.5347&devlng=126.9945${qs}`);
   await pg.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 30000 });
   return pg;
 }
