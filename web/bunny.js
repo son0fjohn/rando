@@ -23,8 +23,9 @@
 //
 //   const b = await bunnyScene(hostEl);
 //   b.room.photo(url); b.room.drape(false); b.room.spot(1); b.play("gavel");
-//   b.onTap = kind => ...;   // "bunny" | "frame" | "candle" | "guestL" | "guestR" (true: she reacts)
+//   b.onTap = kind => ...;   // "bunny" | "frame" | "candle" | "plaque0" | "plaque1" (true: she reacts)
 //   b.onBang = () => ...;    // the gavel hits the pedestal; b.onClap: her hands meet
+//   b.room.plaque(i, {...}); b.room.plaqueState({...}); b.home();   // (gala.js)
 //   b.plaqueRects(); b.attach(otherEl); b.dispose();
 import { retroStage, THREE } from "./retrolook.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
@@ -37,7 +38,9 @@ const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)
 // the stage: display-ready colour (the room's paint is the picture itself),
 // warm candlelight, no bloom (the Prophet's and the Boss's settings)
 export const BUNNY_MOOD = {
-  scale: 1.0, maxW: 560, smooth: true, msaa: 4, encoded: true,
+  // (more pixels than the other hosts' rooms: the plaques' titles are text
+  // and stay sharp; the stage still steps down on a phone that can't keep up)
+  scale: Math.min(1.5, Math.max(1, globalThis.devicePixelRatio || 1)), maxW: 720, smooth: true, msaa: 4, encoded: true,
   bg: 0x1a0c0c,
   fog: { color: 0x1a0c0c, near: 30, far: 60 },
   ambient: { sky: 0xd8c8e8, ground: 0x4a2a24, intensity: 1.25 },
@@ -52,11 +55,11 @@ export const BUNNY_MOOD = {
 // the back wall (so the frame and its plaques stay in view however far you
 // look); the gala is built wide (gala.js), so it goes further than the
 // other hosts' rooms: ±40°
-export const VIEW = viewFrom(PROJ, 5.2, { yawRange: [-0.7, 0.7] });
+export const VIEW = viewFrom(PROJ, 5.2, { yawRange: [-1.05, 1.05] });
 
 // where she stands (her feet, in the picture), her turn, her height to the
 // ear tips; the marble pedestal by her right hand
-const FEET = picFloor(0.215, 0.815);
+const FEET = picFloor(0.19, 0.815);
 export const SPOT = { x: FEET.x, z: FEET.z, turn: 0.22, height: 1.86 };
 export const PEDESTAL = { x: FEET.x - 0.34, z: FEET.z - 0.32, h: 0.84 };
 
@@ -174,7 +177,7 @@ export async function bunnyScene(host) {
   const orbit = orbitCamera(st, VIEW, { onTap: (x, y) => tap(x, y) });
   const { view, want } = orbit;
 
-  // ---- taps: her, the frame, a candle, the guests
+  // ---- taps: her, the frame, a candle, the plaques
   const targets = [...room.targets, { kind: "bunny", objs: [...hitMeshes, gavel, flute, ...pedHits] }];
   const api = { onTap: null, onBang: null, onClap: null };
   function tap(cx, cy) {
@@ -329,6 +332,7 @@ export async function bunnyScene(host) {
     setPose, play,
     playing: name => acts.has(name),
     push: orbit.push,
+    home: orbit.home,
     plaqueRects: () => room.plaqueRects(),
     attach: el => st.attach(el),
     dispose: () => { orbit.dispose(); room.dispose(); marble.dispose(); st.dispose(); },

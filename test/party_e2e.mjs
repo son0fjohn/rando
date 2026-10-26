@@ -485,7 +485,15 @@ try {
       const t1 = Date.now();
       // …and when they're both fully off (polled on, so a late start doesn't cut it short)
       out.done = null;
-      const poll = () => { const o = op(); o.forEach((v, i) => { if (out.first[i] === null && v < 0.9) out.first[i] = Date.now() - t1; }); if (out.done === null && o.every(v => v < 0.05)) out.done = Date.now() - t1; if (Date.now() - t1 < 4500 && out.done === null) setTimeout(poll, 16); else res(out); };
+      // the 3D plaques' own velvet (gala.js), where the 3D wall is up
+      const c3 = () => window.__bunny && room.classList.contains("r3d") ? window.__bunny.room.plaqueInfo().cover : null;
+      out.c3d = c3() && { at0: c3() }; out.done3d = null;
+      const poll = () => {
+        const o = op(); o.forEach((v, i) => { if (out.first[i] === null && v < 0.9) out.first[i] = Date.now() - t1; });
+        if (out.done === null && o.every(v => v < 0.05)) out.done = Date.now() - t1;
+        if (out.c3d && out.done3d === null && c3().every(v => v < 0.05)) out.done3d = Date.now() - t1;
+        if (Date.now() - t1 < 4500 && (out.done === null || (out.c3d && out.done3d === null))) setTimeout(poll, 16); else res(out);
+      };
       poll();
     };
     watch();
@@ -499,6 +507,13 @@ try {
   // own delay, not from the flip
   const late = Math.max(0, (f1 ?? 0) - (d1 || 900));
   ok(seq.done !== null && seq.done !== undefined && seq.done - late <= 2500, `both plaques unveiled within ~2.5 s (done at ${seq.done} ms, the unveil started ${Math.round(late)} ms late)`);
+  if (seq.c3d) {
+    // (read off their own schedule: a stalled runner can see the room flip
+    // to revealed late, after the 3D covers' clock has already run)
+    const sch = await A.evaluate(() => { const i = window.__bunny.room.plaqueInfo(); return { d: i.drapeAt, c: i.coverAt }; });
+    ok(sch.c[0] - sch.d >= 800 && sch.c[1] - sch.c[0] >= 400, `the 3D plaques on the wall keep their velvet while the painting is unveiled, then I, then II (+${sch.c[0] - sch.d} / +${sch.c[1] - sch.d} ms after the frame's drape)`);
+    ok(seq.done3d !== null && seq.done3d - late <= 3000, `…then it comes off them too (done at ${seq.done3d} ms)`);
+  } else console.log("  (no 3D wall on this browser: the plaques are the DOM ones)");
   // with 3 players each frame has 2 writers, so exactly one phone gets to vote
   let voter = null;
   for (let i = 0; i < 20 && !voter; i++) { for (const pg of [A, B, C]) if (await pg.locator(".ag-pl[data-v]").count() === 2) voter = pg; if (!voter) await sleep(250); }
@@ -506,8 +521,13 @@ try {
   if (voter) {
     const writer = [A, B, C].find(pg => pg !== voter);
     ok(await writer.locator(".ag-pl[data-v]").count() === 0 && /yours/.test(await text(writer, "#ag-pill")), "writers see the plaques but can't vote, and are told one is theirs");
-    await voter.locator('.ag-pl[data-v="1"]').click();
-    ok(await until(voter, () => document.querySelector('.ag-pl[data-v="1"]')?.classList.contains("on") && document.querySelector(".ag-room")?.classList.contains("picked")), "tapping a plaque marks it with the red dot");
+    // a tap where plaque II is on screen: with the 3D wall that's the plaque
+    // in the scene (the DOM one over it is invisible and lets taps through)
+    const in3d = await voter.evaluate(() => !!document.querySelector(".ag-plaques.in3d"));
+    const bx = await voter.locator('.ag-pl[data-v="1"]').boundingBox();
+    await voter.mouse.click(bx.x + bx.width / 2, bx.y + bx.height / 2);
+    ok(await until(voter, () => document.querySelector('.ag-pl[data-v="1"]')?.classList.contains("on") && document.querySelector(".ag-room")?.classList.contains("picked")), `tapping a plaque${in3d ? " on the 3D wall" : ""} casts the vote`);
+    if (in3d) ok(await until(voter, () => { const i = window.__bunny.room.plaqueInfo(); return i.picked === 1 && i.seal[1] > 0.9 && i.seal[0] === 0 && i.glow[1] > 0.2; }), "…and it gets the soft gold glow and the wax seal, the other doesn't");
     await shot(voter, "20-gallery-voted");
     // a title that wraps must not make its plaque bigger than the other one
     const hs = await voter.evaluate(() => {
@@ -522,6 +542,12 @@ try {
   }
   ok(await until(A, () => document.querySelectorAll(".ag-room .ag-pl-n").length === 2, null, 20000), "the result shows authors and votes on the same plaques");
   ok(await A.locator(".ag-pl-by").count() === 2, "each plaque names its author once the votes are in");
+  if (await A.evaluate(() => !!document.querySelector(".ag-plaques.in3d"))) {
+    const info = await A.evaluate(async () => { await new Promise(r => setTimeout(r, 1200)); const f = window.__game.s.frames[window.__game.s.fi]; return { ...window.__bunny.room.plaqueInfo(), counts: f.counts }; });
+    const win = info.counts[0] === info.counts[1] ? null : info.counts[0] > info.counts[1] ? 0 : 1;
+    ok(info.texts.every(t => /vote/.test(t) && /—/.test(t)), "the 3D plaques show the authors and the votes");
+    ok(info.top === win && (win === null || info.dim[win] > 1 && info.dim[1 - win] < 0.6), `the winning plaque lights up, the other dims (${JSON.stringify({ counts: info.counts, dim: info.dim })})`);
+  }
   await sleep(900);
   const ws = await A.evaluate(() => [...document.querySelectorAll(".ag-pl")].map(p => Math.round(p.getBoundingClientRect().width)));
   ok(ws.length === 2 && Math.abs(ws[0] - ws[1]) <= 1, `the winning plaque settles back to the same size (${ws.join(" / ")} px wide)`);
