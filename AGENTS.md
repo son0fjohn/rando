@@ -94,8 +94,14 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   grain, quality tiers; `smooth` + `msaa` for a soft look, `encoded` for a
   display-ready buffer, as the camera-mapped rooms need),
   `web/retrorooms.js`
-  (the other rooms on the kit: Secret Diary's study and Mask Off's lounge
-  behind their cards via `roomBackdrop()`; `?rooms=0`), `web/charrender.js` (players' own 3D characters as
+  (the other rooms on the kit: Secret Diary's study behind its cards via
+  `roomBackdrop()`, and Mask Off's lounge if its table can't run; `?rooms=0`),
+  `web/roundtable.js` (Mask Off's room: no host, the players themselves,
+  each their own 3D character on a chair round a table under one low lamp,
+  candles, a window on the city; cream masks that slide off onto the table;
+  every phone first person from its own seat, `npcstage.js` `firstPerson`;
+  the picked one's spotlight, the "not asked yet" glow, the asked card on
+  the table, Same glows, the end lifting above the table), `web/charrender.js` (players' own 3D characters as
   pictures for those scenes, warmed in the lobby), `web/hpconfig.js`
   (flags, prompt pools, Manhunt geo, diary colors, party/coin/game numbers),
   `web/partyset.js` (a party is a set of 3 games: places → party points),
@@ -146,7 +152,8 @@ test/pose4.html                        # the player character sitting and standi
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
-node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (a full turn, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
+node test/maskoff_shots.mjs <dir> [--bots=4]   # Mask Off round the table with real characters: first person from two seats, a pick by tapping someone, a raised card, the card on the table, looking round / glide back, the end; a 10-player party seats 8 + the seat bar
+node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (round the table, real characters: a pick, a card, an answer, Same, Go deeper, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
@@ -249,11 +256,13 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   when the party's 18+ setting is on (`questsFor()`). Humiliation Ritual's
   prompts go up to `maxLevelFor()` (public parties: mild).
 - Mask Off's deck is exactly the supplied list (light, real, deep); the host
-  picks the levels (light + real by default). Hands are private: only the
-  asker's own phone ever shows their hand, and hands go in the state as card
+  picks the levels (light + real by default). Hands are private: only each
+  player's own phone ever shows their hand, and hands go in the state as card
   ids only. No card is dealt twice in a game. Answers are spoken out loud,
   never typed, sent or stored. "Same" taps are counted, never attributed: the
-  host keeps who tapped to itself and only the count is synced or shown.
+  host keeps who tapped to itself and only the count is synced or shown (the
+  table's Same glows rise from its middle, never from anyone's seat; only
+  your own phone shows your own glow).
 - Humiliation Ritual: the prompt only ever reaches the performer's phone. That
   phone draws it (`ritual_draw`, server-side; offline: from the pool on that
   phone); the host's game state never carries a prompt or a prompt id, and

@@ -239,96 +239,124 @@ async function sidequest() {
 // "masks off" end. Stills come from the screencast (page screenshots can
 // stall with several WebGL windows open).
 async function maskoff() {
-  log("\nMask Off");
-  const P = await phones(["alice", "bob", "cy"]);
+  log("\nMask Off — round the table");
+  // everyone's own 3D character at the table (the page's real avatar4.js)
+  const R3D = "&real3d=1";
+  const P = await phones(["alice", "bob", "cy"], { dpr: 1, hostQs: R3D, qs: { bob: R3D, cy: R3D } });
   const casts = await Promise.all(P.list.map(screencast));
   const A = P.host, castOf = pg => casts[P.list.indexOf(pg)];
-  // the lobby renders everyone's 3D look while they hang out (charrender.js)
-  await Promise.all(P.list.map(pg => pg.evaluate(() => import("/web/charrender.js").then(m => m.warmLooks([])))));
-  const still = async (pg, name) => { const f = castOf(pg).frames.at(-1); if (f) await writeFile(join(OUT, `${name}.jpg`), Buffer.from(f.data, "base64")); };
+  const still = async (pg, name) => { await sleep(150); const f = castOf(pg).frames.at(-1); if (f) await writeFile(join(OUT, `${name}.jpg`), Buffer.from(f.data, "base64")); };
   const tap = (pg, sel) => pg.locator(sel).first().click({ timeout: 8000 }).catch(e => log(`    (couldn't tap ${sel} on ${pg.label}: ${e.message.split("\n")[0]})`));
   await sleep(1500);
   await queue(A, "mask_off");
   if (!await phaseIs(A, "setup", 8000)) await A.locator('[data-game="mask_off"] .pv-t > b').evaluate(b => b.click()).catch(() => {});   // a hint over the title took the tap
   if (!await phaseIs(A, "setup", 20000)) throw new Error("Mask Off didn't start");
-  await sleep(1800);
   await until(A, () => !!document.querySelector('[data-rounds="1"]'), null, 20000);
   await still(A, "maskoff-0-setup");
-  if (process.env.DEBUG_MO) log(await A.evaluate(() => JSON.stringify({ panel: document.getElementById("game-panel")?.outerHTML.slice(0, 600), layerHidden: document.getElementById("game-layer").hidden, partyHidden: document.getElementById("party-panel").hidden, body: document.body.className, phase: window.__game?.s?.phase, host: window.__game?.hosting })));
   await A.locator('[data-rounds="1"]').click({ timeout: 30000 });
-  if (!await until(A, () => window.__game?.s?.setup?.rounds === 1, null, 10000)) log("    (rounds didn't stick)");
   await tap(A, "#mo-go");
+  // everyone sits down (their characters load)
+  for (const pg of P.list) if (!await until(pg, () => window.__table?.info().chars >= 2, null, 60000)) log(`    (${pg.label}: the characters didn't all load)`);
+  let pair = null, from = 0;                            // (the recording: the first asker and the one they ask, side by side, from turn 1)
   const turnOn = async n => {
-    await until(A, n => window.__game?.s?.ti === n && window.__game?.s?.phase === "choose", n, 40000);
+    await until(A, n => window.__game?.s?.ti === n && window.__game?.s?.phase === "choose", n, 60000);
     const s = await stateOn(A);
-    return { s, asker: P.list.find(pg => idOf(pg) === s.turn.asker), who: P.list.find(pg => idOf(pg) === s.turn.who) };
+    return { s, asker: P.list.find(pg => idOf(pg) === s.turn.asker) };
+  };
+  // the asker taps someone at the table (their character, in the 3D scene)
+  const pickAt = async (asker, id) => {
+    const p = await asker.evaluate(id => window.__table.screen(id), id);
+    if (!p) { log(`    (${id} isn't at the table: tapping their name)`); await tap(asker, `.mo-chip[data-who="${id}"]`); return; }
+    if (p.side) { await tap(asker, `.mo-chip[data-who="${id}"]`); return; }   // (just out of view: their name at the edge)
+    await asker.mouse.click(p.x, p.y + 46);
   };
   // turn 1: the full turn
   {
-    await phaseIs(A, "pick", 30000);
-    await sleep(2600);
-    await still(A, "maskoff-1a-pick");
-    const { asker, who } = await turnOn(0);
-    log(`  turn 1: ${asker.label} → asking ${who.label}`);
-    await sleep(2600);                                   // browsing the hand
-    await still(asker, "maskoff-1-hand");
-    await tap(asker, "[data-ask] >> nth=1");
+    const { s, asker } = await turnOn(0);
+    from = Date.now() / 1000 - 3;
+    await sleep(2200);
+    await still(asker, "maskoff-1-your-turn");
+    await still(P.list.find(pg => pg !== asker), "maskoff-1b-other-seat");
+    const target = s.order.find(id => id !== s.turn.asker);
+    const who = P.list.find(pg => idOf(pg) === target);
+    pair = [asker, who];
+    log(`  turn 1: ${asker.label} picks ${who.label}`);
+    await pickAt(asker, target);
+    if (!await until(A, id => window.__game?.s?.turn?.who === id, target, 6000)) log("    (the tap didn't pick them)");
+    await sleep(1600);
+    await still(asker, "maskoff-2-picked");
+    await asker.locator("#mo-hand [data-card]").nth(2).dispatchEvent("click");
+    await sleep(1400);
+    await still(asker, "maskoff-3-card-raised");
+    await tap(asker, "#mo-ask");
     await phaseIs(A, "talk", 10000);
     log(`    "${(await stateOn(A)).turn.card.text}"`);
-    await sleep(2400);
-    await still(who, "maskoff-2-card-answerer");
+    await sleep(2600);
+    await still(who, "maskoff-4-card-answerer");
+    await still(asker, "maskoff-4b-drawn");
     await tap(who, "#mo-answer");
-    await sleep(2000);
+    await sleep(2400);
+    await still(asker, "maskoff-5-mask-off");
     const listeners = P.list.filter(pg => pg !== who);
-    for (const pg of listeners) { await tap(pg, "#mo-same"); await sleep(700); }
+    for (const pg of listeners) { await tap(pg, "#mo-same"); await sleep(900); }
     await sleep(1200);
-    await still(listeners[0], "maskoff-3-listener-same");
+    await still(listeners[0], "maskoff-6-same");
     await tap(listeners[1], "#mo-deep");
     await sleep(1800);
-    await still(who, "maskoff-4-go-deeper");
+    await still(who, "maskoff-7-go-deeper");
     await tap(who, "#mo-dtake");
-    await sleep(3000);
+    await sleep(2600);
     await tap(who, "#mo-done");
     await phaseIs(A, "after", 8000);
-    await sleep(2400);
-    await still(who, "maskoff-5-same-count");
+    await sleep(2200);
+    await still(listeners[0], "maskoff-8-felt-this-too");
     const t = (await stateOn(A)).turn;
     log(`    ${t.status} · ${t.same} felt this too · go deeper: ${t.deeper?.text} (${t.deeper?.state})`);
   }
-  // turn 2: a pass
+  // turn 2: round the table; a pass
   {
-    const { asker, who } = await turnOn(1);
-    log(`  turn 2: ${asker.label} → asking ${who.label}`);
-    await sleep(1800);
-    await tap(asker, "[data-ask] >> nth=0");
+    const { s, asker } = await turnOn(1);
+    const target = s.order.find(id => id !== s.turn.asker && id !== s.lastWho);
+    log(`  turn 2: ${asker.label} picks ${target} (not ${s.lastWho}, asked last turn)`);
+    await sleep(1200);
+    await pickAt(asker, target);
+    await sleep(800);
+    await asker.locator("#mo-hand [data-card]").nth(0).dispatchEvent("click");
+    await sleep(700);
+    await tap(asker, "#mo-ask");
     await phaseIs(A, "talk", 10000);
-    await sleep(2400);
-    await tap(who, "#mo-pass");
+    await sleep(2000);
+    await tap(P.list.find(pg => idOf(pg) === target), "#mo-pass");
     await phaseIs(A, "after", 8000);
-    await sleep(1800);
-    await still(who, "maskoff-6-pass");
+    await sleep(1600);
     log(`    ${(await stateOn(A)).turn.status}`);
   }
   // turn 3: quickly
   {
-    const { asker, who } = await turnOn(2);
-    log(`  turn 3: ${asker.label} → asking ${who.label}`);
-    await sleep(1200);
-    await tap(asker, "[data-ask] >> nth=3");
+    const { s, asker } = await turnOn(2);
+    const target = s.order.find(id => id !== s.turn.asker && id !== s.lastWho);
+    log(`  turn 3: ${asker.label} picks ${target}`);
+    await pickAt(asker, target);
+    await sleep(600);
+    await asker.locator("#mo-hand [data-card]").nth(3).dispatchEvent("click");
+    await sleep(500);
+    await tap(asker, "#mo-ask");
     await phaseIs(A, "talk", 10000);
-    await sleep(1500);
+    const who = P.list.find(pg => idOf(pg) === target);
+    await sleep(1200);
     await tap(who, "#mo-answer");
-    await sleep(1500);
+    await sleep(1400);
     await tap(P.list.find(pg => pg !== who), "#mo-same");
-    await sleep(2000);
+    await sleep(1600);
     await tap(who, "#mo-done");
   }
   await phaseIs(A, "end", 20000);
-  await sleep(6000);
-  await still(A, "maskoff-7-end");
+  await sleep(5000);
+  await still(A, "maskoff-9-end");
   const s = await stateOn(A);
   log(`  the end: ${s.sameTotal} moments you weren't alone · scores ${Object.values(s.players).map(p => `${p.handle}:${p.score}`).join(" ")}`);
-  await writeScene("maskoff", casts);
+  await writeScene("maskoff", (pair ?? P.list.slice(0, 2)).map(castOf), { from });
+  await Promise.all(casts.map(c => c.stop()));
   await P.ctx.close();
 }
 

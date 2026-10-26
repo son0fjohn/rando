@@ -95,19 +95,19 @@ export const DIARY = {
   SHAPES: ["circle", "star", "square", "triangle", "diamond", "plus",
            "heart", "flower", "bolt", "moon", "ring", "cross"],
 };
-// Mask Off: a truth card flips up for one player (fair pick), they answer out
-// loud, everyone else rates their honesty 1-5 (1 = mask on, totally fake;
-// 5 = mask off, totally real). One tap locks a rating; the turn ends when all
-// have rated, or at TALK_MS. Skipping the card scores 0 and skips the rating.
+// Mask Off: round a table, clockwise. The asker picks someone and a card
+// from their hand; the card flips up for everyone; the one asked answers out
+// loud (their mask slides off) or passes. "Same" and "Go deeper" while they
+// talk. No ratings, no points (maskoff.js).
 export const MASKOFF = {
   POOL_URL: "data/mask_off_cards.json",
   HAND: 5,                      // cards in each private hand
   LEVELS_DEFAULT: [1, 2],       // light + real; the host can add deep
-  ROUNDS_DEFAULT: 2,            // everyone answers twice
+  ROUNDS_DEFAULT: 2,            // everyone asks twice
   MAX_ROUNDS: 3,
   SETUP_MS: 3 * 60 * 1000,      // nobody taps deal: go with what's set
-  PICK_MS: 4200,                // "[asker] → asking [answerer]"
-  CHOOSE_MS: 30000,             // browse your hand; then a random card plays
+  PICK_MS: 2600,                // "[asker]'s turn"
+  CHOOSE_MS: 45000,             // pick someone, browse your hand; then the deck picks for you
   NUDGE_MS: 10000,              // the gentle nudge, this long before that
   TALK_MS: 5 * 60 * 1000,       // only a backstop: the answerer taps Done
   AFTER_MS: 5500,               // "3 people felt this too"

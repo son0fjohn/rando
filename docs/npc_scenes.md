@@ -531,12 +531,67 @@ The same kit, each with its own mood:
   moon and the map's night sky, moonlight coming in, a desk under a warm lamp,
   a bed, a bookshelf, posters, fairy lights, floating dust.
 - **Mask Off: a dim lounge.** One pendant light over a red velvet booth,
-  candles on two side tables, deep reds and purples, slow smoke haze.
+  candles on two side tables, deep reds and purples, slow smoke haze. (Only
+  behind Mask Off's cards on a phone that can't run its round table.)
 
-Secret Diary and Mask Off play on cards, so their room sits behind them
-(`roomBackdrop()` in `hpkit.js`) and the cards stay crisp and frosted on
-top; `?rooms=0` turns the rooms off. `node test/rooms_shots.mjs <dir>`
-shoots each room.
+Secret Diary plays on cards, so its room sits behind them (`roomBackdrop()`
+in `hpkit.js`) and the cards stay crisp and frosted on top; `?rooms=0`
+turns the rooms off. `node test/rooms_shots.mjs <dir>` shoots each room.
+
+## Mask Off: round the table (`web/roundtable.js`)
+
+No host: the players themselves sit round a table, and every phone sees it
+from its own seat.
+
+- **The room** is built in code (no picture to match): a warm, quiet room at
+  night, a round wooden table under one low hanging lamp that breathes a
+  little, three candles that flicker, a window onto the city's lights with
+  curtains, a bookshelf, a plant, a coffered-dark ceiling; soft and smooth
+  like the hosts' rooms (`retroStage`, smooth + MSAA, no bloom: the candles'
+  and the lamp's glows are their own).
+- **The seats:** everyone's own 3D character (`avatar4.js`, their current
+  outfit) on a chair, evenly spaced, in turn order (clockwise from above:
+  the next to ask sits on your left); up to 8 at the table, the rest in the
+  seat bar at the top. Seated with `stance: "chair"` (avatar4's new pose:
+  thighs forward, feet flat, forearms on the table's edge); they breathe,
+  blink, nod now and then and look at whoever's talking or deciding (`gaze`,
+  `tilt`).
+- **The masks:** a plain cream masquerade eye mask each (a canvas texture on
+  a curved plane), riding the head bone at the eyes. Answer: it slides off
+  and floats down onto the table in front of them; Done: back on. At the end
+  every mask is off.
+- **First person** (`npcstage.js` `firstPerson`): the camera sits back in
+  your chair at seated eye height looking at the table, the field of view a
+  little wider for 3–4 players (so the people either side are in view);
+  drag to turn your head (±80°), a little up and down, pinch to narrow, and
+  ~4 s after you let go it glides back to the table. Your own character
+  isn't drawn (until the end); your hands and cards are the page's: 5 cards
+  fanned in two hands in your skin tone, a deck beside them.
+- **Picking:** tap someone at the table (a raycast on their seat; a drag is
+  never a tap) or their name over their head; names out of view wait at the
+  screen's edge (‹ ›). The picked one gets a soft spotlight from above;
+  whoever hasn't been asked yet glows gently while you choose.
+- **The card:** Ask sends it from your hand (from the asker's seat on the
+  others' phones) to the middle of the table, where it lies face up; it's
+  also big over the table on every screen, always readable.
+- **Same:** warm motes rise from the middle of the table, one per tap (never
+  from a seat: who tapped stays unknown); your own phone shows your own glow
+  rising from where you sit.
+- **The end:** the camera lifts high above the table and drifts a little:
+  everyone together, you too, masks on the table; "12 moments you weren't
+  alone".
+- **Sound:** soft card flips and a shuffle (`fx.js` `flip`, `shuffle`) and a
+  very low pad of warm chords while you're at the table (`musicStart` /
+  `musicStop`); no buzzers, no stamps.
+- **No 3D characters** (the test pages' stubs): each seat gets a rounded
+  stand-in in the player's own colours, mask and all. **No WebGL:** the
+  cards, the names (tappable) and the lounge behind them.
+
+`node test/maskoff_shots.mjs <dir>` plays it with real characters (two
+phones and bots) and shoots both seats, a pick, a raised card, the card on
+the table, looking round and the end; `node test/games_rec.mjs <dir>
+maskoff` records a whole game on two phones; `test/roundtable.html?n=6&seat=0`
+is the table on its own.
 
 ### Room assets
 

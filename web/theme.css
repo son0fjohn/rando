@@ -859,9 +859,10 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 
 .sq-clock.small { font-size: 34px; line-height: 40px; }
 
-/* ===== Mask Off ===== the slow one: a question from your hand, answered out
-   loud; the answerer's mask slides off (or stays on for a pass); "same" taps
-   become soft hearts. Warm, low, quiet: no stamps, no scores. */
+/* ===== Mask Off ===== the slow one, round a table (roundtable.js): your
+   seat, first person, the others in cream masks; your hand of cards fanned
+   in your hands at the bottom. Warm, low, quiet: no stamps, no scores. The
+   host's deck setup is a card like the other games'. */
 .stage:has(.mo-game) { background: rgba(28, 16, 22, .62); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); border: 1px solid rgba(255, 214, 170, .16); border-radius: 24px; color: #fff4e8; }
 .stage:has(.mo-game) h2 { font: 700 var(--fs-h2)/28px var(--f-sys); color: #fff4e8; }
 .stage:has(.mo-game) h2:empty { display: none; }
@@ -870,85 +871,11 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 .mo-game { display: flex; flex-direction: column; align-items: stretch; gap: 10px; animation: mo-in .6s ease both; }
 @keyframes mo-in { from { opacity: 0; transform: translateY(6px); } }
 .mo-line { margin: 0; text-align: center; font: 600 19px/26px var(--f-sys); color: #fff4e8; }
-.mo-line.small { font-size: 16px; color: rgba(255, 236, 214, .7); }
-.mo-line i, .mo-ask i { font-style: normal; color: rgba(255, 214, 170, .7); font-weight: 500; }
-/* the card: big, warm, readable across the room */
-.mo-card { perspective: 900px; }
-.mo-card-in { position: relative; padding: 18px 18px 22px; border-radius: 20px; color: #fff4e8; text-align: left;
-  background: radial-gradient(circle at 90% 0, rgba(255, 170, 110, .28), transparent 60%), linear-gradient(165deg, #4a2430, #24121a 75%);
-  border: 1px solid rgba(255, 214, 170, .18); box-shadow: 0 14px 34px rgba(0, 0, 0, .4); backface-visibility: hidden; }
-.mo-card.flip .mo-card-in { animation: mo-flip 1s cubic-bezier(.25, .8, .3, 1) both; }
-@keyframes mo-flip { from { transform: rotateY(-180deg); opacity: 0; } 50% { opacity: 1; } to { transform: none; opacity: 1; } }
-.mo-ask { font: 600 14px/18px var(--f-sys); color: #ffd6a6; padding-right: 56px; }
-.mo-text { font: 700 27px/34px var(--f-sys); margin-top: 10px; letter-spacing: -.005em; }
-.mo-lv { position: absolute; right: 14px; top: 14px; font: 700 11px/20px var(--f-sys); font-style: normal; padding: 0 10px; border-radius: 999px; background: rgba(255, 214, 170, .16); color: #ffe7cc; }
-.mo-lv.l2 { background: rgba(255, 140, 120, .28); } .mo-lv.l3 { background: rgba(190, 120, 255, .3); }
-.mo-card.small .mo-card-in { padding: 12px 14px 14px; }
-.mo-card.small .mo-text { font-size: 18px; line-height: 24px; margin-top: 6px; }
-/* a character with the mask on its face */
-.mo-masked { position: relative; width: 148px; height: 148px; margin: 0 auto; }
-.mo-look { display: block; }
-.mo-look.head { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .45)); }
-.mo-look:not([src]) { visibility: hidden; }
-.mo-mask { position: absolute; left: 24%; top: 33%; width: 52%; aspect-ratio: 60 / 46; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .45));
-  transition: transform 1.4s cubic-bezier(.45, 0, .2, 1), opacity 1.2s ease .2s; }
-.mo-mask svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.mo-m-face { fill: #fbf3ea; stroke: #3a2228; stroke-width: 2; }
-.mo-m-eye { fill: #24121a; }
-.mo-m-brow, .mo-m-mouth { fill: none; stroke: #3a2228; stroke-width: 2; stroke-linecap: round; }
-.mo-masked.off .mo-mask { transform: translate(78%, 64%) rotate(24deg) scale(.7); opacity: 0; }
-.mo-masked.off:not(.sliding) .mo-mask { transition: none; }
-/* who's asking whom */
-.mo-pair { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.mo-p { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 132px; }
-.mo-p .mo-look.head, .mo-p .mo-masked { width: 120px; height: 120px; }
-.mo-p span { font: 700 16px/20px var(--f-sys); }
-.mo-p.a { animation: mo-in .7s ease both; } .mo-p.b { animation: mo-in .7s ease .6s both; }
-.mo-arrow { font: 300 34px/1 var(--f-sys); color: #ffd6a6; animation: mo-in .6s ease .3s both; }
-/* your hand */
-.mo-hand { display: flex; flex-direction: column; gap: 8px; }
-.stage .mo-hc { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 14px 16px; border-radius: 16px; cursor: pointer;
-  background: linear-gradient(165deg, #3e1f2a, #24121a); border: 1px solid rgba(255, 214, 170, .16); color: #fff4e8;
-  animation: mo-deal .5s cubic-bezier(.2, .8, .3, 1) calc(var(--i) * 90ms) both; transition: transform .15s, border-color .2s, opacity .3s; }
-@keyframes mo-deal { from { opacity: 0; transform: translateY(14px) rotate(-1.5deg); } }
-.stage .mo-hc span { font: 650 19px/25px var(--f-sys); }
-.stage .mo-hc em { font: 700 11px/14px var(--f-sys); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: #ffd6a6; }
-.stage .mo-hc.l2 em { color: #ffab98; } .stage .mo-hc.l3 em { color: #d4a6ff; }
-.stage .mo-hc:active { transform: scale(.98); }
-.stage .mo-hc.on { border-color: #ffd6a6; box-shadow: 0 0 0 2px rgba(255, 214, 166, .4); }
-.stage .mo-hc:disabled:not(.on) { opacity: .35; }
-.mo-nudge { margin: 0; min-height: 20px; text-align: center; font: 500 14px/20px var(--f-sys); color: #ffd6a6; }
-/* everyone else: the asker's hand, face down */
-.mo-backs { position: relative; height: 120px; display: flex; justify-content: center; }
-.mo-backs i { position: absolute; top: 10px; width: 64px; height: 94px; border-radius: 10px; border: 1px solid rgba(255, 214, 170, .25);
-  background: repeating-linear-gradient(45deg, #4a2430 0 6px, #3a1c26 6px 12px); box-shadow: 0 6px 14px rgba(0, 0, 0, .35);
-  transform: translateX(calc((var(--i) - 2) * 30px)) rotate(calc((var(--i) - 2) * 7deg)); animation: mo-sway 3.2s ease-in-out calc(var(--i) * .2s) infinite; }
-@keyframes mo-sway { 50% { margin-top: -5px; } }
-/* buttons */
-.mo-row { display: flex; gap: 8px; justify-content: center; }
-.stage .mo-game button { margin: 0; }
-.stage .mo-btn { flex: 1 1 0; min-width: 0; max-width: 200px; white-space: nowrap; padding: 14px 10px; border-radius: 999px; font: 700 18px/1 var(--f-sys); cursor: pointer; border: 1px solid rgba(255, 214, 170, .25); background: rgba(255, 236, 214, .1); color: #fff4e8; transition: transform .12s, background .3s; }
-.stage .mo-btn:active { transform: scale(.97); }
-.stage .mo-btn.warm { background: #ffd6a6; color: #2a1218; border-color: transparent; }
-.stage .mo-btn.soft { background: rgba(255, 214, 166, .22); }
-.stage .mo-btn.ghost { background: transparent; color: rgba(255, 236, 214, .8); }
-.stage .mo-btn.same.on { background: rgba(var(--color-accent-rgb), .22); border-color: var(--color-accent); color: var(--color-accent); opacity: 1; }
-.stage .mo-btn:disabled { cursor: default; opacity: .45; }
-/* go deeper */
-.mo-deeper { padding: 10px 14px; border-radius: 14px; background: rgba(190, 120, 255, .14); border: 1px solid rgba(210, 160, 255, .3); text-align: center; animation: mo-in .5s ease both; }
-.mo-deeper small { display: block; font: 700 11px/14px var(--f-sys); letter-spacing: .08em; text-transform: uppercase; color: #d9b8ff; }
-.mo-deeper b { display: block; font: 650 19px/25px var(--f-sys); margin: 4px 0; }
-.mo-deeper > span { font: 500 13px/18px var(--f-sys); color: rgba(255, 236, 214, .6); }
-.mo-deeper .mo-row { margin-top: 6px; }
-.mo-deeper.took { background: rgba(190, 120, 255, .08); }
-/* same: soft hearts drifting up */
-.mo-hearts { position: relative; height: 36px; }
-.mo-hearts i { position: absolute; left: 50%; bottom: 0; margin-left: var(--x); font-style: normal; font-size: 20px; color: var(--art-heart-pink); text-shadow: 0 0 12px rgba(var(--art-neon-pink-rgb), .8);
-  opacity: 0; animation: mo-heart 2.6s ease-out calc(var(--i) * .18s) both; }
-@keyframes mo-heart { 0% { opacity: 0; transform: translateY(14px) scale(.6); } 25% { opacity: 1; } 100% { opacity: .85; transform: translateY(-4px) scale(1); } }
-/* the setup */
+.mo-line i, .mo-ask i, .mo-who i { font-style: normal; color: rgba(255, 214, 170, .75); font-weight: 500; }
+/* the setup (a card) */
 .mo-setup { gap: 8px; }
-.stage .mo-lvl { display: flex; align-items: flex-start; gap: 12px; text-align: left; padding: 12px 14px; border-radius: 16px; cursor: pointer; border: 1px solid rgba(255, 214, 170, .16); background: rgba(255, 236, 214, .05); color: #fff4e8; }
+.stage .mo-game button { margin: 0; }
+.stage .mo-lvl { display: flex; align-items: flex-start; gap: 12px; text-align: left; padding: 12px 14px; border-radius: 16px; cursor: pointer; border: 1px solid rgba(255, 214, 170, .16); background: rgba(255, 255, 255, .04); color: #fff4e8; }
 .stage .mo-lvl b { display: block; font: 700 18px/22px var(--f-sys); text-transform: capitalize; }
 .stage .mo-lvl small { display: block; font: 500 13px/18px var(--f-sys); color: rgba(255, 236, 214, .6); }
 .stage .mo-lvl.on { background: rgba(255, 214, 166, .14); border-color: rgba(255, 214, 166, .45); }
@@ -959,25 +886,116 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 .stage .mo-r { flex: 1 1 0; padding: 10px 6px; border-radius: 999px; border: 1px solid rgba(255, 214, 170, .2); background: transparent; color: #fff4e8; font: 600 14px/1 var(--f-sys); cursor: pointer; }
 .stage .mo-r.on { background: #ffd6a6; color: #2a1218; border-color: transparent; }
 .stage .mo-setup .pt-btn.mo-go { margin-top: 6px; background: #ffd6a6; color: #2a1218; border-radius: 999px; }
-/* the end: masks off, everyone together */
-#game-panel.mo-end-wrap { top: 0; max-height: none; display: flex; align-items: center; justify-content: center; padding: 70px 16px 24px; pointer-events: auto; }
-.mo-end { width: 100%; max-width: 420px; text-align: center; color: #fff4e8; animation: mo-in 1.2s ease both; }
-.mo-end-k { font: 800 34px/40px var(--f-sys); letter-spacing: .02em; color: #ffd6a6; text-shadow: 0 0 24px rgba(255, 180, 120, .45); }
-.mo-crowd { display: flex; justify-content: center; align-items: flex-end; flex-wrap: wrap; gap: 0 2px; margin: 14px 0 6px; }
-.mo-crowd figure { position: relative; margin: 0 -10px; width: 96px; animation: mo-in 1s ease calc(.4s + var(--i) * .15s) both; }
-.mo-crowd .mo-look.full { width: 100%; aspect-ratio: 2 / 3; object-fit: contain; filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .5)); }
-.mo-crowd figcaption { font: 600 13px/16px var(--f-sys); color: rgba(255, 236, 214, .8); }
-.mo-fall { position: absolute; left: 34%; top: 10%; width: 32%; aspect-ratio: 60 / 46; opacity: 0; animation: mo-fall 2.2s ease-in calc(1s + var(--i) * .2s) both; }
-.mo-fall svg { width: 100%; height: 100%; display: block; }
-@keyframes mo-fall { 0% { opacity: 1; transform: none; } 70% { opacity: .9; } 100% { opacity: 0; transform: translate(30%, 230%) rotate(40deg); } }
-.mo-end-n b { display: block; font: 650 21px/28px var(--f-sys); }
-.mo-end .ab-sub { color: rgba(255, 236, 214, .55); }
+
+/* the room */
+#game-panel.mo-full { background: #120b0c; }
+.np-room.mo-room { background: #120b0c radial-gradient(ellipse at 50% 40%, #3a2420, #120b0c 70%); }
+.mo-3d { position: absolute; inset: 0; z-index: 0; }
+.mo-3d .retro-canvas { pointer-events: auto; touch-action: none; }
+.mo-top { position: absolute; left: 0; right: 0; top: 58px; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; padding: 0 12px; }
+.mo-who { font: 700 16px/20px var(--f-sys); color: #fff4e8; text-shadow: 0 2px 8px rgba(0, 0, 0, .7); text-align: center; }
+.mo-who:empty { display: none; }
+.mo-prompt { font: 600 15px/20px var(--f-sys); color: #ffd6a6; background: rgba(20, 12, 10, .62); border-radius: 999px; padding: 6px 14px; text-align: center; transition: background .2s; }
+.mo-prompt:empty { display: none; }
+.mo-prompt.warn { background: rgba(120, 40, 30, .8); color: #fff4e8; }
+.mo-seatbar { display: flex; gap: 6px; max-width: 100%; overflow-x: auto; pointer-events: auto; scrollbar-width: none; padding: 2px; }
+.mo-seatbar:empty { display: none; }
+.mo-seatbar .mo-chip { position: static; transform: none; flex: none; }
+/* names over everyone's heads: tap one to pick them */
+.mo-chips { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.mo-chips:not(.in3d) { display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; padding: 30% 16px 0; }
+.mo-chip { pointer-events: auto; border: 1px solid rgba(255, 214, 170, .25); background: rgba(20, 12, 10, .6); color: #fff4e8; font: 600 12px/1 var(--f-sys);
+  padding: 5px 9px; border-radius: 999px; white-space: nowrap; cursor: default; transition: background .2s, box-shadow .2s, color .2s; -webkit-tap-highlight-color: transparent; }
+.mo-chips.in3d .mo-chip { position: absolute; left: 0; top: 0; }
+.mo-chip.can { cursor: pointer; }
+.mo-chip.fresh { box-shadow: 0 0 0 1px rgba(255, 200, 61, .5), 0 0 14px rgba(255, 200, 61, .45); }
+.mo-chip.on { background: #fff0d8; color: #2a1218; box-shadow: 0 0 18px rgba(255, 240, 216, .7); }
+.mo-chip.asker::before { content: "✦ "; color: var(--color-accent); }
+.mo-chip.edge[data-side="l"]::after { content: ""; } .mo-chip.edge[data-side="l"] { padding-left: 6px; }
+.mo-chip.edge[data-side="l"]::before { content: "‹ "; color: rgba(255, 214, 170, .8); }
+.mo-chip.edge[data-side="r"]::after { content: " ›"; color: rgba(255, 214, 170, .8); }
+.mo-chip.edge.asker[data-side="l"]::before { content: "‹ ✦ "; }
+#game-panel.mo-full .mo-room .ag-skip { bottom: auto; top: 104px; right: 10px; padding: 6px 12px; min-height: 0; font-size: 12px; }
+/* the asked card: big and readable over the table */
+.mo-center { position: absolute; left: 14px; right: 14px; top: 118px; z-index: 3; pointer-events: none; }
+.mo-card { perspective: 900px; animation: mo-land .9s cubic-bezier(.25, .8, .3, 1) both; }
+@keyframes mo-land { 0% { opacity: 0; transform: translateY(80px) scale(.6) rotateX(70deg); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+.mo-card-in { position: relative; padding: 14px 16px 18px; border-radius: 18px; color: #2a2030; text-align: left;
+  background: linear-gradient(170deg, #fbf5e8, #efe3c8); border: 2px solid #c9a45a; box-shadow: 0 14px 34px rgba(0, 0, 0, .45); }
+.mo-card .mo-ask { font: 600 13px/18px var(--f-sys); color: #8a6a3a; padding-right: 56px; }
+.mo-card .mo-ask i { color: #b08a5a; }
+.mo-text { font: 700 22px/28px var(--f-sys); margin-top: 6px; letter-spacing: -.005em; }
+.mo-lv { position: absolute; right: 12px; top: 12px; font: 700 11px/20px var(--f-sys); font-style: normal; padding: 0 10px; border-radius: 999px; background: rgba(201, 164, 90, .22); color: #6a4a1a; text-transform: uppercase; letter-spacing: .06em; }
+.mo-lv.l2 { background: rgba(210, 110, 90, .2); color: #8a3a2a; } .mo-lv.l3 { background: rgba(150, 90, 210, .18); color: #5a2a8a; }
+/* the card on its way: from the hand (or the asker's seat) to the table */
+.mo-flyer { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.mo-fly { position: absolute; left: 0; top: 0; width: 62px; height: 88px; margin: -44px 0 0 -31px; animation: mo-fly .75s cubic-bezier(.4, 0, .2, 1) both; }
+.mo-fly-back { width: 100%; height: 100%; border-radius: 8px; background: #2a2440; border: 2px solid #ffc83d; box-shadow: 0 8px 18px rgba(0, 0, 0, .5); }
+.mo-room { container-type: size; }
+@keyframes mo-fly { 0% { transform: translate(var(--x), var(--y)) rotate(-8deg); opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(50cqw, 52cqh) rotateX(75deg) scale(.55); opacity: 0; } }
+/* my own "Same": a warm glow rises from where I sit */
+.mo-motes { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.mo-motes i { position: absolute; left: 50%; bottom: 220px; width: 44px; height: 44px; margin-left: -22px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 210, 140, .95), rgba(255, 180, 90, .35) 45%, transparent 70%); animation: mo-rise 2.1s ease-out both; }
+@keyframes mo-rise { 0% { opacity: 0; transform: translateY(20px) scale(.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-240px) scale(1.1); } }
+/* the bottom: the controls, then the hand */
+.mo-low { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; flex-direction: column; align-items: stretch; pointer-events: none; }
+.mo-act { position: relative; z-index: 6; display: flex; flex-direction: column; gap: 8px; padding: 0 14px 8px; pointer-events: auto; transition: transform .28s cubic-bezier(.3, .9, .3, 1.2); }
+/* a raised card: the Ask button waits above it */
+.mo-room.raised .mo-act { transform: translateY(-168px); }
+.mo-act:empty { display: none; }
+.mo-act .mo-row { display: flex; gap: 8px; justify-content: center; }
+.mo-btn { flex: 1 1 0; min-width: 0; max-width: 220px; white-space: nowrap; padding: 14px 10px; border-radius: 999px; font: 700 17px/1 var(--f-sys); cursor: pointer; margin: 0;
+  border: 1px solid rgba(255, 214, 170, .3); background: rgba(30, 18, 16, .78); color: #fff4e8; -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); }
+.mo-btn:active { transform: scale(.97); }
+.mo-btn.warm { background: #ffd6a6; color: #2a1218; border-color: transparent; }
+.mo-act > .mo-btn.warm { align-self: center; min-width: 190px; animation: mo-in .3s ease both; }
+.mo-btn.soft { background: rgba(255, 214, 166, .28); }
+.mo-btn.ghost { color: rgba(255, 236, 214, .85); }
+.mo-btn.same.on { background: rgba(var(--color-accent-rgb), .22); border-color: var(--color-accent); color: var(--color-accent); opacity: 1; }
+.mo-btn:disabled { cursor: default; opacity: .5; }
+.mo-hint { margin: 0; text-align: center; font: 500 13px/18px var(--f-sys); color: rgba(255, 236, 214, .78); text-shadow: 0 1px 6px rgba(0, 0, 0, .8); }
+.mo-act .mo-line { font-size: 17px; line-height: 23px; text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+.mo-deeper { padding: 10px 14px; border-radius: 14px; background: rgba(40, 20, 50, .82); border: 1px solid rgba(210, 160, 255, .35); text-align: center; animation: mo-in .5s ease both; color: #fff4e8; }
+.mo-deeper small { display: block; font: 700 11px/14px var(--f-sys); letter-spacing: .08em; text-transform: uppercase; color: #d9b8ff; }
+.mo-deeper b { display: block; font: 650 18px/24px var(--f-sys); margin: 4px 0; }
+.mo-deeper > span { font: 500 13px/18px var(--f-sys); color: rgba(255, 236, 214, .6); }
+.mo-deeper .mo-row { margin-top: 6px; }
+.mo-deeper.took { background: rgba(40, 20, 50, .6); }
+/* the hand of cards, fanned, held in your two hands */
+.mo-handwrap { position: relative; height: 196px; pointer-events: none; transition: transform .5s ease, opacity .5s; }
+.mo-handwrap.gone { transform: translateY(110%); opacity: 0; }
+.mo-hands { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 120px; z-index: 2; pointer-events: none; }
+.mo-hands path { fill: var(--skin); stroke: rgba(40, 20, 10, .35); stroke-width: 2; filter: drop-shadow(0 -2px 6px rgba(0, 0, 0, .3)); }
+.mo-hand { position: absolute; left: 50%; bottom: 34px; width: 0; height: 0; z-index: 1; pointer-events: auto; }
+.mo-hc { position: absolute; left: 0; bottom: 0; width: 104px; height: 148px; margin-left: -52px; box-sizing: border-box; padding: 10px 9px; border-radius: 10px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 5px; text-align: left; color: #2a2030; background: linear-gradient(170deg, #fbf5e8, #ecdfc2); border: 1px solid #c9a45a;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, .45); transform-origin: 50% 160%;
+  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 9deg)) translateX(calc((var(--i) - (var(--n) - 1) / 2) * 6px));
+  transition: transform .28s cubic-bezier(.3, .9, .3, 1.2), box-shadow .2s, opacity .2s; -webkit-tap-highlight-color: transparent; }
+.mo-hc em { font: 700 9px/12px var(--f-sys); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: #8a6a3a; }
+.mo-hc.l2 em { color: #a04a3a; } .mo-hc.l3 em { color: #6a3aa0; }
+.mo-hc span { font: 650 12px/15px var(--f-sys); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; }
+.mo-hand.has-up .mo-hc:not(.up) { opacity: .82; }
+.mo-hc.up { z-index: 5; width: 230px; height: 190px; margin-left: -115px; padding: 16px 16px; transform: translateY(-130px); box-shadow: 0 18px 40px rgba(0, 0, 0, .55); }
+.mo-hc.up em { font-size: 11px; line-height: 14px; }
+.mo-hc.up span { font-size: 19px; line-height: 25px; -webkit-line-clamp: 6; }
+.mo-hc.drawn { animation: mo-draw .6s cubic-bezier(.3, .9, .3, 1) both; }
+@keyframes mo-draw { from { transform: translate(150px, 40px) rotate(30deg); opacity: 0; } }
+.mo-handwrap.turn .mo-hc { box-shadow: 0 6px 14px rgba(0, 0, 0, .45), 0 0 16px rgba(255, 200, 61, .55); }
+.mo-handwrap.turn .mo-hc.up { box-shadow: 0 18px 40px rgba(0, 0, 0, .55), 0 0 22px rgba(255, 200, 61, .65); }
+.mo-deck { position: absolute; right: 14px; bottom: 62px; width: 40px; height: 56px; z-index: 0; }
+.mo-deck i { position: absolute; inset: 0; border-radius: 6px; background: #2a2440; border: 1px solid #ffc83d; box-shadow: 0 3px 8px rgba(0, 0, 0, .5); }
+.mo-deck i:nth-child(2) { transform: translate(-2px, -2px); } .mo-deck i:nth-child(3) { transform: translate(-4px, -4px); }
+.mo-handwrap.empty .mo-deck { display: none; }
+/* the end: the camera lifts; the line */
+.mo-end { text-align: center; color: #fff4e8; animation: mo-in 1.2s ease 1.4s both; margin-top: 40px; }
+.mo-end-k { font: 800 34px/40px var(--f-sys); letter-spacing: .02em; color: #ffd6a6; text-shadow: 0 0 24px rgba(255, 180, 120, .45), 0 2px 10px rgba(0, 0, 0, .8); }
+.mo-end-n { display: block; margin-top: 6px; font: 650 21px/28px var(--f-sys); text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+.mo-room.ending .mo-chips { opacity: .85; }
 @media (prefers-reduced-motion: reduce) {
-  .mo-game, .mo-card.flip .mo-card-in, .mo-hc, .mo-backs i, .mo-hearts i, .mo-crowd figure, .mo-end, .mo-p, .mo-arrow { animation: none !important; }
-  .mo-hearts i { opacity: 1; }
-  .mo-mask { transition: opacity .3s; }
-  .mo-masked.off .mo-mask { transform: none; }
-  .mo-fall { display: none; }
+  .mo-game, .mo-card, .mo-hc.drawn, .mo-end, .mo-fly, .mo-motes i { animation: none !important; }
+  .mo-hc { transition: none; }
 }
 
 /* ===== The dialog box (dialog.js) ===== every NPC talks through it: dark

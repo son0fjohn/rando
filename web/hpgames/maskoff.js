@@ -1,23 +1,31 @@
-// Mask Off (3+) — a slow, sentimental card game. No scores, no ratings.
+// Mask Off (3+) — a slow, sentimental card game round a table. No scores,
+// no ratings, no judging.
 //
 // The host picks which levels are in the deck (light, real, deep; light +
-// real by default) and how many rounds (everyone answers twice by default).
+// real by default) and how many rounds (everyone asks twice by default).
 // Everyone is dealt a private hand of 5 question cards; nobody else sees it,
 // and no card is dealt twice in a game.
 //
-// A turn: the app picks who's asking whom (the answerer is fair-random and
-// everyone is asked equally often; the asker is never the answerer). The
-// asker browses their hand and taps a card (30 s, then a random one is played
-// for them). It flips up on every screen, big, with both names. The answerer
-// answers out loud: "Answer" slides their mask off, "Pass" keeps it on (no
-// penalty, the turn moves on). While they talk, listeners can tap "Same" (I
-// relate; only the count is ever shown) or "Go deeper" (a gentle follow-up
-// the answerer can take or pass). "Done", the asker's hand refills to 5, next.
+// The room (roundtable.js): everyone's own 3D character sits round a table
+// under one low lamp, all in plain cream masks. Every phone looks from its
+// own seat, first person, its hand of cards fanned at the bottom.
 //
-// The end: everyone's characters together, masks off, and how many "Same"
-// taps the game had ("12 moments you weren't alone"). No ranking: everyone
-// who answered at least once gets the same coins (score 1, everyone else 0),
-// and it counts as one of the party's 3 games.
+// A turn goes round the table clockwise. It's your turn: your hand glows,
+// "Pick someone to ask." Tap anyone at the table (not yourself, not whoever
+// was asked last turn; whoever hasn't been asked yet glows gently), pick a
+// card and tap "Ask" (or the clock picks for you). The card flies to the
+// middle of the table and flips up, big, for everyone: "[you] → [them]".
+// You draw a new card, so you always hold 5. They answer out loud: "Answer"
+// slides their mask off onto the table, "Pass" keeps it on (no penalty, the
+// turn moves on). While they talk, the others can tap "Same" (only the count
+// is ever shown: "3 people felt this too") or "Go deeper" (a gentle
+// follow-up the answerer can take or pass). "Done": the mask goes back on,
+// the next one round the table asks.
+//
+// The end: the camera lifts above the table, every mask off, and how many
+// "Same" taps the game had ("12 moments you weren't alone"). No ranking:
+// everyone who answered at least once gets the same coins (score 1, everyone
+// else 0), and it counts as one of the party's 3 games.
 //
 // Answers are spoken out loud, never typed, sent or stored. The deck is
 // web/data/mask_off_cards.json; card ids are permanent.
@@ -26,11 +34,11 @@ import { sfx, buzz } from "./../fx.js";
 import { MASKOFF } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, shuffle, hostSkip, bindHostSkip, trash, roomBackdrop } from "./../hpkit.js";
 import { fairPick } from "./../fairpick.js";
-import { renderLook } from "./../charrender.js";
+import { SKIN4_RGB, normalizeAvatar4 } from "./../items4.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const BOTS_N = Math.max(0, Math.min(8, +params.get("bots") || 0));
+const BOTS_N = Math.max(0, Math.min(11, +params.get("bots") || 0));
 const M = MASKOFF;
 export const LEVELS = { 1: "light", 2: "real", 3: "deep" };
 
@@ -43,34 +51,38 @@ const poolReady = fetch(new URL(`../${M.POOL_URL}`, import.meta.url))
 export const maskPool = () => poolReady;
 const cardOf = id => POOL?.find(c => c.id === id) ?? null;
 
-// who answers next: whoever has been asked least (ties: the fair picker),
-// never the same person twice in a row when anyone else is level with them
-export function pickAnswerer(asked, weights, ids, last, rng) {
-  if (!ids.length) return { id: null, weights };
-  const low = Math.min(...ids.map(id => asked[id] ?? 0));
-  let cands = ids.filter(id => (asked[id] ?? 0) === low);
-  if (cands.length > 1) cands = cands.filter(id => id !== last);
-  return fairPick(weights, cands, rng);
+// ---------------------------------------------------------------- the turn rules
+// who asks: the next one round the table (clockwise), among those still here
+export function nextAsker(order, ai, ids) {
+  const seated = order.filter(id => ids.includes(id));
+  if (!seated.length) return { id: null, next: ai };
+  return { id: seated[ai % seated.length], next: ai + 1 };
 }
-// who asks: the next one round the table who isn't answering
-export function pickAsker(order, from, who) {
-  const ids = order.filter(id => id !== who);
-  if (!ids.length) return { id: null, next: from };
-  return { id: ids[from % ids.length], next: from + 1 };
+// who the asker may pick: anyone here but themselves and whoever was asked
+// last turn (unless that leaves nobody)
+export function canAsk(ids, asker, last) {
+  const others = ids.filter(id => id !== asker);
+  const fresh = others.filter(id => id !== last);
+  return fresh.length ? fresh : others;
+}
+// who hasn't been asked yet (fewest times so far): they glow at the table
+export function notAskedYet(asked, ids) {
+  if (!ids.length) return [];
+  const low = Math.min(...ids.map(id => asked[id] ?? 0));
+  return ids.filter(id => (asked[id] ?? 0) === low);
 }
 
-// ---------------------------------------------------------------- the mask
-const MASK_SVG = `<svg viewBox="0 0 60 46" aria-hidden="true">
-  <path class="mo-m-face" d="M4 7Q30-2 56 7Q59 25 46 37Q30 47 14 37Q1 25 4 7Z"/>
-  <path class="mo-m-eye" d="M12 17Q18.5 10 25 17Q18.5 21 12 17ZM35 17Q41.5 10 48 17Q41.5 21 35 17Z"/>
-  <path class="mo-m-brow" d="M11 12Q18 7 25 11M35 11Q42 7 49 12"/>
-  <path class="mo-m-mouth" d="M23 30Q30 33 37 30"/>
-</svg>`;
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+// two hands, in your own skin tone, holding the cards
+const HANDS = skin => `<svg class="mo-hands" viewBox="0 0 390 120" aria-hidden="true" style="--skin:${skin}">
+  <path class="mo-hand-l" d="M30 120 C 34 92 52 70 78 62 C 96 57 112 64 116 76 C 120 88 108 92 98 92 C 112 96 118 108 110 120 Z"/>
+  <path class="mo-hand-r" d="M360 120 C 356 92 338 70 312 62 C 294 57 278 64 274 76 C 270 88 282 92 292 92 C 278 96 272 108 280 120 Z"/>
+</svg>`;
 
 export const MASK_OFF = {
   id: "mask_off", title: "Mask Off",
-  blurb: "a slow one. ask someone a question from your hand, they answer out loud — or pass. tap \"same\" when you relate. no scores.",
+  blurb: "a slow one, round a table. pick someone, ask a question from your hand, they answer out loud — or pass. tap \"same\" when you relate. no scores.",
   minPlayers: 3, maxPlayers: 12, length: "~2 min per turn",
   backdrop: "room",            // played over the party room (dimmed), not the map
   // the deck and the rounds are the host's own setup: everyone else waits in
@@ -84,12 +96,9 @@ export const MASK_OFF = {
 
   _start(ctx) {
     ui.show(); ui.theme("chill");
-    roomBackdrop("lounge");     // a dim, warm lounge behind the cards
     const room = ctx.room;
     // ---- this phone's own state: reset per turn in render, keyed off the state
-    let lastHud = 0, seenTurn = null, mySame = false, slid = -1, flipped = -1, endShown = false;
-    const looks = new Map();
-    trash.add(() => { looks.clear(); });
+    let lastHud = 0, seenTurn = null, mySame = false, raised = null, myPick = null, flownTurn = -1, endShown = false, heldHand = [];
     // the host keeps who tapped "Same" to itself (one tap each): only the
     // count goes into the state, so no phone ever has the names
     const sameBy = new Map();
@@ -105,11 +114,14 @@ export const MASK_OFF = {
       {
         name: "choose", ms: M.CHOOSE_MS,
         done: s => !!turn(s)?.card,
-        // time's up: a random card from the asker's hand
+        // time's up: someone who hasn't been asked yet, and a random card
         next: s => {
           const t = turn(s);
-          if (!t.card) play(s, pickRandom(s, handOf(s, t.asker)), true);
-          if (!t.card) t.status = "passed";            // an empty hand (the whole deck played): nothing to ask
+          if (!t.card) {
+            if (!t.who) t.who = autoWho(s);
+            play(s, pickRandom(s, handOf(s, t.asker)), true);
+          }
+          if (!t.card) t.status = "passed";            // an empty hand (the whole deck played) or nobody to ask
           return t.card ? "talk" : "after";
         },
       },
@@ -146,9 +158,9 @@ export const MASK_OFF = {
         syncGone(s, room);
         const t = turn(s);
         // someone in the turn left: it ends there, nobody waits on them
-        if (t && !t.status && ["pick", "choose", "talk"].includes(s.phase) && (s.players[t.who]?.gone || (s.phase !== "talk" && s.players[t.asker]?.gone))) {
-          t.status = "left";
-          if (s.phase !== "pick") rounds.enter(s, "after");
+        if (t && !t.status && ["pick", "choose", "talk"].includes(s.phase) && ((t.who && s.players[t.who]?.gone) || (s.phase !== "talk" && s.players[t.asker]?.gone))) {
+          if (s.phase === "choose" && !t.card && t.who && s.players[t.who]?.gone && !s.players[t.asker]?.gone) t.who = null;   // (just pick someone else)
+          else { t.status = "left"; if (s.phase !== "pick") rounds.enter(s, "after"); }
         }
         if (t && s.phase === "talk" && t.status === "answering" && s.players[t.who]?.gone) t.status = "done";
         bots(s, dt);
@@ -169,7 +181,14 @@ export const MASK_OFF = {
         }
         const t = turn(s), p = s.players[m.from];
         if (!t || !p || t.status === "left") return;
-        if (s.phase === "choose" && m.in === "ask" && m.from === t.asker && !t.card && handOf(s, t.asker).includes(m.id)) play(s, m.id, false);
+        if (s.phase === "choose" && m.from === t.asker && !t.card) {
+          // the asker picks who (they can change their mind until they ask)
+          if ((m.in === "who" || m.in === "ask") && m.who !== undefined) {
+            if (canAsk(active(s).map(x => x.id), t.asker, s.lastWho).includes(m.who)) t.who = m.who;
+          }
+          if (m.in === "ask" && t.who && handOf(s, t.asker).includes(m.id)) play(s, m.id, false);
+          return;
+        }
         if (s.phase !== "talk") return;
         if (m.from === t.who) {
           if (m.in === "answer" && !t.status) t.status = "answering";
@@ -196,15 +215,15 @@ export const MASK_OFF = {
     }, { hz: 4 });
 
     // ---- host: the deck, the hands, the turns
-    // setup's done: shuffle the chosen levels and deal everyone a hand
+    // setup's done: shuffle the chosen levels, deal everyone a hand, seat them
     function begin(s) {
       const ids = POOL.filter(c => s.setup.levels.includes(c.level)).map(c => c.id);
       s.deck = shuffle(game.rng, ids);
       s.played = [];
       s.hands = {};
       for (const p of active(s)) s.hands[p.id] = s.deck.splice(0, M.HAND);
-      s.order = active(s).map(p => p.id);
-      s.asked = {}; s.weights = {}; s.ai = 0; s.ti = 0; s.sameTotal = 0; s.deeperN = 0;
+      s.order = active(s).map(p => p.id);           // round the table, clockwise
+      s.asked = {}; s.weights = {}; s.ai = 0; s.ti = 0; s.sameTotal = 0; s.deeperN = 0; s.lastWho = null;
       s.turns = Math.max(1, s.setup.rounds * active(s).length);
       s.turn = null;
     }
@@ -212,7 +231,7 @@ export const MASK_OFF = {
     // played does a card come round again (cards in hands never do).
     function refill(s, id) {
       const h = (s.hands[id] ??= []);
-      if (!s.deck.length && h.length === 0) {
+      if (!s.deck.length && h.length < M.HAND) {
         const held = new Set(Object.values(s.hands).flat());
         s.deck = shuffle(game.rng, s.played.filter(x => !held.has(x)));
       }
@@ -220,37 +239,49 @@ export const MASK_OFF = {
     }
     function nextTurn(s) {
       const ids = active(s).map(p => p.id);
-      for (const id of ids) if (!s.order.includes(id)) s.order.push(id);
-      const who = pickAnswerer(s.asked, s.weights, ids, s.turn?.who ?? null, game.rng);
-      s.weights = who.weights;
-      const asker = pickAsker(s.order.filter(id => ids.includes(id)), s.ai, who.id);
+      for (const id of ids) if (!s.order.includes(id)) s.order.push(id);   // (a late joiner takes a seat)
+      const asker = nextAsker(s.order, s.ai, ids);
       s.ai = asker.next;
-      s.asked[who.id] = (s.asked[who.id] ?? 0) + 1;
-      refill(s, asker.id);
-      s.turn = { no: s.ti + 1, asker: asker.id, who: who.id, card: null, auto: false, status: who.id && asker.id ? null : "left", same: 0, deeper: null, deepers: 0 };
+      if (asker.id) refill(s, asker.id);
+      s.turn = { no: s.ti + 1, asker: asker.id, who: null, card: null, auto: false, status: asker.id && ids.length > 1 ? null : "left", same: 0, deeper: null, deepers: 0 };
+    }
+    // nobody picked in time: someone who hasn't been asked yet (fair-random)
+    function autoWho(s) {
+      const t = turn(s), ids = active(s).map(p => p.id);
+      const ok = canAsk(ids, t.asker, s.lastWho);
+      const fresh = notAskedYet(s.asked, ok);
+      const r = fairPick(s.weights, fresh.length ? fresh : ok, game.rng);
+      s.weights = r.weights;
+      return r.id;
     }
     const pickRandom = (s, hand) => hand.length ? hand[Math.floor(game.rng() * hand.length)] : null;
+    // the card is asked: it leaves the asker's hand for the table, they draw a new one
     function play(s, id, auto) {
       const t = turn(s), c = cardOf(id);
-      if (!t || !c) return;
+      if (!t || !c || !t.who) return;
       const h = handOf(s, t.asker);
       if (h.includes(id)) h.splice(h.indexOf(id), 1);
       s.played.push(id);
+      refill(s, t.asker);
       t.card = { id: c.id, text: c.text, level: c.level };
       t.auto = auto;
+      s.asked[t.who] = (s.asked[t.who] ?? 0) + 1;
     }
-    // the turn's over: the asker's hand refills, an answer counts
+    // the turn's over: an answer counts; nobody can be asked twice in a row
     function wrapUp(s) {
       const t = turn(s);
       if (!t) return;
-      if (t.asker && s.hands[t.asker]) refill(s, t.asker);
+      if (t.who && t.card) s.lastWho = t.who;
       if (t.status === "done" && s.players[t.who]) s.players[t.who].score = 1;
     }
     // the offline demo's bots
     function bots(s, dt) {
       const t = turn(s), bot = id => s.players[id]?.isBot, r = () => game.rng();
       if (!t || t.status === "left") return;
-      if (s.phase === "choose" && !t.card && bot(t.asker) && r() < dt * 0.3) play(s, pickRandom(s, handOf(s, t.asker)), false);
+      if (s.phase === "choose" && !t.card && bot(t.asker)) {
+        if (!t.who && r() < dt * 0.8) t.who = autoWho(s);
+        else if (t.who && r() < dt * 0.4) play(s, pickRandom(s, handOf(s, t.asker)), false);
+      }
       if (s.phase !== "talk") return;
       if (bot(t.who)) {
         if (!t.status && r() < dt * 0.5) t.status = r() < 0.15 ? "passed" : "answering";
@@ -265,132 +296,308 @@ export const MASK_OFF = {
       }
     }
 
-    // ---- the players' 3D characters, as pictures (charrender.js)
-    function lookImg(id, frame, cls = "") {
-      const k = `${id}:${frame}`;
-      if (!looks.has(k)) {
-        looks.set(k, null);
-        renderLook(avatarOf(id), { frame }).then(url => {
-          if (!looks.has(k)) return;
-          looks.set(k, url);
-          document.querySelectorAll(`img[data-look="${CSS.escape(k)}"]`).forEach(el => { el.src = url; });
+    // ---- the table (roundtable.js): one for the whole game, moved into the
+    // room whenever it's (re)built. It loads while the host sets the deck.
+    let rt = null, rtP = null, track = 0, seatedKey = "";
+    const holder = document.createElement("div");
+    const loadTable = () => (rtP ??= import("./../roundtable.js").then(m => m.roundTable(holder)).then(r => {
+      rt = r; globalThis.__table = r;          // for the tests
+      r.onTap = id => pickWho(id);
+      return r;
+    }).catch(e => {
+      console.warn("[maskoff] no 3D table, the cards and names stay:", e?.message ?? e);
+      roomBackdrop("lounge");                 // (a warm room behind it, if that can run)
+      return null;
+    }));
+    loadTable();
+    sfx.musicStart();
+    trash.add(() => { sfx.musicStop(); cancelAnimationFrame(track); rtP?.then(r => r?.dispose()); rt = null; rtP = null; if (globalThis.__table) globalThis.__table = null; });
+    const room$ = () => $("mo-room");
+
+    function ensureRoom() {
+      if (room$()) return false;
+      seatedKey = "";
+      const skin = SKIN4_RGB[normalizeAvatar4(avatarOf(ctx.me.id) ?? {}).skin] ?? [228, 182, 146];
+      ui.panel(`<div class="np-room mo-room" id="mo-room">
+          <div class="mo-3d" id="mo-3d"></div>
+          <div class="mo-top"><div class="mo-who" id="mo-who"></div><div class="mo-prompt" id="mo-prompt"></div><div class="mo-seatbar" id="mo-seatbar"></div></div>
+          <div class="mo-chips" id="mo-chips"></div>
+          <div class="mo-flyer" id="mo-flyer"></div>
+          <div class="mo-center" id="mo-center"></div>
+          <div class="mo-motes" id="mo-motes"></div>
+          <div class="mo-low">
+            <div class="mo-act" id="mo-act"></div>
+            <div class="mo-handwrap" id="mo-handwrap">
+              <div class="mo-deck" id="mo-deck"><i></i><i></i><i></i></div>
+              <div class="mo-hand" id="mo-hand"></div>
+              ${HANDS(`rgb(${skin.join(",")})`)}
+            </div>
+          </div>
+          ${hostSkip(ctx)}
+        </div>`, "np-full mo-full");
+      bindHostSkip(game);
+      heldHand = [];
+      loadTable().then(r => {
+        const at = $("mo-3d");
+        if (!r || !at) return;
+        r.attach(at);
+        seatedKey = "";
+        if (game.s) seatTable(game.s);
+        requestAnimationFrame(() => room$()?.classList.add("r3d"));
+      });
+      cancelAnimationFrame(track);
+      const follow = () => { if (!room$()) return; placeChips(); track = requestAnimationFrame(follow); };
+      track = requestAnimationFrame(follow);
+      return true;
+    }
+    // everyone round the table, in turn order (the table seats 8; the rest
+    // sit in the seat bar at the top)
+    const tableOrder = s => (s.order?.length ? s.order : Object.keys(s.players ?? {})).filter(id => s.players[id] && !s.players[id].gone);
+    function seatTable(s) {
+      const ids = tableOrder(s), key = ids.join(",");
+      if (!rt || key === seatedKey) return;
+      seatedKey = key;
+      rt.seat(ids.map(id => ({ id, name: s.players[id].handle, avatar: avatarOf(id) })), ctx.me.id);
+    }
+    // names over everyone's heads (tappable too: picking works without 3D),
+    // and the seat bar for whoever isn't at the table
+    let chipKey = "";
+    function chips(s, { pickable = [], fresh = [], who = null, asker = null } = {}) {
+      const ids = tableOrder(s).filter(id => id !== ctx.me.id);
+      const seated = new Set(rt ? rt.info().seated : ids.slice(0, 7));
+      const key = JSON.stringify([ids, pickable, fresh, who, asker, [...seated]]);
+      if (key === chipKey) return;
+      chipKey = key;
+      const chip = id => `<button type="button" class="mo-chip ${pickable.includes(id) ? "can" : ""} ${fresh.includes(id) ? "fresh" : ""} ${who === id ? "on" : ""} ${asker === id ? "asker" : ""}" data-who="${esc(id)}" ${pickable.includes(id) ? "" : "tabindex=\"-1\""}>${esc(s.players[id]?.handle ?? "?")}</button>`;
+      const c = $("mo-chips"), bar = $("mo-seatbar");
+      if (c) c.innerHTML = ids.filter(id => seated.has(id)).map(chip).join("");
+      if (bar) bar.innerHTML = ids.filter(id => !seated.has(id)).map(chip).join("");
+      for (const b of document.querySelectorAll("#mo-room [data-who]")) b.onclick = () => pickWho(b.dataset.who);
+    }
+    function placeChips() {
+      const rm = room$(), c = $("mo-chips");
+      if (!rm || !c) return;
+      const R = rm.getBoundingClientRect(), in3d = !!rt && rm.classList.contains("r3d");
+      c.classList.toggle("in3d", in3d);
+      if (!in3d) return;
+      for (const el of c.children) {
+        const p = rt.screen(el.dataset.who);
+        if (!p) { el.style.visibility = "hidden"; continue; }
+        el.style.visibility = "";
+        // out of view: the name waits at the screen's edge (‹ or ›), still tappable
+        const edge = !p.visible;
+        el.classList.toggle("edge", edge);
+        el.dataset.side = p.side < 0 ? "l" : "r";
+        // (whole on screen: a name near the edge slides in)
+        const w = el.offsetWidth, x = edge ? (p.side < 0 ? 8 : R.width - 8 - w) : Math.max(8, Math.min(R.width - 8 - w, p.x - R.left - w / 2));
+        const y = Math.max(150, Math.min(R.height * 0.55, p.y - R.top));
+        el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(0, -100%)`;
+      }
+    }
+    // the asker taps someone at the table
+    function pickWho(id) {
+      const s = game.s, t = s && turn(s);
+      if (!t || s.phase !== "choose" || t.asker !== ctx.me.id || t.card) return;
+      if (!canAsk(active(s).map(p => p.id), t.asker, s.lastWho).includes(id)) {
+        if (id === s.lastWho) { sfx.back(); flash(`${nameOf(s, id)} was just asked — pick someone else`); }
+        return;
+      }
+      myPick = id; game.input("who", { who: id }); sfx.cursor(); buzz(10);
+      lastHud = 0; renderMO(s);
+    }
+    let flashT = 0;
+    function flash(text) {
+      const p = $("mo-prompt"); if (!p) return;
+      p.textContent = text; p.classList.add("warn"); clearTimeout(flashT);
+      flashT = setTimeout(() => { p.classList.remove("warn"); lastHud = 0; if (game.s) renderMO(game.s); }, 1800);
+    }
+
+    // ---- the hand: 5 cards fanned in your hands; tap one to raise it, again to lower
+    function renderHand(s, { mine = false, canAskNow = false } = {}) {
+      const el = $("mo-hand"), wrap = $("mo-handwrap");
+      if (!el) return;
+      const hand = handOf(s, ctx.me.id).map(cardOf).filter(Boolean);
+      const ids = hand.map(c => c.id);
+      if (raised && !ids.includes(raised)) raised = null;
+      wrap.classList.toggle("turn", mine);
+      wrap.classList.toggle("empty", !hand.length);
+      const key = ids.join(",");
+      if (el.dataset.key !== key) {
+        // a new card: it's drawn from the deck (the one that just came in)
+        const fresh = heldHand.length ? ids.filter(id => !heldHand.includes(id)) : [], firstDeal = !heldHand.length && ids.length > 0;
+        heldHand = ids;
+        el.dataset.key = key;
+        el.innerHTML = hand.map((c, i) => `<button type="button" class="mo-hc l${c.level} ${fresh.includes(c.id) ? "drawn" : ""}" data-card="${esc(c.id)}" style="--i:${i};--n:${hand.length}">
+            <em>${LEVELS[c.level]}</em><span>${esc(c.text)}</span></button>`).join("");
+        if (fresh.length) sfx.flip(); else if (firstDeal) sfx.shuffle();
+        el.querySelectorAll("[data-card]").forEach(b => b.onclick = () => {
+          raised = raised === b.dataset.card ? null : b.dataset.card;
+          sfx.flip(); lastHud = 0; renderMO(game.s);
         });
       }
-      const url = looks.get(k);
-      return `<img class="mo-look ${frame} ${cls}" data-look="${esc(k)}" alt="" ${url ? `src="${url}"` : ""}>`;
+      el.querySelectorAll("[data-card]").forEach(b => b.classList.toggle("up", b.dataset.card === raised));
+      el.classList.toggle("has-up", !!raised);
+      room$()?.classList.toggle("raised", !!raised);
+      // the Ask button rides the raised card, once there's someone to ask
+      const act = $("mo-act");
+      if (mine && act) {
+        const who = turn(s)?.who ?? myPick;
+        const html = raised && who
+          ? `<button type="button" class="mo-btn warm" id="mo-ask">Ask ${nameOf(s, who)}</button>`
+          : `<p class="mo-hint">${who ? "pick a card from your hand" : "tap someone at the table, then pick a card"}</p>`;
+        if (act.dataset.k !== html) { act.dataset.k = html; act.innerHTML = html; }
+        const b = $("mo-ask");
+        if (b) b.onclick = () => {
+          if (!canAskNow) return;
+          b.disabled = true;
+          flyFromHand(raised);
+          game.input("ask", { id: raised, who }); sfx.whoosh(); buzz(15);
+          raised = null;
+        };
+      }
     }
-    // a character with the mask on its face; `.off` slides it away
-    const masked = (id, cls = "") => `<div class="mo-masked ${cls}">${lookImg(id, "head")}<div class="mo-mask">${MASK_SVG}</div></div>`;
-    const cardHtml = (s, t, cls = "") => `<div class="mo-card ${cls}"><div class="mo-card-in">
-      <div class="mo-ask"><b>${nameOf(s, t.asker)}</b> <i>${t.asker === ctx.me.id ? "ask" : "asks"}</i> <b>${nameOf(s, t.who)}</b></div>
-      <div class="mo-text">${esc(t.card?.text ?? "…")}</div>
-      <em class="mo-lv l${t.card?.level ?? 1}">${LEVELS[t.card?.level ?? 1]}</em></div></div>`;
-    const hearts = n => `<div class="mo-hearts">${Array.from({ length: Math.min(n, 12) }, (_, i) => `<i style="--i:${i};--x:${((i * 37) % 100) - 50}px">♥</i>`).join("")}</div>`;
+    // the asked card flies from your hand (or from the asker's seat) to the
+    // middle of the table and flips up
+    function flyFromHand(id) {
+      const src = document.querySelector(`#mo-hand [data-card="${CSS.escape(id ?? "")}"]`), rm = room$(), f = $("mo-flyer");
+      if (!src || !rm || !f) return;
+      const R = rm.getBoundingClientRect(), b = src.getBoundingClientRect();
+      flight(f, b.left - R.left + b.width / 2, b.top - R.top + b.height / 2);
+    }
+    function flight(f, x, y) {
+      if (reduce()) return;
+      f.innerHTML = `<div class="mo-fly" style="--x:${Math.round(x)}px;--y:${Math.round(y)}px"><div class="mo-fly-back"></div></div>`;
+      setTimeout(() => { if (f.isConnected) f.innerHTML = ""; }, 900);
+    }
+
+    // ---- the asked card, big and readable over the table
+    const centerHtml = (s, t) => `<div class="mo-card ${t.card ? "" : "back"}"><div class="mo-card-in">
+        <div class="mo-ask"><b>${nameOf(s, t.asker)}</b> <i>→</i> <b>${nameOf(s, t.who)}</b></div>
+        <div class="mo-text">${esc(t.card?.text ?? "…")}</div>
+        <em class="mo-lv l${t.card?.level ?? 1}">${LEVELS[t.card?.level ?? 1]}</em></div></div>`;
+    // my own "Same": a little warm glow rises from where I sit
+    function myGlow() {
+      const m = $("mo-motes"); if (!m || reduce()) return;
+      const i = document.createElement("i"); m.appendChild(i);
+      setTimeout(() => i.remove(), 2200);
+    }
 
     // ---- render ----
     function renderMO(s) {
       const t = turn(s);
       // per-turn local state resets on every phone, keyed off the state
-      if (s.ti !== seenTurn) { seenTurn = s.ti; mySame = false; }
+      if (s.ti !== seenTurn) { seenTurn = s.ti; mySame = false; myPick = null; raised = null; rt?.sameReset(); }
       const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
       const step = s.phase === "end" ? "masks off" : s.phase === "setup" ? "setup" : `turn ${Math.min((s.ti ?? 0) + 1, s.turns || 1)}/${s.turns || "?"}`;
       const timed = s.phase === "choose";
       ui.hud(`<div class="hq"><b>MASK OFF</b><span>${step}</span>${timed ? `<span class="clk">${ui.clock(s.left)}</span>` : ""}</div>`);
 
       if (s.phase === "setup") return renderSetup(s);
+      ensureRoom();
+      seatTable(s);
       if (s.phase === "end") return renderEnd(s);
       if (!t) return;
       const asker = t.asker === ctx.me.id, answering = t.who === ctx.me.id;
+      const ids = active(s).map(p => p.id);
+      const pickable = asker && s.phase === "choose" && !t.card ? canAsk(ids, t.asker, s.lastWho) : [];
+      const fresh = s.phase === "choose" && !t.card ? notAskedYet(s.asked ?? {}, canAsk(ids, t.asker, s.lastWho)) : [];
+      const who = t.who ?? (asker ? myPick : null);
+      const off = s.phase === "talk" && (t.status === "answering" || t.status === "done") ? [t.who] : [];
+      rt?.state({ asker: t.asker, who: s.phase === "choose" || s.phase === "talk" ? who : null, picking: pickable.length > 0, fresh,
+        talker: s.phase === "talk" ? t.who : t.asker, off });
+      chips(s, { pickable, fresh, who, asker: t.asker });
+      const whoEl = $("mo-who"), promptEl = $("mo-prompt"), act = $("mo-act"), center = $("mo-center");
+      const setWho = html => { if (whoEl && whoEl.innerHTML !== html) whoEl.innerHTML = html; };
+      const setPrompt = text => { if (promptEl && !promptEl.classList.contains("warn") && promptEl.textContent !== text) promptEl.textContent = text; };
+      const setAct = html => { if (act && act.dataset.k !== html) { act.dataset.k = html; act.innerHTML = html; return true; } return false; };
+      const setCenter = html => { if (center && center.dataset.k !== html) { center.dataset.k = html; center.innerHTML = html; return true; } return false; };
 
       if (s.phase === "pick") {
-        if (!ui.once(`p:${s.ti}`, () => {})) return;
-        const line = asker ? `you <i>→ asking</i> ${nameOf(s, t.who)}` : answering ? `${nameOf(s, t.asker)} <i>→ asking</i> you` : `${nameOf(s, t.asker)} <i>→ asking</i> ${nameOf(s, t.who)}`;
-        ui.stage("", `<div class="mo-game mo-pick">
-            <div class="mo-pair"><div class="mo-p a">${lookImg(t.asker, "head")}<span>${nameOf(s, t.asker)}</span></div>
-              <div class="mo-arrow">→</div>
-              <div class="mo-p b">${masked(t.who)}<span>${nameOf(s, t.who)}</span></div></div>
-            <div class="mo-line">${line}</div></div>${hostSkip(ctx)}`, `turn ${t.no} of ${s.turns}`);
-        bindHostSkip(game);
+        rt?.card(null);
+        setWho(asker ? `your turn` : `${nameOf(s, t.asker)}'s turn`);
+        setPrompt("");
+        setCenter(""); setAct("");
+        renderHand(s);
         return;
       }
 
       if (s.phase === "choose") {
+        rt?.card(null);
+        setCenter("");
         if (asker) {
-          const hand = handOf(s, ctx.me.id).map(cardOf).filter(Boolean);
-          if (ui.once(`c:${s.ti}:${hand.map(c => c.id).join(",")}`, () => {})) {
-            ui.stage(`ask ${nameOf(s, t.who)}`, `<div class="mo-game mo-choose">
-                <p class="ab-sub">your hand · only you can see it. tap one to ask.</p>
-                <div class="mo-hand">${hand.map((c, i) => `<button type="button" class="mo-hc l${c.level}" data-ask="${esc(c.id)}" style="--i:${i}"><em>${LEVELS[c.level]}</em><span>${esc(c.text)}</span></button>`).join("")}</div>
-                <p class="mo-nudge" id="mo-nudge"></p></div>${hostSkip(ctx)}`, "your question");
-            $("game-panel").querySelectorAll("[data-ask]").forEach(b => b.onclick = () => {
-              $("game-panel").querySelectorAll("[data-ask]").forEach(x => { x.disabled = true; x.classList.toggle("on", x === b); });
-              game.input("ask", { id: b.dataset.ask }); sfx.pop(); buzz(15);
-            });
-            bindHostSkip(game);
-          }
-          const n = $("mo-nudge");
-          if (n) n.textContent = s.left <= M.NUDGE_MS ? `no rush… one will pick itself in ${Math.ceil(s.left / 1000)}s` : "";
+          setWho(who ? `you <i>→</i> ${nameOf(s, who)}` : "your turn");
+          setPrompt(who ? "now a card from your hand" : "Pick someone to ask.");
+          renderHand(s, { mine: true, canAskNow: true });
+          if (s.left <= M.NUDGE_MS) setPrompt(`no rush… the deck picks in ${Math.ceil(s.left / 1000)}s`);
           return;
         }
-        if (!ui.once(`cw:${s.ti}`, () => {})) return;
-        ui.stage("", `<div class="mo-game mo-wait">
-            <div class="mo-backs">${Array.from({ length: M.HAND }, (_, i) => `<i style="--i:${i}"></i>`).join("")}</div>
-            <div class="mo-line">${nameOf(s, t.asker)} is choosing a question for ${nameOf(s, t.who)}…</div></div>${hostSkip(ctx)}`, answering ? "it's for you" : "a question is coming");
-        bindHostSkip(game);
+        setWho(who ? `${nameOf(s, t.asker)} <i>→</i> ${nameOf(s, who)}` : `${nameOf(s, t.asker)} is choosing…`);
+        setPrompt(answering ? "it's for you" : "");
+        setAct("");
+        renderHand(s);
         return;
       }
 
       if (s.phase === "talk") {
+        renderHand(s);
+        // the card lands: from the asker's hand (theirs flew already) or seat
+        if (flownTurn !== s.ti) {
+          flownTurn = s.ti;
+          if (!asker) {
+            const p = rt?.screen(t.asker), R = room$()?.getBoundingClientRect();
+            if (p && R) flight($("mo-flyer"), p.x - R.left, p.y - R.top + 40);
+          }
+          sfx.whoosh(); setTimeout(() => sfx.flip(), 520);
+        }
+        rt?.card(t.card?.text, t.card?.level);
+        setWho(`${nameOf(s, t.asker)} <i>→</i> ${nameOf(s, t.who)}`);
+        setCenter(centerHtml(s, t));
+        const answeringNow = t.status === "answering";
+        rt?.same(t.same ?? 0);
         const d = t.deeper;
-        const key = `t:${s.ti}:${t.status ?? "-"}:${d ? `${d.n}${d.state ?? ""}` : "-"}:${mySame ? 1 : 0}`;
-        if (!ui.once(key, () => {})) return;
-        // the card flips up once per turn; the mask slides off once
-        const flip = flipped !== s.ti ? "flip" : ""; flipped = s.ti;
-        const off = t.status === "answering" || t.status === "done";
-        const slide = off && slid !== s.ti ? "sliding" : ""; if (off) slid = s.ti;
-        if (flip) sfx.whoosh();
-        if (slide) { sfx.chime(); if (answering) buzz(20); }
         const nudge = d && !d.state ? `<div class="mo-deeper ${answering ? "mine" : ""}"><small>go deeper</small><b>${esc(d.text)}</b>
             ${answering ? `<div class="mo-row"><button type="button" class="mo-btn soft" id="mo-dtake">take it</button><button type="button" class="mo-btn ghost" id="mo-dpass">pass</button></div>` : `<span>waiting on ${nameOf(s, t.who)}</span>`}</div>`
           : d?.state === "took" ? `<div class="mo-deeper took"><small>going deeper</small><b>${esc(d.text)}</b></div>` : "";
-        let controls;
+        let html;
         if (answering) {
-          controls = !t.status
+          html = !t.status
             ? `<div class="mo-row"><button type="button" class="mo-btn warm" id="mo-answer">Answer</button><button type="button" class="mo-btn ghost" id="mo-pass">Pass</button></div>
-               <p class="ab-sub">answer out loud. passing is fine — the mask just stays on.</p>`
-            : `${nudge}<div class="mo-row"><button type="button" class="mo-btn soft" id="mo-done">Done</button></div><p class="ab-sub">take your time.</p>`;
+               <p class="mo-hint">answer out loud. passing is fine — the mask just stays on.</p>`
+            : `${nudge}<div class="mo-row"><button type="button" class="mo-btn soft" id="mo-done">Done</button></div><p class="mo-hint">your mask is off. take your time.</p>`;
+          setPrompt("");
         } else {
-          controls = !t.status
-            ? `<p class="mo-line small">${nameOf(s, t.who)} is deciding…</p>`
+          html = !t.status
+            ? `<p class="mo-hint">${nameOf(s, t.who)} is deciding…</p>`
             : `${nudge}<div class="mo-row">
                 <button type="button" class="mo-btn same ${mySame ? "on" : ""}" id="mo-same" ${mySame ? "disabled" : ""}>${mySame ? "♥ same" : "♡ Same"}</button>
                 <button type="button" class="mo-btn ghost" id="mo-deep" ${(d && !d.state) || t.deepers >= M.DEEPER_MAX ? "disabled" : ""}>Go deeper</button></div>
-               <p class="ab-sub">listening. nobody sees who tapped same.</p>`;
+               <p class="mo-hint">listening. nobody sees who tapped same.</p>`;
+          setPrompt(answeringNow ? `${nameOf(s, t.who)}'s mask is off` : "");
         }
-        ui.stage("", `<div class="mo-game mo-talk">${cardHtml(s, t, flip)}
-            ${masked(t.who, `${off ? "off" : ""} ${slide}`)}
-            ${controls}</div>${hostSkip(ctx)}`, t.auto ? "the deck picked this one" : "");
-        const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
-        on("mo-answer", () => { game.input("answer"); });
-        on("mo-pass", () => { game.input("pass"); sfx.back(); });
-        on("mo-done", () => { game.input("done"); sfx.pop(); });
-        on("mo-dtake", () => { game.input("deeper-take"); sfx.pop(); });
-        on("mo-dpass", () => { game.input("deeper-pass"); sfx.back(); });
-        on("mo-same", () => { if (mySame) return; mySame = true; game.input("same"); sfx.pop(); buzz(12); ui.resetKey(); });
-        on("mo-deep", () => { game.input("deeper"); sfx.cursor(); });
-        bindHostSkip(game);
+        if (setAct(html)) {
+          const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+          on("mo-answer", () => { game.input("answer"); sfx.chime(); buzz(20); });
+          on("mo-pass", () => { game.input("pass"); sfx.back(); });
+          on("mo-done", () => { game.input("done"); sfx.pop(); });
+          on("mo-dtake", () => { game.input("deeper-take"); sfx.pop(); });
+          on("mo-dpass", () => { game.input("deeper-pass"); sfx.back(); });
+          on("mo-same", () => { if (mySame) return; mySame = true; game.input("same"); sfx.pop(); buzz(12); myGlow(); lastHud = 0; renderMO(game.s); });
+          on("mo-deep", () => { game.input("deeper"); sfx.cursor(); });
+        }
         return;
       }
 
       if (s.phase === "after") {
-        if (!ui.once(`a:${s.ti}`, () => {})) return;
-        let body;
-        if (t.status === "left") body = `<p class="mo-line">someone had to go. on to the next one.</p>`;
-        else if (t.status === "passed") body = `${t.card ? cardHtml(s, t, "small") : ""}${masked(t.who)}<p class="mo-line">${answering ? "you passed" : `${nameOf(s, t.who)} passed`} — the mask stays on. that's okay.</p>`;
-        else body = `${cardHtml(s, t, "small")}${masked(t.who, "off")}
-          ${t.same ? `${hearts(t.same)}<p class="mo-line">${t.same === 1 ? "someone felt this too" : `${t.same} people felt this too`}</p>` : `<p class="mo-line">thank you for sharing.</p>`}`;
-        ui.stage("", `<div class="mo-game mo-after">${body}</div>${hostSkip(ctx)}`, "");
-        bindHostSkip(game);
+        renderHand(s);
+        rt?.same(t.same ?? 0);
+        setWho(t.status === "left" ? "" : `${nameOf(s, t.asker)} <i>→</i> ${nameOf(s, t.who)}`);
+        setPrompt("");
+        let line;
+        if (t.status === "left") line = "someone had to go. on to the next one.";
+        else if (t.status === "passed") line = `${answering ? "you passed" : `${nameOf(s, t.who)} passed`} — the mask stays on. that's okay.`;
+        else line = t.same ? (t.same === 1 ? "someone felt this too" : `${t.same} people felt this too`) : "thank you for sharing.";
+        setAct(`<p class="mo-line">${line}</p>`);
+        if (!t.card) setCenter("");
         return;
       }
     }
@@ -418,23 +625,25 @@ export const MASK_OFF = {
       $("mo-go").onclick = () => { sfx.confirm(); game.input("mo-go"); $("mo-go").disabled = true; };
     }
 
-    // a calm "masks off": everyone together, and how often nobody was alone
+    // a calm "masks off": the camera lifts above the table, everyone
+    // together, and how often nobody was alone
     function renderEnd(s) {
-      if (!ui.once("end", () => {})) return;
-      const P = Object.values(s.players || {}).filter(p => !p.gone);
+      rt?.card(null);
+      rt?.end(true);
       const n = s.sameTotal ?? 0;
       const line = n ? `${n} ${n === 1 ? "moment" : "moments"} you weren't alone` : "thank you for being here";
-      ui.panel(`<div class="mo-end">
-          <div class="mo-end-k">masks off</div>
-          <div class="mo-crowd">${P.map((p, i) => `<figure style="--i:${i}">${lookImg(p.id, "full")}<i class="mo-fall">${MASK_SVG}</i><figcaption>${esc(p.handle)}</figcaption></figure>`).join("")}</div>
-          <div class="mo-end-n">${n ? hearts(Math.min(n, 12)) : ""}<b>${line}</b></div>
-          <p class="ab-sub">back to the party in a moment</p>${hostSkip(ctx, "host: back to the party")}</div>`, "mo-end-wrap");
-      bindHostSkip(game);
-      if (!endShown) { endShown = true; buzz(20); }
+      const html = `<div class="mo-end"><div class="mo-end-k">masks off</div><b class="mo-end-n">${line}</b><p class="mo-hint">back to the party in a moment</p></div>`;
+      const c = $("mo-center"); if (c && c.dataset.k !== html) { c.dataset.k = html; c.innerHTML = html; }
+      for (const id of ["mo-who", "mo-prompt"]) { const e = $(id); if (e) e.textContent = ""; }
+      const act = $("mo-act"); if (act) { act.innerHTML = ""; act.dataset.k = ""; }
+      $("mo-handwrap")?.classList.add("gone");
+      room$()?.classList.add("ending");
+      chips(s, {});
+      if (!endShown) { endShown = true; buzz(20); sfx.chime(); }
     }
 
     trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
-    game.start({ phase: "setup", left: M.SETUP_MS, players: {}, setup: { levels: M.LEVELS_DEFAULT.slice(), rounds: M.ROUNDS_DEFAULT, go: false }, hands: {}, deck: [], played: [], asked: {}, weights: {}, order: [], ai: 0, ti: 0, turns: 1, turn: null, sameTotal: 0 });
+    game.start({ phase: "setup", left: M.SETUP_MS, players: {}, setup: { levels: M.LEVELS_DEFAULT.slice(), rounds: M.ROUNDS_DEFAULT, go: false }, hands: {}, deck: [], played: [], asked: {}, weights: {}, order: [], ai: 0, ti: 0, turns: 1, turn: null, sameTotal: 0, lastWho: null });
     const o = ctx.onEnd;
     ctx.onEnd = r => { game.stop(); ui.hide(); o(r); };
   },
