@@ -5,10 +5,10 @@ on wrong neighbors — agave on Hamilton's plot, the Danco/Waikiki corner
 shuffled, Hamilton squished by a bad photogrammetry sample. This makes
 the registry authoritative per hero:
 
-  landmarks.json gains, per bound hero:
-    fp   — the building's exact footprint in world units
+  data/heroes.json gains, per bound hero:
+    fp   — the building's exact footprint, [lng, lat]
     lat/lng — recentered to the building centroid
-    h    — floors * 3.2 m in world convention (registry truth)
+    h    — floors * 3.2, in metres (registry truth)
     reg  — the registry id (bd_mgt_sn) for provenance
 
 Bindings resolve by explicit address (road + number), by registry name
@@ -24,7 +24,7 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REG = json.load(open(os.path.join(ROOT, "web", "data", "registry_buildings.json")))
-LMP = os.path.join(ROOT, "web", "landmarks.json")
+LMP = os.path.join(ROOT, "web", "data", "heroes.json")
 LM = json.load(open(LMP, encoding="utf-8"))
 
 CENTER = (37.5346, 126.9946)
@@ -67,16 +67,15 @@ def bind(hero_id, building, rule):
     if building is None:
         print(f"  {hero_id:20s} UNRESOLVED ({rule})")
         return
-    e = next(l for l in LM["landmarks"] if l["id"] == hero_id)
+    e = next(l for l in LM["heroes"] if l["id"] == hero_id)
     cl, cg = centroid_ll(building)
-    fp = [[round(x, 1), round(z, 1)] for x, z in
-          (project(p[1], p[0]) for p in building["footprint"])]
+    fp = [[round(p[0], 7), round(p[1], 7)] for p in building["footprint"]]  # [lng, lat]
     fl = building.get("floors")
     e["lat"], e["lng"] = round(cl, 6), round(cg, 6)
     e["fp"] = fp
     e["reg"] = building["id"]
     if fl:
-        e["h"] = round(fl * LEVEL_M * SCALE * VEXAG, 1)
+        e["h"] = round(fl * LEVEL_M, 1)  # metres
     taken.add(building["id"])
     rd = f"{building.get('road') or '?'} {building.get('road_no') or ''}".strip()
     nm = building.get("name") or "-"
@@ -120,5 +119,5 @@ ag = nearest(37.534953, 126.994194,
               and b["id"] not in taken])
 bind("agave", ag[0], f"non-main-road nearest ({ag[1]:.0f}m from photo)")
 
-json.dump(LM, open(LMP, "w"), indent=2)
-print("-> landmarks.json (fp/reg/h per bound hero)")
+json.dump(LM, open(LMP, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+print("-> data/heroes.json (fp/reg/h per bound hero)")

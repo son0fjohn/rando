@@ -16,6 +16,8 @@ import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
 import { ui } from "/web/gamekit.js";
 import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
+import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
+import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea } from "/web/citygen.js";
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -1356,6 +1358,58 @@ group("Cleanup — nothing survives the party");
   ok(window.__game === null, "the debug handle no longer pins the state");
 }
 
+
+group("The map — city chunks: the archive, heights, roofs, heroes, detail rings");
+{
+  const buf = new Uint8Array(await (await fetch("/web/tiles/cities.pmtiles")).arrayBuffer());
+  // a server that honours byte ranges (R2, Vercel), and one that doesn't
+  let ranges = 0;
+  const ranged = new PMTiles("x", { fetch: async (u, o) => { ranges++; const [, a, b] = /bytes=(\d+)-(\d+)/.exec(o.headers.Range); return new Response(buf.slice(+a, +b + 1), { status: 206 }); } });
+  const whole = new PMTiles("x", { fetch: async () => new Response(buf.slice(), { status: 200 }) });
+  const meta = await ranged.metadata();
+  ok(meta.areas?.length === 6 && /OpenStreetMap/.test(meta.attribution), `the test archive: ${meta.areas.map(a => a.id).join(", ")}, with attribution`);
+  ok(zxyToTileId(0, 0, 0) === 0 && zxyToTileId(1, 0, 0) === 1 && zxyToTileId(16, 55886, 25386) === 4875776909, "tile ids follow the PMTiles Hilbert order");
+  const at = (lat, lng) => lngLatToTile(lng, lat, 16).map(Math.floor);
+  const [ix, iy] = at(37.5346, 126.9946);
+  const a1 = await ranged.tile(16, ix, iy), a2 = await whole.tile(16, ix, iy);
+  ok(a1 && a2 && a1.length === a2.length && ranges >= 2, `Itaewon's centre chunk reads the same over byte ranges (${ranges} requests) and from a whole-file reply`);
+  ok(await ranged.tile(16, ix + 400, iy) === null, "a chunk the archive doesn't have is null, not an error");
+  const chunk = JSON.parse(new TextDecoder().decode(a1));
+  ok(chunk.b.length > 300 && chunk.r.length > 20, `Itaewon's centre chunk: ${chunk.b.length} buildings, ${chunk.r.length} road pieces`);
+  const floorsOk = { h: [2, 4], a: [10, 20], c: [3, 6], o: [8, 20], v: [3, 5], i: [1, 3], s: [1, 1] };
+  const all = [];
+  for (const a of meta.areas) { const [x, y] = at(a.lat, a.lng); const t = await ranged.tile(16, x, y); if (t) all.push(...JSON.parse(new TextDecoder().decode(t)).b); }
+  const guessed = all.filter(b => !b.m), bad = guessed.filter(b => b.f < floorsOk[b.k][0] || b.f > floorsOk[b.k][1]);
+  ok(guessed.length > 100 && !bad.length, `buildings with no height in the data get one by type: houses 2-4 floors, apartments 10-20, commercial 3-6, offices 8-20 (${guessed.length} checked)`);
+  ok(all.some(b => b.m) && all.every(b => b.h > 2 && b.h < 650), "measured and registry heights are kept as they are");
+  const kinds = new Set(all.map(b => b.k)), roofs = new Set(all.map(b => b.r));
+  ok(["h", "a", "c", "o"].every(k => kinds.has(k)) && roofs.has("f") && (roofs.has("g") || roofs.has("h")), `types ${[...kinds].join("")} and roofs ${[...roofs].join("")} (flat, gabled, hipped)`);
+  ok(worldHeight(25) === 25 * 0.55 * 2.4 && worldHeight(200) < 200 * 0.55 * 2.4 && worldHeight(200) > worldHeight(100), "the map's 2.4x vertical up to 25 m, gentler above, never shrinking");
+  // geometry
+  const tri = earcut([[0, 0], [10, 0], [10, 10], [5, 4], [0, 10]]);
+  ok(tri.length === 9, "a concave footprint triangulates into n-2 triangles");
+  const ob = orientedBox([[0, 0], [20, 10], [15, 20], [-5, 10]]);
+  ok(ob && Math.abs(ob.L * ob.S - Math.abs(ringArea([[0, 0], [20, 10], [15, 20], [-5, 10]]))) < 1, "a rotated rectangle's oriented box is the rectangle itself");
+  const origin = [37.5346, 126.9946];
+  const near = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 0 });
+  const far = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1 });
+  const tris = o => Object.values(o.groups).reduce((n, g) => n + (g.idx ? g.idx.length / 3 : 0), 0);
+  ok(near.groups.shop && near.groups.sign && near.lamps.length > 0 && near.groups.lines, `up close: shopfronts (${near.stats.shops}), lit signs (${near.stats.signs}), lamps (${near.stats.lamps}), outlines`);
+  ok(!far.groups.shop && !far.groups.sign && !far.lamps.length && far.groups.wall_g && tris(far) < tris(near) * 0.7, `further out: walls and roofs only, ${tris(far)} triangles vs ${tris(near)}`);
+  const again = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 0 });
+  ok(again.groups.roof.pos.length === near.groups.roof.pos.length && again.groups.roof.pos.every((v, i) => v === near.groups.roof.pos[i]), "a chunk builds the same every time (you come back to the same street)");
+  const floats = Object.values(near.groups).flatMap(g => [g.pos]).every(p => p.every(Number.isFinite));
+  ok(floats, "no NaN or Infinity in any vertex");
+  // a hero model hides the procedural building under it; a label-only hero doesn't
+  const hero = { lat: 37.534673, lng: 126.994076, clear: 12, glb: "x.glb" };
+  const hid = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, heroes: [hero] });
+  ok(hid.stats.hidden > 0 && hid.stats.buildings === far.stats.buildings - hid.stats.hidden, `a hero with a model hides the procedural building(s) at its spot (${hid.stats.hidden})`);
+  const clr = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, clearAt: 14 });
+  ok(clr.stats.hidden > 0, "nothing stands on the spot you stand on");
+  const heroes = (await (await fetch("/web/data/heroes.json")).json()).heroes;
+  ok(heroes.length >= 12 && heroes.every(h => h.id && h.label && Number.isFinite(h.lat) && Number.isFinite(h.lng) && "glb" in h && Array.isArray(h.offset)), "data/heroes.json: every hero has an id, a label, a spot, a model slot and an offset");
+  ok(heroes.every(h => !h.fp || h.fp.every(([lng, lat]) => Math.abs(lng - h.lng) < 0.002 && Math.abs(lat - h.lat) < 0.002)), "hero footprints are lng/lat around their own pin");
+}
 }
 log("head", `\n${pass} passed, ${fail} failed`);
 window.__done = { pass, fail };

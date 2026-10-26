@@ -41,7 +41,16 @@ export async function serve({ realAvatars = false, port = 0 } = {}) {
           body = Buffer.from(s);
         }
       }
-      res.writeHead(200, { "content-type": MIME[extname(p)] ?? "application/octet-stream" });
+      const type = MIME[extname(p)] ?? "application/octet-stream";
+      // byte ranges, like Vercel and R2: the city chunks (PMTiles) need them
+      const m = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range || "");
+      if (m) {
+        const a = +m[1], z = Math.min(body.length - 1, m[2] ? +m[2] : body.length - 1);
+        res.writeHead(206, { "content-type": type, "content-range": `bytes ${a}-${z}/${body.length}`, "accept-ranges": "bytes" });
+        res.end(body.subarray(a, z + 1));
+        return;
+      }
+      res.writeHead(200, { "content-type": type, "accept-ranges": "bytes" });
       res.end(body);
     } catch { res.writeHead(404); res.end(); }
   });

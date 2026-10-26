@@ -1,0 +1,11 @@
+{
+  "comment": "Areas baked into city tiles for tests and previews (scripts/fetch_overture.py, scripts/bake_city_tiles.py). r is the radius in metres.",
+  "areas": [
+    {"id": "itaewon",  "label": "Itaewon",              "lat": 37.5346, "lng": 126.9946, "r": 1300, "registry": "web/data/registry_buildings.json"},
+    {"id": "hongdae",  "label": "Hongdae",              "lat": 37.5563, "lng": 126.9236, "r": 1000},
+    {"id": "gangnam",  "label": "Gangnam",              "lat": 37.4979, "lng": 127.0276, "r": 1000},
+    {"id": "yeonhui",  "label": "Yeonhui-dong (quiet)", "lat": 37.5665, "lng": 126.9310, "r": 900},
+    {"id": "haeundae", "label": "Busan Haeundae",       "lat": 35.1600, "lng": 129.1600, "r": 1000},
+    {"id": "shibuya",  "label": "Tokyo Shibuya",        "lat": 35.6595, "lng": 139.7005, "r": 1000}
+  ]
+}
