@@ -45,6 +45,14 @@ export function viewFrom(PROJ, dist = 2.5, o = {}) {
   };
 }
 
+// first person (Mask Off's round table): the same look-around, from your own
+// seat. The camera stays at `eye` and turns in place: a drag moves the world
+// with the finger (left: you look right), a pinch narrows the view a little.
+//   firstPerson({ eye: [x, y, z], yaw, pitch, fov, yawRange: [-1.4, 1.4] })
+export function firstPerson(o) {
+  return { ...ORBIT, pitchRange: [-0.18, 0.22], zoomRange: [0.8, 1.0], fov: 60, aspect: 9 / 16, yaw: 0, pitch: 0, ...o, fp: true, target: o.eye, dist: 0 };
+}
+
 // the camera: orbit offsets from the default view, eased; `rise(yaw)` lifts
 // the camera a little at some angles (to look over something in the way)
 export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
@@ -54,7 +62,7 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
   const want = { yaw: 0, pitch: 0, zoom: 1 };              // where the finger put it
   const vel = { yaw: 0, pitch: 0 };                        // momentum after a flick (rad/s)
   const tilt = { yaw: 0, pitch: 0 };                       // device tilt parallax
-  let lastTouch = -1e9, pushGoal = 0, pushNow = 0, homing = false;
+  let lastTouch = -1e9, pushGoal = 0, pushNow = 0, homing = false, lastUpd = 0;
   const ptrs = new Map();
   let drag = null, pinch = null;
   const clampView = () => {
@@ -131,15 +139,29 @@ export function orbitCamera(st, V, { onTap = null, rise = () => 0 } = {}) {
       const f = Math.exp(-dt * 4.5); vel.yaw *= f; vel.pitch *= f;
     }
     const idle = ptrs.size === 0 && (homing || now - lastTouch > V.idleMs);
+    // (the glide home runs on the clock: a slow phone's long frames don't stretch it)
+    const wdt = Math.min(0.5, Math.max(0, (now - (lastUpd || now)) / 1000)); lastUpd = now;
     if (idle) {
-      const k = 1 - Math.exp(-dt * 1.6);
+      const k = 1 - Math.exp(-wdt * 1.6);
       want.yaw -= want.yaw * k; want.pitch -= want.pitch * k; want.zoom += (1 - want.zoom) * k;
       vel.yaw = vel.pitch = 0;
     }
-    const ke = still ? 1 : 1 - Math.exp(-dt * 10);
+    const ke = still ? 1 : 1 - Math.exp(-Math.max(dt, wdt) * 10);
     view.yaw += (want.yaw - view.yaw) * ke; view.pitch += (want.pitch - view.pitch) * ke; view.zoom += (want.zoom - view.zoom) * ke;
     pushNow += (pushGoal - pushNow) * (1 - Math.exp(-dt * 1.1));
     const yaw = V.yaw + view.yaw + tilt.yaw, pitch = V.pitch + view.pitch + tilt.pitch + rise(view.yaw);
+    if (V.fp) {
+      // from the seat: yaw + looks right, pitch + looks up; zoom narrows the view
+      camera.position.copy(T);
+      if (!still) { camera.position.x += Math.sin(t * 0.31) * 0.004; camera.position.y += Math.sin(t * 0.43 + 1) * 0.003; }
+      camPos.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)).add(camera.position);
+      camera.lookAt(camPos);
+      const a = camera.aspect || V.aspect;
+      const base = a < V.aspect ? 2 * Math.atan(Math.tan(V.fov * deg / 2) * V.aspect / a) / deg : V.fov;
+      const fov = base * view.zoom;
+      if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+      return;
+    }
     const d = V.dist * view.zoom * (1 - pushNow * (1 - V.push));
     camPos.set(T.x + d * Math.sin(yaw) * Math.cos(pitch), T.y + d * Math.sin(pitch), T.z + d * Math.cos(yaw) * Math.cos(pitch));
     if (!still) { camPos.x += Math.sin(t * 0.31) * 0.005; camPos.y += Math.sin(t * 0.43 + 1) * 0.003; }

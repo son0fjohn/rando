@@ -603,10 +603,25 @@ function build(cfg) {
     B.thigh_L.getWorldPosition(hipAt); rig.worldToLocal(hipAt);
     return -(hipAt.y * CHAR_H - THIGH_R);
   };
+  // sitting on a chair at a table (Mask Off's round table): thighs forward,
+  // shins down, feet flat, upright with a little lean in, forearms resting on
+  // the table's edge in front. Same contract as sitPose: the seat lands on the
+  // group's origin.
+  const chairPose = (t, w) => {
+    const br = Math.sin(t * 1.3) * 0.012;
+    turn(B.spine, (0.06 + br) * w, 0, 0);
+    turn(B.chest, 0.04 * w, 0, 0);
+    aim(B.thigh_L, B.shin_L, 0.1, -0.06, 1, w); aim(B.thigh_R, B.shin_R, -0.1, -0.06, 1, w);
+    aim(B.shin_L, B.foot_L, 0.03, -1, 0.06, w); aim(B.shin_R, B.foot_R, -0.03, -1, 0.06, w);
+    aim(B.upperarm_L, B.forearm_L, 0.22, -0.8, 0.55, w); aim(B.upperarm_R, B.forearm_R, -0.22, -0.8, 0.55, w);
+    aim(B.forearm_L, B.hand_L, -0.28, 0.02, 1, w); aim(B.forearm_R, B.hand_R, 0.28, 0.02, 1, w);
+    B.thigh_L.getWorldPosition(hipAt); rig.worldToLocal(hipAt);
+    return -(hipAt.y * CHAR_H - THIGH_R);
+  };
   // idle: arms down from the A-pose, loose; a wider stance, weight on one
   // leg; a slow breathing sway, now and then a little nod. walk: thighs
   // swing, knees fold, arms swing against the legs, a springy bounce.
-  const applyMotion = (t, w, p, sit = 0, gz = 0, u = 1) => {
+  const applyMotion = (t, w, p, sit = 0, gz = 0, u = 1, chair = 0) => {
     for (const [b, r] of rest) { b.quaternion.copy(r.q); b.position.copy(r.p); }
     rig.updateMatrixWorld(true);
     const i = 1 - w, sway = Math.sin(t * 1.15);
@@ -636,6 +651,7 @@ function build(cfg) {
     // (u: the group's own scale, for a scaled-down character in a room; 1 on the map)
     group.position.y = (i * (0.02 + sway * 0.02) + w * 0.3 * Math.abs(Math.sin(p)) + hop * 0.9) * u;
     if (sit > 0) { const drop = sitPose(t, sit); group.position.y = group.position.y * (1 - sit) + (drop + hop * 0.4) * sit * u; }
+    if (chair > 0) { const drop = chairPose(t, chair); group.position.y = group.position.y * (1 - chair) + (drop + hop * 0.2) * chair * u; }
     // where they're looking: a turn of the head (yaw, + = to their left), the neck taking a little
     if (gz) { turn(B.neck, 0, gz * 0.3, 0); turn(B.head, 0, gz * 0.7, 0); }
   };
@@ -648,7 +664,7 @@ function build(cfg) {
   };
 
   paint(); dress(); applyMotion(0, 0, 0);
-  let lastT = null, walkW = 0, walkP = 0, sitW = 0, gazeNow = 0;
+  let lastT = null, walkW = 0, walkP = 0, sitW = 0, chairW = 0, gazeNow = 0, nodNow = 0;
   const IDLE_LEN = 4, WALK_LEN = Math.PI * 2 / STRIDE;
   return {
     group,
@@ -686,8 +702,13 @@ function build(cfg) {
     },
     __rig: () => ({ turn, B, rest, rig, body, U }), // dev harness only
     walking: false,
-    // "stand" or "sit" (cross-legged on a floor cushion; eased in and out)
+    // "stand", "sit" (cross-legged on a floor cushion) or "chair" (on a chair
+    // at a table); eased in and out
     stance: "stand",
+    // the head bone (a mask or a prop rides it)
+    get head() { return B.head; },
+    // where they look up or down: head pitch in radians (+ = down), eased
+    tilt: 0,
     // where they look: head yaw in radians (+ = to their left), eased
     gaze: 0,
     // the group's scale when it's scaled down into a room (npcstage.js): the
@@ -696,14 +717,17 @@ function build(cfg) {
     phase: Math.random() * Math.PI * 2,
     tick(t) {
       // the first frame takes the stance as it is (someone who pops in sitting doesn't sit down first)
-      if (lastT === null) sitW = this.stance === "sit" ? 1 : 0;
+      if (lastT === null) { sitW = this.stance === "sit" ? 1 : 0; chairW = this.stance === "chair" ? 1 : 0; }
       const dt = lastT === null ? 0.016 : Math.min(0.1, Math.max(0, t - lastT));
       lastT = t;
       walkW += ((this.walking ? 1 : 0) - walkW) * Math.min(1, dt / 0.2);
       walkP += dt * STRIDE * Math.min(1, walkW * 1.5 + 0.2);
       sitW += ((this.stance === "sit" ? 1 : 0) - sitW) * Math.min(1, dt / 0.25);
+      chairW += ((this.stance === "chair" ? 1 : 0) - chairW) * Math.min(1, dt / 0.25);
       gazeNow += (this.gaze - gazeNow) * Math.min(1, dt / 0.35);
-      applyMotion(t, walkW, walkP, sitW, gazeNow, this.unit);
+      nodNow += (this.tilt - nodNow) * Math.min(1, dt / 0.35);
+      applyMotion(t, walkW, walkP, sitW, gazeNow, this.unit, chairW);
+      if (nodNow) turn(B.head, nodNow, 0, 0);
       faceTick(t, this.walking);
       emoteTick(t);
     },
