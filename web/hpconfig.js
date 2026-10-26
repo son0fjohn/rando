@@ -162,7 +162,7 @@ export const MANHUNT = {
   ROUND: { min: 10, max: 120, step: 5, def: 30 },        // minutes
   PING: { min: 1, max: 15, step: 1, def: 5 },            // minutes between pings
   HEADSTART: { min: 0, max: 10, step: 1, def: 3 },       // minutes runners get first
-  ZONE: { minR: 150, maxR: 3000, defR: 600, maxPts: 12 }, // metres; a drawn shape's corners
+  ZONE: { minR: 150, maxR: 1500, defR: 600, maxPts: 12 }, // radius, metres (300 m to 3 km across); a drawn shape's corners
   // the zone shrinks in steps (at this share of the round, to this share of
   // its size), each announced a minute before
   SHRINK: { steps: [{ at: 0.5, k: 0.8 }, { at: 0.7, k: 0.65 }, { at: 0.85, k: 0.5 }], WARN_MS: 60 * 1000 },

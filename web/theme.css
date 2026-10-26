@@ -1404,6 +1404,8 @@ button.dlg-choice.sq-star { color: #ffd23f; }
    Played on the live map: the game layer lets touches through to the map;
    only its own bars, sheets and cards take them. Gold accent, navy glass. */
 #game-layer.mh-on { pointer-events: none; }
+/* Manhunt owns the map: no NPC tags, no chat bubbles or other people's markers on it */
+body.hp-on-map .wl-npc, body.hp-on-map .bubble-anchor { display: none !important; }
 .mh-ui { position: absolute; inset: 0; pointer-events: none; font-family: var(--f-ui, -apple-system, "SF Pro Text", "Apple SD Gothic Neo", system-ui, sans-serif); color: #f4f7ff; }
 .mh-ui > :not(.mh-catch) > *, .mh-ui .mh-sheet, .mh-ui .mh-modal, .mh-ui .mh-safe-cover { pointer-events: auto; }
 .mh-ui [hidden] { display: none !important; }
@@ -1416,6 +1418,7 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 .mh-stat { display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: center; }
 .mh-stat small { font-size: 10px; opacity: .7; text-transform: uppercase; letter-spacing: .06em; }
 .mh-stat b { font: 700 17px/1.15 ui-monospace, "SF Mono", monospace; }
+.mh-nosig { position: absolute; left: 10px; right: 52%; top: calc(100% + 50px); font-size: 11.5px; color: #ffd0cc; text-align: left; text-shadow: 0 1px 3px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mh-powers { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 66px); left: 8px; right: 8px; display: flex; gap: 6px; justify-content: center; }
 .mh-pw { pointer-events: auto; border: 0; border-radius: 999px; padding: 7px 11px; font: 600 12px/1 inherit; background: rgba(12, 22, 56, .78); color: #fff; box-shadow: inset 0 0 0 1.5px rgba(var(--color-accent-rgb), .7); }
 .mh-pw:active { transform: scale(.96); }
@@ -1434,6 +1437,7 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 .mh-h small { text-transform: none; letter-spacing: 0; color: #c8d0e8; font-weight: 500; }
 .mh-hint, .mh-fine { font-size: 12.5px; opacity: .78; margin: 6px 0; }
 .mh-warn { color: #ffb4a8; font-size: 13px; min-height: 1em; }
+.mh-warn:empty { display: none; }
 .mh-row, .mh-row2 { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 7px 0; font-size: 14px; }
 .mh-row input[type=range] { flex: 1; }
 .mh-row b { font-variant-numeric: tabular-nums; }

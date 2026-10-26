@@ -35,15 +35,15 @@ export function zoneRadius(z) {
 export function zoneOk(z) {
   if (!z) return [false, "draw the zone on the map"];
   if (z.type === "circle") {
-    if (!(z.r >= M.ZONE.minR)) return [false, `a bit bigger: at least ${M.ZONE.minR} m across a few blocks`];
-    if (z.r > M.ZONE.maxR) return [false, `smaller: at most ${(M.ZONE.maxR / 1000).toFixed(0)} km`];
+    if (!(z.r >= M.ZONE.minR)) return [false, `a bit bigger: at least ${M.ZONE.minR * 2} m across, a few blocks`];
+    if (z.r > M.ZONE.maxR) return [false, `smaller: at most ${M.ZONE.maxR * 2 / 1000} km across`];
     return [true, ""];
   }
   if (!Array.isArray(z.pts) || z.pts.length < 3) return [false, "tap at least 3 corners"];
   if (z.pts.length > M.ZONE.maxPts) return [false, `at most ${M.ZONE.maxPts} corners`];
   const r = zoneRadius(z);
-  if (r < M.ZONE.minR) return [false, `a bit bigger: at least ${M.ZONE.minR} m`];
-  if (r > M.ZONE.maxR) return [false, `smaller: at most ${(M.ZONE.maxR / 1000).toFixed(0)} km`];
+  if (r < M.ZONE.minR) return [false, `a bit bigger: at least ${M.ZONE.minR * 2} m across`];
+  if (r > M.ZONE.maxR) return [false, `smaller: at most ${M.ZONE.maxR * 2 / 1000} km across`];
   return [true, ""];
 }
 // how big the zone is at a moment of the round (1 = full size): it holds,

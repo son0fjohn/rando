@@ -1292,6 +1292,12 @@ group("Manhunt — privacy: positions stay on the phone; pings are fuzzy circles
   ok(team.every(m => !coord.test(JSON.stringify(m.box))), "and as ciphertext: no coordinates readable on the wire");
   ok(mhPhone("p1").mates.size >= 1 && ![...mhPhone("p1").mates.keys()].includes(H), "a runner sees teammates (fuzzy), never a hunter");
   ok(![...mhPhone(H).mates.keys()].some(id => R.includes(id)), "a hunter's team view has no runners");
+  // a locked screen: that phone sends nothing at the ping; the hunters see "no signal"
+  mhPhone("p3").me.asleep = true; t.input("p3", "mh-asleep", { on: true });
+  const at = t.s.hunt.next; adv(at - t.s.hunt.t + 1000);
+  const no3 = t.s.hunt.no;
+  ok(!t.sent.some(m => m.type === "mh-pos" && m.no === no3 && m.from === "p3") && t.sent.some(m => m.type === "mh-pos" && m.no === no3 && m.from === "p1"), "a locked phone sends nothing at a ping (the others do)");
+  ok(t.s.players.p3.asleep && !t.s.players.p1.asleep, "the state only says that phone went quiet (no place)");
   ok(t.errors().length === 0, "no errors: " + (t.errors()[0] ?? "none"));
   mhDone(t);
 }

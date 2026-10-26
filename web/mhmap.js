@@ -8,7 +8,7 @@
 //
 //   const m = mhMap(world3d);
 //   m.zone(z, k); m.next(k2); m.pings([{ key, name, c, r, at, kind }]); m.mates([...]);
-//   m.focus(z); m.pick(clientX, clientY) -> [lat, lng]; m.draft(z); m.dispose();
+//   m.focus(z, { cover }); m.pick(clientX, clientY) -> [lat, lng]; m.draft(z); m.dispose();
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { zoneCentre, zoneRadius, inZone } from "./mhgeo.js";
 import { PMTiles } from "./pmtiles.js";
@@ -93,7 +93,8 @@ export function mhMap(world) {
     let o = rings.get(key);
     const p = world.geo(c[0], c[1]);
     if (!o) {
-      const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ map: ringTex, color: COLORS[kind] ?? COLORS.ping, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ map: ringTex, color: COLORS[kind] ?? COLORS.ping, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
+      // (drawn over the buildings: a circle on the street would hide behind them)
       mesh.rotation.x = -Math.PI / 2; mesh.renderOrder = 5; root.add(mesh);
       const pos = new THREE.Vector3();
       const label = world.addLabel?.(name, "ping", 6, () => pos);
@@ -102,7 +103,7 @@ export function mhMap(world) {
     }
     o.mesh.material.color.setHex(COLORS[kind] ?? COLORS.ping);
     o.mesh.position.set(p.x, 0.7 + (kind === "mate" ? 0.1 : 0), p.z);
-    o.mesh.scale.setScalar(Math.max(4, r * M2U));
+    o.r = r * M2U;
     o.pos.set(p.x, 14, p.z);
     o.at = at; o.kind = kind;
     if (o.label) o.label.el.lastChild.textContent = name;
@@ -124,13 +125,18 @@ export function mhMap(world) {
   const mates = list => sync(list, "m:");
 
   // ---- the camera: the whole zone in view
-  function focus(z) {
+  // (cover: the share of the screen's bottom a sheet covers: the camera
+  // aims short of the zone so it sits in the open part above)
+  function focus(z, { cover = 0 } = {}) {
     if (!z) return;
     const c = world.geo(...zoneCentre(z)), r = zoneRadius(z) * M2U;
     world.observing = true;
-    world.target.set(c.x, 0, c.z);
-    world.camGoal = { theta: world.cam.theta, elev: 0.95, dist: Math.max(160, Math.min(1500, r * 2.3)) };
-    if (world.scene.fog) world.scene.fog.far = Math.max(980, r * 3.2);
+    const th = world.cam.theta, k = r * cover * 1.5;
+    world.target.set(c.x + Math.sin(th) * k, 0, c.z + Math.cos(th) * k);
+    const dist = Math.max(160, Math.min(1500, r * 2.3));
+    world.camGoal = { theta: world.cam.theta, elev: 0.95, dist };
+    // the fog starts past the zone, seen from up there (not 300 units from the camera)
+    if (world.scene.fog) { world.scene.fog.near = Math.max(300, dist * 0.85); world.scene.fog.far = Math.max(980, dist + r * 2.2); }
     world.camera.far = Math.max(2500, r * 4); world.camera.updateProjectionMatrix();
     world.applyCamera?.();
     world.needsRender = true;
@@ -157,7 +163,10 @@ export function mhMap(world) {
     if (Math.abs(kWant - kNow) > 0.001) { kNow += (kWant - kNow) * Math.min(1, dt * 1.2); world.needsRender = true; }
     zoneG.scale.set(kNow, 1, kNow);
     const now = performance.now();
+    // true size up close; zoomed out to the whole zone, never smaller than a dot you can see
+    const least = (world.cam?.dist ?? 0) * 0.016;
     for (const o of rings.values()) {
+      o.mesh.scale.setScalar(Math.max(4, o.r ?? 0, least));
       const age = now - o.at;
       const a = o.kind === "live" ? 0.65 + 0.35 * Math.sin(t * 6) : o.kind === "mate" ? 0.75 : Math.max(0.15, 1 - age / fadeMs);
       o.mesh.material.opacity = a;

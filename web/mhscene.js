@@ -55,8 +55,10 @@ export function mhScene(layer) {
       const my = ++token;
       show("full");
       const s = await scene();
+      if (my !== token) return;
       s?.room.doors(false, { instant: true }); s?.room.counter("1");
       await sleep(600);
+      if (my !== token) return;
       s?.room.doors(true); ding();
       s?.play("smirk");
       for (const l of lines) { if (my !== token) return; await say(l); }
@@ -69,10 +71,12 @@ export function mhScene(layer) {
       const my = ++token;
       show("small");
       const s = await scene();
+      if (my !== token) return;
       s?.room.doors(false, { instant: true });
       over.innerHTML = `<div class="mh-elev-count"></div>`;
       const cnt = over.firstChild;
       for (const k of [3, 2, 1]) { if (my !== token) return; s?.room.counter(String(k)); cnt.textContent = `${k}`; await sleep(700); }
+      if (my !== token) return;
       cnt.remove();
       s?.room.counter("PING"); ding();
       s?.room.doors(true); s?.play("tap");
@@ -84,20 +88,24 @@ export function mhScene(layer) {
       return n;
     },
     async wait(text) {
-      ++token;
+      const my = ++token;
       show("full wait");
       const s = await scene();
+      if (my !== token) return;
       s?.room.doors(false);
       over.innerHTML = `<div class="mh-wait"><b>No peeking.</b><span class="mh-wait-t">${text}</span></div>`;
       dlg.hide?.();
     },
     waitText(text, counter) { const t = over.querySelector(".mh-wait-t"); if (t) t.textContent = text; if (counter) h?.room.counter(counter); },
     async results(line, posterHtml = "") {
-      ++token;
+      const my = ++token;
       show("full results");
+      over.innerHTML = "";
       const s = await scene();
+      if (my !== token) return;
       s?.room.doors(false, { instant: true });
       await sleep(400);
+      if (my !== token) return;
       s?.room.doors(true); ding();
       s?.play("point");
       over.innerHTML = `<div class="mh-held">${posterHtml}</div>`;

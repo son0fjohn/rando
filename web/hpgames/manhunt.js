@@ -44,6 +44,7 @@ const FAST = Math.max(1, +params.get("mhfast") || 1);
 export const MIN = 60000 / FAST;                    // one "minute" of the game's clock
 const $ = id => document.getElementById(id);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";   // (a portrait still rendering)
 const mmss = ms => { const t = Math.max(0, Math.ceil(ms / 1000)); return t >= 3600 ? `${Math.floor(t / 3600)}:${String(Math.floor(t / 60) % 60).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}` : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 
 export const MANHUNT_GAME = {
@@ -66,11 +67,18 @@ export const MANHUNT_GAME = {
     const chat = [];             // my team's lines
     // the live map, when this page has one (the party page does; a logic test page doesn't)
     let world3d = null, map = mhMap(null), hasMap = false;
-    import("./../world3d.js").then(m => { if (!m.world3d?.scene) return; world3d = m.world3d; map = mhMap(world3d); hasMap = map.live; hook.map = map; if (game.s) render(game.s); }).catch(() => {});
+    import("./../world3d.js").then(m => {
+      if (!m.world3d?.scene) return;
+      world3d = m.world3d; map = mhMap(world3d); hasMap = map.live; hook.map = map;
+      // other people on the world map stay off it (runners never see hunters)
+      if (world3d.remoteGroup) { world3d.remoteGroup.visible = false; trash.add(() => { world3d.remoteGroup.visible = true; world3d.needsRender = true; }); }
+      lastSheetKey = null;   // (the setup sheet adds its tap catcher once there's a map)
+      if (game.s) render(game.s);
+    }).catch(e => console.warn("[manhunt] no map:", e?.message ?? e));
     const elev = mhScene(layer);
     elev.onTap = () => elev.quip(pick(M.LINES.tap));
     let drawn = null, draftCorners = [], drawMode = "circle", drawR = M.ZONE.defR, seenPing = 0, seenTagAsk = null, lastHud = 0;
-    let sheet = null, lastSheetKey = null, endShown = 0, cityAt = null, roadsWarn = null, roadsFor = null;
+    let sheet = null, lastSheetKey = null, endShown = 0, cityAt = null, playFocus = false, roadsWarn = null, roadsFor = null;
     trash.add(() => { pings.clear(); mates.clear(); near.clear(); chat.length = 0; me.pos = null; me.box?.forget(); });
 
     // ---- the screen: a top bar, a bottom bar, a sheet, a modal (the map shows through)
@@ -423,8 +431,9 @@ export const MANHUNT_GAME = {
       // the map: city mode round the zone, the zone drawn, the camera on it
       if (hasMap && (s.zone || drawn)) mapFor(s);
       // location runs only while it matters
-      if (p && (phase === "headstart" || phase === "hunt") && !p.tagged && !p.out) { startGeo(); requestWake(); }
-      else if (phase === "end" || phase === "setup" || phase === "rules") stopGeo();
+      // (a caught runner keeps it only to hunt; out of the game, or spectating: off)
+      if (p && (phase === "headstart" || phase === "hunt") && !p.out && !(p.tagged && !s.setup.join)) { startGeo(); requestWake(); }
+      else stopGeo();
       layer.dataset.phase = phase;
       layer.dataset.role = p?.role ?? "";
       if (phase === "setup") return renderSetup(s);
@@ -441,6 +450,8 @@ export const MANHUNT_GAME = {
       if (!cityAt || G.dist(cityAt, c) > 1500) { cityAt = c; world3d.enterCity?.(c[0], c[1]).then(() => { map.zone(z, s.zoneK ?? 1, { instant: true }); map.focus(z); }); }
       map.zone(z, s.zoneK ?? 1);
       map.next(s.warn?.k ?? null);
+      // the host's camera aimed above the setup sheet: the whole zone again once it's on
+      if (s.phase !== "setup" && !playFocus && Array.isArray(cityAt)) { playFocus = true; map.focus(z); }
     }
 
     // ---- setup (the host; everyone else waits in the lobby)
@@ -456,7 +467,7 @@ export const MANHUNT_GAME = {
       // the host's map: city mode where the party is, before anything's drawn
       if (!cityAt && hasMap) {
         cityAt = "pending";
-        hereNow().then(c => { cityAt = c; world3d.enterCity?.(c[0], c[1]).then(() => { if (!drawn) { drawn = { type: "circle", c, r: drawR }; game.input("mh-zonedef", { zone: drawn }); } map.draft(drawn, draftCorners); map.focus(drawn); }); });
+        hereNow().then(c => { cityAt = c; world3d.enterCity?.(c[0], c[1]).then(() => { if (!drawn) { drawn = { type: "circle", c, r: drawR }; game.input("mh-zonedef", { zone: drawn }); } map.draft(drawn, draftCorners); map.focus(drawn, { cover: 0.5 }); }); });
       }
       const ids = active(s).map(x => x.id);
       const key = `setup|${ids.join(",")}|${drawMode}`;
@@ -468,7 +479,7 @@ export const MANHUNT_GAME = {
           <div class="mh-h">Draw the zone</div>
           <div class="mh-seg" role="group"><button type="button" data-draw="circle" class="${drawMode === "circle" ? "on" : ""}">Circle</button><button type="button" data-draw="poly" class="${drawMode === "poly" ? "on" : ""}">Shape</button></div>
           <p class="mh-hint">${drawMode === "circle" ? "Tap the map to move the centre; the slider sets the size." : "Tap the map at each corner (3 to 12)."}</p>
-          ${drawMode === "circle" ? `<label class="mh-row">Size <input type="range" id="mh-r" min="${M.ZONE.minR}" max="${M.ZONE.maxR / 2}" step="50" value="${drawR}"><b id="mh-rv">${(drawR * 2 / 1000).toFixed(1)} km across</b></label>` : `<div class="mh-row"><button type="button" class="mh-btn ghost" id="mh-undo">Undo</button><button type="button" class="mh-btn ghost" id="mh-clear">Clear</button><b id="mh-np">${draftCorners.length} corners</b></div>`}
+          ${drawMode === "circle" ? `<label class="mh-row">Size <input type="range" id="mh-r" min="${M.ZONE.minR}" max="${M.ZONE.maxR}" step="50" value="${drawR}"><b id="mh-rv">${(drawR * 2 / 1000).toFixed(1)} km across</b></label>` : `<div class="mh-row"><button type="button" class="mh-btn ghost" id="mh-undo">Undo</button><button type="button" class="mh-btn ghost" id="mh-clear">Clear</button><b id="mh-np">${draftCorners.length} corners</b></div>`}
           <div class="mh-h">Settings</div>
           ${stepper("round", "Round", "min")}${stepper("ping", "Ping every", "min")}${stepper("head", "Head start", "min")}
           ${toggle("shrink", "Shrinking zone")}${toggle("powers", "Powers")}${toggle("join", "Tagged runners join the hunters")}
@@ -529,10 +540,13 @@ export const MANHUNT_GAME = {
     // where the party is, on the host's phone (for the first draft of the zone)
     function hereNow() {
       return new Promise(res => {
-        const fallback = () => res(world3d.city?.origin ?? [37.5346, 126.9946]);
+        // (no answer, or a permission prompt left open: where your character stands on the map)
+        const pl = world3d.player?.position;
+        const fallback = () => res(world3d.city?.origin ?? (pl ? world3d.ungeo(pl.x, pl.z) : [37.5346, 126.9946]));
         if (SIM && window.__mhSimPos) return res(window.__mhSimPos);
         if (!navigator.geolocation) return fallback();
-        navigator.geolocation.getCurrentPosition(p => res([p.coords.latitude, p.coords.longitude]), fallback, { timeout: 8000, maximumAge: 60000 });
+        const t = setTimeout(fallback, 4000);
+        navigator.geolocation.getCurrentPosition(p => { clearTimeout(t); res([p.coords.latitude, p.coords.longitude]); }, () => { clearTimeout(t); fallback(); }, { timeout: 8000, maximumAge: 60000 });
       });
     }
 
@@ -554,6 +568,7 @@ export const MANHUNT_GAME = {
             <li>Tags only count in person, and only when the runner says yes.</li>
             <li>Need a break? <b>SAFE</b> hides you and stops your clock until you come back.</li>
           </ul>
+          <p class="mh-fine"><b>Keep your screen on</b> during the hunt: a locked phone can't be pinged and shows as "no signal".</p>
           <p class="mh-fine">Your location is read on your phone only during the round. Others get a fuzzy circle (25–50 m), never your spot; nothing is saved. Alerts vibrate, no sound.</p>
           <button type="button" class="mh-btn go" id="mh-ready" ${p?.ready ? "disabled" : ""}>${p?.ready ? "Waiting for everyone…" : "I'm in"}</button>
           <div class="mh-in" id="mh-in"></div>
@@ -593,6 +608,11 @@ export const MANHUNT_GAME = {
         <span class="mh-stat"><small>${head ? "head start" : "time left"}</small><b>${mmss(left)}</b></span>
         ${s.hunt ? `<span class="mh-stat"><small>next ping</small><b>${mmss(nextPing)}</b></span>` : ""}
         <span class="mh-stat"><small>runners</small><b>${freeN}/${runners.length}</b></span>`;
+      // hunters: runners whose last ping didn't come (a locked screen, no GPS, or a Ghost: they all look the same)
+      if (isHunter(s) && s.hunt) {
+        const quiet = free(s).filter(x => !x.safe && (x.asleep || pings.get(x.id)?.none)).map(x => esc(x.handle));
+        if (quiet.length) ui$.top.insertAdjacentHTML("beforeend", `<span class="mh-nosig">no signal: ${quiet.join(", ")}</span>`);
+      }
       // powers (one of each per game)
       if (s.setup.powers && p && !p.out && !(p.tagged && !s.setup.join)) {
         const mine = Object.entries(M.POWERS).filter(([, w]) => w.team === (p.wasRunner && !p.tagged ? "runner" : "hunter"));
@@ -694,7 +714,7 @@ export const MANHUNT_GAME = {
         const stamp = p.tagged ? `<i class="mh-stamp">CAUGHT<small>${mmss(t?.at ?? 0)} · ${name(s, t?.by)}</small></i>` : p.out ? `<i class="mh-stamp">OUT<small>left the zone</small></i>` : final ? `<i class="mh-stamp free">ESCAPED</i>` : "";
         return `<div class="mh-poster ${p.tagged || p.out ? "caught" : ""} ${final && s.last === p.id ? "last" : ""}">
           <div class="mh-wanted">WANTED</div>
-          <img data-portrait="${esc(p.id)}" src="${portrait(p.id)}" alt="">
+          <img data-portrait="${esc(p.id)}" src="${portrait(p.id) || BLANK}" alt="">
           <div class="mh-pn">${esc(p.handle)}</div>
           <div class="mh-bounty">${G.won(G.bounty(p.pings ?? 0))}</div>
           ${stamp}${final && s.last === p.id ? `<span class="mh-badge">Last Survivor</span>` : ""}
