@@ -511,6 +511,9 @@ function show(id, html, { cls = "", redraw = null, bind = null } = {}) {
   root.prepend(el);
   screen = { id, el, redraw };
   bind?.(el);
+  // the map only shows through the intro: behind every other screen it stops
+  // drawing, so the phone's time goes to the screen they're looking at
+  world3d.setPaused?.(id !== "intro");
   if (id !== "home") { homeView?.dispose(); homeView = null; }
 }
 function hide() {
@@ -521,6 +524,7 @@ function hide() {
   homeView?.dispose(); homeView = null;
   screen = null;
   document.body.classList.remove("onb-on");
+  world3d.setPaused?.(false);
   world3d.needsRender = true;
   flyover(false);
   const nh = $("nav-home"); if (nh) nh.hidden = false;
@@ -624,6 +628,7 @@ function safetyCard(then) {
 function hostLines(g) {
   const lines = t(`intro.${g.id}`);
   if (!Array.isArray(lines)) return;
+  globalThis.__hostLines = g.id;     // (tests: they were said, even if gone by the time anyone looks)
   const el = document.createElement("div");
   el.className = "onb-hostline";
   document.body.appendChild(el);
@@ -653,7 +658,8 @@ function hint(key, target, text) {
   document.body.appendChild(el);
   const done = () => { st.hints[key] = true; save(); el.remove(); target.removeEventListener("click", done, true); };
   target.addEventListener("click", done, true);
-  setTimeout(() => el.remove(), 14000);
+  // (until it's used, a game starts, or 45 s: a hint that outstays its place points at nothing)
+  const t0 = Date.now(), gone = setInterval(() => { if (!el.isConnected || party.current?.launched || Date.now() - t0 > 45000) { clearInterval(gone); el.remove(); } }, 1000);
 }
 
 // ================================================================ the first party's recap

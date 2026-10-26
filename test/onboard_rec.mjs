@@ -141,6 +141,7 @@ async function pathA(lang, party, { record = false, shots = true, viewport, name
   const t0 = Date.now();
   await N.goto(party.link.replace(/^https?:\/\/[^/]+/, base));
   ok(await screenIs(N, "landing", 60000), `${lang}${tag}: the invite opens the party's landing`);
+  const steps = { landing: Date.now() - t0 };
   // (a person taps Join without waiting for every character; the timing runs don't wait either)
   if (shots) ok(await until(N, () => document.querySelectorAll(".onb-land-people figure").length >= 3, null, 20000), `${lang}${tag}: the landing shows the people inside (host first)`);
   await sleep(shots ? 3500 : 300);
@@ -148,11 +149,13 @@ async function pathA(lang, party, { record = false, shots = true, viewport, name
   await read();
   await tap(N, "[data-join]");
   ok(await screenIs(N, "name"), `${lang}${tag}: Join -> what should people call you`);
+  steps.name = Date.now() - t0;
   if (shots) { await tap(N, "[data-suggest]"); await sleep(400); await shot(N, lang, "A2-name", "the name, with a suggestion"); await N.fill("#onb-name", ""); }
   await typeName(N, "#onb-name", name);
   await read(500);
   await tap(N, "[data-next]");
   ok(await screenIs(N, "char"), `${lang}${tag}: -> the character`);
+  steps.character = Date.now() - t0;
   await sleep(shots ? 4000 : 800);
   if (shots) await shot(N, lang, "A3-character", "a random starter look on the platform");
   await tap(N, "[data-shuffle]"); await read(1200); await tap(N, "[data-shuffle]"); await read(1600);
@@ -161,6 +164,7 @@ async function pathA(lang, party, { record = false, shots = true, viewport, name
   ok(await until(N, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor"), null, 30000), `${lang}${tag}: -> straight into the party room`);
   if (shots) { await until(N, () => !!document.querySelector(".onb-in"), null, 8000); await shot(N, lang, "A4-youre-in", "you're in! everyone already here waves"); }
   const tIn = Date.now() - t0;
+  steps.room = tIn;
   ok(await until(N, () => !!document.querySelector(".onb-in") || window.__youreIn, null, 25000), `${lang}${tag}: "you're in!"`);
   ok(await until(party.H, () => document.querySelectorAll(".lr-av").length >= 4, null, 30000), `${lang}${tag}: the host sees them arrive`);
   ok(await until(N, () => !!document.querySelector(".onb-hint"), null, 10000), `${lang}${tag}: a first-time hint on the vote button`);
@@ -171,11 +175,13 @@ async function pathA(lang, party, { record = false, shots = true, viewport, name
   await party.H.evaluate(() => document.querySelector('[data-game="ritual"] .pv-t > b')?.click());
   ok(await until(N, () => !!document.querySelector(".onb-safety"), null, 30000), `${lang}${tag}: the first game starts: the safety card first`);
   const tGame = Date.now() - t0;
+  steps.game = tGame;
+  console.log(`    (steps, ms from the tap: ${Object.entries(steps).map(([k, v]) => `${k} ${v}`).join(" · ")})`);
   await sleep(600);
   if (shots) await shot(N, lang, "A7-safety", "before the first game: Be cool…");
   await read(1800);
   await tap(N, ".onb-safety button");
-  const lines = await until(N, () => !!document.querySelector(".onb-hostline"), null, 40000);
+  const lines = await until(N, () => !!document.querySelector(".onb-hostline") || window.__hostLines, null, 40000);
   ok(lines, `${lang}${tag}: the Boss says what to do (first time only)`);
   if (!lines) console.log("    (debug)", await N.evaluate(() => JSON.stringify({ st: localStorage.getItem("rando-onb-v1"), safety: document.querySelectorAll(".onb-safety").length, phase: document.body.className })));
   await sleep(2200);
@@ -201,7 +207,7 @@ async function pathA(lang, party, { record = false, shots = true, viewport, name
     await shot(N, lang, "A9-recap", "the recap: everyone together, the best moment, throw your own, share");
     await tap(N, "[data-sheet=recap] [data-close]");
   }
-  return { N, ctx, tIn, tGame };
+  return { N, ctx, tIn, tGame, steps };
 }
 
 // ---- Path B: a fresh phone opening the app on its own
@@ -346,7 +352,7 @@ for (const [li, lang] of LANGS.entries()) {
     const PHONES = [["iPhone SE", { width: 320, height: 568 }, "en"], ["iPhone 8", { width: 375, height: 667 }, "ko"], ["Galaxy S", { width: 360, height: 780 }, "ko"], ["iPhone 14", { width: 390, height: 844 }, "en"], ["iPhone Plus", { width: 414, height: 896 }, "ko"]];
     for (const [i, [label, viewport, l]] of PHONES.entries()) {
       const r = await pathA(l, party, { shots: false, viewport, tag: ` #${i + 1} ${label}`, name: l === "ko" ? `민지${i}` : `Sam${i}` });
-      timings.push({ lang: l, phone: label, tIn: r.tIn, tGame: r.tGame, run: i + 1 });
+      timings.push({ lang: l, phone: label, tIn: r.tIn, tGame: r.tGame, run: i + 1, steps: r.steps });
       await tap(r.N, "#pt-leave"); await r.ctx.close(); contexts.splice(contexts.indexOf(r.ctx), 1);
     }
   }
