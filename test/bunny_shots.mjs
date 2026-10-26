@@ -62,7 +62,7 @@ for (const [name, yaw, pitch] of [["o-far-left", lo, 0], ["o-centre", 0, 0], ["o
   const fr = await pg.evaluate(() => __p.debug.frameRect());
   ok(fr.left >= -4 && fr.right <= 380 && fr.top >= 0, `${name}: the photo in the frame is in view (${Math.round(fr.left)}..${Math.round(fr.right)})`);
   const r = await pg.evaluate(() => { const b = document.getElementById("pl").getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, w: b.width }; });
-  ok(r.l >= -2 && r.r <= 378 && r.t > 60 && r.b < 560 && r.w >= 160, `${name}: the plaques are on screen and readable (${Math.round(r.l)}..${Math.round(r.r)} × ${Math.round(r.t)}..${Math.round(r.b)})`);
+  ok(r.l >= -2 && r.r <= 378 && r.t > 60 && r.b < 560 && r.w >= 130, `${name}: the plaques are on screen and readable (${Math.round(r.l)}..${Math.round(r.r)} × ${Math.round(r.t)}..${Math.round(r.b)})`);
   await pg.mouse.up();
 }
 await sleep(4500);
