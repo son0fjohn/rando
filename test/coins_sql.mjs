@@ -24,6 +24,7 @@ await db.exec(await readFile(`${ROOT}supabase/migrations/013_coins_shop.sql`, "u
 await db.exec(await readFile(`${ROOT}supabase/migrations/014_mask_off.sql`, "utf8"));
 await db.exec(await readFile(`${ROOT}supabase/migrations/015_ritual_prompts.sql`, "utf8"));
 await db.exec(await readFile(`${ROOT}supabase/migrations/016_wardrobe4.sql`, "utf8"));
+await db.exec(await readFile(`${ROOT}supabase/migrations/017_events.sql`, "utf8"));
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 for (let i = 1; i <= 9; i++) { await db.query("insert into auth.users values ($1)", [U(i)]); await db.query("insert into profiles (id, handle) values ($1, $2)", [U(i), `p${i}`]); }
@@ -134,6 +135,32 @@ const priv = await as(0, `select has_table_privilege('authenticated', 'ritual_pr
   has_table_privilege('anon', 'ritual_draws', 'insert') c, has_function_privilege('anon', 'ritual_draw(text, text, text)', 'execute') d,
   has_function_privilege('authenticated', 'ritual_draw(text, text, text)', 'execute') e`);
 ok(!priv[0].a && !priv[0].b && !priv[0].c && !priv[0].d && priv[0].e, "clients can't read the prompts or the draws; signed-in players can only call ritual_draw");
+
+head("Onboarding analytics (017): insert-only, no people in it, numbers for admins only");
+{
+  const priv = (await as(0, `select has_table_privilege('authenticated', 'events', 'select') sel, has_table_privilege('anon', 'events', 'update') upd,
+    has_table_privilege('authenticated', 'events', 'delete') del, has_column_privilege('authenticated', 'events', 'device', 'insert') ins,
+    has_column_privilege('authenticated', 'events', 'at', 'insert') at, has_table_privilege('authenticated', 'admins', 'select') adm,
+    has_function_privilege('anon', 'onboarding_stats(int)', 'execute') anon_stats`))[0];
+  ok(!priv.sel && !priv.upd && !priv.del && priv.ins && !priv.at && !priv.adm && !priv.anon_stats, "clients can insert events (but not set their time), never read, change or delete them; the admin list is closed");
+  const cols = (await as(0, "select string_agg(column_name, ',' order by ordinal_position) c from information_schema.columns where table_name = 'events'"))[0].c;
+  ok(cols === "id,at,device,name,props,lang", `no user id, location or text column (${cols})`);
+  ok((await err(as(1, "insert into events (device, name) values ('dev-aaaaaaaa', 'joined_a_cult')")))?.includes("check"), "only the known event names");
+  ok((await err(as(1, "insert into events (device, name, props) values ('dev-aaaaaaaa', 'app_open', $1::jsonb)", [JSON.stringify({ note: "x".repeat(600) })])))?.includes("check"), "props stay small");
+  ok((await err(as(1, "insert into events (device, name) values ('nope', 'app_open')")))?.includes("check"), "the device id has a fixed shape");
+  // three installs: one invited (joins, plays in 40 s, finishes the party), one invited who never joins, one organic who hosts on day 2
+  const ev = (d, name, ago, props = {}) => as(0, "insert into events (device, name, props, at) values ($1, $2, $3::jsonb, now() - $4::interval)", [d, name, JSON.stringify(props), ago]);
+  await ev("dev-aaaaaaaa", "app_open", "10 days", { source: "invite_link" }); await ev("dev-aaaaaaaa", "party_link_opened", "10 days"); await ev("dev-aaaaaaaa", "joined_party", "10 days");
+  await ev("dev-aaaaaaaa", "first_game_started", "10 days", { ms: 40000 }); await ev("dev-aaaaaaaa", "recap_shown", "10 days");
+  await ev("dev-bbbbbbbb", "app_open", "9 days", { source: "invite_link" }); await ev("dev-bbbbbbbb", "party_link_opened", "9 days");
+  await ev("dev-cccccccc", "app_open", "8 days", { source: "organic" }); await ev("dev-cccccccc", "first_game_started", "6 days", { ms: 80000 }); await ev("dev-cccccccc", "own_party_created", "6 days");
+  ok((await err(as(1, "select onboarding_stats(30)")))?.includes("admins only"), "players can't read the numbers");
+  await as(0, "insert into admins values ($1)", [U(9)]);
+  const st = (await as(9, "select onboarding_stats(30) s"))[0].s;
+  ok(st.installs === 3 && st.median_ms_to_first_game === 60000, `the median time to a first game (${st.median_ms_to_first_game} ms over ${st.installs} installs)`);
+  ok(st.invite_opens === 2 && st.invite_joins === 1 && st.first_games === 2 && st.first_parties_finished === 1, "invite opens → joins, first games → finished first parties");
+  ok(st.eligible_7d === 3 && st.hosted_within_7d === 1 && st.events.app_open === 3, "who hosted within 7 days, and a count per event");
+}
 
 console.log(`\n${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);

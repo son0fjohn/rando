@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Rando · onboarding</title>
+<!-- The internal onboarding dashboard. The numbers come from
+     onboarding_stats() (migrations/017_events.sql), which only accounts in
+     the `admins` table can call: open the app once on this browser (so it
+     has a session), add that account's id to admins, then open this page. -->
+<link rel="stylesheet" href="theme.css">
+<style>
+  body { margin: 0; min-height: 100vh; background: #0F1A3A; color: var(--y-ink); font-family: var(--f-sys); }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1 { margin: 0 0 4px; font-size: 26px; color: var(--color-accent); }
+  .sub { margin: 0 0 18px; color: var(--y-muted); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .tile { padding: 14px; border-radius: 16px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .08); }
+  .tile b { display: block; font-size: 30px; font-weight: 800; }
+  .tile span { color: var(--y-muted); font-size: 13px; }
+  .tile small { display: block; margin-top: 4px; color: var(--y-muted); font-size: 12px; }
+  table { width: 100%; margin-top: 18px; border-collapse: collapse; font-size: 14px; }
+  td { padding: 7px 4px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .err { color: #ff9d9d; }
+  select { background: rgba(255, 255, 255, .1); color: inherit; border: 0; border-radius: 8px; padding: 6px 8px; font: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Onboarding</h1>
+  <p class="sub">Last <select id="days"><option value="7">7</option><option value="30" selected>30</option><option value="90">90</option></select> days · installs, not people · no locations, names or codes are ever recorded</p>
+  <div id="out">Loading…</div>
+</main>
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+  import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: "rando-auth" } });
+  const out = document.getElementById("out");
+  const pct = (a, b) => (b ? `${Math.round(100 * a / b)}%` : "—");
+  const time = ms => (ms == null ? "—" : ms < 120000 ? `${Math.round(ms / 1000)} s` : `${(ms / 60000).toFixed(1)} min`);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  async function load() {
+    out.textContent = "Loading…";
+    const { data, error } = await sb.rpc("onboarding_stats", { p_days: +document.getElementById("days").value });
+    if (error) { out.innerHTML = `<p class="err">${esc(error.message)}</p><p class="sub">Admins only: this browser's account has to be in the admins table.</p>`; return; }
+    const d = data;
+    const tile = (big, label, note = "") => `<div class="tile"><b>${big}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
+    out.innerHTML = `<div class="tiles">
+        ${tile(time(d.median_ms_to_first_game), "median: first open → first game", "goal: under 60 s")}
+        ${tile(pct(d.invite_joins, d.invite_opens), "invite opens that join", `${d.invite_joins} of ${d.invite_opens}`)}
+        ${tile(pct(d.first_parties_finished, d.first_games), "finish their first party", `${d.first_parties_finished} of ${d.first_games} who played a game`)}
+        ${tile(pct(d.hosted_within_7d, d.eligible_7d), "host within 7 days", `${d.hosted_within_7d} of ${d.eligible_7d} installs at least 7 days old`)}
+        ${tile(d.installs, "installs")}
+      </div>
+      <table>${Object.entries(d.events ?? {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr><td>${esc(k)}</td><td>${n}</td></tr>`).join("")}</table>`;
+  }
+  document.getElementById("days").onchange = load;
+  load();
+</script>
+</body>
+</html>
