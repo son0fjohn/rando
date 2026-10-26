@@ -20,9 +20,9 @@
 // flicker (basement.js).
 // The pick: the capsule held up spins, players' faces flicking through it
 // like a slot machine (capsuleSpin(true) + capsule(url) for each face), and
-// lands on the performer's. The performer then stands in front of his table
-// under one harsh spotlight (guest: their own 3D character, npcstage.js
-// guestSpot) for their turn.
+// lands on the performer's. The performer then stands at his table's right
+// end, back by the door, under a soft spotlight (guest: their own 3D
+// character, npcstage.js guestSpot) for their turn.
 //
 // Look around: the same camera as Side Quest's Prophet (npcstage.js): drag
 // to orbit, pinch, it glides home ~4 s after the last touch, never locked.
@@ -37,7 +37,7 @@
 import { retroStage, THREE } from "./retrolook.js";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { basementRoom, PROJ, TABLE, BOX, CUP, CHAIR } from "./basement.js";
-import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp, guestSpot } from "./npcstage.js";
+import { viewFrom, orbitCamera, pickTap, headFollow, encode, underTable, softDot, smokeWisp, guestSpot, screenBox } from "./npcstage.js";
 
 const ART = new URL("./games/ritual/boss/", import.meta.url).href;
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -95,9 +95,11 @@ const BONES = ["hips", "spine", "chest", "neck", "head", "upperarm_L", "upperarm
 // where he sits: in the chair (on its right-hand part, as in the picture),
 // facing the camera; the model is 1 tall, he's a big man
 export const SEAT = { x: -0.12, z: -0.66, turn: 0.0, scale: 2.05, wide: 1.06, hipY: 0.6 };
-// where the performer stands: in front of the table, off to the right of
-// the box, facing the camera
-export const STAGE = { x: 0.3, z: 0.72, face: -0.15 };
+// where the performer stands: at the folding table's right-hand end, back
+// by the door (the table's far end is the picture's right edge, so nearer
+// the camera they'd be off screen or behind his cigar arm), turned ~45°
+// toward him, 3/4 to the camera; their height
+export const STAGE = { x: 0.6, z: -1.7, face: -0.5, height: 1.3 };
 
 export async function bossScene(host) {
   const st = await retroStage(host, BOSS_MOOD);
@@ -215,8 +217,10 @@ export async function bossScene(host) {
     capState = s; capsule.visible = s !== "hidden";
   }
 
-  // ---- the performer, in front of his table under one harsh spotlight
-  const guest = guestSpot(st, { at: [STAGE.x, 0, STAGE.z], face: STAGE.face, height: 0.8, cone: true, light: { color: 0xf4f6ff, intensity: 9, angle: 0.3, penumbra: 0.25 } });
+  // ---- the performer, standing at his table's right end under a soft spotlight
+  // (they stand out, but belong in the room); they look between him and the camera
+  const guest = guestSpot(st, { at: [STAGE.x, 0, STAGE.z], face: STAGE.face, height: STAGE.height,
+    look: [SEAT.x, 1.45, SEAT.z + 0.1], light: { color: 0xfff0dc, intensity: 4.5, angle: 0.42, penumbra: 0.8 } });
 
   // ---- looking around (npcstage.js, shared with the Prophet)
   const orbit = orbitCamera(st, VIEW, { onTap: (x, y) => tap(x, y), rise: yaw => Math.max(0, -yaw - 0.35) * 0.3 });
@@ -371,6 +375,6 @@ export async function bossScene(host) {
     attach: el => st.attach(el),
     dispose: () => { orbit.dispose(); guest.dispose(); for (const t of faceTex.values()) t?.dispose(); room.dispose(); smokeTex.dispose(); nameTex.dispose(); st.dispose(); },
     // for tests and tuning: the scene's parts
-    debug: { scene, camera, model, bone, view, want, SIT, POSES, VIEW, SEAT, T: orbit.T, tap, rest, room, capsule, cigar, finger, lights: { lampLight, hemi: st.lights.hemi }, LIGHT, acts, cur },
+    debug: { hostRect: () => screenBox(st, model), propRect: () => screenBox(st, new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(BOX.x, TABLE.y + BOX.h / 2, BOX.z), new THREE.Vector3(BOX.w, BOX.h, BOX.d))), scene, camera, model, bone, view, want, SIT, POSES, VIEW, SEAT, T: orbit.T, tap, rest, room, capsule, cigar, finger, lights: { lampLight, hemi: st.lights.hemi }, LIGHT, acts, cur },
   });
 }

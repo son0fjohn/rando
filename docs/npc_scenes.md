@@ -110,8 +110,10 @@ anyone moves the camera) looks almost exactly like it.
   name slams onto everyone else's screen in big gold letters (~1.5 s) with a
   "[Name] got picked" banner; the chosen player's own phone goes gold, "THE
   BALL PICKED YOU", with a strong buzz. Their own 3D character pops in
-  beside his table under a warm spotlight (`guestSpot` in `npcstage.js`),
-  surprised, and stays for the turn; he points at them (`aim`): "Relax. The
+  (a puff) sitting cross-legged on a floor cushion at his table's right end,
+  just behind its back corner, turned ~45° toward him, under a warm light
+  (`guestSpot` in `npcstage.js`), surprised; they stay for the turn, looking
+  between him and the camera now and then, and pop out the same way; he points at them (`aim`): "Relax. The
   ball already knows who's next... [Name]."
 - **The reveal** (~5 s): he takes a big drag and blows a swirl of smoke over
   the ball that gathers into a glowing card, flips round to the camera
@@ -229,9 +231,9 @@ exactly like it, without its crystal ball.
   like a slot machine, slowing over a drumroll, and lands on the performer's:
   a flash, a light shake, the name slams in (everyone else also gets "[Name]
   is performing"); the performer's phone goes to a red spotlight, "YOU'RE
-  UP", with a strong buzz. Their own 3D character pops in in front of his
-  table under one harsh white spotlight (a visible beam) and stays for the
-  turn; he takes a slow drag on his cigar. Then he twists the capsule open,
+  UP", with a strong buzz. Their own 3D character pops in (a puff) standing
+  at his table's right end, back by the door, turned ~45° toward him under a
+  soft spotlight, and stays for the turn, looking between him and the camera; he takes a slow drag on his cigar. Then he twists the capsule open,
   pop, confetti. On the performer's phone the slip unrolls out of it and
   flies at the camera, filling the screen, and a red ACT IT OUT stamp slams
   onto it; everyone else sees him peek, smirk and go "Shhh.", then the guess

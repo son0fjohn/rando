@@ -63,7 +63,8 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   behind a low table, lit live; procedural idle / reveal / point / nod, the
   crystal ball; drag to orbit the camera, pinch to zoom, it glides home and
   holds still for the pick and the reveal; tap him / the ball / the lamp /
-  the TV), `web/rooftop.js` (his rooftop room, camera-mapped, a clean plate
+  the TV; the chosen player sits on a cushion at his table's right end,
+  `npcstage.js` `guestSpot`), `web/rooftop.js` (his rooftop room, camera-mapped, a clean plate
   where he, the ball and the dialog were; assets in
   `web/games/sidequest/rooftop/`, see `docs/npc_scenes.md`), `web/boss.js`
   (the Ritual's host, The Boss: a rigged low-poly 3D model,
@@ -127,10 +128,12 @@ node test/combos_shots.mjs <dir> [--only=tops|hats]   # every top × bottom (idl
 node test/glitch4.mjs <dir> [--only=hats,tophair,topbottom,neck,face] [--item=id]   # the glitch grid: every hair × headwear, top × hair, top × bottom, neck × top, face × headwear, 4 views × idle/walk, poke-through / z-fight / gaps labelled (≈35 min for all)
 node test/faces_shots.mjs <dir>        # every eye shape × expression on the 3D head, the iris tints
 node test/orbit_shots.mjs <dir> [prophet|boss]   # both hosts' rooms at the orbit's far left / mid / centre / far right, zoomed, high and low
+node test/guest_shots.mjs <dir> [prophet|boss] [--outfits=puffer,long,beanie,plain]   # the chosen player in both hosts' rooms (sitting on the rooftop, standing in the basement): each outfit at the default view and the orbit's ends; clear of the host, the ball / box and the dialog box; one at a time
+test/pose4.html                        # the player character sitting and standing, front / 3/4 / side / back (open it on npm run serve:test)
 node test/style_rec.mjs <dir>          # the Style screen on the real app page: try-on, buy, preview, randomize, save, live party update (FFMPEG=... for style.mp4)
 test/faces.html                        # every eye style × expression, flat (open it on npm run serve)
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
-node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party]   # phones playing Side Quest / Mask Off (a full turn, a pass, the end) / a Ritual turn / an Art Gallery piece / a full 3-game set + shop, recorded side by side
+node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (a full turn, a pass, the end) / a Ritual turn / an Art Gallery piece / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon

@@ -233,18 +233,49 @@ export function smokeWisp(scene, map, { n = 16, color = 0xe8e8ec, rise = 0.5, sp
   };
 }
 
-// ---- the chosen player, in the room: their own 3D character (avatar4.js)
-// standing by the table under a spotlight, lit live like the host. It pops
-// in (a quick overshoot and a puff), reacts, and stays for the turn.
-//   const g = guestSpot(stage, { at: [x, 0, z], face: 0.2, light: { color, angle, intensity }, cone: true });
+// where an object is on screen (CSS px): its posed (skinned) vertices
+// projected, or a box's corners; and how far it is from the camera (tests:
+// what the chosen player covers)
+const _bv = new THREE.Vector3(), _bc = new THREE.Vector3();
+export function screenBox(st, obj) {
+  const { camera, canvas } = st;
+  const r = canvas.getBoundingClientRect();
+  let l = Infinity, t = Infinity, rr = -Infinity, b = -Infinity, n = 0;
+  _bc.set(0, 0, 0);
+  const at = v => {
+    _bc.add(v); n++;
+    v.project(camera);
+    const x = r.left + (v.x + 1) / 2 * r.width, y = r.top + (1 - v.y) / 2 * r.height;
+    l = Math.min(l, x); rr = Math.max(rr, x); t = Math.min(t, y); b = Math.max(b, y);
+  };
+  if (obj.isBox3) { for (let i = 0; i < 8; i++) at(_bv.set(i & 1 ? obj.max.x : obj.min.x, i & 2 ? obj.max.y : obj.min.y, i & 4 ? obj.max.z : obj.min.z)); }
+  else {
+    obj.updateMatrixWorld(true);
+    obj.traverseVisible(o => {
+      const pos = o.isMesh && o.geometry?.attributes.position;
+      if (!pos || o.isSprite) return;
+      for (let i = 0; i < pos.count; i += 3) { o.getVertexPosition(i, _bv); at(_bv.applyMatrix4(o.matrixWorld)); }
+    });
+  }
+  if (!n) return null;
+  return { left: l, top: t, right: rr, bottom: b, depth: _bc.divideScalar(n).distanceTo(camera.position) };
+}
+
+// ---- the chosen player, in the room: their own 3D character (avatar4.js),
+// sitting or standing where the room puts them, under a soft light, lit live
+// like the host. Idle, they look between the host and the camera now and
+// then. They pop in (a quick overshoot and a puff), react, stay for the turn
+// and pop out the same way. Only ever one: a new pick waits until the last
+// one is gone (a still-loading pick is dropped when another comes).
+//   const g = guestSpot(stage, { at: [x, 0, z], face: 0.2, stance: "sit", seat: 0.1, look: [x, y, z], light: { color, angle, intensity }, cone: true });
 //   g.show(key, avatar, { pop: true }); g.react("surprised"); g.cheer(); g.hide(); g.update(t, dt) each frame
 // No 3D characters on this page (the test stubs): show() does nothing.
 const CHAR_UNITS = 15;          // avatar4's height in its own units
-export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, light = {}, cone = false, dim = 0 } = {}) {
-  const { scene } = st;
+export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, stance = "stand", seat = 0, look = null, light = {}, cone = false } = {}) {
+  const { scene, camera } = st;
   const L = { color: 0xffd8a0, intensity: 6, angle: 0.42, penumbra: 0.55, ...light };
   const root = new THREE.Group(); root.position.set(...at); root.rotation.y = face; root.visible = false; scene.add(root);
-  const body = new THREE.Group(); root.add(body);
+  const body = new THREE.Group(); body.position.y = seat; root.add(body);
   const spot = new THREE.SpotLight(L.color, 0, 4.5, L.angle, L.penumbra, 1.1);
   spot.position.set(at[0] + 0.15, 2.6, at[2] + 0.45); spot.target = root; scene.add(spot);
   // the pool of light on the floor, and (cone: true) the beam itself
@@ -258,13 +289,23 @@ export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, light 
     beam = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L.color, side: THREE.DoubleSide, ...add }));
     beam.material.onBeforeCompile = encode; beam.renderOrder = 7; root.add(beam);
   }
-  // the pop's puff
+  // the pop's puff (in and out), round the middle of them
   const puffs = [];
   for (let i = 0; i < 10; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dot, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false }));
     sp.material.onBeforeCompile = encode; sp.renderOrder = 6; root.add(sp); puffs.push(sp);
   }
-  let ch = null, key = null, want = false, popAt = -1e9, on = 0, tok = 0, wrapT = 0;
+  let ch = null, key = null, next = null, loading = null, want = false, wantKey = null, popAt = -1e9, outAt = -1e9, on = 0, tok = 0, wrapT = 0;
+  // where they look: the host now and then, the camera the rest (head yaw, eased in avatar4)
+  let gazeAt = 0, gazeHost = false;
+  const hostAt = look ? new THREE.Vector3(...look) : null, headAt = new THREE.Vector3(), lookV = new THREE.Vector3();
+  const yawTo = p => {
+    root.updateMatrixWorld(); headAt.set(0, seat + height * (stance === "sit" ? 0.5 : 0.85), 0); root.localToWorld(headAt);
+    lookV.copy(p).sub(headAt);
+    let a = Math.atan2(lookV.x, lookV.z) - root.rotation.y;
+    a = Math.atan2(Math.sin(a), Math.cos(a));
+    return Math.max(-1.0, Math.min(1.0, a));
+  };
   // the character's own shaders, made to write display-ready colour like
   // everything else on this stage (its emote marks are added later: rechecked)
   const wrap = () => body.traverse(o => {
@@ -276,58 +317,90 @@ export function guestSpot(st, { at = [0.5, 0, 0], face = 0, height = 1.2, light 
     m.userData.npcEnc = true; m.needsUpdate = true;
   });
   async function show(k, avatar, { pop = true, react = null } = {}) {
-    want = true;
-    if (k === key && ch) { root.visible = true; if (pop) popAt = performance.now(); if (react) api.react(react); return true; }
-    const my = ++tok;
+    want = true; wantKey = k;
+    if (k === key && ch && !next) { if (pop) popAt = performance.now(); if (react) api.react(react); return true; }
+    if (next?.key === k) { next.pop ||= pop; next.react ??= react; return true; }
+    if (loading === k) return true;               // already on its way
+    const my = ++tok; loading = k;
     let A = null;
-    try { A = await import("./avatar4.js"); } catch { return false; }
-    if (!A.makeCharacter4 || my !== tok) return false;
+    try { A = await import("./avatar4.js"); } catch { A = null; }
+    if (!A?.makeCharacter4 || my !== tok) { if (my === tok) loading = null; return false; }
     const c = await A.makeCharacter4(avatar ?? {});
     await Promise.race([c.ready ?? Promise.resolve(), new Promise(r => setTimeout(r, 12000))]);
-    if (my !== tok) { c.dispose?.(); return false; }
-    if (ch) { body.remove(ch.group); ch.dispose?.(); }
-    ch = c; key = k;
-    ch.group.scale.setScalar(height / CHAR_UNITS);
-    body.add(ch.group);
-    wrap();
-    root.visible = want;
-    if (want && pop) popAt = performance.now();
-    if (want && react) api.react(react);
+    if (my !== tok) { c.dispose?.(); return false; }   // (a newer pick or a hide took over)
+    loading = null;
+    c.group.scale.setScalar(height / CHAR_UNITS);
+    c.unit = height / CHAR_UNITS; c.stance = stance;
+    // it goes in on the next frame, once the last one is gone
+    if (next) next.c.dispose?.();
+    next = { c, key: k, pop, react };
     return true;
   }
   const api = {
     root, spot, show, light: L,
-    get shown() { return want && !!ch; },
-    hide() { want = false; tok++; },
+    get shown() { return want && !!ch && key === wantKey; },
+    // characters in the scene right now (never more than one), and whose (tests)
+    count: () => body.children.length,
+    get key() { return ch && on > 0 ? key : null; },
+    // on screen (tests), and moving them (dev)
+    rect: () => ch && root.visible ? screenBox(st, body) : null,
+    place(x, z, f = root.rotation.y, y = seat) { root.position.x = x; root.position.z = z; root.rotation.y = f; seat = y; body.position.y = y; spot.position.set(x + 0.15, 2.6, z + 0.45); },
+    hide() {
+      if (want && ch) outAt = performance.now();
+      want = false; wantKey = null; tok++; loading = null;
+      if (next) { next.c.dispose?.(); next = null; }
+    },
     react(kind = "surprised") {
       if (!ch) return;
+      gazeHost = false; gazeAt = performance.now() + 2500;
       if (kind === "surprised") { ch.react?.("surprised", 1.8); ch.emote?.("exclaim", 1.5); }
       else ch.react?.(kind, 1.4);
     },
     // "let's go": a happy hop, sparkles
     cheer() { if (!ch) return; ch.react?.("happy", 1.6); ch.emote?.("sparkles", 1.4); },
     update(t, dt) {
-      const still = reduce();
-      on += ((want && ch ? 1 : 0) - on) * Math.min(1, dt * (want ? 10 : 5));
-      root.visible = on > 0.01;
+      const still = reduce(), now = performance.now();
+      // the swap: the next one goes in only once the last one has popped out
+      if (next && (!ch || on < 0.02)) {
+        if (ch) { body.remove(ch.group); ch.dispose?.(); }
+        ({ c: ch, key } = next);
+        body.add(ch.group); wrap();
+        if (next.pop) popAt = now;
+        const r = next.react; next = null;
+        if (r) api.react(r);
+      }
+      const show = want && ch && key === wantKey ? 1 : 0;
+      on += (show - on) * Math.min(1, dt * (show ? 10 : 7));
+      if (!show && on < 0.01) on = 0;
+      root.visible = on > 0;
+      // popped out and nobody coming: gone from the scene, not just hidden
+      if (!on && ch && !want && !next) { body.remove(ch.group); ch.dispose?.(); ch = null; key = null; }
       if (!root.visible) return;
-      if (ch) { ch.tick?.(t); if ((wrapT += dt) > 0.5) { wrapT = 0; wrap(); } }
-      // the pop: in from nothing, a little overshoot, settle (wall-clock: in step with the game on a slow phone too)
-      const popT = (performance.now() - popAt) / 1000;
+      if (ch) {
+        // now and then a look at the host, then back to the camera
+        if (now > gazeAt) { gazeHost = !gazeHost && !!hostAt; gazeAt = now + (gazeHost ? 1800 + Math.random() * 1200 : 2600 + Math.random() * 2600); }
+        ch.gaze = still ? 0 : yawTo(gazeHost ? hostAt : camera.position) * (gazeHost ? 1 : 0.8);
+        ch.tick?.(t);
+        if ((wrapT += dt) > 0.5) { wrapT = 0; wrap(); }
+      }
+      // the pop: in from nothing, a little overshoot, settle; out: shrink away
+      // (wall-clock: in step with the game on a slow phone too)
+      const popT = (now - popAt) / 1000;
       const k = Math.min(1, popT / 0.45);
       const s = still ? 1 : k < 1 ? Math.max(0.001, 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2)) : 1;
       body.scale.setScalar(s * on);
+      const puffT = Math.min(popT, (now - outAt) / 1000);
       for (const [i, sp] of puffs.entries()) {
-        const a = (i / puffs.length) * Math.PI * 2, r = 0.08 + popT * 0.9;
-        sp.position.set(Math.cos(a) * r, 0.1 + popT * 0.5 + (i % 3) * 0.06, Math.sin(a) * r * 0.6);
-        sp.scale.setScalar(0.12 + popT * 0.35);
-        sp.material.opacity = still ? 0 : Math.max(0, 0.55 * (1 - popT / 0.7));
+        const a = (i / puffs.length) * Math.PI * 2, r = 0.08 + puffT * 0.9;
+        sp.position.set(Math.cos(a) * r, seat + 0.1 + puffT * 0.5 + (i % 3) * 0.06, Math.sin(a) * r * 0.6);
+        sp.scale.setScalar(0.12 + puffT * 0.35);
+        sp.material.opacity = still ? 0 : Math.max(0, 0.55 * (1 - puffT / 0.7));
       }
       spot.intensity = L.intensity * on;
       pool.material.opacity = 0.42 * on;
       if (beam) beam.material.opacity = 0.05 * on;
     },
-    dispose() { tok++; if (ch) ch.dispose?.(); scene.remove(root, spot); dot.dispose(); },
+    dispose() { tok++; if (ch) ch.dispose?.(); if (next) next.c.dispose?.(); scene.remove(root, spot); dot.dispose(); },
   };
   return api;
 }

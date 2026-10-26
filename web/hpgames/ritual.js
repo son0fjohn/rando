@@ -9,9 +9,9 @@
 // flicking through it like a slot machine (their own 3D faces,
 // charrender.js), slowing over a drumroll, and lands on the performer's: a
 // flash, a little shake, their name slams onto the screen. Their own 3D
-// character pops in in front of his table under one harsh spotlight and
-// stays for the turn; he takes a slow drag on his cigar: "[Name]. You're
-// up." Their phone goes to a red spotlight, "YOU'RE UP"; everyone else's
+// character pops in at his table's right end, by the door, under a soft
+// spotlight and stays for the turn; he takes a slow drag on his cigar:
+// "[Name]. You're up." Their phone goes to a red spotlight, "YOU'RE UP"; everyone else's
 // says "[Name] is performing". Then he twists it open, pop, confetti. On
 // the performer's phone a slip unrolls out of it and flies at the camera,
 // filling the screen, and a red ACT IT OUT stamp slams onto it. On everyone
@@ -453,7 +453,7 @@ export const HUMILIATION_RITUAL = {
     const play = name => boss?.play(name);
     const capState = st => { want.cap = st; boss?.capsuleState(st); };
     const capsule = (s, id) => { want.face = lookOf(s, id); want.name = s.players?.[id]?.handle ?? ""; boss?.capsule(want.face, want.name); };
-    // the performer, standing in front of his table (null: nobody)
+    // the performer, standing at his table's right end (null: nobody)
     const guest = (s, id, { pop = false, react = null } = {}) => {
       if (!id) { if (want.guest) { want.guest = null; boss?.guest.hide(); } return; }
       if (want.guest?.id === id && !pop && !react) return;
