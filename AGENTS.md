@@ -8,13 +8,25 @@ rule here stops matching the code, fix the rule.
 
 Rando is a **mobile web app** — no native build, no bundler, no build step.
 Everything the browser loads is static files in `web/`, deployed by Vercel
-from `main` (`vercel.json` publishes `web/`). Every merge to `main` goes live
+from `main` (`vercel.json` publishes `web/`). The one exception is
+`api/invite.mjs`, a tiny Vercel function behind `/p/CODE` (an invite link's
+preview, then on to `/?party=CODE`). Every merge to `main` goes live
 at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 
 - **Backend:** Supabase (auth, Realtime channels, a few tables). Client config
   is `web/config.js`; the anon key there is meant to be public.
 - **Multiplayer:** Supabase Realtime broadcast + presence (`web/net.js`). No
   database tables for game state: rooms, games and chat die with the room.
+- **Onboarding** (see `docs/onboarding.md`): `web/onboard.js` (first open
+  to playing in under a minute: an invite link's landing, name, character,
+  the intro, Home, the invite sheet with its QR, phone verification only
+  where it matters, Settings, the safety card before a first game, a game
+  host's first lines, one-time hints, the first party's recap),
+  `web/onbkit.js` (its pure parts), `web/i18n.js` (English and Korean, the
+  device's language, switchable), `web/permissions.js` (a pre-prompt before
+  every system permission dialog), `web/analytics.js` (privacy-safe events
+  -> `017_events.sql`), `web/qr.js` + `web/vendor/qrcode.js`, `web/stats.html`
+  (the admin-only dashboard). `?onb=0` turns it off.
 - **Map chrome:** `web/backend.js` (auth, presence, the navy bottom bar on
   the world screen only: Explore / Host / Style, flat against the map; Host
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
@@ -131,6 +143,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 - **Ritual prompts:** `015_ritual_prompts.sql`: `ritual_draw()` deals the
   performer's phone its prompt; the prompts mirror
   `web/data/ritual_prompts.json` (the SQL test checks they match).
+- **Analytics:** `017_events.sql`: the insert-only `events` table and the
+  admin-only `onboarding_stats()` (the dashboard, `web/stats.html`; admins are
+  rows in `admins`, added by hand).
 - **Coins and the shop:** `013_coins_shop.sql`. Balances, payouts and purchases
   happen only in SQL functions (`report_game`, `confirm_game`, `buy_item`);
   the client only displays them. `016_wardrobe4.sql` is the new wardrobe's
@@ -169,6 +184,7 @@ node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns] 
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
+node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the real app page, fresh phones each in their own browser context: Path A (invite link -> landing -> name -> character -> room -> first game) and Path B (intro -> Home -> verify -> throw a party -> invite) recorded, every screen in EN + KO, a declined location, an interrupted install, a guest verifying mid-party, tap -> first game for 5 fresh phones (FFMPEG=... for the mp4s)
 node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
 node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps
 test/hunter.html                       # Manhunt's Hunter on his own: poses, doors, counter, orbit (open it on npm run serve:test)
@@ -253,6 +269,12 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   phone: only "in" / "out" goes to the host.
 - The prompt log (`diary_prompt_log`) must never contain user ids, handles or
   answer text.
+- Analytics (`events`, `web/analytics.js`) carry a random per-install id,
+  never a user id, and only whitelisted props: never a location, a name, a
+  party code or anything typed. Clients can only insert; the numbers are
+  admin-only (`onboarding_stats()`).
+- An invite link carries the party's name and how many are in (parties live
+  in no table), never anyone's handle or location.
 - Friendships only ever come from a verified in-person meetup (server-side).
   There is no client "add friend" action; the profile card only shows status.
 - Reports (`reports`) are insert-only from clients and carry no message text.
