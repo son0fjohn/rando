@@ -145,6 +145,7 @@ export const onboard = {
       return `${logo}<p class="st-line">${esc(t("start.tag"))}</p>
         <button type="button" class="glass-btn gold" data-start>${esc(t("start.start"))}</button>
         <button type="button" class="glass-btn clear" data-join>${esc(t("start.join"))}</button>
+        <button type="button" class="st-explore" data-explore><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 3.8 6.6v12.9L9 17.4l6 2.1 5.2-2.1V4.5L15 6.6z"/><path d="M9 4.5v12.9M15 6.6v12.9"/></svg>${esc(t("start.explore"))}</button>
         <p class="onb-err">${esc(msg)}</p>`;
     };
     const bindPanel = el => {
@@ -154,6 +155,7 @@ export const onboard = {
       pn.querySelector("[data-join]")?.addEventListener("click", () => { sfx.cursor?.(); clearPending(); mode = "join"; msg = ""; redraw(); setTimeout(() => pn.querySelector("#st-code input")?.focus(), 60); });
       pn.querySelector("[data-back]")?.addEventListener("click", () => { sfx.back?.(); mode = "main"; msg = ""; redraw(); });
       pn.querySelector("[data-nearby]")?.addEventListener("click", () => { sfx.cursor?.(); this.nearby(); });
+      pn.querySelector("[data-explore]")?.addEventListener("click", () => { sfx.cursor?.(); this.explore(); });
       pn.querySelectorAll("[data-fjoin]").forEach(b => b.onclick = async () => {
         if (!(await this.requireVerified("public"))) return;
         this.go("id", b.dataset.fjoin);
@@ -233,6 +235,34 @@ export const onboard = {
       else youreIn();
       return true;
     } finally { this._going = false; }
+  },
+
+  // Explore the world: no party, the map itself. The panel fades, the camera
+  // glides down to where you are (read on this phone, only if location is
+  // allowed; else Itaewon), the bar slides in and the spots and pins fade in.
+  // Somewhere far from Itaewon, the city there swaps in under a quick navy
+  // blink first.
+  async explore() {
+    if (this._going) return;
+    this._going = true;
+    try {
+      await askPermission("location");       // (a pre-prompt; "not now" is fine)
+      const spot = (await env.exploreHome?.().catch(() => null)) ?? { lat: 37.5346, lng: 126.9946 };
+      const el = screen?.id === "start" ? screen.el : null;
+      el?.classList.add("going");
+      sfx.open?.();
+      const veil = document.getElementById("dive-veil") ?? document.body.appendChild(Object.assign(document.createElement("div"), { id: "dive-veil" }));
+      const away = world3d.isAway?.(spot.lat, spot.lng);
+      if (away) { veil.classList.add("on"); await scenery.wait(380); }
+      await world3d.releaseWorld?.([spot.lat, spot.lng]);
+      if (away) await scenery.wait(250);
+      veil.classList.remove("on");
+      if (scenery.live) await scenery.glide(world3d.geo(spot.lat, spot.lng));
+      hide();
+      env.openMap?.();
+      document.body.classList.add("world-arrive");
+      setTimeout(() => document.body.classList.remove("world-arrive"), 2200);
+    } finally { this._going = false; document.getElementById("dive-veil")?.classList.remove("on"); }
   },
 
   // the panel fades and scales away while the camera dives (~1.5 s) from the

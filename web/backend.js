@@ -214,6 +214,16 @@ const onboardEnv = {
     world3d.recenter();
   },
   openStyle() { styleView.open(); },
+  // where Explore the world lands: this phone's location if it's allowed
+  // (read here, never sent), else your last zone, else null (Itaewon)
+  async exploreHome() {
+    try {
+      const devOk = params.get("devlat") && params.get("devlng");
+      const st = devOk ? null : await navigator.permissions?.query({ name: "geolocation" });
+      if (devOk || st?.state === "granted") return await readDeviceCoords();
+    } catch {}
+    return presence.myZone ? { lat: presence.myZone.lat, lng: presence.myZone.lng } : null;
+  },
   friendParties: () => party.nearby.filter(r => party.hooks.isFriend?.(r.hostId)).map(r => ({ id: r.id, name: r.name ?? r.hostName, hostName: r.hostName, count: r.count })),
   // the account: everyone starts as a guest (anonymous sign-in, kept on this
   // phone). Saving it links Kakao / Apple / Google to the SAME user id

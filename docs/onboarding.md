@@ -36,6 +36,12 @@ always opens at night now (`index.html` sets `__RANDO_FIRST_NIGHT` unless
   dive: straight in.
 - **Join a party** flips the panel to the code, friends' public parties and
   "See what's happening nearby" (the map); joining dives the same way.
+- **Explore the world** (a quiet text button with a map icon under the
+  two): no party, the map itself. A location pre-prompt (once); the panel
+  fades, the camera glides down onto the map's own view over where you are
+  (your location read on the phone if allowed, else Itaewon), the nav bar
+  slides up, the pins and spots fade in. Far from Itaewon the city there
+  swaps in under a quick navy blink first (`docs/map_city.md`).
 - Corners: EN / 한 (left), You (Home) and Settings (right).
 - **The lobby** has one way out: back (top left) → "Leave the party?" →
   the start screen. The host also has the host menu (top right: the game

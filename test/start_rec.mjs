@@ -21,7 +21,7 @@ const STILL = process.argv.includes("--still");
 const OUT = STILL ? null : process.argv[2];
 if (!STILL && (!OUT || OUT.startsWith("--"))) { console.error("usage: node test/start_rec.mjs <dir> [--quick] | --still"); process.exit(2); }
 const QUICK = process.argv.includes("--quick");
-const ONLY = process.argv.find(a => a.startsWith("--only="))?.slice(7).split(",") ?? ["1", "2", "3", "4", "5"];
+const ONLY = process.argv.find(a => a.startsWith("--only="))?.slice(7).split(",") ?? ["1", "2", "3", "4", "5", "6"];
 const closeAll = async () => { for (const c of contexts.splice(0)) await c.close().catch(() => {}); };
 if (OUT) await mkdir(OUT, { recursive: true });
 const { base, close } = await serve({ realAvatars: true });
@@ -317,6 +317,38 @@ const wDive = await W.evaluate(() => document.querySelectorAll(".onb-screen.star
 ok(wIn, `Start before the 3D was up (live: ${early}): no dive, straight into the lobby (${Date.now() - tTap} ms on this 6x-throttled software-GL page)`);
 
 await closeAll();
+}
+
+if (ONLY.includes("6")) {
+console.log("\n6. Explore the world: no party, the map itself (here in Itaewon, then far away in Calgary)");
+for (const [where, lat, lng] of [["Itaewon", 37.5347, 126.9945], ["Calgary", 51.0447, -114.0631]]) {
+  const ectx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, locale: "en-US",
+    geolocation: { latitude: lat, longitude: lng }, permissions: ["geolocation"] });
+  await ectx.addInitScript(() => { globalThis.__sceneryNoSlow = true; try { localStorage.setItem("rando-lang", "en"); } catch {} });
+  contexts.push(ectx);
+  const E = await page(ectx, `explore-${where}`);
+  await E.goto(`${base}/app.html?devlat=${lat}&devlng=${lng}${who("mina")}`);
+  await screenIs(E, "start", 60000); await live(E);
+  ok(await E.evaluate(() => !!document.querySelector(".st-panel [data-explore]") && getComputedStyle(document.querySelector(".st-panel [data-explore]")).backgroundColor === "rgba(0, 0, 0, 0)"),
+    `${where}: a third, quieter way in under Start / Join: Explore the world`);
+  if (where === "Itaewon") await shot(E, "12-start-explore", "the start screen with Explore the world");
+  await E.evaluate(() => { window.__ex = { going: false, nav: null }; new MutationObserver(() => { if (document.querySelector(".onb-screen.start.going")) window.__ex.going = true; if (document.body.classList.contains("world-arrive")) window.__ex.arrived = true; }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class"] }); });
+  await tap(E, ".st-panel [data-explore]");
+  ok(await until(E, () => !document.querySelector("#onb .onb-screen") && window.__ex.arrived, null, 120000), `${where}: the panel fades, the camera glides down, the map`);
+  const s1 = await E.evaluate(async () => {
+    const { world3d } = await import("/web/world3d.js");
+    const nav = document.getElementById("navbar");
+    return { going: window.__ex.going, nav: !nav.hidden && getComputedStyle(nav).display !== "none", explore: !!world3d.homePos, mode: world3d.blending ? "blend" : world3d.cityOn ? "city" : "itaewon",
+      origin: world3d.city?.origin ?? null, credit: document.getElementById("osm-credit")?.textContent };
+  });
+  ok(s1.going && s1.nav && s1.explore, `${where}: the bar slides in, exploring round where you are (${JSON.stringify({ nav: s1.nav, explore: s1.explore })})`);
+  ok(where === "Itaewon" ? s1.mode === "blend" : s1.mode === "city" && Math.abs(s1.origin[0] - lat) < 0.01,
+    `${where}: ${where === "Itaewon" ? "Itaewon's own map, with the procedural city round its edges" : "the procedural city there, centred on you"} (${s1.mode})`);
+  ok(/OpenStreetMap/.test(s1.credit ?? "") && /Overture/.test(s1.credit ?? ""), `${where}: the map data's credit in the corner ("${s1.credit}")`);
+  await sleep(where === "Calgary" ? 8000 : 4000);
+  await shot(E, `13-explore-${where.toLowerCase()}`, `Explore the world, landed: ${where}`);
+  await closeAll();
+}
 }
 
 console.log(errors.length ? `\n✗ page errors: ${[...new Set(errors)].slice(0, 8).join(" | ")}` : "\n✓ no page errors");

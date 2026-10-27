@@ -1943,3 +1943,15 @@ body.scenery .frame > :not(canvas) { visibility: hidden !important; }
 .pt-confirm-card p { margin: 0 0 8px; font: 500 14.5px/1.4 var(--f-sys); color: rgba(225, 232, 255, .82); }
 .pt-confirm-btns { display: flex; gap: 10px; }
 .pt-confirm-btns .glass-btn { flex: 1; }
+
+/* the start screen's third, quieter way in: no party, just the world */
+.st-explore { display: inline-flex; align-self: center; align-items: center; gap: 7px; margin: 4px 0 -4px; padding: 10px 14px; border: 0; border-radius: 999px; background: none;
+  color: rgba(235, 240, 255, .82); font: 600 15px/1 var(--f-sys); text-shadow: var(--glass-text-shadow); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.st-explore svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; opacity: .9; }
+.st-explore:active { background: rgba(255, 255, 255, .1); transform: translateY(1px); }
+/* arriving in the world from it: the bar slides up, the spots and pins fade in */
+body.world-arrive #navbar { animation: world-bar .5s cubic-bezier(.2, .8, .2, 1) backwards .1s; }
+body.world-arrive #label-layer, body.world-arrive #beacon-layer, body.world-arrive #bubble-layer { animation: world-pins .9s ease backwards .45s; }
+@keyframes world-bar { from { transform: translateY(100%); } }
+@keyframes world-pins { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { body.world-arrive #navbar, body.world-arrive #label-layer, body.world-arrive #beacon-layer, body.world-arrive #bubble-layer { animation: none; } }
