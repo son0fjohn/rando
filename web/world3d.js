@@ -435,7 +435,7 @@ export const world3d = {
     for (const L of this.labels) if (L.old) L.hidden = true;
     if (!this.ground) this.buildCityGround(); else this.ground.visible = true;
     this.scene.fog = new THREE.Fog(M.fog, 300, 980);
-    this.target.set(0, 0, 0);
+    this.target.set(0, 0, 0); this.applyCamera();
     this.replaceAll();
     this.heroes ??= (async () => { try { return (await (await fetch("data/heroes.json")).json()).heroes; } catch { return []; } })();
     const heroes = await this.heroes;
@@ -462,7 +462,7 @@ export const world3d = {
     for (const L of this.labels) if (L.old) L.hidden = false;
     if (this.ground) this.ground.visible = false;
     this.scene.fog = new THREE.Fog(M.fog, 340, 1250);
-    this.target.set(0, 0, 0);
+    this.target.set(0, 0, 0); this.applyCamera();
     this.replaceAll();
     this.credit();
     this.needsRender = true;
