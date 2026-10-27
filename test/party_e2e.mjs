@@ -93,11 +93,15 @@ try {
   // ------------------------------------------------------------------ create
   head("Party: create, join by link, join by code");
   const A = await phone("alice");
+  // the real app wires phone verification in here; a private party must never ask
+  await A.evaluate(() => { window.__gates = []; window.party.hooks.gate = async t => { window.__gates.push(t); return false; }; });
   await A.click("#party-btn");
   await A.fill("#pt-name", "Saturday night");
   await A.click('[data-vibe="chaotic"]');
   await A.click("#pt-create");
   ok(await until(A, () => /^[A-Z0-9]{4}$/.test(document.getElementById("pt-code-chip")?.textContent ?? "")), "host creates a party and gets a 4-character code");
+  ok((await A.evaluate(() => window.__gates.length)) === 0, "hosting a private party never asks for phone verification");
+  await A.evaluate(() => { window.party.hooks.gate = null; });
   const code = await text(A, "#pt-code-chip");
   ok((await text(A, "#pt-title")) === "Saturday night", "the party has the name the host gave it");
   ok(await A.locator("#party-panel.pt-lobby").isVisible(), "the lobby is a full-screen room");

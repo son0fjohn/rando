@@ -49,9 +49,10 @@ button (top left).
 ## Verification only when it matters
 
 Guests join and play with nothing but a name. Phone verification is asked at
-the moment it's needed, with a one-line reason: hosting, public parties
-(making one, joining one from the map or a friend's), adding friends (the
-in-person "We met" confirm), spending coins, and Settings → Save my progress.
+the moment it's needed, with a one-line reason: public parties (making one,
+joining one from the map or a friend's), adding friends (the in-person "We
+met" confirm), spending coins, and Settings → Save my progress. Hosting a
+private party (invite link / code) never asks.
 A guest (anonymous account) gets the number linked to the same account
 (`updateUser({ phone })` + `verifyOtp(type: "phone_change")`), so the
 character, coins and friends stay and they carry on where they were; another

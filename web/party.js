@@ -127,7 +127,7 @@ export const party = {
   //   onboarding (onboard.js, real app only; every one optional):
   //   holdInvite(code) -> true: the invite landing takes this link over
   //   gate(trigger) -> Promise<bool>: phone verification where it matters
-  //   ("host", "public"); false = don't
+  //   ("public" — hosting a private party never asks); false = don't
   //   invite(c) -> the invite sheet · joined(c) · beforeGame(g, c) ·
   //   gameEnded(c, g, results) · setEnded(c, rows)
   hooks: { isFriend: null, report: null, beaconZone: null, coins: null, ritualDraw: null,
@@ -156,8 +156,9 @@ export const party = {
   async create() {
     const { vibe } = this.form;
     const privacy = FLAGS.PUBLIC_PARTIES && this.form.privacy === "public" ? "public" : "private";
-    // phone verification only where it matters: hosting (and a public party)
-    if (this.hooks.gate && !(await this.hooks.gate(privacy === "public" ? "public" : "host"))) return false;
+    // phone verification only where it matters: a public party. Hosting a
+    // private one (invite link / code) never asks.
+    if (privacy === "public" && this.hooks.gate && !(await this.hooks.gate("public"))) return false;
     const cap = Math.max(PARTY.CAP_MIN, Math.min(PARTY.CAP_MAX, +this.form.cap || PARTY.CAP_DEFAULT));
     const name = (this.form.name || "").trim().slice(0, PARTY.NAME_MAX) || `${this.me.handle}'s party`;
     this.err("");

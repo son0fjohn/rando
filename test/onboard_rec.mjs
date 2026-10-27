@@ -5,8 +5,8 @@
 //           name, character, the room ("you're in!"), the host starts the
 //           suggested first game: the safety card, the game's host lines.
 //   Path B  a fresh phone opens the app on its own: the intro, name,
-//           character, Home, Throw a party (phone verification on: the
-//           gate, the code), the invite sheet, the empty room with its QR.
+//           character, Home, Throw a party (phone verification on, but a
+//           private party never asks), the invite sheet, the empty room.
 //   checks  a declined location pre-prompt (the map still works), an
 //           interrupted install (the invite survives a cold reopen), a guest
 //           verifying mid-party (same account, still in the party), and
@@ -236,15 +236,7 @@ async function pathB(lang, { record = false, shots = true } = {}) {
   await sleep(4000);
   await read();
   await tap(P, "[data-throw]");
-  ok(await sheetIs(P, "verify"), `${lang}: Throw a party asks to verify the number first (hosting)`);
-  await sleep(500);
-  if (shots) await shot(P, lang, "B6-verify", "Verify your number to host");
-  await typeName(P, "#onb-phone", "010-1234-5678"); await read(500);
-  await tap(P, "[data-send]");
-  ok(await until(P, () => !!document.querySelector("#onb-otp")), `${lang}: the code step`);
-  if (shots) await shot(P, lang, "B6b-code", "the code");
-  await typeName(P, "#onb-otp", "123456");
-  ok(await sheetIs(P, "invite"), `${lang}: verified -> the party, and the invite sheet`);
+  ok(await sheetIs(P, "invite"), `${lang}: Throw a party goes straight to the party and the invite sheet — no phone prompt`);
   await sleep(1200);
   if (shots) await shot(P, lang, "B7b-invite-own", "your own party's invite sheet");
   await P.evaluate(() => document.querySelector(".onb-qr")?.click()); await sleep(600);
@@ -253,7 +245,7 @@ async function pathB(lang, { record = false, shots = true } = {}) {
   ok(await until(P, () => !document.querySelector("#pt-empty")?.hidden), `${lang}: alone in the room: invite your friends, the QR`);
   if (shots) await shot(P, lang, "B9-empty-room", "the empty room: invite, games work best with 3+");
   const ev = await P.evaluate(() => (window.__events ?? []).map(e => `${e.name}${e.props.trigger ? `:${e.props.trigger}` : ""}`));
-  ok(["verification_prompted:host", "verification_completed:host", "own_party_created"].every(n => ev.includes(n)), `${lang}: analytics: verification (host) + own_party_created`);
+  ok(ev.includes("own_party_created") && !ev.some(n => n.startsWith("verification_")), `${lang}: analytics: own_party_created, no verification prompted`);
   if (record) await writeVideo(`pathB-${lang}`, casts);
   // settings: language, permissions, account
   await P.evaluate(() => window.__onb.settings()); await sleep(800);
