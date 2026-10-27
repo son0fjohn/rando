@@ -1017,6 +1017,7 @@ export const world3d = {
       // throttled tabs; costs ~1.5s of scale updates, nothing afterwards.
       risers.forEach(([m, o]) => { m.scale.y = 0.001; o.scale.y = 0.001; });
       this.risers = { t0: performance.now(), items: risers };
+      this.lots = decorLots;      // (the start screen dives into one of them)
       console.log(`[rando] OSM footprints: ${footprints} buildings`);
 
       // ---- street density pass (grocery-street reference): awnings,
@@ -2205,6 +2206,20 @@ export const world3d = {
     return Math.hypot(this.target.x - goal.x, this.target.z - goal.z);
   },
   setPaused(on) { this.paused = !!on; if (!on) this.needsRender = true; },
+  // the buildings are up (loaded and risen): the start screen's still image
+  // can give way to the live city
+  built: false,
+  _builtFns: [],
+  whenBuilt() { return this.built ? Promise.resolve() : new Promise(r => this._builtFns.push(r)); },
+  // skip the rise: everything at full height now
+  finishRise() {
+    if (!this.risers) return;
+    for (const [m, o] of this.risers.items) { m.scale.y = 1; o.scale.y = 1; }
+    this.risers.t0 = -1e9;
+    this.needsRender = true;
+  },
+  maxFps: 0,                   // 0 = every frame; the start screen draws at 30
+  _lastDraw: 0,
 
   // One-finger drag PANS (free observer); two fingers pinch-zoom, twist to
   // rotate, move vertically together to tilt. Desktop: drag pans, wheel
@@ -2399,7 +2414,11 @@ export const world3d = {
         if (k < 1) done = false;
       });
       this.needsRender = true;
-      if (done) this.risers = null;
+      if (done) {
+        this.risers = null;
+        this.built = true;
+        for (const f of this._builtFns.splice(0)) f();
+      }
     }
 
     // glide the camera target home — unless the user is roaming free
@@ -2429,9 +2448,10 @@ export const world3d = {
     }
     this.anchors = this.anchors.filter(a => this.placeAnchor(a));
     this.placeLabels();
-    if (this.needsRender) {
+    if (this.needsRender && !(this.maxFps && t - this._lastDraw < 1 / this.maxFps - 0.004)) {
       this.renderer.render(this.scene, this.camera);
       this.needsRender = false;
+      this._lastDraw = t;
     }
   },
 };

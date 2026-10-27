@@ -36,8 +36,10 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#0b0d24">
 <script>
-  // a first open (no onboarding done on this phone yet) sees the city at night
-  try { if (!localStorage.getItem("rando-onb-v1")) window.__RANDO_FIRST_NIGHT = true; } catch {}
+  // every open starts on the start screen, the city at night behind glass
+  // (onboard.js); its still frame shows from the first paint, before any
+  // module or the 3D has loaded (?onb=0: no start screen, the map as it was)
+  if (!/[?&]onb=0/.test(location.search)) { window.__RANDO_FIRST_NIGHT = true; document.documentElement.classList.add("start-boot"); }
 </script>
 <style>
   :root {
@@ -1863,6 +1865,7 @@
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
+  <img id="start-still" src="start/night.jpg" alt="" aria-hidden="true" decoding="async" fetchpriority="high">
   <div class="frame">
     <div id="bubble-layer"></div>
 

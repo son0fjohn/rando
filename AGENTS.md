@@ -18,8 +18,12 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 - **Multiplayer:** Supabase Realtime broadcast + presence (`web/net.js`). No
   database tables for game state: rooms, games and chat die with the room.
 - **Onboarding** (see `docs/onboarding.md`): `web/onboard.js` (first open
-  to playing in under a minute: an invite link's landing, name, character,
-  the intro, Home, the invite sheet with its QR; accounts: a guest first,
+  to playing in under a minute: the start screen on every open, a glass
+  panel (Start a party / Join a party) over our 3D Itaewon at night,
+  drifting (`web/scenery.js`: pure scenery, the drift, the dive into the
+  party's building, slow phones -> lite glass; `web/start/night.jpg` its
+  still first frame), an invite link straight in, name, character, Home,
+  the invite sheet with its QR; accounts: a guest first,
   "Save your account" with Kakao / Apple / Google (`linkIdentity`, the same
   account), sign in on a new phone; phone verification only for the
   stranger features (`FLAGS.PHONE_VERIFY` in `hpconfig.js`), Settings, the safety card before a first game, a game
@@ -58,7 +62,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   and `cel.js` are the old character, kept only for `staticize`/`matteify`.)
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
-  for Korean) and frosted-glass panels; one accent, gold `--color-accent`
+  for Korean) and frosted-glass panels; `.glass` / `.glass-btn` the
+  reusable Frutiger Aero glass (tint, blur, bevel, top shine; lite on slow
+  phones); one accent, gold `--color-accent`
   with navy `--color-on-accent` text, never a hardcoded accent hex; pixel art only in the room art and
   sprites, never in text, buttons or panels).
 - **House party:** `web/party.js` (party + lobby: chat, players vote for the
@@ -194,7 +200,9 @@ node test/layout_shots.mjs <dir> [games] [--secs=40]   # every game's screens, a
 node test/howto_rec.mjs <dir> [games] [--ko]   # each host explaining their game: in full the first time, one line + How to play the next (FFMPEG=... for mp4s)
 node test/upload_rec.mjs <dir> [chromium|webkit|both|iphone-profile]   # Art Gallery photos on the real app page: the camera card on top, 3 picked at once, "Uploading 2/3…"
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
-node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the real app page, fresh phones each in their own browser context: Path A (invite link -> landing -> name -> character -> room -> first game) and Path B (intro -> Home -> verify -> throw a party -> invite) recorded, every screen in EN + KO, a declined location, an interrupted install, a guest verifying mid-party, tap -> first game for 5 fresh phones (FFMPEG=... for the mp4s)
+node test/start_rec.mjs <dir> [--quick] | --still   # the start screen on the real app page: the still, the live drift, Start -> the dive -> the lobby, an invite link (no buttons, the same dive), Join with a code, back -> Leave the party?, the glass over the brightest stretch, a 6x-throttled phone (lite glass), Start before the 3D is up; --still re-shoots web/start/night.jpg (FFMPEG=... for the mp4s)
+node test/start_film.mjs <dir> [start|invite]   # the start screen filmed frame by frame for machines without a GPU: the scenery's clock stepped, each 3D frame read out of WebGL, the page's own glass/UI layered on in a canvas page (blur included); Start -> the dive -> the lobby, and an invite link -> name -> character -> the dive (FFMPEG=... for the mp4s)
+node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the real app page, fresh phones each in their own browser context: Path A (invite link -> the start screen with the party's name -> name -> character -> room -> first game) and Path B (the start screen -> Start a party -> name -> character -> invite) recorded, every screen in EN + KO, a declined location, an interrupted install, a guest verifying mid-party, tap -> first game for 5 fresh phones (FFMPEG=... for the mp4s)
 node test/auth_rec.mjs <dir> [en|ko|both]   # accounts: a guest from an invite (no phone), Save your account with Kakao (same account, back in the party), a Kakao account that's taken, the phone prompt when going public (reason, 30 s, Send it again), the SMS provider refusing, a new phone signing in
 node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
 node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps

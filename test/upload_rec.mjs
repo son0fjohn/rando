@@ -34,9 +34,9 @@ async function run(name, type, device) {
   const until = (fn, arg, ms = 60000) => pg.waitForFunction(fn, arg, { timeout: ms, polling: 200 }).then(() => true).catch(() => false);
   const tap = sel => pg.evaluate(sel => { const el = document.querySelector(sel); el?.click(); return !!el; }, sel);
   await pg.goto(`${base}/app.html?devlat=37.5347&devlng=126.9945&bots=2&me=jae&av=${encodeURIComponent(JSON.stringify(LOOK))}`);
-  ok(await until(() => document.querySelector(".onb-screen:not(.out)")?.dataset.screen === "home", null, 120000), "Home");
+  ok(await until(() => document.querySelector(".onb-screen:not(.out)")?.dataset.screen === "start", null, 120000), "the start screen");
   await sleep(1500);
-  await tap("[data-throw]");
+  await tap(".st-panel [data-start]");
   await until(() => !!document.querySelector('.onb-sheet[data-sheet="invite"]:not(.out)'));
   await tap('.onb-sheet[data-sheet="invite"] [data-close]');
   await sleep(1200);

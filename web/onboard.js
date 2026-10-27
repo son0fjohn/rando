@@ -1,16 +1,19 @@
 // First open -> playing with friends in under a minute. Everything here is a
 // layer over the map (#onb), in English or Korean (i18n.js):
 //
-//   Path A, an invite link (?party=CODE, or /p/CODE via api/invite.mjs):
-//     the party's landing (its name, who's in, the host's and the others'
-//     characters, one gold "Join the party") -> name -> character -> into
-//     the room with a "you're in!" moment. The code is kept on the phone
-//     until they're in, so a reload, a sign-in or an interrupted install
-//     comes back to the same party.
-//   Path B, opening the app on your own: two intro screens over the night
-//     city (skippable) -> name -> character -> Home.
-//   Coming back: Home (your character, Throw a party, what's happening
-//     nearby, friends' parties, what's new). No onboarding again.
+//   Every open: the start screen, our 3D Itaewon at night drifting behind
+//     one glass panel (scenery.js): the logo, Start a party, Join a party
+//     (a code, friends' parties, the map). Either one ends in the camera
+//     diving from the sky into the party's building, then the lobby. A
+//     first open sets up a name and a character on the way (a guest).
+//   An invite link (?party=CODE, or /p/CODE via api/invite.mjs): the same
+//     screen with the party's name instead of the buttons, then (name ->
+//     character ->) the same dive straight into its lobby and a "you're
+//     in!" moment. The code is kept on the phone until they're in, so a
+//     reload, a sign-in or an interrupted install comes back to the same
+//     party. An ended or full party says so and offers the buttons.
+//   Home (the "you" button): your character, Style, friends' parties,
+//     what's new.
 //
 // Accounts: everyone is a guest first (no phone, no email), kept on this
 // phone. "Save your account" links Kakao / Apple / Google to that same
@@ -36,13 +39,13 @@ import { askPermission, prePrompt, permState, toast } from "./permissions.js";
 import { starterLook, e164, otpWait, otpError } from "./onbkit.js";
 import { mountCharView } from "./charview.js";
 import { renderLook, warmLooks } from "./charrender.js";
-import { silhouetteFor, SPRITE } from "./charsprite.js";
 import { qrSvg } from "./qr.js";
 import { sfx, buzz } from "./fx.js";
 import { esc } from "./hpkit.js";
 import { peekRoom } from "./net.js";
 import { party } from "./party.js";
 import { world3d } from "./world3d.js";
+import { scenery } from "./scenery.js";
 
 const params = new URLSearchParams(location.search);
 // ?onb=0: no onboarding at all (the older real-page tests, which start on the map)
@@ -102,31 +105,159 @@ export const onboard = {
     if (!pending && st.pending && Date.now() - st.pending.at < PENDING_MS) pending = st.pending;
     const source = pending ? "invite_link" : "organic";
     track("app_open", { source, returning: !!st.done });
-    if (pending) { track("party_link_opened"); return this.landing(pending); }
-    const p = env.profile();
-    if (needsSetup(p)) return st.intro ? this.setup().then(() => this.home()) : this.intro();
-    if (params.get("home") !== "0") this.home();
+    if (pending) { track("party_link_opened"); return this.startScreen({ invite: pending }); }
+    if (params.get("home") === "0") { unboot(); return; }
+    this.startScreen();
   },
 
-  // ================================================================ Path B: the intro
-  intro() {
-    let i = 0;
-    flyover(true);
-    const draw = () => show("intro", `
-        <div class="onb-intro">
-          <button type="button" class="onb-skip" data-skip>${esc(t("intro.skip"))}</button>
-          <div class="onb-logo">Rando</div>
-          <div class="onb-intro-t"><b>${esc(t(`intro.${i + 1}.title`))}</b><p>${esc(t(`intro.${i + 1}.sub`))}</p></div>
-          <div class="onb-dots"><i class="${i === 0 ? "on" : ""}"></i><i class="${i === 1 ? "on" : ""}"></i></div>
-          <button type="button" class="onb-btn gold big" data-next>${esc(t(i ? "intro.go" : "intro.next"))}</button>
-          ${langToggle()}
-        </div>`, { cls: "clear", redraw: draw, bind: el => {
+  // ================================================================ the start screen
+  // Every open: our night city drifting behind one glass panel (scenery.js):
+  // the logo, Start a party, Join a party. An invite link skips the buttons
+  // and goes straight in. Starting or joining ends in the dive from the sky
+  // into the party's building, then the lobby.
+  startScreen({ invite = null, view = "main", err = "" } = {}) {
+    if (!env || !root) return;
+    unboot();
+    scenery.on();
+    let mode = invite ? "invite" : view, info = null, looking = !!invite, msg = err;
+    const panel = () => {
+      const friends = env.friendParties?.() ?? [];
+      const logo = `<div class="st-logo">rando</div>`;
+      if (mode === "invite") {
+        const name = info?.name || invite.name || (info?.hostName ? t("land.party", { host: info.hostName }) : "");
+        const gone = !looking && !info, full = !!info && info.count >= (info.cap ?? 99);
+        if (gone || full) return `${logo}
+          <div class="st-invite"><small>${esc(t("land.invited"))}</small><b>${esc(t(gone ? "land.gone" : "land.full"))}</b>${gone ? `<span>${esc(t("land.goneSub"))}</span>` : ""}</div>
+          <button type="button" class="glass-btn gold" data-start>${esc(t("start.start"))}</button>
+          <button type="button" class="glass-btn clear" data-join>${esc(t("start.join"))}</button>`;
+        return `${logo}
+          <div class="st-invite"><small>${esc(t("land.invited"))}</small><b>${esc(name || "…")}</b><span>${esc(t(looking ? "land.looking" : "start.joining"))}</span></div>
+          <div class="st-spin" aria-hidden="true"></div>`;
+      }
+      if (mode.startsWith("busy")) return `${logo}<div class="st-invite"><span>${esc(t(mode === "busy-start" ? "start.starting" : "start.joining"))}</span></div><div class="st-spin" aria-hidden="true"></div>`;
+      if (mode === "join") return `
+        <button type="button" class="st-back" data-back>‹ ${esc(t("start.back"))}</button>
+        <span class="st-sub">${esc(t("start.code"))}</span>
+        <form class="st-code" id="st-code"><input maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="go" placeholder="ABCD" aria-label="${esc(t("start.code"))}"><button class="glass-btn gold sm">${esc(t("home.codeJoin"))}</button></form>
+        <p class="onb-err" id="st-err">${esc(msg)}</p>
+        ${friends.length ? `<span class="st-sub">${esc(t("home.friends"))}</span>${friends.map(f => `<div class="st-fp"><b>${esc(f.name)}</b><span>${esc(t("land.inside", { n: f.count }))}</span><button type="button" class="glass-btn clear sm" data-fjoin="${esc(f.id)}">${esc(t("home.join"))}</button></div>`).join("")}` : ""}
+        <button type="button" class="glass-btn clear sm" data-nearby>${esc(t("home.nearby"))}</button>`;
+      return `${logo}<p class="st-line">${esc(t("start.tag"))}</p>
+        <button type="button" class="glass-btn gold" data-start>${esc(t("start.start"))}</button>
+        <button type="button" class="glass-btn clear" data-join>${esc(t("start.join"))}</button>
+        <p class="onb-err">${esc(msg)}</p>`;
+    };
+    const bindPanel = el => {
+      const pn = el.querySelector(".st-panel");
+      pn.dataset.view = mode;
+      pn.querySelector("[data-start]")?.addEventListener("click", () => { sfx.confirm?.(); buzz(15); clearPending(); this.go("start"); });
+      pn.querySelector("[data-join]")?.addEventListener("click", () => { sfx.cursor?.(); clearPending(); mode = "join"; msg = ""; redraw(); setTimeout(() => pn.querySelector("#st-code input")?.focus(), 60); });
+      pn.querySelector("[data-back]")?.addEventListener("click", () => { sfx.back?.(); mode = "main"; msg = ""; redraw(); });
+      pn.querySelector("[data-nearby]")?.addEventListener("click", () => { sfx.cursor?.(); this.nearby(); });
+      pn.querySelectorAll("[data-fjoin]").forEach(b => b.onclick = async () => {
+        if (!(await this.requireVerified("public"))) return;
+        this.go("id", b.dataset.fjoin);
+      });
+      const form = pn.querySelector("#st-code");
+      if (form) form.onsubmit = ev => {
+        ev.preventDefault();
+        const code = form.querySelector("input").value.trim().toUpperCase();
+        if (!/^[A-Z0-9]{4}$/.test(code)) { pn.querySelector("#st-err").textContent = t("home.codeBad"); sfx.back?.(); return; }
+        form.querySelector("input").blur();
+        this.go("code", code);
+      };
+    };
+    // a new view swaps the panel's insides; the city and the corners stay put
+    const redraw = () => {
+      const el = screen?.id === "start" ? screen.el : null;
+      if (!el) return draw();
+      el.querySelector(".st-panel").innerHTML = panel();
+      bindPanel(el);
+    };
+    const draw = () => show("start", `
+        <div class="st-corner l">${langToggle()}</div>
+        <div class="st-corner r">
+          <button type="button" class="glass-icon" data-me aria-label="${esc(t("start.you"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20.2c1.2-3.6 4-5.4 7.2-5.4s6 1.8 7.2 5.4"/></svg></button>
+          <button type="button" class="glass-icon" data-settings aria-label="${esc(t("home.settings"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5"/></svg></button>
+        </div>
+        <div class="st-panel glass">${panel()}</div>
+        <div class="st-credit">roads &copy; OpenStreetMap contributors</div>`, { cls: "start", redraw: draw, bind: el => {
       bindLang(el);
-      el.querySelector("[data-next]").onclick = () => { sfx.confirm?.(); if (i === 0) { i = 1; draw(); } else done(); };
-      el.querySelector("[data-skip]").onclick = () => { sfx.back?.(); done(); };
+      el.querySelector("[data-me]").onclick = () => { sfx.open?.(); this.home(); };
+      el.querySelector("[data-settings]").onclick = () => { sfx.open?.(); this.settings(); };
+      bindPanel(el);
     } });
-    const done = () => { st.intro = true; save(); this.setup().then(() => this.home()); };
+    this._startView = v => { mode = v; redraw(); };
     draw();
+    if (!invite) return;
+    // an invite: is the party still on? then name + character (a first open) and straight in
+    new Image().src = "lobbies/chill.png";      // (the room's backdrop, loading meanwhile)
+    (async () => {
+      info = await peekRoom(`party-${invite.code}`).catch(() => null);
+      if (!info && screen?.id === "start") info = await peekRoom(`party-${invite.code}`).catch(() => null);   // (a slow host: once more before calling it over)
+      looking = false;
+      if (screen?.id !== "start" || mode !== "invite") return;
+      redraw();
+      if (!info || info.count >= (info.cap ?? 99)) return;
+      if (info.members) warmLooks(info.members.map(m => m.avatar ?? {}));
+      await scenery.wait(1200);    // (long enough to read whose party it is)
+      if (screen?.id === "start" && mode === "invite") this.go("code", invite.code);
+    })();
+  },
+
+  // Start / Join from the start screen: a first open sets up a name and a
+  // character first, then the party opens with its panel still hidden, the
+  // camera dives into the building and the lobby comes up
+  async go(kind, arg) {
+    if (this._going) return;
+    this._going = true;
+    try {
+      const busy = kind === "start" ? "busy-start" : "busy";
+      if (needsSetup(env.profile())) await this.setup();
+      if (screen?.id === "start") this._startView(busy);
+      else this.startScreen({ view: busy });
+      // a phone still building the city: no dive then, so the 3D rests and the party comes first
+      if (!scenery.live) world3d.setPaused(true);
+      const ok = kind === "start" ? await party.create() : kind === "id" ? await party.join(arg) : await party.joinByCode(arg);
+      if (ok !== true || !party.current) {
+        // couldn't (full, mid-game, no connection, verification declined): say so on the glass
+        const why = $("pt-err")?.textContent || "";
+        $("party-panel").hidden = true;
+        this.startScreen({ view: kind === "start" ? "main" : "join", err: why });
+        return false;
+      }
+      if (kind === "start") track("own_party_created");
+      else { clearPending(); track("joined_party"); }
+      await this.dive(party.current.meta.code);
+      if (kind === "start") setTimeout(() => this.invite(party.current), 350);
+      else youreIn();
+      return true;
+    } finally { this._going = false; }
+  },
+
+  // the panel fades and scales away while the camera dives (~1.5 s) from the
+  // sky into the party's building; navy for a beat, then the lobby. If the
+  // 3D isn't drawing yet, no dive: nobody waits on it.
+  async dive(code) {
+    const el = screen?.id === "start" ? screen.el : null;
+    el?.classList.add("going");
+    sfx.open?.();
+    const veil = document.getElementById("dive-veil") ?? document.body.appendChild(Object.assign(document.createElement("div"), { id: "dive-veil" }));
+    const DIVE = 1500;
+    const live = el && await scenery.whenLive(250);
+    if (live) {
+      let dived = false;
+      scenery.wait(DIVE - 330).then(() => { if (!dived) veil.classList.add("on"); });
+      await scenery.dive(code, DIVE);
+      dived = true;
+    }
+    veil.classList.add("on");
+    await scenery.wait(live ? 40 : 330);
+    hide();
+    party.togglePanel(true);
+    // (the room wipes in under the navy, then the navy lifts)
+    await scenery.wait(260);
+    veil.classList.remove("on");
   },
 
   // ================================================================ quick guest setup
@@ -134,7 +265,6 @@ export const onboard = {
     const p = env.profile();
     if (AUTO_HANDLE.test(p.handle ?? "")) await this.nameScreen();
     if (!p.avatar) await this.characterScreen();
-    flyover(false);
     st.done = true; save();
   },
 
@@ -217,67 +347,14 @@ export const onboard = {
     });
   },
 
-  // ================================================================ Path A: the invite landing
-  async landing(inv) {
-    let info = null, looking = true;
-    const draw = () => {
-      const name = info?.name || inv.name || (info?.hostName ? t("land.party", { host: info.hostName }) : "");
-      const count = info?.count ?? inv.count ?? 0;
-      const gone = !looking && !info;
-      const people = (info?.members ?? []).slice(0, 6);
-      show("landing", `
-        <div class="onb-land ${gone ? "gone" : ""}">
-          <div class="onb-land-room"><div class="onb-land-people" id="onb-people">${people.map((m, i) => `<figure style="--i:${i}" class="${i === 0 ? "host" : ""}"><img data-look="${i}" alt=""><figcaption>${i === 0 ? "👑 " : ""}${esc(m.handle)}</figcaption></figure>`).join("")}</div></div>
-          <div class="onb-land-card">
-            <small class="onb-kicker">${esc(t(gone ? "land.gone" : "land.invited"))}</small>
-            ${gone ? `<p class="onb-sub">${esc(t("land.goneSub"))}</p>` : `<b class="onb-land-name">${esc(name || "…")}</b>
-            <p class="onb-sub">${looking && !info ? esc(t("land.looking")) : [info?.hostName && t("land.hosting", { host: info.hostName }), count && t("land.inside", { n: count })].filter(Boolean).map(esc).join(" · ")}</p>
-            ${info?.playing ? `<p class="onb-note">${esc(t("land.playing", { game: info.playing }))}</p>` : ""}`}
-            ${gone ? `<button type="button" class="onb-btn gold big" data-home>${esc(t("home.throw"))}</button><button type="button" class="onb-btn text" data-away>${esc(t("land.home"))}</button>`
-              : info && info.count >= (info.cap ?? 99) ? `<p class="onb-note">${esc(t("land.full"))}</p><button type="button" class="onb-btn text" data-away>${esc(t("land.home"))}</button>`
-              : `<button type="button" class="onb-btn gold big pulse" data-join>${esc(t("land.join"))}</button>`}
-            ${langToggle()}
-          </div>
-        </div>`, { redraw: draw, bind: el => {
-        bindLang(el);
-        // their pixel sprite at once, then the 3D render when it's ready
-        people.forEach((m, i) => {
-          const img = () => el.querySelector(`img[data-look="${i}"]`);
-          let full = false;
-          frontFrame(silhouetteFor(m.avatar ?? {}).url).then(u => { if (!full && img() && u) img().src = u; });
-          renderLook(m.avatar ?? {}, { frame: "full" }).then(u => { full = true; if (img()) { img().src = u; img().classList.add("hd"); } }).catch(() => {});
-        });
-        el.querySelector("[data-join]")?.addEventListener("click", () => { sfx.confirm?.(); buzz(20); this.joinFromInvite(inv); });
-        el.querySelector("[data-home]")?.addEventListener("click", () => { clearPending(); this.setup().then(() => this.throwParty()); });
-        el.querySelector("[data-away]")?.addEventListener("click", () => { clearPending(); this.setup().then(() => this.home()); });
-      } });
-    };
-    draw();
-    // the room behind the landing: its backdrop and its people, loaded while they look
-    new Image().src = "lobbies/chill.png";
-    info = await peekRoom(`party-${inv.code}`).catch(() => null);
-    if (!info && screen?.id === "landing") info = await peekRoom(`party-${inv.code}`).catch(() => null);   // (a slow host: once more before calling it over)
-    looking = false;
-    if (info?.members) warmLooks(info.members.map(m => m.avatar ?? {}));
-    if (screen?.id === "landing") draw();
-  },
-
-  async joinFromInvite(inv) {
-    await this.setup();
-    hide();
-    party.togglePanel(true);
-    const ok = await party.joinByCode(inv.code);
-    if (ok === true && party.current) {
-      clearPending();
-      track("joined_party");
-      youreIn();
-    } else party.togglePanel(true);
-  },
+  // a code from Home: the same way in as from the start screen
+  joinFromInvite(inv) { return this.go("code", inv.code); },
 
   // ================================================================ Home
   home() {
     if (!env) return;
-    flyover(false);
+    unboot();
+    scenery.off();
     st.done = true; save();
     const draw = () => {
       const p = env.profile(), inParty = !!party.current;
@@ -286,7 +363,7 @@ export const onboard = {
       show("home", `
         <div class="onb-home">
           <div class="onb-home-top">
-            <span class="onb-logo sm">Rando</span>
+            <button type="button" class="onb-logo sm onb-home-back" data-startscreen aria-label="${esc(t("start.back"))}">‹ rando</button>
             <span class="onb-home-r">${langToggle()}<button type="button" class="onb-icon" data-settings aria-label="${esc(t("home.settings"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5"/></svg></button></span>
           </div>
           <b class="onb-hi">${esc(t("home.hi", { name: p.handle ?? "" }))}</b>
@@ -306,6 +383,7 @@ export const onboard = {
         el.querySelector("[data-throw]")?.addEventListener("click", () => { sfx.confirm?.(); buzz(15); this.throwParty(); });
         el.querySelector("[data-back]")?.addEventListener("click", () => { sfx.confirm?.(); hide(); party.togglePanel(true); });
         el.querySelector("[data-nearby]").onclick = () => { sfx.cursor?.(); this.nearby(); };
+        el.querySelector("[data-startscreen]").onclick = () => { sfx.back?.(); this.startScreen(); };
         el.querySelector("[data-style]").onclick = () => { sfx.open?.(); hide(); env.openStyle(); };
         el.querySelector("[data-settings]").onclick = () => { sfx.open?.(); this.settings(); };
         el.querySelectorAll("[data-new]").forEach(b => b.onclick = () => { st.seenNew.push(b.dataset.new); save(); b.remove(); });
@@ -325,14 +403,7 @@ export const onboard = {
     $("nav-home") && ($("nav-home").hidden = true);
   },
 
-  async throwParty() {
-    const ok = await party.create();
-    if (ok !== true) return;          // (verification declined: stay where we are)
-    hide();
-    track("own_party_created");
-    party.togglePanel(true);
-    setTimeout(() => this.invite(party.current), 350);
-  },
+  throwParty() { return this.go("start"); },
 
   async nearby() {
     hide();
@@ -630,12 +701,18 @@ export const onboard = {
   },
   joined(c) {
     if (OFF) return;
-    // a first-time hint on the vote button (players) once the room's up
-    setTimeout(() => {
-      if (party.current !== c || c.launched) return;
-      if (c.room.isHost) { if (c.room.members.length > 1) hint("start", $("pt-vote"), t("hint.start")); }
-      else hint("vote", $("pt-vote"), t("hint.vote"));
-    }, 2200);
+    // a first-time hint on the vote button (players) once the room's up and
+    // showing (joining from the start screen, it shows after the dive)
+    const t0 = Date.now(), wait = setInterval(() => {
+      if (party.current !== c || c.launched || Date.now() - t0 > 30000) return clearInterval(wait);
+      if ($("party-panel").hidden || document.getElementById("dive-veil")?.classList.contains("on")) return;
+      clearInterval(wait);
+      setTimeout(() => {
+        if (party.current !== c || c.launched) return;
+        if (c.room.isHost) { if (c.room.members.length > 1) hint("start", $("pt-vote"), t("hint.start")); }
+        else hint("vote", $("pt-vote"), t("hint.vote"));
+      }, 2200);
+    }, 200);
   },
 };
 
@@ -677,14 +754,6 @@ function bindLang(el, after) {
 }
 
 // a sprite sheet's first frame (facing front, standing) as a picture
-function frontFrame(url) {
-  return new Promise(res => {
-    const im = new Image();
-    im.onload = () => { const c = document.createElement("canvas"); c.width = SPRITE.W; c.height = SPRITE.H; c.getContext("2d").drawImage(im, 0, 0); res(c.toDataURL()); };
-    im.onerror = () => res(null);
-    im.src = url;
-  });
-}
 
 // a full screen of the onboarding (one at a time)
 function show(id, html, { cls = "", redraw = null, bind = null } = {}) {
@@ -701,9 +770,9 @@ function show(id, html, { cls = "", redraw = null, bind = null } = {}) {
   root.prepend(el);
   screen = { id, el, redraw };
   bind?.(el);
-  // the map only shows through the intro: behind every other screen it stops
-  // drawing, so the phone's time goes to the screen they're looking at
-  world3d.setPaused?.(id !== "intro");
+  // the city only shows through the start screen: behind every other screen
+  // it stops drawing, so the phone's time goes to the screen they're looking at
+  world3d.setPaused?.(id !== "start");
   if (id !== "home") { homeView?.dispose(); homeView = null; }
 }
 function hide() {
@@ -716,7 +785,8 @@ function hide() {
   document.body.classList.remove("onb-on");
   world3d.setPaused?.(false);
   world3d.needsRender = true;
-  flyover(false);
+  scenery.off();
+  unboot();
   const nh = $("nav-home"); if (nh) nh.hidden = false;
 }
 onboard.hide = hide;
@@ -757,24 +827,8 @@ function sparkle(host, n = 10) {
   }
 }
 
-// the night city turning slowly behind the intro
-let flying = false;
-function flyover(on) {
-  if (on === flying || !world3d?.cam) return;
-  flying = on;
-  if (on) {
-    world3d.observing = true;
-    world3d.camGoal = { theta: world3d.cam.theta, elev: 0.42, dist: 320 };
-    const hook = (tm, dt) => {
-      if (!flying) { const i = world3d.tickHooks.indexOf(hook); if (i >= 0) world3d.tickHooks.splice(i, 1); return; }
-      if (world3d.camGoal) return;
-      world3d.cam.theta += (dt || 0.016) * 0.07;
-      world3d.applyCamera?.();
-      world3d.needsRender = true;
-    };
-    world3d.tickHooks.push(hook);
-  } else world3d.recenter?.();
-}
+// the start screen's still (index.html) is ours from here
+function unboot() { document.documentElement.classList.remove("start-boot"); }
 
 // "you're in!": a burst over the room, everyone already here waves
 function youreIn() {

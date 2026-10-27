@@ -223,6 +223,25 @@ export const party = {
     return this.join(`party-${code}`);
   },
 
+  // "Leave the party?" over the room; leaving goes back to the start screen
+  confirmLeave() {
+    const p = $("party-panel");
+    if (!this.current || p.querySelector(".pt-confirm")) return;
+    const el = document.createElement("div");
+    el.className = "pt-confirm";
+    el.innerHTML = `<div class="pt-confirm-card glass" role="alertdialog" aria-modal="true" aria-labelledby="pt-confirm-t">
+        <b id="pt-confirm-t">${esc(t("leave.title"))}</b><p>${esc(t("leave.sub"))}</p>
+        <div class="pt-confirm-btns"><button type="button" class="glass-btn clear sm" data-no>${esc(t("leave.no"))}</button><button type="button" class="glass-btn gold sm" data-yes>${esc(t("leave.yes"))}</button></div>
+      </div>`;
+    const close = () => el.remove();
+    el.onclick = e => { if (e.target === el) { sfx.back(); close(); } };
+    el.querySelector("[data-no]").onclick = () => { sfx.back(); close(); };
+    el.querySelector("[data-yes]").onclick = async () => { close(); sfx.back(); await this.leave(); this.hooks.left?.(); };
+    p.appendChild(el);
+    sfx.open();
+    el.querySelector("[data-no]").focus();
+  },
+
   async leave() {
     const c = this.current;
     if (!c) return;
@@ -768,10 +787,10 @@ export const party = {
   _inHtml() {
     return `<div class="pt-top">
         <div class="pt-top-row">
+          <button id="pt-back" type="button" class="pt-icon pt-back" aria-label="${esc(t("room.back"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
           <b id="pt-title">party</b>
           <span id="pt-mute"></span>
-          <button id="pt-hide" type="button" class="pt-icon" aria-label="Back to the map">&#9660;</button>
-          <button id="pt-leave" type="button" class="pt-leave">${t("room.leave")}</button>
+          <button id="pt-hostmenu" type="button" class="pt-icon" hidden aria-label="${esc(t("room.hostMenu"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg></button>
         </div>
         <div class="pt-top-row">
           <div id="pt-sub" class="rp-sub"></div>
@@ -794,8 +813,10 @@ export const party = {
     const p = $("party-panel");
     p.querySelector("#pt-mute")?.replaceChildren(muteButton());
     p.querySelector("#pt-close")?.addEventListener("click", () => { sfx.back(); this.togglePanel(false); });
-    p.querySelector("#pt-hide")?.addEventListener("click", () => { sfx.back(); this.togglePanel(false); });
-    p.querySelector("#pt-leave")?.addEventListener("click", () => { sfx.back(); this.leave(); });
+    // one way out of the lobby: back, top left, after a "Leave the party?"
+    p.querySelector("#pt-back")?.addEventListener("click", () => { sfx.back(); this.confirmLeave(); });
+    // the host's menu: the game votes sheet with the party's settings
+    p.querySelector("#pt-hostmenu")?.addEventListener("click", () => { const c = this.current; if (!c || c.launched || c.set.done) return; this.settingsOpen = true; this._onTV(); });
     p.querySelector("#pt-name")?.addEventListener("input", e => { this.form.name = e.target.value; });
     p.querySelectorAll("[data-vibe]").forEach(b => b.onclick = () => {
       this.form.vibe = b.dataset.vibe; sfx.cursor();
@@ -866,6 +887,7 @@ export const party = {
     const c = this.current;
     const host = c.room.presence[c.room.hostId]?.handle ?? c.meta.hostName;
     $("pt-title").textContent = c.meta.name;
+    $("pt-hostmenu").hidden = !c.room.isHost;
     $("pt-sub").textContent = `${c.meta.vibe} · ${t("room.hosting", { host })} · ${c.room.members.length}/${c.meta.cap}${BOTS_N ? ` (+${BOTS_N} bots)` : ""}`;
     const chip = $("pt-code-chip");
     if (chip.textContent !== c.meta.code) chip.innerHTML = [...c.meta.code].map(ch => `<span>${esc(ch)}</span>`).join("");

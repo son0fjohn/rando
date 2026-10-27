@@ -74,13 +74,15 @@ async function phone(lang, { stub = {} } = {}) {
   return { ctx, pg };
 }
 const done = async ctx => { if (!ctx || !contexts.includes(ctx)) return; contexts.splice(contexts.indexOf(ctx), 1); await ctx.close(); };
-// a first open: skip the intro, to the name screen
+// a first open: the start screen, then the guest setup on its own (name,
+// character), without the party Start a party would open after it
 async function toName(pg) {
   await pg.goto(appUrl());
-  await until(pg, () => ["intro", "name"].includes(document.querySelector(".onb-screen:not(.out)")?.dataset.screen), null, 120000);
-  if (await pg.evaluate(() => document.querySelector(".onb-screen:not(.out)")?.dataset.screen === "intro")) await tap(pg, ".onb-screen:not(.out) [data-skip]");
+  await screenIs(pg, "start", 120000);
+  await pg.evaluate(() => { window.__onb.setup(); });
   return screenIs(pg, "name", 60000);
 }
+const setUp = pg => until(pg, () => !!JSON.parse(localStorage.getItem("rando-onb-v1") ?? "{}").done, null, 60000);
 
 for (const lang of LANGS) {
   console.log(`\n==== ${lang}`);
@@ -89,21 +91,20 @@ for (const lang of LANGS) {
   console.log("\nA  a guest from an invite: a name and a character, no phone");
   const { ctx: hctx, pg: H } = await phone(lang);
   await H.goto(appUrl(`&me=jae&av=${encodeURIComponent(JSON.stringify(LOOKS.jae))}`));
-  ok(await screenIs(H, "home"), `${lang}: the host is on Home`);
+  ok(await screenIs(H, "start"), `${lang}: the host is on the start screen`);
   await sleep(1500);
-  await tap(H, "[data-throw]");
-  ok(await sheetIs(H, "invite"), `${lang}: Throw a party -> the party and its invite sheet`);
+  await tap(H, ".st-panel [data-start]");
+  ok(await sheetIs(H, "invite"), `${lang}: Start a party -> the party and its invite sheet`);
   ok(await H.evaluate(() => !document.querySelector('.onb-sheet[data-sheet="verify"]')), `${lang}: …a private party asks for no phone`);
   const link = (await H.evaluate(() => document.querySelector("[data-share]")?.dataset.link)).replace(/^https?:\/\/[^/]+/, base);
   await tap(H, '.onb-sheet[data-sheet="invite"] [data-close]');
 
   const { ctx: nctx, pg: N } = await phone(lang);
   await N.goto(link);
-  ok(await screenIs(N, "landing"), `${lang}: the invite opens the party's landing`);
-  await sleep(3500);
-  await shot(N, lang, "A1-landing", "an invite's landing: Join the party");
-  await tap(N, "[data-join]");
-  ok(await screenIs(N, "name"), `${lang}: Join -> a name`);
+  ok(await screenIs(N, "start"), `${lang}: the invite opens the start screen, the party's name on it`);
+  await sleep(1500);
+  await shot(N, lang, "A1-invite", "an invite: the party's name on the glass");
+  ok(await screenIs(N, "name"), `${lang}: straight on -> a name`);
   ok(await until(N, () => !!document.querySelector("[data-have]"), null, 10000), `${lang}: …with "Already have an account? Sign in" for a returning player`);
   await sleep(400);
   await N.fill("#onb-name", lang === "ko" ? "민지" : "Sam"); await sleep(300);
@@ -163,7 +164,7 @@ for (const lang of LANGS) {
   // a Kakao account that already has a Rando account
   const { ctx: tctx, pg: T } = await phone(lang, { stub: { "stub-oauth-taken": "1" } });
   await T.goto(appUrl(`&me=dana&av=${encodeURIComponent(JSON.stringify(LOOKS.dana))}`));
-  ok(await screenIs(T, "home"), `${lang}: another guest on Home`);
+  ok(await screenIs(T, "start"), `${lang}: another guest on the start screen`);
   await T.evaluate(() => window.__onb.saveSheet("save"));
   ok(await sheetIs(T, "save"), `${lang}: Save your account`);
   const nav2 = T.waitForNavigation({ timeout: 20000 }).catch(() => null);
@@ -186,7 +187,7 @@ for (const lang of LANGS) {
   await G.fill(".onb-screen:not(.out) #onb-name", lang === "ko" ? "하루" : "Haru"); await tap(G, ".onb-screen:not(.out) [data-next]");
   ok(await screenIs(G, "char"), `${lang}: the character`);
   await sleep(1500); await tap(G, ".onb-screen:not(.out) [data-ok]");
-  ok(await screenIs(G, "home", 60000), `${lang}: a new guest on Home`);
+  ok(await setUp(G), `${lang}: a new guest, set up`);
   // the map's Host button: the party form, with invite only / public
   await G.evaluate(() => { window.__onb.hide(); window.__onb.party.togglePanel(true); });
   ok(await until(G, () => !!document.querySelector('[data-priv="public"]'), null, 60000), `${lang}: the party form: invite only or public`);
@@ -238,7 +239,7 @@ for (const lang of LANGS) {
   // the provider won't text: say so, and offer Kakao
   const { ctx: fctx, pg: F } = await phone(lang, { stub: { "stub-sms-fail": "provider" } });
   await F.goto(appUrl(`&me=dana&av=${encodeURIComponent(JSON.stringify(LOOKS.dana))}`));
-  await screenIs(F, "home");
+  await screenIs(F, "start");
   await F.evaluate(() => { window.__onb.requireVerified("friends"); });
   ok(await sheetIs(F, "verify"), `${lang}: adding a friend asks too`);
   await F.fill('.onb-sheet:not(.out) #onb-phone', "010-1234-5678"); await tap(F, '.onb-sheet:not(.out) [data-send]');
@@ -262,8 +263,9 @@ for (const lang of LANGS) {
   const nav3 = S.waitForNavigation({ timeout: 20000 }).catch(() => null);
   await tap(S, '[data-sheet="signin"] [data-oauth="kakao"]');
   await nav3;
-  ok(await screenIs(S, "home", 120000), `${lang}: back from Kakao: Home, no setup again`);
-  ok(await until(S, () => /minji/.test(document.querySelector(".onb-hi")?.textContent ?? "")), `${lang}: …as that account (minji)`);
+  ok(await screenIs(S, "start", 120000), `${lang}: back from Kakao: the start screen, no setup again`);
+  await tap(S, ".st-corner [data-me]");
+  ok(await until(S, () => /minji/.test(document.querySelector(".onb-hi")?.textContent ?? "")), `${lang}: …as that account (minji, on Home)`);
   await sleep(3000);
   await shot(S, lang, "D2-signed-in", "signed in on a new phone: their own character");
   await done(sctx);

@@ -176,6 +176,7 @@ async function refreshStatus() {
       beforeGame: (g, c) => onboard.beforeGame(g, c),
       gameEnded: (c, g, r) => onboard.gameEnded(c, g, r),
       setEnded: (c, rows) => onboard.setEnded(c, rows),
+      left: () => onboard.startScreen(),
     });
     party.init();
     onboard.start(onboardEnv);
@@ -2021,8 +2022,8 @@ const nav = {
     sfx.ping();
   },
 };
-// back to Home (onboard.js) from the map
-document.getElementById("nav-home")?.addEventListener("click", () => { sfx.back(); onboard.home(); });
+// back to the start screen (onboard.js) from the map
+document.getElementById("nav-home")?.addEventListener("click", () => { sfx.back(); onboard.startScreen(); });
 // Host: the gold ring fills with a little sparkle burst, then the host flow
 // (or, while you're in a party, back to its room) opens
 document.getElementById("nav-host").addEventListener("click", e => {

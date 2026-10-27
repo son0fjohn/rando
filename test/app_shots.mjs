@@ -187,8 +187,9 @@ if (stop) console.log(`flow: ${await stop(join(OUT, "flow"))} frames`);
 await A.evaluate(() => document.getElementById("pt-picker-x")?.click());
 await sleep(500);
 // back to the map: a public party is a neon house over its area
-if (await A.locator("#pt-hide").count()) {
-  await A.click("#pt-hide"); await sleep(3000);
+// (the lobby's only way out is leaving now; the map behind a party, as a test hook)
+{
+  await A.evaluate(() => window.__onb.party.togglePanel(false)); await sleep(3000);
   // bring the house to the middle of the screen (it's in your zone, not on you)
   const at = await A.evaluate(() => { const b = document.querySelector(".pbeacon"); if (!b) return null; const m = b.style.transform.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/); return m ? [+m[1], +m[2]] : null; });
   if (at) {

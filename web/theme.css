@@ -1803,3 +1803,143 @@ body.onb-on #nav-backtome, body.onb-on #npc-dlg, body.onb-on #match-card { visib
 .mh-elev.small .mh-elev-pill { display: none; }
 /* the header over the elevator while he explains */
 #game-layer.mh-on #game-hud { z-index: 8; }
+
+/* ================================================================ glass
+   The frosted-glass panel (Frutiger Aero): a navy tint over a strong blur
+   of whatever is behind, a thin light bevel, a glossy white shine over the
+   top third, a soft shadow. .glass on any panel, .glass-btn.gold / .clear
+   for its buttons. On a phone that can't keep up (scenery.js measures, or
+   no backdrop-filter, or reduced transparency) it turns "lite": the same
+   look without the live blur, a deeper tint instead.
+   NB: the blur only reaches what's behind up to the nearest ancestor with
+   an opacity, a filter or an opacity animation that keeps its end state
+   (fill-mode both/forwards): a glass inside one blurs nothing. Fade the
+   glass itself in, with fill-mode backwards. */
+:root {
+  --glass-tint: rgba(15, 26, 58, .45);          /* #0F1A3A at 45% */
+  --glass-tint-lite: rgba(15, 26, 58, .86);
+  --glass-blur: blur(26px) saturate(150%);
+  --glass-edge: rgba(255, 255, 255, .30);
+  --glass-radius: 30px;
+  --glass-shine: linear-gradient(180deg, rgba(255, 255, 255, .34) 0%, rgba(255, 255, 255, .12) 58%, rgba(255, 255, 255, .02) 100%);
+  --glass-shadow: 0 28px 70px rgba(3, 6, 20, .55), 0 3px 10px rgba(3, 6, 20, .35);
+  --glass-text-shadow: 0 1px 2px rgba(3, 6, 20, .55), 0 0 14px rgba(3, 6, 20, .35);
+}
+.glass { position: relative; isolation: isolate; overflow: hidden; box-sizing: border-box; border-radius: var(--glass-radius);
+  /* a soft darkening in the middle, under the text, so bright lights behind never wash it out */
+  background: radial-gradient(120% 80% at 50% 62%, rgba(6, 10, 30, .26), rgba(6, 10, 30, 0) 72%), var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, .55), inset 0 0 0 1px rgba(255, 255, 255, .05), inset 0 -10px 24px rgba(120, 160, 255, .07);
+  color: #fff; text-shadow: var(--glass-text-shadow); }
+/* the shine: a glossy band over the top third with a curved lower edge */
+.glass::before { content: ""; position: absolute; z-index: -1; left: 2px; right: 2px; top: 2px; height: 36%; pointer-events: none;
+  border-radius: calc(var(--glass-radius) - 2px) calc(var(--glass-radius) - 2px) 50% 50% / calc(var(--glass-radius) - 2px) calc(var(--glass-radius) - 2px) 26px 26px;
+  background: var(--glass-shine); }
+.glass.lite, body.glass-lite .glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-tint-lite); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass { background: var(--glass-tint-lite); } }
+@media (prefers-reduced-transparency: reduce) { .glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-tint-lite); } }
+
+/* glossy pill buttons: an Aero highlight on the top half, pressed down a touch */
+.glass-btn { position: relative; isolation: isolate; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 56px; padding: 0 22px;
+  border: 0; border-radius: 999px; font: 700 18px/1.2 var(--f-sys); letter-spacing: -.01em; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease; }
+.glass-btn::before { content: ""; position: absolute; z-index: -1; left: 7%; right: 7%; top: 2px; height: 50%; pointer-events: none;
+  border-radius: 999px 999px 50% 50% / 999px 999px 18px 18px; background: linear-gradient(180deg, rgba(255, 255, 255, .78), rgba(255, 255, 255, .06)); }
+.glass-btn:active:not(:disabled), .glass-btn.pressed { transform: translateY(2px) scale(.985); filter: brightness(.95); }
+.glass-btn:disabled { opacity: .6; }
+.glass-btn.gold { color: var(--color-on-accent); text-shadow: 0 1px 0 rgba(255, 255, 255, .35);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 62%, #fff) 0%, var(--color-accent) 46%, var(--color-accent-press) 100%);
+  box-shadow: 0 12px 26px rgba(var(--color-accent-rgb), .32), 0 2px 0 color-mix(in srgb, var(--color-accent-press) 80%, #000), inset 0 -3px 8px rgba(150, 90, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .8); }
+.glass-btn.gold:active:not(:disabled), .glass-btn.gold.pressed { box-shadow: 0 5px 14px rgba(var(--color-accent-rgb), .3), 0 0 0 color-mix(in srgb, var(--color-accent-press) 80%, #000), inset 0 -2px 6px rgba(150, 90, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .7); }
+.glass-btn.clear { color: #fff; text-shadow: var(--glass-text-shadow);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .24), rgba(255, 255, 255, .07));
+  border: 1px solid rgba(255, 255, 255, .42);
+  box-shadow: 0 8px 22px rgba(3, 6, 20, .28), inset 0 1px 0 rgba(255, 255, 255, .6), inset 0 -6px 14px rgba(140, 180, 255, .1); }
+.glass-btn.clear::before { background: linear-gradient(180deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0)); }
+.glass-btn.clear:active:not(:disabled), .glass-btn.clear.pressed { box-shadow: 0 3px 10px rgba(3, 6, 20, .28), inset 0 1px 0 rgba(255, 255, 255, .5); }
+.glass-btn.sm { min-height: 44px; font-size: 16px; padding: 0 16px; }
+/* a round glass button (the start screen's corners) */
+.glass-icon { position: relative; overflow: hidden; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 50%; color: #fff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05)), var(--glass-tint); border: 1px solid rgba(255, 255, 255, .32);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: 0 6px 18px rgba(3, 6, 20, .35), inset 0 1px 0 rgba(255, 255, 255, .5); }
+.glass-icon:active { transform: translateY(1px) scale(.96); }
+.glass-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+body.glass-lite .glass-icon { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-tint-lite); }
+
+/* ================================================================ the start screen
+   The first screen of every open: our 3D Itaewon at night, full screen and
+   drifting (scenery.js), behind one glass panel: the logo, Start a party,
+   Join a party. #start-still is the same view as a picture, there from the
+   first paint and crossfaded to the live 3D; no nav bar, no labels, no
+   people in the world. */
+#start-still { display: none; position: fixed; inset: 0; z-index: 449; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated;
+  pointer-events: none; transition: opacity .8s ease; background: #0b0d24; }
+html.start-boot #start-still, body.scenery #start-still { display: block; }
+body.scenery-live #start-still { opacity: 0; }
+body.scenery .frame { width: 100vw; height: 100vh; height: 100dvh; aspect-ratio: auto; box-shadow: none; }
+body.scenery .frame > :not(canvas) { visibility: hidden !important; }
+.onb-screen.start { justify-content: center; align-items: center; padding-left: 16px; padding-right: 16px; overflow: hidden;
+  /* only a light vignette: the city is the point */
+  background: radial-gradient(140% 90% at 50% 45%, rgba(8, 12, 32, 0) 50%, rgba(8, 12, 32, .5) 100%), linear-gradient(180deg, rgba(8, 12, 32, .35), rgba(8, 12, 32, 0) 22%, rgba(8, 12, 32, 0) 80%, rgba(8, 12, 32, .45)); }
+.onb-screen.start { animation: none; }
+.st-panel { animation: st-in .5s cubic-bezier(.2, .8, .2, 1) backwards; }
+@keyframes st-in { from { opacity: 0; transform: translateY(12px) scale(.97); } }
+.st-panel { width: min(100%, 360px); padding: 34px 22px 22px; display: flex; flex-direction: column; align-items: stretch; gap: 12px; text-align: center;
+  transition: transform .5s cubic-bezier(.3, .7, .2, 1), opacity .45s ease; }
+.st-logo { font: 300 64px/1 var(--f-sys); letter-spacing: -.035em; color: #fff; margin: 2px 0 6px;
+  text-shadow: 0 0 18px rgba(255, 255, 255, .55), 0 0 42px rgba(160, 190, 255, .45), 0 2px 4px rgba(3, 6, 20, .5); }
+.st-line { margin: -4px 0 12px; font: 500 15px/1.35 var(--f-sys); color: rgba(235, 240, 255, .86); }
+.st-panel .glass-btn + .glass-btn { margin-top: 2px; }
+.st-panel .onb-err { text-align: center; min-height: 0; }
+.st-panel .onb-err:empty { display: none; }
+/* Join: the code, friends' parties, nearby */
+.st-code { display: flex; gap: 8px; }
+.st-code input { flex: 1; min-width: 0; height: 56px; border-radius: 18px; border: 1px solid rgba(255, 255, 255, .34); background: rgba(6, 10, 30, .35); color: #fff;
+  font: 700 26px/1 var(--f-sys); letter-spacing: .32em; text-align: center; text-transform: uppercase; padding: 0 0 0 .32em; box-shadow: inset 0 2px 6px rgba(0, 0, 0, .3); }
+.st-code input::placeholder { color: rgba(255, 255, 255, .32); }
+.st-code input:focus { outline: none; border-color: rgba(var(--color-accent-rgb), .8); box-shadow: inset 0 2px 6px rgba(0, 0, 0, .3), 0 0 0 3px rgba(var(--color-accent-rgb), .25); }
+.st-code .glass-btn { width: auto; flex: none; min-height: 56px; }
+.st-sub { display: block; margin: 6px 0 -2px; font: 600 12.5px/1.2 var(--f-sys); letter-spacing: .06em; text-transform: uppercase; color: rgba(225, 232, 255, .7); text-align: left; }
+.st-fp { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 18px; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .14); text-align: left; }
+.st-fp b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.st-fp span { color: rgba(225, 232, 255, .7); font-size: 13px; }
+.st-fp .glass-btn { width: auto; }
+.st-back { align-self: flex-start; margin: -18px 0 0 -8px; background: none; border: 0; color: rgba(235, 240, 255, .85); font: 600 15px/1 var(--f-sys); padding: 10px 8px; text-shadow: var(--glass-text-shadow); }
+/* joining from an invite: the party's name and a quiet spinner, no buttons */
+.st-invite { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 6px; }
+.st-invite small { font: 700 12.5px/1 var(--f-sys); letter-spacing: .1em; text-transform: uppercase; color: var(--color-accent); }
+.st-invite b { font: 700 24px/1.2 var(--f-sys); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.st-invite span { color: rgba(225, 232, 255, .8); font-size: 15px; }
+.st-spin { width: 26px; height: 26px; margin: 8px auto 2px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .2); border-top-color: #fff; animation: st-spin 0.9s linear infinite; }
+@keyframes st-spin { to { transform: rotate(360deg); } }
+/* the corners: language (left), you + settings (right) */
+.st-corner { position: absolute; top: calc(env(safe-area-inset-top) + 12px); display: flex; gap: 8px; }
+.st-corner.l { left: 14px; } .st-corner.r { right: 14px; }
+.st-corner .onb-lang { margin: 0; height: 44px; padding: 4px; align-items: center; box-sizing: border-box; border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05)), var(--glass-tint); border: 1px solid rgba(255, 255, 255, .32);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: 0 6px 18px rgba(3, 6, 20, .35), inset 0 1px 0 rgba(255, 255, 255, .5); }
+.st-corner .onb-lang button { min-height: 34px; color: rgba(235, 240, 255, .8); }
+.st-corner .onb-lang button.on { color: var(--color-on-accent); }
+.st-credit { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 8px); text-align: center; font: 500 9.5px/1 var(--f-sys); color: rgba(255, 255, 255, .45); pointer-events: none; }
+/* Start / Join: the panel fades and scales away while the camera dives */
+.onb-screen.start.going .st-panel { transform: scale(.86); opacity: 0; }
+.onb-screen.start.going .st-corner, .onb-screen.start.going .st-credit { opacity: 0; transition: opacity .3s ease; }
+.onb-screen.start.going { background: none; transition: background .4s; }
+/* the dive's last beat: navy over everything, then the lobby comes up */
+#dive-veil { position: fixed; inset: 0; z-index: 455; background: #0F1A3A; opacity: 0; pointer-events: none; transition: opacity .35s ease; }
+#dive-veil.on { opacity: 1; }
+@media (max-height: 620px) { .st-logo { font-size: 52px; } .st-panel { padding-top: 26px; } }
+@media (prefers-reduced-motion: reduce) { .st-panel { transition: opacity .3s ease; } .onb-screen.start.going .st-panel { transform: none; } .st-spin { animation-duration: 2.4s; } }
+
+/* the lobby's way out (top left) and the host's menu (top right) */
+.pt-top-row .pt-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; }
+.pt-top-row .pt-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#pt-hostmenu svg { fill: currentColor; stroke: none; }
+#pt-hostmenu[hidden] { display: none; }
+.pt-confirm { position: absolute; inset: 0; z-index: 6000; display: grid; place-items: center; padding: 16px; box-sizing: border-box; background: rgba(6, 10, 30, .45); animation: fade-in .18s ease backwards; }
+.pt-confirm-card { width: min(100%, 320px); padding: 24px 18px 18px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
+.pt-confirm-card b { font: 700 20px/1.25 var(--f-sys); }
+.pt-confirm-card p { margin: 0 0 8px; font: 500 14.5px/1.4 var(--f-sys); color: rgba(225, 232, 255, .82); }
+.pt-confirm-btns { display: flex; gap: 10px; }
+.pt-confirm-btns .glass-btn { flex: 1; }
