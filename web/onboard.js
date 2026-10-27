@@ -37,7 +37,6 @@ import { starterLook, e164, otpWait, otpError } from "./onbkit.js";
 import { mountCharView } from "./charview.js";
 import { renderLook, warmLooks } from "./charrender.js";
 import { silhouetteFor, SPRITE } from "./charsprite.js";
-import { dialogBox } from "./dialog.js";
 import { qrSvg } from "./qr.js";
 import { sfx, buzz } from "./fx.js";
 import { esc } from "./hpkit.js";
@@ -366,8 +365,8 @@ export const onboard = {
       };
       el.querySelector("[data-sms]").onclick = () => sent("sms");
       el.querySelector("[data-copy]").onclick = async () => { try { await navigator.clipboard.writeText(link); toast(t("inv.copied")); buzz(10); sent("copy"); } catch {} };
-      el.querySelector("[data-contacts]")?.addEventListener("click", async () => {
-        if (!(await prePrompt("contacts"))) return;
+      // the contact picker opens from the tap on the card's yes itself (it needs a real tap)
+      const pick = async () => {
         try {
           const picked = await navigator.contacts.select(["tel"], { multiple: true });
           const tels = picked.flatMap(p => p.tel?.slice(0, 1) ?? []);
@@ -376,7 +375,8 @@ export const onboard = {
           sent("contacts");
           location.href = `sms:${tels.join(",")}?&body=${encodeURIComponent(msg)}`;
         } catch { track("permission_declined", { permission: "contacts" }); }
-      });
+      };
+      el.querySelector("[data-contacts]")?.addEventListener("click", () => prePrompt("contacts", { onYes: pick }));
       el.querySelector("[data-close]").onclick = () => closeSheet();
       // tap the code to show it big to the people in the room
       const qr = el.querySelector(".onb-qr");
@@ -613,8 +613,8 @@ export const onboard = {
     if (!g || OFF) return;
     trackOnce("first_game_started", { ms: sinceFirstOpen(), game: g.id });
     buzz([15, 30, 15]);
-    const intro = () => { if (!st.played[g.id]) { st.played[g.id] = true; save(); hostLines(g); } };
-    if (!st.safety) safetyCard(intro); else setTimeout(intro, 900);
+    // (how to play is the game's own: its host explains it in the game, howto.js)
+    if (!st.safety) safetyCard(() => {});
   },
   gameEnded(c, g, results) {
     if (!results?.completed || OFF) return;
@@ -812,28 +812,6 @@ function safetyCard(then) {
     el.classList.add("out"); setTimeout(() => el.remove(), 240);
     setTimeout(then, 300);
   };
-}
-
-// the game's host, the first time you play it: one or two lines, then gone
-function hostLines(g) {
-  const lines = t(`intro.${g.id}`);
-  if (!Array.isArray(lines)) return;
-  globalThis.__hostLines = g.id;     // (tests: they were said, even if gone by the time anyone looks)
-  const el = document.createElement("div");
-  el.className = "onb-hostline";
-  document.body.appendChild(el);
-  const box = dialogBox(el, { name: t(`host.${g.id}`), blip: () => sfx.blip?.() });
-  let i = 0, timer = null;
-  const end = () => { clearTimeout(timer); el.classList.add("out"); setTimeout(() => { box.dispose?.(); el.remove(); }, 260); };
-  const next = async () => {
-    clearTimeout(timer);
-    if (i >= lines.length) { end(); return; }
-    box.show?.();
-    await box.say(lines[i++]);
-    timer = setTimeout(next, i >= lines.length ? 3800 : 2600);
-  };
-  el.onclick = () => next();
-  next();
 }
 
 // a first-time hint: a pulsing ring on the thing and a bubble, until it's tapped (once, ever)

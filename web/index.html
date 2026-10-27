@@ -1438,24 +1438,9 @@
   .ag-frame { padding:0; background:transparent; border:none; overflow:visible; }
   .ag-frame.ag-empty .ag-photo { cursor:pointer; }
   .ag-frame.ag-empty .ag-photo span { font-size:9px; line-height:1.3; padding:4px; }
-  /* title cards slide in from either side after the reveal lands */
-  .ag-cards .choices { flex-direction:column; }
-  .ag-cards .ch, .ag-cards .ag-tcard { width:100%; box-sizing:border-box; transition:transform .25s cubic-bezier(.34,1.56,.64,1), background .25s, box-shadow .25s; }
-  .ag-cards .ag-tcard { border:1px solid #d5d5da; background:#fff; border-radius:12px; padding:10px 14px; font-size:14px; font-weight:700; }
-  .ag-anim .ag-cards > * > :nth-child(1) { animation:ag-in-l .5s 1.0s both; }
-  .ag-anim .ag-cards > * > :nth-child(2) { animation:ag-in-r .5s 1.15s both; }
-  .ag-cards .ch.on { transform:scale(1.04); box-shadow:0 4px 14px rgba(10,132,255,.35); }
-  /* result: winner scales up with a colour flash; points count up in JS */
-  .ag-result .rev-row { padding:6px 8px; border-radius:10px; transition:transform .3s; }
-  .ag-result .rev-row.win { animation:ag-win .8s .35s both; }
-  @keyframes ag-in-l { from { transform:translateX(-60%); opacity:0 } to { transform:none; opacity:1 } }
-  @keyframes ag-in-r { from { transform:translateX(60%); opacity:0 } to { transform:none; opacity:1 } }
-  @keyframes ag-pop { from { transform:scale(.7); opacity:0 } to { transform:none; opacity:1 } }
-  @keyframes ag-win { 0% { transform:scale(1); background:transparent } 35% { transform:scale(1.06); background:#ffd60a } 100% { transform:scale(1.03); background:rgba(53,208,122,.18) } }
-  /* gallery steps: the masquerade gala, full screen (npc scene layout): Bunny's
-     3D room (bunny.js) behind everything, the pill, the two title plaques on
-     the wall under the frame (placed each frame where the 3D wall puts them),
-     the dialog box at the bottom. Without 3D: the painted room. */
+  /* the masquerade gala, full screen (npc scene layout), for the whole game:
+     Bunny's 3D room (bunny.js) behind everything, the pill, the action area
+     over the dialog box at the bottom. Without 3D: the painted room. */
   #game-panel.ag-full { top:0; bottom:0; max-height:none; overflow:hidden; padding:0; background:#1a0c0c; }
   .np-room.ag-room { background:#1a0c0c url(games/artgallery/gala/plate.webp) center top / auto 100% no-repeat; }
   .ag-3d { position:absolute; inset:0; z-index:0; pointer-events:none; }
@@ -1463,47 +1448,50 @@
   .ag-photo2d { position:absolute; z-index:0; overflow:hidden; background:#2a1a14; pointer-events:none; }
   .ag-photo2d img { width:100%; height:100%; object-fit:cover; display:block; }
   .ag-room.r3d .ag-photo2d, .ag-room.draped .ag-photo2d { visibility:hidden; }
-  .ag-low { position:absolute; left:9px; right:9px; bottom:max(28px, calc(10px + env(safe-area-inset-bottom))); z-index:4; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
-  .ag-low > * { pointer-events:auto; }
-  #game-panel.np-full .ag-low .ag-skip { position:static; align-self:flex-end; margin:0; padding:6px 12px; min-height:0; font-size:12px; }
-  /* the two titles: cream plaques with a gold tab, side by side, the same
-     height (the taller one's). These are the room without 3D; with the 3D
-     wall (gala.js draws the plaques and takes the taps) they're invisible,
-     placed exactly over the 3D ones, and only mirror their state (.in3d) */
-  .ag-plaques { position:absolute; z-index:2; display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:1fr; gap:8px; pointer-events:none; }
-  .ag-plaques > * { pointer-events:auto; }
-  .ag-plaques.in3d { display:block; }
-  .ag-plaques.in3d > .ag-pl { position:absolute; opacity:0 !important; pointer-events:none; transition:none; animation:none; transform:none; }
-  .ag-pl { position:relative; min-width:0; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; font:inherit; color:#2a2016; text-align:center; cursor:pointer;
-    background:linear-gradient(#f6eedc,#e6d8b8); border:2px solid #b8902f; border-radius:2px; padding:5px 8px 7px;
-    box-shadow:0 1px 0 rgba(255,255,255,.55) inset, 0 6px 10px rgba(20,8,4,.45); transition:transform .2s, opacity .25s, filter .25s, box-shadow .25s; -webkit-tap-highlight-color:transparent; }
+  /* the two titles: floating cards in the action area, in front of Bunny
+     and over the lower part of her room (sharp UI text, not objects on her
+     wall): a cream card, a thin gold border, a small gold "TITLE I" label,
+     the title in an elegant italic serif. Side by side, the same height (the
+     taller one's). Tap one to vote: a gold glow and a red wax seal with a
+     gold check. */
+  .ag-plaques { display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:1fr; gap:10px; padding:4px 2px 2px; }
+  .ag-pl { position:relative; min-width:0; min-height:112px; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:7px; margin:0; font:inherit; color:#241a10; text-align:center; cursor:pointer;
+    background:linear-gradient(#fbf6ea,#f1e7d1); border:1.5px solid #c49a3c; border-radius:5px; padding:13px 11px 14px;
+    box-shadow:inset 0 0 0 3px #fbf6ea, inset 0 0 0 4px rgba(196,154,60,.5), 0 12px 28px rgba(10,4,2,.55), 0 2px 5px rgba(10,4,2,.35);
+    transition:transform .2s, opacity .25s, filter .25s, box-shadow .25s; -webkit-tap-highlight-color:transparent; }
   div.ag-pl { cursor:default; }
-  .ag-pl-eye { display:inline-block; font:700 8.5px Georgia,"Times New Roman",serif; letter-spacing:.1em; text-transform:uppercase; color:#3a2408;
-    background:linear-gradient(#ecc864,#b8862e); border:1px solid #8a6418; border-radius:3px; padding:1px 8px; margin-bottom:3px; }
-  .ag-pl-t { display:block; font-family:Georgia,"Times New Roman",serif; font-style:italic; font-size:12.5px; line-height:1.22; overflow-wrap:anywhere; }
-  .ag-pl-by { display:block; font:600 11px -apple-system,"Segoe UI",Helvetica,sans-serif; color:#6a5a3a; margin-top:3px; }
-  .ag-pl-n { display:block; font:800 11px -apple-system,"Segoe UI",Helvetica,sans-serif; margin-top:2px; } .ag-pl-n b { color:#1c7a3c; }
-  /* my vote: a red wax seal with a gold check on the plaque's corner */
-  .ag-pl-dot { display:none; position:absolute; top:-9px; right:-9px; width:22px; height:22px; border-radius:50%; font:900 12px/22px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal; color:var(--color-accent, #ffc83d);
-    background:radial-gradient(circle at 35% 30%, #c8342c, #8e1a1a 60%, #5a0c0e); box-shadow:0 2px 4px rgba(0,0,0,.4), inset 0 0 0 3px rgba(60,4,6,.45); animation:ag-pop .25s both; }
-  .ag-pl-win { display:none; position:absolute; left:50%; top:100%; transform:translate(-50%,4px); white-space:nowrap; font:800 11px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal;
-    color:#1a1c2c; background:var(--color-accent, #ffc83d); border-radius:999px; padding:2px 9px; }
-  .ag-pl-win { display:block; }
-  .ag-room.picked .ag-pl:not(.on) { opacity:.55; filter:saturate(.5); }
-  .ag-pl.on { transform:translateY(-2px); box-shadow:0 0 30px 8px rgba(255,200,61,.55), 0 8px 12px rgba(20,8,4,.45); }
+  .ag-pl:active { transform:translateY(1px) scale(.99); }
+  .ag-pl-eye { display:block; font:700 10px/1 -apple-system,"SF Pro Text","Segoe UI",Helvetica,sans-serif; letter-spacing:.2em; text-transform:uppercase; color:#a97b22; }
+  .ag-pl-t { display:block; font-family:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,"Times New Roman","Apple SD Gothic Neo","Noto Serif KR",serif; font-style:italic; font-size:18px; line-height:1.24; overflow-wrap:anywhere; color:#21170d; }
+  .ag-pl-by { display:block; font:600 12px -apple-system,"Segoe UI",Helvetica,sans-serif; color:#6a5a3a; }
+  .ag-pl-n { display:block; font:800 12px -apple-system,"Segoe UI",Helvetica,sans-serif; } .ag-pl-n b { color:#1c7a3c; }
+  /* my vote: a red wax seal with a gold check, pressed onto the card's corner */
+  .ag-pl-dot { display:none; position:absolute; top:-13px; right:-11px; width:34px; height:34px; border-radius:50%; font:900 17px/34px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal; color:#ffcf4a;
+    text-shadow:0 1px 1px rgba(40,0,0,.6); background:radial-gradient(circle at 36% 30%, #d23c32, #92191a 58%, #5a0c0e); box-shadow:0 3px 6px rgba(0,0,0,.45), inset 0 0 0 4px rgba(60,4,6,.4), inset 0 0 0 5px rgba(255,150,130,.18);
+    animation:ag-seal .32s cubic-bezier(.3,1.6,.5,1) both; }
+  @keyframes ag-seal { 0% { opacity:0; transform:scale(2) rotate(-20deg) } 70% { opacity:1; transform:scale(.92) rotate(4deg) } 100% { transform:rotate(-6deg) } }
+  .ag-pl-win { display:block; position:absolute; left:50%; top:100%; transform:translate(-50%,-50%); white-space:nowrap; font:800 11px -apple-system,"Segoe UI",Helvetica,sans-serif; font-style:normal;
+    color:#1a1c2c; background:var(--color-accent, #ffc83d); border-radius:999px; padding:3px 10px; box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  .ag-room.picked .ag-pl:not(.on) { opacity:.6; filter:saturate(.55); }
+  .ag-pl.on { transform:translateY(-3px); box-shadow:inset 0 0 0 3px #fbf6ea, inset 0 0 0 4px rgba(196,154,60,.7), 0 0 0 2px #ffcf4a, 0 0 34px 10px rgba(255,200,61,.55), 0 12px 24px rgba(10,4,2,.5); }
   .ag-pl.on .ag-pl-dot { display:block; }
-  .ag-pl.win { animation:ag-plwin .7s .2s both; box-shadow:0 0 34px 10px rgba(255,200,61,.6), 0 8px 12px rgba(20,8,4,.45); }
-  .ag-pl.lose { opacity:.6; filter:saturate(.6); }
-  @keyframes ag-plwin { 0% { transform:none } 45% { transform:scale(1.06) } 100% { transform:translateY(-2px) } }
-  /* each plaque has its own velvet cover; it slides off right after the
-     frame's drape (plaque I at 0.9 s, plaque II at 1.35 s) */
-  .ag-pl-cloth { position:absolute; left:-4%; top:-12%; width:108%; height:124%; pointer-events:none; z-index:3; transform-origin:50% 0; border-radius:3px;
+  .ag-pl.win { animation:ag-plwin .7s .2s both; box-shadow:inset 0 0 0 3px #fbf6ea, inset 0 0 0 4px rgba(196,154,60,.7), 0 0 0 2px #ffcf4a, 0 0 38px 12px rgba(255,200,61,.6), 0 12px 24px rgba(10,4,2,.5); }
+  .ag-pl.lose { opacity:.62; filter:saturate(.55); }
+  @keyframes ag-plwin { 0% { transform:none } 45% { transform:scale(1.05) } 100% { transform:translateY(-3px) } }
+  /* each title has its own velvet cover; it slides off right after the
+     frame's drape (title I at 0.9 s, title II at 1.35 s) */
+  .ag-pl-cloth { position:absolute; inset:-3px; pointer-events:none; z-index:3; transform-origin:50% 0; border-radius:6px;
     background:linear-gradient(rgba(0,0,0,.25), rgba(0,0,0,0) 30%, rgba(0,0,0,.2)), repeating-linear-gradient(90deg, #5a0a16 0 4px, #8a1828 4px 10px, #6a0e1c 10px 14px);
-    box-shadow:0 6px 8px rgba(0,0,0,.35); transition:transform .6s cubic-bezier(.4,0,.2,1), opacity .6s ease; }
-  .ag-room.revealed .ag-pl-cloth { transform:translateY(120%) scaleY(.6); opacity:0; }
+    box-shadow:0 8px 14px rgba(0,0,0,.4); transition:transform .6s cubic-bezier(.4,0,.2,1), opacity .6s ease; }
+  .ag-room.revealed .ag-pl-cloth { transform:translateY(60%) scaleY(.5); opacity:0; }
   .ag-room.ag-anim .ag-pl:nth-child(1) .ag-pl-cloth { transition-delay:.9s; }
   .ag-room.ag-anim .ag-pl:nth-child(2) .ag-pl-cloth { transition-delay:1.35s; }
   .ag-room.covered .ag-pl > :not(.ag-pl-cloth) { visibility:hidden; }
+  /* the frames and the title box, in the action area over her dialog */
+  .ag-tray { padding:10px 10px 8px; }
+  .ag-tray .ag-frames { margin:0; }
+  .ag-tray-note { margin:6px 0 0; font:13px/16px var(--dlg-font, -apple-system, sans-serif); color:#c9d4f0; }
+  .ag-tbox .gp-form { margin:0; }
 
   /* ===== house party: shared kit ===== */
   /* placeholder avatar — deterministic hue per player id, no generated art */

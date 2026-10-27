@@ -25,6 +25,7 @@ import { trash, showResults, hostSkip, bindHostSkip } from "./hpkit.js";
 import { dialogBox } from "./dialog.js";
 import { Beats } from "./npcscene.js";
 import { prePrompt } from "./permissions.js";
+import { HOWTO_MS, howto, howtoOn, howtoInput, howtoDone, howtoTally } from "./howto.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -37,6 +38,7 @@ const TITLE_LEN = 60;
 const PHOTO_MS = 180000, TITLE_MS = 90000, COVER_MS = 3500, VOTE_MS = 25000, RESULT_MS = 6000, END_MS = 20000;
 const MAX_FRAMES = 8;          // gallery cap so big parties don't drag
 const MAX_EDGE = 640, MAX_CHARS = 180000;   // shrunk photo: longest edge px / data-URL length budget
+const SHRINK_STEPS = [MAX_EDGE, 480, 360];  // a photo the room won't take goes again, smaller
 const STOCK = [0, 1, 2, 3, 4, 5, 6, 7].map(i => `games/captions/c${i}.jpg`);   // bot photos
 const ASSET = "games/artgallery/";
 // transparent opening of frame.png, measured from its alpha (% of each edge)
@@ -57,6 +59,12 @@ const LINES = {
     result: ["The people have spoken. Tragically.", "Correct. You have taste. Barely."],
     split: "A tie. How very modern.",
     quips: ["Don't touch the art. Or me.", "I've seen worse. Not often.", "Shh. Appreciate."],
+    photos: "Three photos, darling. Tap a frame.",
+    photosIn: "Lovely. Now we wait for the others.",
+    title: "Title this one. Someone else is titling it too.",
+    titled: "Locked. The gallery opens when everyone's done.",
+    noTitle: "Nothing for you to title. Sit. Look cultured.",
+    tooBig: "Too big. I'll try it smaller.",
   },
   ko: {
     name: "버니",
@@ -68,15 +76,20 @@ const LINES = {
     result: ["대중이 결정했어요. 비극적이게도.", "정답. 안목이 있네요. 겨우."],
     split: "동점. 참 현대적이네요.",
     quips: ["작품 만지지 마세요. 저도요.", "더 나쁜 것도 봤어요. 자주는 아니고.", "쉿. 감상하세요."],
+    photos: "사진 세 장이요. 액자를 눌러요.",
+    photosIn: "좋아요. 이제 다른 사람들을 기다려요.",
+    title: "이 작품에 제목을 붙여요. 다른 사람도 같은 사진에 붙이고 있어요.",
+    titled: "확정. 다들 끝나면 갤러리가 열려요.",
+    noTitle: "붙일 제목이 없네요. 앉아서 교양 있는 척하세요.",
+    tooBig: "너무 크네요. 작게 다시 해 볼게요.",
   },
 };
 const T = KO ? LINES.ko : LINES.en;
 export const bunnyLines = LINES;
 const fillN = (line, n) => line.replace("{n}", n);
-// where the photo's opening and the plaques are in the approved picture
-// (gala.js), for the room without 3D: the plate fitted to the room
+// where the photo's opening is in the approved picture (gala.js), for the
+// room without 3D: the plate fitted to the room
 const FRAME_OPEN = { fx: [0.354, 0.655], fy: [0.214, 0.452] };
-const PLQ = { fx: [0.343, 0.777], fy: [0.548, 0.672] };
 
 // photo id -> data URL (humans) — outside the game state on purpose
 const photos = new Map();
@@ -128,12 +141,20 @@ export const ART_GALLERY = {
     // ---- the gala (bunny.js + gala.js): one Bunny and one dialog box for
     // the whole game, moved into the room when it's (re)built. She loads
     // (model, room, shaders) as the game starts, while photos go up.
-    let bunny = null, bunnyP = null, dlgKey = null, quipN = Math.floor(Math.random() * 3), plaqueKey = null, track = 0;
+    let bunny = null, bunnyP = null, dlgKey = null, quipN = Math.floor(Math.random() * 3), plaqueKey = null, uiKey = null;
     const holder = document.createElement("div");
     const dlg = dialogBox(document.createElement("div"), { name: T.name, blip: () => sfx.blip() });
     const beats = new Beats();
+    // how to play, in her words: she presents the frame, gestures, the gavel, a judging look
+    const how = howto("artgallery", { dlg, send: v => game.input(v), gesture: act => {
+      if (act === "frame") { spot(1); bunny?.setPose("unveil"); sfx.whoosh(); }
+      else if (act === "present") { bunny?.setPose("idle"); bunny?.play("judge"); }
+      else if (act === "gavel") { bunny?.setPose("idle"); bunny?.play("gavel"); }
+      else if (act === "judge") { spot(0); bunny?.play("applause"); }
+    } });
     const loadBunny = () => (bunnyP ??= import("./bunny.js").then(m => m.bunnyScene(holder)).then(b => {
       bunny = b;
+      b.room.showPlaques?.(false);                        // the titles are floating cards, not on her wall
       b.onBang = () => { sfx.thud(); buzz(18); };
       b.onClap = () => sfx.pop();
       b.onTap = onTap;
@@ -141,15 +162,13 @@ export const ART_GALLERY = {
       return b;
     }).catch(e => { console.warn("[artgallery] no 3D gala, the painted room stays:", e?.message ?? e); return null; }));
     loadBunny();
-    trash.add(() => { cancelAnimationFrame(track); dlg.dispose(); bunnyP?.then(b => b?.dispose()); bunny = null; bunnyP = null; if (globalThis.__bunny) globalThis.__bunny = null; });
+    trash.add(() => { dlg.dispose(); bunnyP?.then(b => b?.dispose()); bunny = null; bunnyP = null; if (globalThis.__bunny) globalThis.__bunny = null; });
     // what the scene should show; re-applied whenever she's (re)mounted
-    const want = { drape: true, spot: 0, photo: null, plaques: null, plState: { covered: true, picked: null, top: null } };
+    const want = { drape: true, spot: 0, photo: null };
     const room$ = () => $("ag-room");
-    // taps in the scene: a plaque (a vote, while voting's open), and between
-    // her lines: her (a line, and a sip or a slow nod), the frame (its
-    // spotlight flickers), a candle sconce (it flickers)
+    // taps in the scene, between her lines: her (a line, and a sip or a slow
+    // nod), the frame (its spotlight flickers), a candle sconce (it flickers)
     const onTap = kind => {
-      if (kind === "plaque0" || kind === "plaque1") return castVote(+kind.slice(-1));
       if (kind === "frame") { sfx.tick(); return true; }
       if (kind === "candle") { sfx.cursor(); return true; }
       if (kind !== "bunny" || !dlg.done || dlg.el.hidden) return false;
@@ -157,17 +176,17 @@ export const ART_GALLERY = {
       sfx.blip(); buzz(12);
       return true;
     };
-    // the room: the 3D gala behind everything; the pill, the plaques on the
-    // wall under the frame, the dialog box at the bottom
+    // the room, for the whole game: the 3D gala behind everything; the pill;
+    // the action area (the frames, the title box, the two titles) over the
+    // dialog box at the bottom
     function ensureRoom() {
       if (room$()) return false;
-      dlgKey = null; plaqueKey = null;
-      ui.panel(`<div class="np-room ag-room covered" id="ag-room">
+      dlgKey = null; plaqueKey = null; uiKey = null;
+      ui.panel(`<div class="np-room ag-room" id="ag-room">
           <div class="ag-3d" id="ag-3d"></div>
           <div class="ag-photo2d" id="ag-photo2d"></div>
           <div class="np-pill ag-pill" id="ag-pill"></div>
-          <div class="ag-plaques" id="ag-plaques"></div>
-          <div class="ag-low">${skipBtn()}<div class="ag-dlg" id="ag-dlg"></div></div>
+          <div class="ag-low gs-low">${skipBtn()}<div class="ag-ui gs-action" id="ag-ui"></div><div class="ag-dlg" id="ag-dlg"></div></div>
         </div>`, "np-full ag-full");
       bindSkip();
       dlg.attach($("ag-dlg"));
@@ -178,40 +197,17 @@ export const ART_GALLERY = {
         if (first) b.stage.canvas.style.opacity = "0";   // the first time: fade in over the painted room
         b.attach(at);
         b.room.drape(want.drape, { instant: true }); b.room.spot(want.spot); b.room.photo(want.photo);
-        want.plaques?.forEach((c, i) => b.room.plaque(i, c)); b.room.plaqueState({ ...want.plState, instant: true });
         requestAnimationFrame(() => requestAnimationFrame(() => { b.stage.canvas.style.opacity = ""; room$()?.classList.add("r3d"); }));
       });
-      cancelAnimationFrame(track);
-      const follow = () => { if (!room$()) return; placePlaques(); track = requestAnimationFrame(follow); };
-      track = requestAnimationFrame(follow);
       return true;
     }
-    // The plaques are the 3D wall's (gala.js): drawn in the scene, voted on
-    // by tapping them there. The DOM plaques under #ag-plaques are the room
-    // without 3D (where the picture has them, side by side); with the 3D
-    // wall they're invisible, sit exactly over the 3D ones and only mirror
-    // their state (keyboard, screen readers, tests).
-    function placePlaques() {
-      const rm = room$(), pl = $("ag-plaques");
-      if (!rm || !pl) return;
-      const R = rm.getBoundingClientRect();
-      const in3d = !!bunny && rm.classList.contains("r3d");
-      pl.classList.toggle("in3d", in3d);
-      if (in3d) {
-        Object.assign(pl.style, { left: "0px", top: "0px", width: `${Math.round(R.width)}px`, height: `${Math.round(R.height)}px` });
-        bunny.plaqueRects().forEach((r, i) => {
-          const el = pl.children[i];
-          if (el) Object.assign(el.style, { left: `${Math.round(r.left - R.left)}px`, top: `${Math.round(r.top - R.top)}px`, width: `${Math.round(r.width)}px`, height: `${Math.round(r.height)}px` });
-        });
-        return;
-      }
-      for (const el of pl.children) el.style.cssText = "";
-      const fit = picBox(R);
-      const x0 = fit.x + PLQ.fx[0] * fit.w, x1 = fit.x + PLQ.fx[1] * fit.w, y0 = fit.y + PLQ.fy[0] * fit.h;
-      // (never narrower than readable, kept on screen)
-      const w = Math.max(x1 - x0, R.width * 0.5), cx = Math.max(w / 2 + 8, Math.min(R.width - w / 2 - 8, (x0 + x1) / 2));
-      Object.assign(pl.style, { left: `${Math.round(cx - w / 2)}px`, top: `${Math.round(Math.max(90, Math.min(R.height * 0.66, y0)))}px`, width: `${Math.round(w)}px`, height: "" });
-    }
+    // the action area, rebuilt only when its key changes
+    const setUi = (key, html) => {
+      if (uiKey === key) return false;
+      uiKey = key; plaqueKey = null;
+      const u = $("ag-ui"); if (u) u.innerHTML = html;
+      return true;
+    };
     // the approved picture (9:16) fitted to cover the room, like its plate
     const picBox = R => { const h = Math.max(R.height, R.width * 16 / 9), w = h * 9 / 16; return { x: (R.width - w) / 2, y: 0, w, h }; };
     // the room without 3D: the photo in the painted frame
@@ -232,9 +228,10 @@ export const ART_GALLERY = {
       dlgKey = key;
       dlg.show(); dlg.say(text, { instant: late });
     };
-    // the two titles as plaques: Title I / II, a velvet cover on each that
-    // comes off one after the other right after the frame's; voting = tapping
-    // one; the result shows authors and points on the same plaques
+    // the two titles as plaques, floating in front of her: Title I / II, a
+    // velvet cover on each that comes off one after the other right after
+    // the frame's; voting = tapping one; the result shows authors and points
+    // on the same plaques
     const ROMAN = ["I", "II"];
     const plaquesHtml = (f, s, mode) => {
       const c = f.counts || [0, 0], pts = f.pts || [0, 0];
@@ -249,19 +246,13 @@ export const ART_GALLERY = {
           : `<div class="${cls}">${body}<i class="ag-pl-cloth"></i></div>`;
       }).join("");
     };
-    const setPlaques = (key, html) => { if (plaqueKey === key) return false; plaqueKey = key; const p = $("ag-plaques"); if (p) p.innerHTML = html; placePlaques(); return true; };
-    // ...and on the 3D wall: what each says (k: how far the points have counted up)
-    const plaques3d = (f, s, mode, k = 1) => {
-      const c = f.counts || [0, 0], pts = f.pts || [0, 0];
-      want.plaques = f.titles.map((t, i) => ({
-        label: `TITLE ${ROMAN[i]}`, title: t.text,
-        ...(mode === "result" ? { by: `— ${s.players[t.by]?.handle ?? "?"}`, votes: `${c[i]} vote${c[i] === 1 ? "" : "s"} · +${Math.round(pts[i] * k)}` } : {}),
-      }));
-      want.plaques.forEach((p, i) => bunny?.room.plaque(i, p));
+    const setPlaques = (key, html) => {
+      setUi("gallery", `<div class="ag-plaques" id="ag-plaques"></div>`);
+      if (plaqueKey === key) return false;
+      plaqueKey = key; const p = $("ag-plaques"); if (p) p.innerHTML = html;
+      return true;
     };
-    const plState = (st, instant = false) => { Object.assign(want.plState, st); bunny?.room.plaqueState({ ...st, instant }); };
-    // a vote: a tap on a plaque in the scene (or the DOM one without 3D);
-    // writers can't, and only while voting's open
+    // a vote: a tap on a plaque; writers can't, and only while voting's open
     function castVote(i) {
       const s = game.s;
       if (!s || s.phase !== "gallery" || s.sub !== "reveal") return false;
@@ -308,12 +299,18 @@ export const ART_GALLERY = {
         for (const h of ctx.humans) s.players[h.id] = { id: h.id, handle: h.handle, isBot: false, score: 0, photos: [], assigned: [], titles: {}, gone: false };
         for (const b of makeBots(BOTS_N, game.rng, new Set(Object.keys(s.players))))
           s.players[b.id] = { id: b.id, handle: b.handle, isBot: true, score: 0, photos: [], assigned: [], titles: {}, gone: false, stock: shuffle(game.rng, STOCK).slice(0, PHOTOS_PER) };
-        s.phase = "photos"; s.left = PHOTO_MS; s.pool = {}; s.dealt = []; s.frames = []; s.fi = 0; s.sub = null; s.why = null; s.dropped = 0;
+        // she explains it first (howto.js), then the frames
+        s.phase = howtoOn(ctx) ? "howto" : "photos"; s.left = howtoOn(ctx) ? HOWTO_MS : PHOTO_MS; s.howto = {}; s.pool = {}; s.dealt = []; s.frames = []; s.fi = 0; s.sub = null; s.why = null; s.dropped = 0;
       },
       hostTick(s, dt) {
         s.left -= dt * 1000;
         syncGone(s);
         const P = Object.values(s.players), active = P.filter(p => !p.gone);
+        if (s.phase === "howto") {
+          if (howtoDone(s)) s.left = Math.min(s.left, 1200);
+          if (s.left <= 0) { s.phase = "photos"; s.left = PHOTO_MS; }
+          return;
+        }
         if (s.phase === "photos") {
           for (const b of P) if (b.isBot && b.photos.length < PHOTOS_PER && game.rng() < dt * 0.4) addPhoto(s, b.id, `stock-${b.id}-${b.photos.length}`, b.stock[b.photos.length]);
           if (active.length && active.every(p => p.photos.length >= PHOTOS_PER)) s.left = Math.min(s.left, 1500);
@@ -365,6 +362,7 @@ export const ART_GALLERY = {
       hostInput(s, m) {
         const p = s.players[m.from];
         if (m.in === "skip" && m.from === room.hostId) { s.left = 0; return; }
+        if (howtoInput(s, m)) return;
         if (!p) return;
         if (m.in === "photo" && s.phase === "photos") addPhoto(s, p.id, String(m.pid));
         if (m.in === "title" && s.phase === "title" && p.assigned.includes(m.pid)) p.titles[m.pid] = String(m.text).trim().slice(0, TITLE_LEN) || "untitled";
@@ -432,18 +430,47 @@ export const ART_GALLERY = {
     }
 
     // ---- client: photo capture ----
-    async function onFile(file) {
-      if (!file || busy || mine.length >= PHOTOS_PER) return;
-      busy = true; ui.resetKey();
-      try {
-        const data = await shrink(file);
+    // Pick one or several at once. The picker lives outside the panel (a
+    // re-render while the phone's photo sheet is open must not swap it out),
+    // and the photos queue: each is shrunk on the phone and sent to the room;
+    // one the room won't take is shrunk again, smaller.
+    const picker = filePicker(), queue = [];
+    let upl = null;                     // { i, n, note }: "Uploading 2/3…"
+    picker.onchange = e => { const files = [...(e.target.files ?? [])]; e.target.value = ""; addFiles(files); };
+    trash.add(() => { picker.onchange = null; });
+    async function addFiles(files) {
+      queue.push(...files);
+      if (busy) return;
+      busy = true;
+      let i = 0;
+      while (queue.length && mine.length < PHOTOS_PER) {
+        const n = i + Math.min(queue.length, PHOTOS_PER - mine.length);     // this batch, as far as the frames go
+        const file = queue.shift();
+        upl = { i: ++i, n, note: "" }; lastHud = 0;
+        try { await addOne(file); }
+        catch (e) {
+          console.warn("[artgallery] photo", e?.message ?? e);
+          ui.toast(e?.message === "unreadable" ? "couldn't read that photo — try another" : "that photo didn't go through — try another", "rip");
+        }
+      }
+      queue.length = 0; upl = null; busy = false; lastHud = 0;
+    }
+    async function addOne(file) {
+      for (const [k, edge] of SHRINK_STEPS.entries()) {
+        const data = await shrink(file, edge);
+        if (data.length > MAX_CHARS) continue;              // still too big at this size: smaller
         const pid = `${ctx.me.id.slice(0, 6)}-${mine.length}-${Date.now().toString(36)}`;
+        const r = await room.send("agphoto", { pid, data });
+        if (r === "error" || r === "timed out") {
+          if (k < SHRINK_STEPS.length - 1) { upl.note = "that photo is too big, trying again smaller"; dlg.quip(T.tooBig); lastHud = 0; }
+          continue;
+        }
         photos.set(pid, data); mine.push(pid);
-        room.send("agphoto", { pid, data });
         game.input("photo", { pid });
         sfx.pop();
-      } catch (e) { console.warn("[artgallery] photo", e); ui.toast("couldn't read that photo — try another", "rip"); }
-      busy = false; ui.resetKey();
+        return;
+      }
+      throw new Error("too big");
     }
 
     // ---- render (everyone) ----
@@ -453,56 +480,58 @@ export const ART_GALLERY = {
       const now = performance.now(); if (now - lastHud < 150) return; lastHud = now;
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {}), active = P.filter(p => !p.gone);
-      const label = s.phase === "photos" ? "setup · photos" : s.phase === "title" ? "setup · titles" : s.phase === "gallery" ? `gallery · ${s.fi + 1}/${s.frames.length}` : "final";
+      const label = s.phase === "howto" ? "how to play" : s.phase === "photos" ? "setup · photos" : s.phase === "title" ? "setup · titles" : s.phase === "gallery" ? `gallery · ${s.fi + 1}/${s.frames.length}` : "final";
       ui.hud(`<div class="hq"><b>ART GALLERY</b><span>${label}</span><span class="clk ${s.left < 8000 && s.phase !== "end" ? "urgent" : ""}">${ui.clock(s.left)}</span><span>${me?.score ?? 0} pts</span></div>`);
 
+      if (s.phase !== "end") { ensureRoom(); }
+      if (s.phase === "howto") {
+        // she explains it in her room, by the empty frame (howto.js)
+        how.render(s, $("ag-ui"));
+        uiKey = "howto"; dlgKey = "howto";
+        pill(`how to play · <b>${howtoTally(s)}</b> ready`);
+        return;
+      }
+      how.stop();
       if (s.phase === "photos") {
         // a phone that reloaded mid-game lost its local list: the host's
         // state still has the photos it sent (and the host resends the bytes)
         for (const pid of me?.photos ?? []) if (!mine.includes(pid) && mine.length < PHOTOS_PER) mine.push(pid);
         const ready = active.filter(p => p.photos.length >= PHOTOS_PER).length;
         const shown = mine.filter(pid => srcOf(pid, s)).length;
-        if (!ui.once(`p:${mine.length}:${shown}:${ready}:${active.length}:${busy ? 1 : 0}`, () => {})) return;
+        line(mine.length >= PHOTOS_PER ? "photos:in" : "photos", mine.length >= PHOTOS_PER ? T.photosIn : T.photos);
+        pill(upl ? `<b class="ag-upl">Uploading ${upl.i}/${upl.n}…</b>${upl.note ? ` · ${upl.note}` : ""}`
+          : `<b>${mine.length}/${PHOTOS_PER}</b> of yours in · ${ready}/${active.length} ready`);
+        // the three frames, in the action area over her dialog
         const inset = `top:${FRAME_INSET.t}%;right:${FRAME_INSET.r}%;bottom:${FRAME_INSET.b}%;left:${FRAME_INSET.l}%`;
-        const frames = [0, 1, 2].map(i => {
+        if (setUi(`p:${mine.join(",")}:${shown}:${busy ? 1 : 0}`, `<div class="gs-panel ag-tray"><div class="ag-frames">${[0, 1, 2].map(i => {
           const pid = mine[i], src = pid && srcOf(pid, s);
           const inner = pid ? (src ? `<img src="${src}" alt="">` : "<span>photo loading…</span>") : `<span>${busy && i === mine.length ? "loading…" : "tap to add a photo"}</span>`;
           return `<div class="pt-box ag-frame ${pid ? "" : "ag-empty"}" data-i="${i}"><div class="ag-hang"><div class="ag-photo" style="${inset}">${inner}</div><img class="ag-frameimg" src="${ASSET}frame.png" alt=""></div></div>`;
-        }).join("");
-        ui.stage("fill your 3 frames", `<div class="ag-frames">${frames}</div><input type="file" id="ag-file" accept="image/*" hidden>
-          <p class="ab-sub">${mine.length}/${PHOTOS_PER} of yours in · ${ready}/${active.length} players ready · take a photo or pick one from your camera roll</p>${skipBtn()}`, `setup · ${ui.clock(s.left)}`);
-        const inp = $("ag-file");
-        $("game-panel").querySelectorAll(".ag-empty").forEach(b => b.onclick = async () => {
-          if (busy || mine.length >= PHOTOS_PER) return;
-          // the first time on this phone: what the photos are for, then the picker
-          if (!localStorage.getItem("rando-perm-camera")) { if (!(await prePrompt("camera"))) return; try { localStorage.setItem("rando-perm-camera", "1"); } catch {} }
-          inp.click();
-        });
-        inp.onchange = e => { const f = e.target.files?.[0]; e.target.value = ""; onFile(f); };
-        bindSkip();
+        }).join("")}</div><p class="ag-tray-note">take photos, or pick a few from your camera roll</p></div>`)) {
+          $("ag-ui").querySelectorAll(".ag-empty").forEach(b => b.onclick = () => {
+            if (busy || mine.length >= PHOTOS_PER) return;
+            picker.multiple = PHOTOS_PER - mine.length > 1;
+            // the first time on this phone: what the photos are for, then the
+            // picker, opened from the tap on yes itself (iPhone needs a real tap)
+            if (localStorage.getItem("rando-perm-camera")) { picker.click(); return; }
+            prePrompt("camera", { onYes: () => { try { localStorage.setItem("rando-perm-camera", "1"); } catch {} picker.click(); } });
+          });
+        }
       } else if (s.phase === "title") {
         const assigned = me?.assigned ?? [];
         const todo = assigned.filter(pid => !me.titles[pid] && !myTitles[pid]);
         const cur = todo[0];
         const done = active.filter(p => p.assigned.every(pid => p.titles[pid])).length;
-        const has = cur ? !!srcOf(cur, s) : 0;
+        // the photo to title hangs in her gold frame (this phone only)
+        if (cur) { drape(false, true); spot(1); setPhoto(srcOf(cur, s)); }
+        else { drape(true); spot(0); }
+        pill(cur ? `title <b>${assigned.length - todo.length + 1}/${assigned.length}</b> · ${done}/${active.length} done` : `<b>${done}/${active.length}</b> done`);
+        line(cur ? `t:${cur}` : assigned.length ? "titled" : "notitle", cur ? T.title : assigned.length ? T.titled : T.noTitle);
         // while there's a title box, only my own progress rebuilds it: other
         // players finishing, or the photo arriving late, must not wipe a
-        // half-typed title (the photo is dropped into the frame in place)
-        if (!ui.once(cur ? `t:${cur}` : `t:-:${done}:${active.length}`, () => {})) {
-          const ph = cur && has ? $("game-panel").querySelector(".ag-photo") : null;
-          if (ph && !ph.querySelector("img")) ph.innerHTML = `<img src="${srcOf(cur, s)}" alt="">`;
-          return;
-        }
-        if (cur) {
-          const n = assigned.length - todo.length + 1;
-          ui.stage(`title this piece (${n}/${assigned.length})`, scene(cur, s) + ui.prompt("give it a title…", text => { myTitles[cur] = text; game.input("title", { pid: cur, text }); sfx.pop(); ui.resetKey(); }, { maxlength: TITLE_LEN, submitLabel: "lock it" })
-            + `<p class="ab-sub">someone else is titling this exact photo too — you're competing</p>${skipBtn()}`, `titles · ${ui.clock(s.left)}`);
-          bindSkip();
-        } else {
-          ui.stage(assigned.length ? "titles locked" : "nothing to title", `<p class="ab-sub">${done}/${active.length} players done — the gallery opens when everyone's in</p>${skipBtn()}`, `titles · ${ui.clock(s.left)}`);
-          bindSkip();
-        }
+        // half-typed title (the photo goes into the frame in place)
+        if (cur) setUi(`t:${cur}`, `<div class="gs-panel ag-tbox">${ui.prompt("give it a title…", text => { myTitles[cur] = text; game.input("title", { pid: cur, text }); sfx.pop(); lastHud = 0; }, { maxlength: TITLE_LEN, submitLabel: "lock it" })}</div>`);
+        else setUi("t:-", "");
       } else if (s.phase === "gallery") {
         const f = s.frames[s.fi]; if (!f) return;
         const owner = s.players[s.pool?.[f.pid]?.owner]?.handle ?? "?";
@@ -520,7 +549,7 @@ export const ART_GALLERY = {
             room.classList.remove("revealed", "picked", "ag-anim"); room.classList.add("covered");
             line(pk, s.fi === 0 ? T.open : fillN(lineOf(T.cover), n), { late });
           });
-          if (setPlaques(`c:${s.fi}`, plaquesHtml(f, s, "read"))) { plaques3d(f, s, "read"); plState({ covered: true, picked: null, top: null }, true); }
+          setPlaques(`c:${s.fi}`, plaquesHtml(f, s, "read"));
           pill(`piece <b>${n}</b> of ${s.frames.length}`);
         } else if (s.sub === "reveal") {
           const writer = f.titles.some(t => t.by === ctx.me.id);
@@ -533,7 +562,7 @@ export const ART_GALLERY = {
           // presents it with the gavel; then the gavel: voting is open
           beats.at("unveil", pk, 0, el, late => {
             drape(false, late); spot(1);
-            // voting opens with it: the camera glides back to face the plaques
+            // voting opens with it: the camera glides back to face the frame
             bunny?.home();
             if (!late) { bunny?.setPose("unveil"); sfx.whoosh(); }
             line(`${pk}:u`, fillN(lineOf(T.unveil), n), { late });
@@ -544,17 +573,14 @@ export const ART_GALLERY = {
           // that lands late are all patched in place below, so none of them
           // cut the unveil short.
           if (setPlaques(`v:${s.fi}:${writer ? 1 : 0}`, plaquesHtml(f, s, writer ? "read" : "vote"))) {
-            plaques3d(f, s, "read");
-            // the 3D plaques' covers come off after the frame's (unless we
+            // the plaques' covers come off after the frame's (unless we
             // arrived after that)
-            plState({ covered: false, top: null }, revealed.has(s.fi) || el > 2500);
             if (!revealed.has(s.fi)) playReveal(s.fi);
             else { room.classList.remove("covered"); room.classList.add("revealed"); }
             if (!writer) $("ag-plaques").querySelectorAll("[data-v]").forEach(b => b.onclick = () => castVote(+b.dataset.v));
           }
           room.classList.toggle("picked", voted !== null);
           room.querySelectorAll(".ag-pl").forEach((el, i) => el.classList.toggle("on", voted === i));
-          if (want.plState.picked !== voted) plState({ picked: voted });
           pill(writer ? `one of these is yours · <b>${votesIn}/${eligible}</b> votes in`
             : voted === null ? `tap a title to vote · <b>${votesIn}/${eligible}</b> votes in`
             : `<b>✓ voted</b> · ${votesIn}/${eligible} in · tap the other to switch`);
@@ -571,8 +597,9 @@ export const ART_GALLERY = {
           if (setPlaques(`r:${s.fi}`, plaquesHtml(f, s, "result"))) {
             room.classList.remove("covered", "picked", "ag-anim"); room.classList.add("revealed");
             // the winner lights up, the other dims; my seal stays on my vote
-            plState({ covered: false, top, picked: myVote ?? f.votes[ctx.me.id] ?? null }, true);
-            countUp(k => plaques3d(f, s, "result", k));
+            const mineV = myVote ?? f.votes[ctx.me.id] ?? null;
+            room.querySelectorAll(".ag-pl").forEach((el, i) => el.classList.toggle("on", mineV === i));
+            countUp();
           }
           pill(`photo by <b>${esc(owner)}</b>`);
         }
@@ -589,22 +616,33 @@ export const ART_GALLERY = {
     // live game on window.__game for debugging, which would otherwise keep
     // every entry, title and photo id alive after the party ended
     trash.add(() => { game.s = null; if (window.__game === game) window.__game = null; });
-    game.start({ phase: "photos", left: PHOTO_MS, players: {}, pool: {}, dealt: [], frames: [], fi: 0, sub: null, why: null, dropped: 0 });
+    game.start({ phase: howtoOn(ctx) ? "howto" : "photos", left: howtoOn(ctx) ? HOWTO_MS : PHOTO_MS, howto: {}, players: {}, pool: {}, dealt: [], frames: [], fi: 0, sub: null, why: null, dropped: 0 });
     const o = ctx.onEnd;
     ctx.onEnd = r => { game.stop(); room.off("agphoto", onPhoto); room.off("agneed", onNeed); ui.hide(); o(r); };
   },
 };
 
-// shrink on-device: longest edge MAX_EDGE, JPEG, quality stepped down until
+// the one file input, kept out of the game panel (which re-renders)
+let _picker = null;
+function filePicker() {
+  if (!_picker?.isConnected) {
+    _picker = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", id: "ag-file", multiple: true, hidden: true });
+    document.body.appendChild(_picker);
+  }
+  return _picker;
+}
+
+// shrink on-device: longest edge `edge`, JPEG, quality stepped down until
 // the data URL fits the budget (keeps every broadcast comfortably small)
-async function shrink(file) {
+async function shrink(file, edge = MAX_EDGE) {
   let img;
   try { img = await createImageBitmap(file, { imageOrientation: "from-image" }); }
   catch {
-    img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+    img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); })
+      .catch(() => { throw new Error("unreadable"); });      // e.g. a HEIC on a desktop browser
   }
   const w = img.width || img.naturalWidth, h = img.height || img.naturalHeight;
-  const sc = Math.min(1, MAX_EDGE / Math.max(w, h));
+  const sc = Math.min(1, edge / Math.max(w, h));
   const cv = document.createElement("canvas");
   cv.width = Math.max(1, Math.round(w * sc)); cv.height = Math.max(1, Math.round(h * sc));
   cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);

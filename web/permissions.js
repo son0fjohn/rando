@@ -38,10 +38,14 @@ export async function permState(kind) {
   return "prompt";
 }
 
-// the card on its own: resolves true (yes) / false (not now)
-export function prePrompt(kind, { title, body } = {}) {
+// the card on its own: resolves true (yes) / false (not now). onYes runs
+// inside the tap on yes itself: a file picker (input.click()) only opens from
+// a real tap on iPhone Safari, not from a promise that resolves after one.
+// The card sits above everything, game screens included (a game asks too:
+// Art Gallery's photos, Manhunt's location).
+export function prePrompt(kind, { title, body, onYes } = {}) {
   const root = document.getElementById("onb");
-  if (!root) return Promise.resolve(true);
+  if (!root) { onYes?.(); return Promise.resolve(true); }
   const k = KEYS[kind];
   track("permission_prompted", { permission: kind });
   return new Promise(res => {
@@ -54,17 +58,15 @@ export function prePrompt(kind, { title, body } = {}) {
         <button type="button" class="onb-btn gold" data-yes>${esc(t(`${k}.ok`))}</button>
         <button type="button" class="onb-btn text" data-no>${esc(t("perm.later"))}</button>
       </div>`;
-    const prevHidden = root.hidden;
-    root.hidden = false;
-    root.appendChild(el);
+    document.body.appendChild(el);
     sfx.open?.();
     const done = yes => {
       el.classList.add("out");
-      setTimeout(() => { el.remove(); if (prevHidden && !root.querySelector(".onb-screen:not(.out), .onb-sheet, .onb-perm")) root.hidden = true; }, 220);
+      setTimeout(() => el.remove(), 220);
       if (!yes) { track("permission_declined", { permission: kind }); toast(t("perm.denied")); }
       res(yes);
     };
-    el.querySelector("[data-yes]").onclick = () => { sfx.confirm?.(); buzz(12); done(true); };
+    el.querySelector("[data-yes]").onclick = () => { sfx.confirm?.(); buzz(12); onYes?.(); done(true); };
     el.querySelector("[data-no]").onclick = () => { sfx.back?.(); done(false); };
   });
 }

@@ -23,7 +23,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   "Save your account" with Kakao / Apple / Google (`linkIdentity`, the same
   account), sign in on a new phone; phone verification only for the
   stranger features (`FLAGS.PHONE_VERIFY` in `hpconfig.js`), Settings, the safety card before a first game, a game
-  host's first lines, one-time hints, the first party's recap),
+  one-time hints, the first party's recap),
   `web/onbkit.js` (its pure parts), `web/i18n.js` (English and Korean, the
   device's language, switchable), `web/permissions.js` (a pre-prompt before
   every system permission dialog), `web/analytics.js` (privacy-safe events
@@ -106,15 +106,19 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   aimed-limb procedural idle with sips / unveil / gavel raps on a marble
   pedestal / judge / two sarcastic claps; the gavel and the flute ride her
   palms; the same look-around, ±60° here; tap her / the frame / a candle
-  sconce / a plaque to vote), `web/gala.js` (her candlelit gallery,
+  sconce), `web/gala.js` (her candlelit gallery,
   camera-mapped from the approved picture widened to a square, no guests,
   no chandelier; the photo in the gold frame, the velvet drape, the
-  spotlight, candle glows; the two title plaques in 3D on the wall, side by
-  side, text drawn on a canvas, velvet covers, the vote's glow and wax
-  seal, the winner lit; assets in `web/games/artgallery/gala/`),
+  spotlight, candle glows; 3D title plaques it can hang on the wall, which
+  the Art Gallery hides (`showPlaques(false)`): its titles are floating
+  cream cards in the action area, voted by a tap (gold glow, wax seal);
+  assets in `web/games/artgallery/gala/`),
   `web/dialog.js` (the shared NPC dialog box: navy, name tab, text typed in
-  the app font with a blip, ▼, choice boxes, `quip()` for a passing line;
-  styles `.dlg-*` in theme.css), `web/retrolook.js`
+  the app font with a blip, ▼, always the same size, choice boxes above it,
+  `quip()` for a passing line; styles `.dlg-*` in theme.css),
+  `web/howto.js` (how to play, told by each game's host in its own dialog
+  box before the first turn: 2–4 lines with gestures the first time, then
+  one line + "How to play"; a host-authoritative "howto" phase), `web/retrolook.js`
   (the retro look kit every game scene's 3D layer uses: mood lights, fog,
   emissive bloom, low-res nearest upscale, grade + dither + vignette +
   grain, quality tiers; `smooth` + `msaa` for a soft look, `encoded` for a
@@ -186,6 +190,9 @@ node test/maskoff_shots.mjs <dir> [--bots=4]   # Mask Off round the table with r
 node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (round the table, real characters: a pick, a card, an answer, Same, Go deeper, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
+node test/layout_shots.mjs <dir> [games] [--secs=40]   # every game's screens, and where the header / pill / action area / dialog box sit on each (layout.json)
+node test/howto_rec.mjs <dir> [games] [--ko]   # each host explaining their game: in full the first time, one line + How to play the next (FFMPEG=... for mp4s)
+node test/upload_rec.mjs <dir> [chromium|webkit|both|iphone-profile]   # Art Gallery photos on the real app page: the camera card on top, 3 picked at once, "Uploading 2/3…"
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
 node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the real app page, fresh phones each in their own browser context: Path A (invite link -> landing -> name -> character -> room -> first game) and Path B (intro -> Home -> verify -> throw a party -> invite) recorded, every screen in EN + KO, a declined location, an interrupted install, a guest verifying mid-party, tap -> first game for 5 fresh phones (FFMPEG=... for the mp4s)
 node test/auth_rec.mjs <dir> [en|ko|both]   # accounts: a guest from an invite (no phone), Save your account with Kakao (same account, back in the party), a Kakao account that's taken, the phone prompt when going public (reason, 30 s, Send it again), the SMS provider refusing, a new phone signing in
@@ -206,6 +213,15 @@ For anything only a real phone can show (geolocation, camera, Wake Lock, the
 keyboard, safe areas) see `docs/dev-stack.md` → device testing.
 
 ## How the games work (read before changing one)
+
+- **One screen layout** (theme.css "the shared game screen"): header bar on
+  top (one line), one status pill under it, big reveals in the band under
+  the pill, the dialog box at the bottom (always the same size), the action
+  area (choices, stars, inputs, cards, votes) right above it. A game with a
+  room puts `.np-pill` + `.gs-low` in it; one without uses `ui.screen()`.
+  Instructions go in the dialog box, statuses in the pill.
+- **How to play:** every game starts with a `howto` phase (howto.js) unless
+  `ctx.howto === false` (the logic specs). Manhunt's is its rules phase.
 
 - **Host-authoritative.** The earliest-joined player is host; their phone runs
   the game and broadcasts snapshots. Everyone else only renders and sends

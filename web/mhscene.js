@@ -8,6 +8,9 @@
 //                    the doors shut, the counter showing the minutes left
 //   results(line, posterHtml)   the doors open one last time: him and the
 //                    WANTED posters
+//   explain()        the rules, from him (howto.js plays his lines): the
+//                    doors open and stay open, his dialog box at the bottom
+//                    and the game's buttons right above it (.act)
 // Vibration only by default (a ding could give a hiding spot away): the
 // ding plays only when `sound` is on. Where WebGL won't start (or ?mh3d=0)
 // the same moments play as a card with his dialog box.
@@ -21,7 +24,7 @@ export function mhScene(layer) {
   const el = document.createElement("div");
   el.className = "mh-elev";
   el.hidden = true;
-  el.innerHTML = `<div class="mh-elev-stage"></div><div class="mh-elev-over"></div><div class="mh-elev-dlg"></div>`;
+  el.innerHTML = `<div class="mh-elev-stage"></div><div class="mh-elev-over"></div><div class="np-pill mh-elev-pill"></div><div class="mh-elev-low gs-low"><div class="mh-elev-act gs-action"></div><div class="mh-elev-dlg"></div></div>`;
   layer.appendChild(el);
   const stageEl = el.querySelector(".mh-elev-stage"), over = el.querySelector(".mh-elev-over");
   const dlg = dialogBox(el.querySelector(".mh-elev-dlg"), { name: "The Hunter", blip: () => sfx.blip?.() });
@@ -43,12 +46,15 @@ export function mhScene(layer) {
     return loading;
   }
   const show = mode => { el.hidden = false; el.className = `mh-elev ${mode}${failed ? " flat" : ""}`; };
-  const hide = () => { el.hidden = true; over.innerHTML = ""; dlg.hide?.(); };
+  const act = el.querySelector(".mh-elev-act");
+  const hide = () => { el.hidden = true; over.innerHTML = ""; act.innerHTML = ""; dlg.hide?.(); };
   const ding = () => { if (api.sound) sfx.ding?.(); buzz?.([60, 40, 60]); };
   async function say(line) { dlg.show?.(); await dlg.say(line); await sleep(900); }
 
   return Object.assign(api, {
-    el, preload: scene,
+    el, dlg, act, preload: scene,
+    play: name => h?.play(name),
+    pill(html) { const p = el.querySelector(".mh-elev-pill"); if (p && p.innerHTML !== html) p.innerHTML = html; },
     get scene() { return h; },
     get flat() { return failed; },
     async intro(lines = []) {
@@ -110,6 +116,15 @@ export function mhScene(layer) {
       s?.play("point");
       over.innerHTML = `<div class="mh-held">${posterHtml}</div>`;
       await say(line);
+    },
+    async explain() {
+      if (!el.hidden && el.classList.contains("explain")) return;
+      const my = ++token;
+      show("full explain");
+      over.innerHTML = "";
+      const s = await scene();
+      if (my !== token) return;
+      s?.room.counter("B1"); s?.room.doors(true); ding();
     },
     quip(line) { if (!el.hidden) dlg.quip?.(line); },
     hide() { ++token; hide(); },

@@ -138,9 +138,11 @@ permission is asked so it's ready; sending needs a push service (below).
 - Before the first game (not before joining): one card, "Be cool. No
   harassment. Respect people's no. Report anything weird.", Got it. Tap
   anyone in the room to report or block them.
-- The first time a phone plays a game, that game's host says what to do in
-  one or two lines (the dialog box, near the top): The Prophet, The Boss,
-  Bunny, The Hunter; The Diary and The Table for the hostless games.
+- Every game opens with its host explaining it in the game itself
+  (web/howto.js): The Prophet, The Boss, Bunny, The Hunter (role by role);
+  The Diary and The Table for the hostless games. 2–4 short lines with a
+  gesture each, in the game's dialog box at the bottom, the first time a
+  phone plays it; after that one line and a "How to play" button.
 - One-time hints where people get stuck: the vote button for a new player,
   the Game votes button for a host with people in.
 - The Game votes sheet marks Humiliation Ritual "Great first game" until the

@@ -136,9 +136,14 @@ ok(st0.setup.zone?.type === "circle" && st0.setup.zone.r === 450 && st0.setup.ro
 await tap(A, "#mh-go");
 ok(await until(A, () => window.__game?.s?.phase === "rules", null, 240000), "Start: the rules card");
 
-// ---- rules: everyone taps in
+// ---- rules: the Hunter says them in his elevator (in full: everyone's first
+// Manhunt), his dialog box at the bottom, then "I'm in" right above it
 await sleep(1500); await shot(A, "04-rules-hunter"); await B.bringToFront(); await sleep(800); await shot(B, "04b-rules-runner");
-for (const pg of [A, B, ...L]) await tap(pg, "#mh-ready");
+await A.bringToFront();
+// (a slow screenshot above can outlast the rules' own clock: then it's moved on)
+ok(await until(A, () => !!document.querySelector('.mh-elev.explain [data-how="go"]') || window.__game?.s?.phase !== "rules", null, 60000), "the Hunter explains the rules in his elevator, then 'I'm in'");
+await shot(A, "04c-rules-im-in");
+for (const pg of [A, B, ...L]) { await tap(pg, '[data-how="skip"]'); await sleep(200); await tap(pg, '[data-how="go"]'); }
 ok(await until(A, () => ["intro", "headstart", "hunt"].includes(window.__game?.s?.phase), null, 240000), "everyone's in: the elevator");
 await A.bringToFront();
 await sleep(4500); await shot(A, "05-elevator-intro");

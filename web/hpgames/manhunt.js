@@ -39,6 +39,7 @@ import { mhScene } from "./../mhscene.js";
 import { renderLook } from "./../charrender.js";
 import { askPermission } from "./../permissions.js";
 import { t } from "./../i18n.js";
+import { howto } from "./../howto.js";
 
 const params = new URLSearchParams(location.search);
 const SIM = params.get("mhsim");
@@ -438,6 +439,8 @@ export const MANHUNT_GAME = {
       else stopGeo();
       layer.dataset.phase = phase;
       layer.dataset.role = p?.role ?? "";
+      // the header bar while the host sets up and the Hunter explains; on the map, the hunt's own bar
+      if (phase !== "setup" && phase !== "rules" && document.getElementById("game-hud")?.innerHTML) ui.hud("");
       if (phase === "setup") return renderSetup(s);
       if (phase === "rules") return renderRules(s);
       if (phase === "intro") return renderIntro(s);
@@ -464,6 +467,7 @@ export const MANHUNT_GAME = {
       ui$.sheet.hidden = false; ui$.sheet.className = `mh-sheet ${cls}`; ui$.sheet.innerHTML = html;
     }
     function renderSetup(s) {
+      ui.hud(`<div class="hq"><b>MANHUNT</b><span>setup</span></div>`);
       if (!room.isHost) { sheetHtml("wait", `<div class="mh-card"><b>The host is drawing the zone…</b></div>`); return; }
       const S = s.setup;
       // the host's map: city mode where the party is, before anything's drawn
@@ -552,32 +556,32 @@ export const MANHUNT_GAME = {
       });
     }
 
-    // ---- the rules card (everyone taps through)
+    // ---- the rules, from the Hunter (everyone taps in): the elevator doors
+    // open on him, he says them in his dialog box (howto.js: in full the
+    // first time, one line after that), "I'm in" right above it
+    const hows = {};
+    let howNow = null;
+    const GESTURE = { tap: "tap", point: "point", warn: "tie", nod: "nod" };
     function renderRules(s) {
       catchTaps(false);
       const p = P(s), inN = active(s).filter(x => x.ready).length, all = active(s).length;
-      const key = `rules|${p?.role}|${p?.ready}`;
-      if (lastSheetKey !== key) {
-        lastSheetKey = key;
-        ui$.top.hidden = ui$.bottom.hidden = ui$.powers.hidden = true;
-        ui$.sheet.hidden = false; ui$.sheet.className = "mh-sheet rules";
-        ui$.sheet.innerHTML = `<div class="mh-rules">
-          <div class="mh-role ${p?.role}">You're a <b>${p?.role === "hunter" ? "HUNTER" : "RUNNER"}</b></div>
-          <p>${p?.role === "hunter" ? "Every few minutes you'll see roughly where each runner was. Find them on foot and tag them in person; they confirm it on their phone." : "Hide inside the gold zone. Every few minutes the hunters see a fuzzy circle around where you were. Never your exact spot."}</p>
-          <ul class="mh-safety">
-            <li><b>Stay on foot.</b> No roads, no private property, no going inside homes or businesses.</li>
-            <li><b>Watch traffic.</b> Look up from your phone when you move.</li>
-            <li>Tags only count in person, and only when the runner says yes.</li>
-            <li>Need a break? <b>SAFE</b> hides you and stops your clock until you come back.</li>
-          </ul>
-          <p class="mh-fine"><b>Keep your screen on</b> during the hunt: a locked phone can't be pinged and shows as "no signal".</p>
-          <p class="mh-fine">Your location is read on your phone only during the round. Others get a fuzzy circle (25–50 m), never your spot; nothing is saved. Alerts vibrate, no sound.</p>
-          <button type="button" class="mh-btn go" id="mh-ready" ${p?.ready ? "disabled" : ""}>${p?.ready ? "Waiting for everyone…" : "I'm in"}</button>
-          <div class="mh-in" id="mh-in"></div>
-        </div>`;
-        const b = $("mh-ready"); if (b) b.onclick = () => { sfx.confirm?.(); game.input("mh-ready"); askLocation(); };
+      const role = p?.role === "hunter" ? "hunter" : "runner";
+      if (lastSheetKey !== "rules") {
+        lastSheetKey = "rules";
+        ui$.top.hidden = ui$.bottom.hidden = ui$.powers.hidden = ui$.sheet.hidden = true;
+        elev.explain();
       }
-      const el = $("mh-in"); if (el) el.textContent = `${inN} / ${all} in`;
+      const id = `manhunt.${role}`;
+      if (howNow && howNow !== hows[id]) howNow.stop();
+      howNow = hows[id] ??= howto(id, {
+        dlg: elev.dlg, auto: false, go: "I'm in",
+        gesture: g => elev.play(GESTURE[g] ?? "nod"),
+        send: v => { if (v === "howto-ok" && !P(game.s)?.ready) { sfx.confirm?.(); game.input("mh-ready"); askLocation(); } },
+        note: "Your location stays on your phone. Others get a fuzzy circle (25–50 m), never your spot; nothing is saved. Keep your screen on.",
+      });
+      howNow.render({ gameId: "mh", ti: 0, howto: {} }, elev.act);
+      ui.hud(`<div class="hq"><b>MANHUNT</b><span>how to play</span></div>`);
+      elev.pill(`you're a <b>${role === "hunter" ? "HUNTER" : "RUNNER"}</b> · ${inN}/${all} in`);
     }
     // ask for location now (a tap), so the hunt doesn't stall on a prompt later
     function askLocation() { if (!SIM) askPermission("location", { body: t("perm.loc.mh") }).then(ok => { if (!ok) ui.toast("Location is off: you'll show as 'no signal' at pings.", "bad"); }); }
@@ -585,6 +589,7 @@ export const MANHUNT_GAME = {
     // ---- the Hunter's opening (once)
     let introShown = false;
     function renderIntro(s) {
+      if (lastSheetKey === "rules") { howNow?.stop(); ui.hud(""); elev.pill(""); }
       ui$.sheet.hidden = true; lastSheetKey = "intro";
       if (!introShown) { introShown = true; elev.intro([M.LINES.start[0], "Every few minutes, I'll know roughly where you were. Fuzzy. Not exact.", M.LINES.start[1]]); }
     }

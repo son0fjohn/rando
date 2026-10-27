@@ -40,6 +40,7 @@ import { fairPick } from "./../fairpick.js";
 import { Beats, flyFrom, impact, nameSlam, takeover, banner, stampOn, countdown } from "./../npcscene.js";
 import { dialogBox } from "./../dialog.js";
 import { renderLook } from "./../charrender.js";
+import { HOWTO_MS, howto, howtoOn, howtoInput, howtoDone, howtoTally } from "./../howto.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -129,8 +130,9 @@ export const questPoints = avg => Math.round((avg ?? 0) * PPS);
 const sceneHtml = ctx => `<div class="np-room sq-room">
     <div class="sq-3d" id="sq-3d"></div>
     <div class="sq-orb" id="sq-orb"><img class="sq-face" id="sq-face" alt=""></div>
+    <div class="np-pill" id="sq-pill"></div>
     <div class="sq-wall" id="sq-wall"></div>
-    <div class="sq-low">${hostSkip(ctx)}<div class="sq-ui" id="sq-ui"></div><div class="sq-dlg" id="sq-dlg"></div></div>
+    <div class="sq-low gs-low">${hostSkip(ctx)}<div class="sq-ui gs-action" id="sq-ui"></div><div class="sq-dlg" id="sq-dlg"></div></div>
   </div>`;
 const cardHtml = (q, cls = "") => `<div class="sq-card ${cls}"><div class="sq-text">${esc(q?.text ?? "…")}</div>${q?.level && q.level !== "mild" ? `<em class="sq-lv ${esc(q.level)}">${esc(q.level)}</em>` : ""}</div>`;
 const starsHtml = (fill, cls = "") => `<div class="sq-stars ${cls}" style="--fill:${Math.max(0, Math.min(1, fill)) * 100}%"><span class="sq-st-bg">${"★".repeat(STARS)}</span><span class="sq-st-fg">${"★".repeat(STARS)}</span></div>`;
@@ -167,6 +169,13 @@ export const SIDE_QUEST = {
     let prophet = null, prophetP = null;
     const holder = document.createElement("div");
     const dlg = dialogBox(document.createElement("div"), { name: T.name, blip: () => sfx.blip() });
+    // how to play, in his own words: he shows the ball, the card, points, nods
+    const how = howto("sidequest", { dlg, send: v => game.input(v), gesture: act => {
+      if (act === "ball") { pose("reveal"); orb("swirl"); push(1); sfx.chime(); }
+      else if (act === "card") { pose("reveal"); orb("landed"); prophet?.puff?.(); sfx.whoosh(); }
+      else if (act === "point") { pose("aim"); orb("idle"); push(0); }
+      else if (act === "nod") pose("nod");
+    } });
     const loadProphet = () => (prophetP ??= import("./../prophet.js").then(m => m.prophetScene(holder)).then(p => { prophet = p; return p; })
       .catch(e => { console.warn("[sidequest] no 3D back room, the plain one stays:", e?.message ?? e); return null; }));
     loadProphet();
@@ -208,7 +217,9 @@ export const SIDE_QUEST = {
     };
 
     const rounds = new Rounds([
-      { name: "setup", ms: SETUP_MS, done: s => !!s.setup.go, next: s => { begin(s); return "spin"; } },
+      { name: "setup", ms: SETUP_MS, done: s => !!s.setup.go, next: s => { begin(s); return howtoOn(ctx) ? "howto" : "spin"; } },
+      // he explains it (howto.js): over once everyone's heard it
+      { name: "howto", ms: HOWTO_MS, enter: s => { s.howto = {}; }, done: howtoDone, next: () => "spin" },
       // first who (the ball lands on a face), then what (it swirls up the quest)
       { name: "spin", ms: SPIN_MS, enter: s => pick(s), next: () => "quest" },
       { name: "quest", ms: QUEST_MS, enter: s => deal(s), next: () => "do" },
@@ -266,6 +277,7 @@ export const SIDE_QUEST = {
       hostInput(s, m) {
         const fromHost = m.from === room.hostId;
         if (m.in === "skip" && fromHost) { s.left = 0; return; }
+        if (howtoInput(s, m)) return;
         if (s.phase === "setup" && fromHost) {
           const off = new Set(s.setup.off);
           if (m.in === "sq-q" && AVAIL.some(q => q.id === m.id)) { if (m.on) off.delete(m.id); else off.add(m.id); }
@@ -359,6 +371,7 @@ export const SIDE_QUEST = {
     };
     // the host's skip, labelled for what it skips
     const skipLabel = txt => { const b = $("hp-skip"); if (b && b.textContent !== txt) b.textContent = txt; };
+    const pill = html => { const p = $("sq-pill"); if (p && p.innerHTML !== html) p.innerHTML = html; };
     const face = (s, id, pop = false) => {
       const img = $("sq-face"), url = lookOf(s, id);
       if (url) { lastFace = url; prophet?.face(url, pop); }
@@ -429,7 +442,7 @@ export const SIDE_QUEST = {
       const me = s.players?.[ctx.me.id];
       const P = Object.values(s.players || {});
       const t = turn(s), who = s.players?.[t?.who]?.handle ?? "?";
-      const step = s.phase === "end" ? "final" : s.phase === "setup" ? "setup" : `turn ${Math.min((s.ti ?? 0) + 1, s.turns || 1)}/${s.turns || "?"}`;
+      const step = s.phase === "end" ? "final" : s.phase === "setup" ? "setup" : s.phase === "howto" ? "how to play" : `turn ${Math.min((s.ti ?? 0) + 1, s.turns || 1)}/${s.turns || "?"}`;
       ui.hud(`<div class="hq"><b>SIDE QUEST</b><span>${step}</span><span class="clk ${s.left < 10000 && !["end", "setup"].includes(s.phase) ? "urgent" : ""}">${ui.clock(s.left)}</span><span>${me?.score ?? 0} pts</span></div>`);
       // start rendering everyone's head now, so the ball has them in time
       for (const p of P) if (!p.gone) lookOf(s, p.id);
@@ -443,6 +456,7 @@ export const SIDE_QUEST = {
           if (scene({ ti: "setup" })) { orb("idle"); pose("idle"); push(0); }
           if ($("sq-setup-ov")) { $("sq-setup-ov").remove(); setupKey = null; dlgKey = null; }   // (no longer hosting)
           line("setup", T.wait);
+          pill("the host is choosing the quests");
           return;
         }
         // the host picks the quests over his rooftop: same room, a list on top
@@ -484,6 +498,15 @@ export const SIDE_QUEST = {
         return;
       }
 
+      if (s.phase === "howto") {
+        if (scene({ ti: "howto" })) { orb("idle"); pose("idle"); push(0); $("sq-setup-ov")?.remove(); setupKey = null; }
+        uiKey = "howto"; dlgKey = "howto"; chKey = null;
+        how.render(s, $("sq-ui"));
+        pill(`how to play · <b>${howtoTally(s)}</b> ready`);
+        return;
+      }
+      how.stop();
+
       if (s.phase === "end") {
         if (!ui.once("end", () => {})) return;
         sceneTi = null; dlgKey = null;
@@ -511,6 +534,7 @@ export const SIDE_QUEST = {
         const elapsed = SPIN_MS - s.left;
         if (fresh || uiKey !== pk) {
           panel(pk, "");
+          pill(`turn <b>${t.no}</b> · who's it going to be…`);
           guest(s, null);                                  // last turn's player leaves
           pose("reveal"); orb("spin"); push(1);
           const ids = P.filter(p => !p.gone).map(p => p.id);
@@ -526,6 +550,7 @@ export const SIDE_QUEST = {
           pose("aim");
           guest(s, t.who, { pop: !late, react: late ? null : "surprised" });
           line(`${pk}:who`, `${T.relax} ${name}.`, { late, cont: true });
+          pill(`turn <b>${t.no}</b> · <b>${esc(name)}</b>`);
           const room = room$(), mine = t.who === ctx.me.id;
           if (!late) { sfx.chime(); sfx.slam(); impact(room, { from: prophet?.ballRect() ?? null }); }
           // held ~1.5 s from the landing; a phone that got here late still shows it, briefly
@@ -544,6 +569,7 @@ export const SIDE_QUEST = {
         const elapsed = QUEST_MS - s.left;
         if (fresh || uiKey !== pk) {
           panel(pk, "");
+          pill(`<b>${esc(name)}</b>'s quest`);
           face(s, t.who);
           guest(s, t.who);
           if (elapsed < CARD_AT) { pose("reveal"); orb("swirl"); push(1); if (elapsed < 600) { prophet?.puff(); prophet?.smokeCard(elapsed / 1000); sfx.whoosh(); } }
@@ -575,7 +601,7 @@ export const SIDE_QUEST = {
         if (mine) {
           if (t.status) { line(`${pk}:gu`, T.youGaveUp); noChoices(); panel(key, ""); }
           else {
-            panel(key, `<div class="sq-clock" id="sq-clock">${ui.clock(s.left)}</div><p class="sq-note"><b id="sq-vcount"></b></p>`);
+            panel(key, `<div class="sq-clock" id="sq-clock">${ui.clock(s.left)}</div>`);
             // the quest (read out in the last phase), then Accept / Give up;
             // after Accept, just Give up (two taps)
             if (accepted !== s.ti) line(`${s.ti}:quest:q`, T.quest(t.quest?.text ?? "…"), { late: true });
@@ -593,7 +619,7 @@ export const SIDE_QUEST = {
         } else if (t.status === "gaveup") {
           line(`${pk}:gu`, T.theyGaveUp(who)); noChoices(); panel(key, "");
         } else {
-          panel(key, `<span class="sq-film">● REC</span><span class="sq-clock small" id="sq-clock">${ui.clock(s.left)}</span><p class="sq-note"><b id="sq-vcount"></b></p>`, "chip");
+          panel(key, `<span class="sq-film">● REC</span><span class="sq-clock small" id="sq-clock">${ui.clock(s.left)}</span>`, "chip");
           if (held) { line(`${pk}:held`, T.locked(T.lbl[held - 1] ?? "")); noChoices(); }
           else {
             line(`${pk}:rate`, T.rate(who));
@@ -606,8 +632,8 @@ export const SIDE_QUEST = {
         // the timer and the count tick in place (rebuilding would eat taps)
         const c = $("sq-clock");
         if (c) { c.textContent = ui.clock(s.left); c.classList.toggle("urgent", s.left < 30000); }
-        const vc = $("sq-vcount");
-        if (vc) vc.textContent = T.rated(Object.keys(t.votes).length, voters(s).length);
+        // how many have rated: the pill
+        pill(t.status === "gaveup" ? `<b>${esc(who)}</b> gave up` : `<b>${T.rated(Object.keys(t.votes).length, voters(s).length)}</b>`);
 
       } else if (s.phase === "result") {
         // 3. the verdict, and his smug nod to close the turn
@@ -616,6 +642,7 @@ export const SIDE_QUEST = {
           face(s, t.who);
           if (!t.skipped) guest(s, t.who); else guest(s, null);
           noChoices(); push(0);
+          pill(t.skipped ? `<b>${esc(who)}</b> left` : t.status === "gaveup" ? `<b>${esc(who)}</b> gave up · +0` : `<b>${esc(who)}</b> · +${t.pts}`);
           const board = P.slice().sort((a, b) => b.score - a.score).map(p => `<li class="${p.id === t.who ? "me" : ""}"><b>${esc(p.handle)}</b><span>${p.score}</span></li>`).join("");
           if (t.skipped) {
             orb("dim"); pose("idle");

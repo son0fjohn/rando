@@ -895,12 +895,8 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 .np-room.mo-room { background: #120b0c radial-gradient(ellipse at 50% 40%, #3a2420, #120b0c 70%); }
 .mo-3d { position: absolute; inset: 0; z-index: 0; }
 .mo-3d .retro-canvas { pointer-events: auto; touch-action: none; }
-.mo-top { position: absolute; left: 0; right: 0; top: 58px; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; padding: 0 12px; }
-.mo-who { font: 700 16px/20px var(--f-sys); color: #fff4e8; text-shadow: 0 2px 8px rgba(0, 0, 0, .7); text-align: center; }
+.mo-top { position: absolute; left: 0; right: 0; top: calc(var(--gs-pill-top) + 34px); z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; padding: 0 12px; }
 .mo-who:empty { display: none; }
-.mo-prompt { font: 600 15px/20px var(--f-sys); color: #ffd6a6; background: rgba(20, 12, 10, .62); border-radius: 999px; padding: 6px 14px; text-align: center; transition: background .2s; }
-.mo-prompt:empty { display: none; }
-.mo-prompt.warn { background: rgba(120, 40, 30, .8); color: #fff4e8; }
 .mo-seatbar { display: flex; gap: 6px; max-width: 100%; overflow-x: auto; pointer-events: auto; scrollbar-width: none; padding: 2px; }
 .mo-seatbar:empty { display: none; }
 .mo-seatbar .mo-chip { position: static; transform: none; flex: none; }
@@ -941,11 +937,14 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 .mo-motes i { position: absolute; left: 50%; bottom: 220px; width: 44px; height: 44px; margin-left: -22px; border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 210, 140, .95), rgba(255, 180, 90, .35) 45%, transparent 70%); animation: mo-rise 2.1s ease-out both; }
 @keyframes mo-rise { 0% { opacity: 0; transform: translateY(20px) scale(.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-240px) scale(1.1); } }
-/* the bottom: the controls, then the hand */
-.mo-low { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; flex-direction: column; align-items: stretch; pointer-events: none; }
-.mo-act { position: relative; z-index: 6; display: flex; flex-direction: column; gap: 8px; padding: 0 14px 8px; pointer-events: auto; transition: transform .28s cubic-bezier(.3, .9, .3, 1.2); }
-/* a raised card: the Ask button waits above it */
-.mo-room.raised .mo-act { transform: translateY(-168px); }
+/* the bottom (the shared .gs-low): the hand, the controls, then the dialog
+   box; your two hands holding the cards tuck in behind them */
+.mo-low { z-index: 3; align-items: stretch; }
+.mo-act { position: relative; z-index: 6; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; transition: transform .28s cubic-bezier(.3, .9, .3, 1.2); }
+.mo-low > .mo-handwrap { margin: 0 calc(-1 * var(--gs-side)) -64px; z-index: 1; }
+.mo-low > .mo-dlg { position: relative; z-index: 2; }
+/* the how-to-play: no hand yet, just the lines and the buttons */
+.mo-room.howto .mo-handwrap { display: none; }
 .mo-act:empty { display: none; }
 .mo-act .mo-row { display: flex; gap: 8px; justify-content: center; }
 .mo-btn { flex: 1 1 0; min-width: 0; max-width: 220px; white-space: nowrap; padding: 14px 10px; border-radius: 999px; font: 700 17px/1 var(--f-sys); cursor: pointer; margin: 0;
@@ -966,11 +965,11 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 .mo-deeper .mo-row { margin-top: 6px; }
 .mo-deeper.took { background: rgba(40, 20, 50, .6); }
 /* the hand of cards, fanned, held in your two hands */
-.mo-handwrap { position: relative; height: 196px; pointer-events: none; transition: transform .5s ease, opacity .5s; }
+.mo-handwrap { position: relative; height: 226px; pointer-events: none; transition: transform .5s ease, opacity .5s; }
 .mo-handwrap.gone { transform: translateY(110%); opacity: 0; }
 .mo-hands { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 120px; z-index: 2; pointer-events: none; }
 .mo-hands path { fill: var(--skin); stroke: rgba(40, 20, 10, .35); stroke-width: 2; filter: drop-shadow(0 -2px 6px rgba(0, 0, 0, .3)); }
-.mo-hand { position: absolute; left: 50%; bottom: 34px; width: 0; height: 0; z-index: 1; pointer-events: auto; }
+.mo-hand { position: absolute; left: 50%; bottom: 70px; width: 0; height: 0; z-index: 1; pointer-events: auto; }
 .mo-hc { position: absolute; left: 0; bottom: 0; width: 104px; height: 148px; margin-left: -52px; box-sizing: border-box; padding: 10px 9px; border-radius: 10px; cursor: pointer;
   display: flex; flex-direction: column; gap: 5px; text-align: left; color: #2a2030; background: linear-gradient(170deg, #fbf5e8, #ecdfc2); border: 1px solid #c9a45a;
   box-shadow: 0 6px 14px rgba(0, 0, 0, .45); transform-origin: 50% 160%;
@@ -987,7 +986,7 @@ body.hp-room3d #party-panel.pt-behind { visibility: hidden; }
 @keyframes mo-draw { from { transform: translate(150px, 40px) rotate(30deg); opacity: 0; } }
 .mo-handwrap.turn .mo-hc { box-shadow: 0 6px 14px rgba(0, 0, 0, .45), 0 0 16px rgba(255, 200, 61, .55); }
 .mo-handwrap.turn .mo-hc.up { box-shadow: 0 18px 40px rgba(0, 0, 0, .55), 0 0 22px rgba(255, 200, 61, .65); }
-.mo-deck { position: absolute; right: 14px; bottom: 62px; width: 40px; height: 56px; z-index: 0; }
+.mo-deck { position: absolute; right: 14px; bottom: 98px; width: 40px; height: 56px; z-index: 0; }
 .mo-deck i { position: absolute; inset: 0; border-radius: 6px; background: #2a2440; border: 1px solid #ffc83d; box-shadow: 0 3px 8px rgba(0, 0, 0, .5); }
 .mo-deck i:nth-child(2) { transform: translate(-2px, -2px); } .mo-deck i:nth-child(3) { transform: translate(-4px, -4px); }
 .mo-handwrap.empty .mo-deck { display: none; }
@@ -1225,7 +1224,7 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .np-slam.red b { color: #ff5a4f; text-shadow: 0 0 18px rgba(255, 70, 60, .7), 0 0 42px rgba(255, 70, 60, .4), 0 4px 0 rgba(30, 6, 6, .85), 0 8px 24px rgba(0, 0, 0, .5); }
 @keyframes np-slam { 0% { opacity: 0; transform: scale(2.6) translateY(-10px) } 55% { opacity: 1; transform: scale(.94) } 75% { transform: scale(1.04) } 100% { transform: none } }
 .np-slam.out, .np-take.out, .np-banner.out { transition: opacity .4s ease-in, transform .4s ease-in; opacity: 0; }
-.np-slam.out { transform: scale(.92); }
+.np-slam.out { transform: translateY(-50%) scale(.92); }
 /* the chosen player's own phone: the whole screen, for a moment */
 .np-take { inset: 0; z-index: 8; display: grid; place-items: center; text-align: center; padding: 0 18px; }
 .np-take b { font: 900 46px/1.05 var(--f-sys); letter-spacing: .01em; animation: np-slam .55s cubic-bezier(.2, 1.4, .4, 1) .1s both; }
@@ -1291,8 +1290,6 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .sq-room .sq-card.small .sq-text { font-size: 15.5px; line-height: 20px; }
 .sq-room .sq-lv { border-radius: 4px; font: 700 10px/14px var(--f-sys); letter-spacing: .06em; text-transform: uppercase; }
 /* the bottom: the panel (clock, verdict) over the dialog box */
-.sq-low { position: absolute; left: 9px; right: 9px; bottom: max(28px, calc(10px + env(safe-area-inset-bottom))); z-index: 4; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.sq-low > * { pointer-events: auto; }
 .sq-ui:empty { display: none; }
 .sq-panel { box-sizing: border-box; padding: 10px 12px 12px; text-align: center; color: var(--dlg-ink); background: var(--dlg-navy); border: 2px solid var(--dlg-edge); border-radius: 8px;
   box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 6px 16px rgba(0, 0, 0, .3); animation: dlg-in .22s ease-out both; }
@@ -1318,7 +1315,6 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .dlg-choices.row button.dlg-choice::before { display: none; }
 button.dlg-choice.sq-star { color: #ffd23f; }
 /* the host's skip sits just over the dialog, small, on the right */
-#game-panel.np-full .sq-low .ag-skip { position: static; align-self: flex-end; margin: 0; padding: 6px 12px; min-height: 0; font-size: 12px; }
 
 /* Humiliation Ritual: The Boss's basement (boss.js) fills the screen, the
    performer's slip / the answer hangs over it, and he talks through the
@@ -1347,8 +1343,6 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 .hr-room .hr-reveal b { display: block; font: 800 30px/35px var(--f-sys); overflow-wrap: anywhere; }
 .hr-room .hr-reveal.waiting b { opacity: .45; }
 /* the bottom: the panel (feed, guess box, points) over the dialog box */
-.hr-low { position: absolute; left: 9px; right: 9px; bottom: max(28px, calc(10px + env(safe-area-inset-bottom))); z-index: 4; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.hr-low > * { pointer-events: auto; }
 .hr-ui:empty { display: none; }
 .hr-ui .np-plaque { position: relative; left: auto; right: auto; margin: 0; padding: 10px 12px 12px; color: var(--dlg-ink); background: var(--dlg-navy); border: 2px solid var(--dlg-edge); border-radius: 8px;
   box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 6px 16px rgba(0, 0, 0, .3); }
@@ -1374,7 +1368,6 @@ button.dlg-choice.sq-star { color: #ffd23f; }
 .hr-room .sq-board { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
 .hr-room .sq-board li { display: flex; gap: 6px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .1); font: 600 12.5px var(--f-sys); color: var(--dlg-ink); }
 .hr-room .sq-board li.me { outline: 1.5px solid #ffd23f; } .hr-room .sq-board li span { color: #ffd23f; }
-#game-panel.np-full .hr-low .ag-skip { position: static; align-self: flex-end; margin: 0; padding: 6px 12px; min-height: 0; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .hr-slip.unroll > * { animation: none; } }
 
 /* Side Quest's 3D back room (prophet.js): the canvas fills the room behind
@@ -1502,8 +1495,7 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 .mh-elev.small .dlg { transform: scale(.62); transform-origin: left bottom; width: 160%; }
 @keyframes mh-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .mh-elev-stage { position: absolute; inset: 0; }
-.mh-elev-dlg { position: absolute; left: 9px; right: 9px; bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); }
-.mh-elev.small .mh-elev-dlg { bottom: 6px; left: 6px; right: 6px; }
+.mh-elev.small .mh-elev-low { bottom: 6px; left: 6px; right: 6px; }
 .mh-elev.flat { background: radial-gradient(120% 80% at 50% 10%, #5a5048, #1e1a16); }
 .mh-elev-over { position: absolute; inset: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; }
 .mh-elev-count { font: 800 68px/1 ui-monospace, "SF Mono", monospace; color: #ff3a2a; text-shadow: 0 0 18px rgba(255,60,40,.8); }
@@ -1527,7 +1519,7 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
   background: radial-gradient(130% 70% at 50% 0%, rgba(43, 50, 112, .55), rgba(15, 26, 58, .96) 62%); animation: onb-in .32s ease both; }
 .onb-screen.clear { background: linear-gradient(180deg, rgba(15, 26, 58, 0) 30%, rgba(15, 26, 58, .82) 68%, #0F1A3A); }
 .onb-screen.home { justify-content: flex-start; background: radial-gradient(130% 60% at 50% 18%, #1e2a5e, #0F1A3A 64%); }
-.onb-screen.out, .onb-sheet.out, .onb-perm.out, .onb-safety.out, .onb-hostline.out, .onb-in.out, .onb-toast.out { animation: onb-out .22s ease both; }
+.onb-screen.out, .onb-sheet.out, .onb-perm.out, .onb-safety.out, .onb-in.out, .onb-toast.out { animation: onb-out .22s ease both; }
 @keyframes onb-in { from { opacity: 0; transform: translateY(14px); } }
 @keyframes onb-out { to { opacity: 0; transform: translateY(10px); } }
 .onb-card { width: min(100%, 420px); margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
@@ -1657,7 +1649,9 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 .onb-or::before, .onb-or::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, .14); }
 .onb-again { min-height: 1.3em; }
 /* the permission pre-prompt */
-.onb-perm { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(6, 8, 24, .6); animation: y-fade .2s both; }
+/* above every layer, game screens included (#game-layer is 500): a game asks too */
+.onb-perm { position: fixed; inset: 0; z-index: 760; display: grid; place-items: center; padding: 16px; background: rgba(6, 8, 24, .6); animation: y-fade .2s both;
+  color: var(--y-ink); font-family: var(--f-sys); -webkit-tap-highlight-color: transparent; }
 .onb-perm-card { width: min(100%, 360px); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 24px 18px 12px; border-radius: 24px;
   background: rgba(15, 26, 58, .95); border: 1px solid rgba(255, 255, 255, .12); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); animation: onb-in .26s ease both; }
 .onb-perm-card b { font-size: 21px; line-height: 1.25; }
@@ -1673,7 +1667,6 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 .onb-safety-card small { color: var(--y-muted); font-size: 13px; margin-bottom: 6px; }
 .onb-safe-ico { font-size: 34px; }
 /* a game host's first lines: the shared dialog box, near the top (the game's own box sits low) */
-.onb-hostline { position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 70px); z-index: 690; max-width: 520px; margin: 0 auto; cursor: pointer; animation: onb-in .3s ease both; }
 /* "you're in!" */
 .onb-in { position: fixed; left: 50%; top: 40%; z-index: 650; font-family: var(--f-sys); transform: translate(-50%, -50%); padding: 14px 26px; border-radius: 999px; background: var(--color-accent); color: var(--color-on-accent);
   font: 900 26px var(--f-sys); box-shadow: 0 10px 40px rgba(var(--color-accent-rgb), .5); animation: onb-pop .45s cubic-bezier(.2, .9, .3, 1.4) both; pointer-events: none; }
@@ -1720,3 +1713,93 @@ body:has(#onb .onb-sheet:not(.out)) .onb-hint { display: none; }
 /* while an onboarding screen is up, the map is only the night city behind it */
 body.onb-on #pubchat, body.onb-on #navbar, body.onb-on #friends-btn, body.onb-on .wlabel, body.onb-on .bubble-anchor,
 body.onb-on #nav-backtome, body.onb-on #npc-dlg, body.onb-on #match-card { visibility: hidden !important; }
+
+/* ================================================================ the shared game screen
+   Every game, and every how-to-play, puts the same things in the same
+   places, so nobody has to look for them:
+     the header bar (game, round, clock, points) at the top, one height;
+     one status pill right under it ("0/4 voted");
+     the scene in the middle, the big reveals (a name, a stamp, the quest
+     card) in the band under the pill;
+     the dialog box at the bottom, always the same size;
+     the action area (choices, cards, stars, votes, inputs) right above it.
+   A game with a 3D room puts its own pill and `.gs-low` in the room; one
+   without (Secret Diary) uses ui.screen() (gamekit.js), which lays out the
+   same parts in the same places. */
+:root {
+  --gs-hud-top: calc(8px + env(safe-area-inset-top, 0px));
+  --gs-hud-h: 34px;
+  --gs-pill-top: calc(var(--gs-hud-top) + var(--gs-hud-h) + 8px);
+  --gs-reveal-top: calc(var(--gs-pill-top) + 38px);
+  --gs-low-bottom: max(24px, calc(10px + env(safe-area-inset-bottom, 0px)));
+  --gs-side: 9px;
+  --gs-dlg-h: 114px;
+}
+/* the header bar: one line, the host's Back / End game beside it at the same height */
+#game-hud { top: var(--gs-hud-top); height: var(--gs-hud-h); padding: 0 10px; }
+#game-hud > .hq { height: var(--gs-hud-h); box-sizing: border-box; padding: 0 12px; gap: 8px; flex-wrap: nowrap; white-space: nowrap; overflow: hidden;
+  border-radius: 999px; border: 1px solid var(--g-line); background: rgba(15, 26, 58, .82); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  font: 700 11.5px/1 var(--f-sys); }
+#game-hud > .hq > * { flex: none; }
+/* (the round / step gives way first; the name, the clock and the points never do) */
+#game-hud > .hq > span:not(.clk) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: rgba(255, 255, 255, .78); }
+#game-hud > .hq > .clk ~ span { flex: none; color: #fff; }
+#game-hud > .hq > b { color: var(--color-accent); letter-spacing: .04em; }
+#game-hud > .hq .clk { margin-left: auto; font-size: 15px; color: #fff; }
+#game-hud > .hq .sd-more { height: 24px; margin: 0 -8px 0 0; }
+.hp-ctl { top: var(--gs-hud-top); height: var(--gs-hud-h); }
+/* the toasts, under the pill */
+#game-feed { top: calc(var(--gs-pill-top) + 36px); }
+/* the status pill */
+.np-pill, .gs-pill { top: var(--gs-pill-top); }
+/* the big reveals, in the band under the pill */
+.sq-wall, .hr-wall, .hr-wall.full, .mo-center { top: var(--gs-reveal-top); }
+.np-banner { top: var(--gs-reveal-top); }
+.np-slam, .np-count { top: 33%; transform: translateY(-50%); }
+.np-title { display: none; }
+/* the bottom: the action area, then the dialog box */
+.gs-low { position: absolute; left: var(--gs-side); right: var(--gs-side); bottom: var(--gs-low-bottom); z-index: 4; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.gs-low > * { pointer-events: auto; }
+.gs-action:empty, .gs-low > .sq-ui:empty, .gs-low > .hr-ui:empty { display: none; }
+.gs-action { display: flex; flex-direction: column; gap: 8px; }
+#game-panel .gs-low .ag-skip { position: static; align-self: flex-end; margin: 0; padding: 6px 12px; min-height: 0; font-size: 12px; }
+/* the dialog box: always this size; a long line is set a size or two smaller */
+.dlg-box { height: var(--gs-dlg-h); min-height: 0; overflow: hidden; padding-bottom: 22px; }
+.dlg-box.fit1 .dlg-text { font-size: 18px; line-height: 23px; }
+.dlg-box.fit2 .dlg-text { font-size: 15.5px; line-height: 19px; }
+/* its choices are the action area: right above it (and its name tab) */
+.dlg-choices { order: -1; margin: 0 0 8px; }
+/* a panel in the action area, in the dialog's navy */
+.gs-panel { box-sizing: border-box; padding: 10px 12px 12px; text-align: center; color: var(--dlg-ink); background: var(--dlg-navy); border: 2px solid var(--dlg-edge); border-radius: 8px;
+  box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 6px 16px rgba(0, 0, 0, .3); animation: dlg-in .22s ease-out both; }
+/* buttons in the action area, in the dialog's style */
+.gs-row { display: flex; gap: 8px; }
+.gs-btn { flex: 1; min-width: 0; min-height: 48px; padding: 10px 14px; cursor: pointer; border: 2px solid var(--dlg-edge); border-radius: 8px; background: var(--dlg-navy); color: var(--dlg-ink);
+  box-shadow: inset 0 0 0 2px rgba(5, 12, 36, .9), 0 4px 12px rgba(0, 0, 0, .3); font: 600 17px/20px var(--dlg-font); }
+.gs-btn:active { transform: translateY(1px); }
+.gs-btn.gold { background: var(--color-accent); color: var(--color-on-accent); border-color: #ffe9a8; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
+.gs-btn:disabled { opacity: .5; }
+.gs-note { margin: 0; text-align: center; font: 12.5px/16px var(--dlg-font); color: rgba(244, 247, 255, .78); text-shadow: 0 1px 4px rgba(0, 0, 0, .8); }
+.gs-wait { flex: 1; display: grid; place-items: center; min-height: 48px; padding: 0 10px; text-align: center; border-radius: 8px; background: rgba(14, 30, 74, .55); color: var(--dlg-ink); font: 500 14px/1.2 var(--dlg-font); }
+/* ui.screen(): the same parts for a game without a room of its own (a
+   centred column like the rooms; the card in the middle scrolls) */
+#game-panel.gs-screen { top: 0; bottom: 0; left: 50%; right: auto; width: min(100%, 56.25vh); width: min(100%, 56.25dvh); transform: translateX(-50%);
+  max-height: none; overflow: hidden; padding: 0; display: flex; flex-direction: column; pointer-events: none; }
+.gs-screen > .gs-pill { position: absolute; left: 50%; transform: translateX(-50%); }
+.gs-screen > .gs-mid { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; margin-top: calc(var(--gs-pill-top) + 36px); padding: 0 10px 10px; pointer-events: auto; }
+.gs-screen > .gs-mid > .stage { box-sizing: border-box; width: min(100%, 420px); margin: 0 auto; }
+/* (a button bar the Diary used to pin to its card's bottom edge: here it's just the action area) */
+.gs-action .sd-foot { position: static; margin: 0; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.gs-action .ag-skip, .gs-action #hp-skip { flex: none; }
+.gs-screen > .gs-low { position: relative; left: auto; right: auto; bottom: auto; margin: 0 var(--gs-side) var(--gs-low-bottom); }
+/* Manhunt's bars on the map follow the same lines */
+.mh-top { top: var(--gs-hud-top); height: var(--gs-hud-h); box-sizing: border-box; padding: 0 6px 0 4px; border-radius: 999px; }
+.mh-top .mh-stat { flex-direction: row; align-items: baseline; justify-content: center; gap: 4px; }
+.mh-top .mh-stat b { font-size: 14px; }
+.mh-top .mh-stat small { font-size: 9px; }
+.mh-powers { top: var(--gs-pill-top); }
+.mh-elev .gs-low { z-index: 2; }
+.mh-elev .mh-elev-pill { z-index: 2; }
+.mh-elev.small .mh-elev-pill { display: none; }
+/* the header over the elevator while he explains */
+#game-layer.mh-on #game-hud { z-index: 8; }
