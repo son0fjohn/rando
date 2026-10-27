@@ -15,6 +15,7 @@ import { ART_GALLERY } from "/web/artgallery.js";
 import { MANHUNT, DIARY, RITUAL, SIDEQUEST, MASKOFF, LEADERBOARD } from "/web/hpconfig.js";
 import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
 import { ui, finalResults } from "/web/gamekit.js";
+import { HOWTO, HOWTO_MS } from "/web/howto.js";
 import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
 import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
@@ -1404,6 +1405,44 @@ group("Manhunt — the end: who wins, points, the location stops");
 }
 
 // ===================================================================== rejoin
+group("How to play — the host explains it first, then the game starts");
+{
+  ok(Object.entries(HOWTO).every(([id, L]) => ["en", "ko"].every(l => L[l] && L[l].full.length >= 2 && L[l].full.length <= 4 && L[l].full.every(([t]) => t.length <= 80) && L[l].short?.[0])),
+    "every game's lines: 2–4 short ones in full, one short one, in English and Korean");
+  ok(["sidequest", "ritual", "artgallery", "mask_off", "secretdiary", "manhunt.runner", "manhunt.hunter"].every(id => HOWTO[id]), "…for every game (Manhunt: runners and hunters)");
+  // into each game's how-to: Side Quest and Mask Off after the host's setup, the Diary after the deal
+  const into = {
+    sidequest: t => { t.input("p1", "sq-go"); adv(1500); },
+    ritual: () => {},
+    artgallery: () => {},
+    mask_off: t => { t.input("p1", "mo-go"); adv(1500); },
+    secretdiary: t => { t.input("p1", "send"); adv(1500); },
+  };
+  const first = { sidequest: "spin", ritual: "pick", artgallery: "photos", mask_off: "pick", secretdiary: "answer" };
+  for (const [id, def] of [["sidequest", SIDE_QUEST], ["ritual", HUMILIATION_RITUAL], ["artgallery", ART_GALLERY], ["mask_off", MASK_OFF], ["secretdiary", SECRET_DIARY]]) {
+    const t = seatTable(def, 4, { howto: true });
+    adv(500); into[id](t);
+    ok(t.s.phase === "howto", `${id}: the how-to comes first`);
+    t.input("p2", "howto-ok"); t.input("p3", "howto-ok"); t.input("p4", "skip"); adv(3000);
+    ok(t.s.phase === "howto", `${id}: …it waits for everyone (a guest can't skip it)`);
+    t.drop("p4"); t.input("p1", "howto-ok"); adv(3000);
+    ok(t.s.phase === first[id], `${id}: once everyone still here has heard it, the game starts (${t.s.phase})`);
+    ok(t.errors().length === 0, `${id}: no errors: ` + (t.errors()[0] ?? "none"));
+  }
+  {
+    const t = seatTable(HUMILIATION_RITUAL, 3, { howto: true });
+    adv(500); t.input("p1", "skip"); adv(2000);
+    ok(t.s.phase === "pick", "the host can skip it");
+  }
+  {
+    const t = seatTable(ART_GALLERY, 3, { howto: true });
+    adv(500); t.input("p2", "howto-ok"); t.input("p2", "howto-more"); t.input("p1", "howto-ok"); t.input("p3", "howto-ok"); adv(3000);
+    ok(t.s.phase === "howto", "someone tapping How to play again is waited for");
+    adv(HOWTO_MS);
+    ok(t.s.phase === "photos", "…but never longer than its clock");
+  }
+}
+
 group("Every game — a phone that reloads mid-game picks the game back up");
 for (const [g, n] of [[SECRET_DIARY, 3], [SIDE_QUEST, 3], [HUMILIATION_RITUAL, 3], [MASK_OFF, 3], [ART_GALLERY, 3], [MANHUNT_GAME, 4]]) {
   const t = seatTable(g, n);
@@ -1553,8 +1592,7 @@ group("Onboarding — English and Korean, guest setup, invite links, analytics")
   ok(!miss.length && !extra.length, `every string in both languages (${en.length} keys)${miss.length ? ` · no Korean: ${miss.join(", ")}` : ""}${extra.length ? ` · extra: ${extra.join(", ")}` : ""}`);
   const vars = s => [...String(s).matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort().join(",");
   ok(en.every(k => vars(STRINGS.en[k]) === vars(STRINGS.ko[k])), "the same {placeholders} in both languages");
-  ok(["sidequest", "ritual", "artgallery", "secretdiary", "mask_off", "manhunt"].every(g => Array.isArray(STRINGS.en[`intro.${g}`]) && STRINGS.en[`intro.${g}`].length <= 2 && STRINGS.ko[`intro.${g}`].length <= 2 && STRINGS.en[`host.${g}`]),
-    "every game's host has 1–2 first-time lines, in both languages");
+  ok(["sidequest", "ritual", "artgallery", "secretdiary", "mask_off", "manhunt"].every(g => STRINGS.en[`host.${g}`] && STRINGS.ko[`host.${g}`]), "every game's host (or table) has a name, in both languages");
   const rng = (() => { let a = 7; return () => ((a = (a * 16807) % 2147483647) / 2147483647); })();
   const names = Array.from({ length: 300 }, () => suggestName(rng, "en")).concat(Array.from({ length: 300 }, () => suggestName(rng, "ko")));
   ok(names.every(n => n.length >= 2 && n.length <= 20 && n === n.trim()), "name suggestions always fit the server's rule (2–20, trimmed)");

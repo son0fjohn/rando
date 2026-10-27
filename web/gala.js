@@ -30,6 +30,7 @@
 //   room.plaque(i, { label, title, by, votes, win })   // what plaque i says (redrawn when it changes)
 //   room.plaqueState({ covered, picked, top, instant }) // velvet on / my vote (0|1|null) / the winner (0|1|null)
 //   room.plaqueRects() -> [{ left, top, width, height }, ...] (CSS px: where they are on screen)
+//   room.showPlaques(false)                            // none on the wall (the Art Gallery floats its titles in front)
 //   room.targets (taps: "frame", "candle", "plaque0", "plaque1") / room.update(t, dt) / room.poke(kind, point) / room.dispose()
 import { THREE } from "./retrolook.js";
 import { projRoom, loadTex } from "./projroom.js";
@@ -429,6 +430,8 @@ export async function galaRoom(stage) {
     get drapeLevel() { return drapeT; },
     plaque: setPlaque,
     plaqueState,
+    // the plaques on the wall, or not (the Art Gallery floats its titles in front instead)
+    showPlaques(on) { plaques.forEach(p => { p.g.visible = !!on; }); },
     // the title plaques, where they are on screen (CSS px)
     plaqueRects: () => plaques.map(p => screenRect(p.card)),
     // what the plaques show, for the tests

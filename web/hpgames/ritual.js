@@ -45,6 +45,7 @@ import { RITUAL } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash } from "./../hpkit.js";
 import { Beats, flyFrom, confetti, impact, nameSlam, takeover, banner, stampOn } from "./../npcscene.js";
 import { dialogBox } from "./../dialog.js";
+import { HOWTO_MS, howto, howtoOn, howtoInput, howtoDone, howtoTally } from "./../howto.js";
 import { renderLook } from "./../charrender.js";
 import { fairPick } from "./../fairpick.js";
 import { maxLevelFor } from "./secretdiary.js";
@@ -166,6 +167,8 @@ const LINES = {
     shh: "Shhh.",
     upBig: "YOU'RE UP", performing: n => `${n} is performing`, act: "ACT IT OUT", skip: "skip ▸▸",
     yours: "That one's yours. No talking. Sell it.",
+    acting: "Act it out. Tap the right guess.",
+    guess: n => `Guess what ${n} is doing.`,
     got: (g, n) => `${g} got it. ${n}, not bad.`,
     nobody: "Nobody? That's a shame.",
     left: n => `${n} walked out. Nobody scores.`,
@@ -180,6 +183,8 @@ const LINES = {
     shh: "쉿.",
     upBig: "네 차례야", performing: n => `${n} 공연 중`, act: "연기해", skip: "넘기기 ▸▸",
     yours: "이건 네 거야. 말하지 말고, 팔아 봐.",
+    acting: "연기해. 맞는 답을 눌러.",
+    guess: n => `${n}, 뭘 하는 걸까? 맞혀 봐.`,
     got: (g, n) => `${g}, 맞혔네. ${n}, 나쁘지 않아.`,
     nobody: "아무도 못 맞혔어? 아쉽네.",
     left: n => `${n} 나가 버렸어. 이번엔 점수 없음.`,
@@ -196,9 +201,8 @@ const LOOK_RIM = 0xe8e8ee;
 const sceneHtml = ctx => `<div class="np-room hr-room">
     <div class="hr-3d" id="hr-3d"></div>
     <div class="np-pill" id="np-pill"></div>
-    <h2 class="np-title" id="np-title"></h2>
     <div class="hr-wall" id="hr-wall"></div>
-    <div class="hr-low">${hostSkip(ctx)}<div class="hr-ui" id="hr-ui"></div><div class="hr-dlg" id="hr-dlg"></div></div>
+    <div class="hr-low gs-low">${hostSkip(ctx)}<div class="hr-ui gs-action" id="hr-ui"></div><div class="hr-dlg" id="hr-dlg"></div></div>
   </div>`;
 
 
@@ -241,6 +245,13 @@ export const HUMILIATION_RITUAL = {
     let boss = null, bossP = null;
     const holder = document.createElement("div");
     const dlg = dialogBox(document.createElement("div"), { name: T.name, blip: () => sfx.blip() });
+    // how to play, in his words: he holds up a capsule, shhh, a smirk, a nod
+    const how = howto("ritual", { dlg, send: v => game.input(v), gesture: act => {
+      if (act === "capsule") { want.face = null; want.name = ""; boss?.capsule(null, ""); capState("inhand"); pose("hold"); sfx.pop(); }
+      else if (act === "shh") { capState("hidden"); pose("shhh"); sfx.whoosh(); }
+      else if (act === "point") { pose("idle"); play("smirk"); }
+      else if (act === "nod") { pose("idle"); play("nod"); }
+    } });
     const loadBoss = () => (bossP ??= import("./../boss.js").then(m => m.bossScene(holder)).then(b => { boss = b; return b; })
       .catch(e => { console.warn("[ritual] no 3D basement, the plain room stays:", e?.message ?? e); return null; }));
     loadBoss();
@@ -249,7 +260,7 @@ export const HUMILIATION_RITUAL = {
     const room$ = () => $("game-panel")?.querySelector(".hr-room");
     // taps on the scene, between beats only: him (a line, and a drag on the
     // cigar or a slow nod), the box (a rattle), the cup (a sip), the lamp
-    const busy = () => ["pick", "open", "end"].includes(phaseNow);
+    const busy = () => ["howto", "pick", "open", "end"].includes(phaseNow);
     const onTap = kind => {
       if (kind === "lamp") { sfx.cursor(); return true; }
       if (kind === "box") { for (let i = 0; i < 4; i++) setTimeout(() => sfx.tick(), i * 70); buzz(12); return true; }
@@ -257,8 +268,7 @@ export const HUMILIATION_RITUAL = {
       if (kind === "cup") { sfx.blip(); return true; }
       if (kind !== "boss") return false;
       const q = T.quips[quipN++ % T.quips.length];
-      if (dlg.el.hidden) { dlg.show(); dlg.say(q); const k = phaseNow; setTimeout(() => { if (phaseNow === k && k === "act") dlg.hide(); }, 2600); }
-      else if (dlg.done) dlg.quip(q);
+      if (dlg.done) dlg.quip(q);
       else return false;
       sfx.blip(); buzz(15);
       return true;
@@ -312,6 +322,8 @@ export const HUMILIATION_RITUAL = {
     const isPerformer = s => turn(s)?.performer === ctx.me.id;
 
     const rounds = new Rounds([
+      // he explains it first (howto.js): over once everyone's heard it
+      { name: "howto", ms: HOWTO_MS, enter: s => { s.howto = {}; }, done: howtoDone, next: () => "pick" },
       { name: "pick", ms: PICK_MS, enter: s => deal(s), next: () => "open" },
       { name: "open", ms: OPEN_MS, next: () => "act" },
       { name: "act", ms: ACT_MS, done: s => !!turn(s)?.won, next: s => { settle(s); return "result"; } },
@@ -334,10 +346,11 @@ export const HUMILIATION_RITUAL = {
           s.players[b.id] = seat(b.id, b.handle, true, b.avatar);
         s.turns = Object.keys(s.players).length * PER;
         s.ti = 0; s.weights = {}; s.turn = null;
-        rounds.enter(s, "pick");
+        rounds.enter(s, howtoOn(ctx) ? "howto" : "pick");
       },
       hostTick(s, dt) {
         syncGone(s, room);
+        if (s.phase === "howto") { rounds.hostStep(s, dt); return; }
         const r = turn(s);
         if (!r) return;
         if (s.phase === "act" && !r.startedAt) r.startedAt = Date.now();
@@ -371,6 +384,7 @@ export const HUMILIATION_RITUAL = {
       },
       hostInput(s, m) {
         if (m.in === "skip" && m.from === room.hostId) { s.left = 0; return; }
+        if (howtoInput(s, m)) return;
         const r = turn(s);
         if (!r || !s.players[m.from]) return;
         // the reveal: only the performer can say what it was, and only once
@@ -465,7 +479,6 @@ export const HUMILIATION_RITUAL = {
     let spinTok = 0;
     const skipLabel = txt => { const b = $("hp-skip"); if (b && b.textContent !== txt) b.textContent = txt; };
     const top = pill => { const p = $("np-pill"); if (p && p._v !== pill) { p._v = pill; p.innerHTML = pill; } };
-    const title = t => { const h = $("np-title"); if (h && h.textContent !== t) h.textContent = t; };
     // the panel over the dialog (feed, guess box, points), rebuilt only when its key changes
     const plaque = (key, html) => {
       if (uiKey === key) return false;
@@ -495,7 +508,7 @@ export const HUMILIATION_RITUAL = {
     function showPick(s, r, elapsed, fresh) {
       const pk = pkOf(s), name = s.players?.[r.performer]?.handle ?? "?";
       if (fresh || uiKey !== pk) {
-        plaque(pk, ""); title(""); top(`turn <b>${r.no}</b> · who's it going to be…`); $("hr-wall") && ($("hr-wall").innerHTML = "");
+        plaque(pk, ""); top(`turn <b>${r.no}</b> · who's it going to be…`); $("hr-wall") && ($("hr-wall").innerHTML = "");
         $("hr-wall")?.classList.remove("full");
         guest(s, null);                                    // last turn's performer leaves
       }
@@ -598,8 +611,16 @@ export const HUMILIATION_RITUAL = {
       const P = Object.values(s.players || {});
       const r = turn(s);
       const who = s.players?.[r?.performer]?.handle ?? "?";
-      const step = s.phase === "end" ? "final" : `turn ${Math.min((s.ti ?? 0) + 1, s.turns || 1)}/${s.turns || 1}`;
+      const step = s.phase === "end" ? "final" : s.phase === "howto" ? "how to play" : `turn ${Math.min((s.ti ?? 0) + 1, s.turns || 1)}/${s.turns || 1}`;
       ui.hud(`<div class="hq"><b>HUMILIATION RITUAL</b><span>${step}</span><span class="clk ${s.left < 10000 && s.phase === "act" ? "urgent" : ""}">${ui.clock(s.left)}</span><span>${me?.score ?? 0} pts</span></div>`);
+      if (s.phase === "howto") {
+        if (scene({ ti: "howto" })) { pose("idle"); capState("hidden"); guest(s, null); }
+        uiKey = "howto"; dlgKey = "howto";
+        how.render(s, $("hr-ui"));
+        top(`how to play · <b>${howtoTally(s)}</b> ready`);
+        return;
+      }
+      how.stop();
       if (!r && s.phase !== "end") return;
       // the performer's phone fetches its prompt as soon as it's picked
       const secret = r && isPerformer(s) ? mySecret(r) : null;
@@ -629,10 +650,9 @@ export const HUMILIATION_RITUAL = {
       } else if (s.phase === "act") {
         const gs = r.guesses ?? [];
         if (fresh || !String(uiKey).startsWith(pk)) {
-          // the acting: he sits back with his cigar and watches; the dialog
-          // steps aside for the feed / the guess box
+          // the acting: he sits back with his cigar and watches; his line
+          // stays put under the feed / the guess box
           pose("idle"); capState("hidden");
-          dlg.hide(); dlgKey = null;
           $("hr-wall")?.classList.remove("full");
           guest(s, r.performer);
         }
@@ -640,7 +660,8 @@ export const HUMILIATION_RITUAL = {
           // PERFORMER: their card stays up, the clock, the live feed to tap.
           // Hints are worked out here, from this phone's own copy of the prompt.
           slip(r, false)?.classList.add("hr-card", "small");
-          top(`<b>act it out</b> · tap the right guess`);
+          top(`<b>act it out</b> · ${gs.length} guess${gs.length === 1 ? "" : "es"}`);
+          line(`${pk}:acting`, T.acting, { late: s.left < ACT_MS - 1500 });
           if (plaque(`${pk}|perf`, `<div class="hr-plq-top"><span>tap the right guess</span><span class="np-clock hr-clock" id="hr-clock">${ui.clock(s.left)}</span></div>
               <div class="hr-feed" id="hr-feed"></div>`)) {
             $("hr-feed").onclick = e => {
@@ -666,8 +687,8 @@ export const HUMILIATION_RITUAL = {
           // arriving from anyone else must NOT rebuild this plaque, or it
           // would wipe what this player is halfway through typing. My own
           // list is patched in place.
-          title("Guess what they're doing!");
           top(`<b>${esc(who)}</b> is performing`);
+          line(`${pk}:guess`, T.guess(who), { late: s.left < ACT_MS - 1500 });
           plaque(`${pk}|g`, `<div class="hr-plq-top"><span><b>${esc(who)}</b> taps the right one</span><span class="np-clock hr-clock" id="hr-clock">${ui.clock(s.left)}</span></div>
               ${ui.prompt("your guess…", text => { mine.push(text); game.input("guess", { text }); sfx.tick(); setTimeout(reopen, 0); }, { maxlength: GUESS_MAX, submitLabel: "guess" })}
               <div class="hr-mine" id="hr-mine"></div>`);
@@ -690,8 +711,7 @@ export const HUMILIATION_RITUAL = {
         const first = !String(uiKey).startsWith(pk);
         const g = r.won ? s.players[r.won.by] : null;
         const board = P.slice().sort((a, b) => b.score - a.score).map(p => `<li class="${r.won && (p.id === r.won.by || p.id === r.performer) ? "me" : ""}"><b>${esc(p.handle)}</b><span>${p.score}</span></li>`).join("");
-        title(r.skipped ? `${who} left` : r.won ? `${g?.handle ?? "?"} got it!` : "time's up!");
-        top(r.skipped ? "nobody scores this turn" : r.won ? `“${esc(r.won.text)}” · ${r.secs}s` : "nobody got it — no points this turn");
+        top(r.skipped ? `<b>${esc(who)}</b> left · nobody scores` : r.won ? `<b>${esc(g?.handle ?? "?")}</b> got it · ${r.secs}s` : "time's up · no points this turn");
         const w = $("hr-wall");
         // a slow approving nod to close the turn, and his verdict
         if (first) { capState("hidden"); pose(r.skipped ? "shhh" : "idle"); if (!r.skipped) play("nod"); $("hr-wall")?.classList.remove("full"); if (r.skipped) guest(s, null); }

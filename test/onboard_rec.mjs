@@ -181,7 +181,7 @@ async function pathA(lang, party, { record = false, shots = true, viewport, name
   if (shots) await shot(N, lang, "A7-safety", "before the first game: Be cool…");
   await read(1800);
   await tap(N, ".onb-safety button");
-  const lines = await until(N, () => !!document.querySelector(".onb-hostline") || window.__hostLines, null, 40000);
+  const lines = await until(N, () => !!window.__howto, null, 40000);
   ok(lines, `${lang}${tag}: the Boss says what to do (first time only)`);
   if (!lines) console.log("    (debug)", await N.evaluate(() => JSON.stringify({ st: localStorage.getItem("rando-onb-v1"), safety: document.querySelectorAll(".onb-safety").length, phase: document.body.className })));
   await sleep(2200);

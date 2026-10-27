@@ -78,6 +78,20 @@ const until = async (pg, fn, arg, ms = 15000) => pg.waitForFunction(fn, arg, { t
 const stageTitle = pg => text(pg, "#game-panel .stage h2, #game-panel .hp-res-title, #game-panel .np-title");
 // the host starts a game from the votes list
 const startGame = async (pg, id) => { await pg.click("#pt-vote"); await pg.click(`[data-game="${id}"] .pv-t > b`); };   // the title: the row middle can be an option chip
+// every game opens with its host's how-to-play (howto.js): his lines in the
+// game's own dialog box, the buttons right above it; everyone taps through
+async function heardHowto(pages, game) {
+  const up = await Promise.all(pages.map(pg => until(pg, () => !!document.querySelector("[data-how]"), null, 20000)));
+  ok(up.every(Boolean), `${game}: the host explains it first, on every phone`);
+  const where = await pages[0].evaluate(() => {
+    const b = document.querySelector("[data-how]"), d = [...document.querySelectorAll(".dlg-box")].find(x => x.getClientRects().length && x.closest(".dlg:not([hidden])"));
+    if (!b || !d) return null;
+    const br = b.getBoundingClientRect(), dr = d.getBoundingClientRect();
+    return { above: br.bottom <= dr.top, line: d.textContent.trim(), dlgBottom: Math.round(innerHeight - dr.bottom) };
+  });
+  ok(!!where?.above && where.line.length > 0, `${game}: …in the dialog box at the bottom ("${where?.line ?? ""}"), its buttons right above it`);
+  for (const pg of pages) await pg.evaluate(() => document.querySelector('[data-how="skip"], [data-how="go"]')?.click());
+}
 // the host taps "skip ahead" until `done(title)` holds on `watch`
 async function skipUntil(host, watch, done, tries = 12) {
   for (let i = 0; i < tries; i++) {
@@ -187,6 +201,7 @@ try {
   await A.click('[data-rounds="1"]');
   ok(await until(A, () => document.querySelectorAll("[data-lv].on").length === 3 && /3 turns/.test(document.getElementById("mo-go")?.textContent ?? "")), "the host adds deep and sets everyone once (3 turns)");
   await A.click("#mo-go");
+  await heardHowto([A, B, C], "Mask Off");
   const mo = () => A.evaluate(() => window.__game?.s ?? null);
   ok(await until(B, () => !document.getElementById("game-layer").hidden && !!document.getElementById("mo-room"), null, 10000), "everyone sits down at the round table");
   ok(await A.evaluate(() => !document.getElementById("party-panel").hidden && document.getElementById("party-panel").classList.contains("pt-behind")), "it's played over the dimmed party room, not the map");
@@ -198,7 +213,7 @@ try {
   const s1 = await mo(), t1 = s1.turn;
   const asker = ids[t1.asker], askers = [A, B, C].filter(pg => pg !== asker);
   ok(t1.asker === s1.order[0] && !t1.who, `the first one round the table asks (${t1.asker})`);
-  ok(await until(asker, () => document.querySelectorAll("#mo-hand [data-card]").length === 5 && document.querySelector(".mo-handwrap.turn") && /Pick someone to ask/.test(document.getElementById("mo-prompt")?.textContent ?? "")), "their hand of 5 glows: 'Pick someone to ask.'");
+  ok(await until(asker, () => document.querySelectorAll("#mo-hand [data-card]").length === 5 && document.querySelector(".mo-handwrap.turn") && /Pick someone to ask/.test(document.querySelector("#mo-room .dlg-text")?.textContent ?? "")), "their hand of 5 glows; the dialog box: 'Pick someone to ask.'");
   const myHand = await asker.evaluate(() => [...document.querySelectorAll("#mo-hand [data-card]")].map(b => b.dataset.card));
   ok(await askers[0].evaluate(h => document.querySelectorAll("#mo-hand [data-card]").length === 5 && !document.querySelector(".mo-handwrap.turn") && !h.some(id => document.querySelector(`[data-card="${id}"]`)), myHand), "everyone holds their own hand; nobody else's cards are on their screen");
   // (waits: the watching phone renders the turn a moment after the asker's does)
@@ -234,7 +249,7 @@ try {
   await who.click("#mo-dtake");
   ok(await until(third, () => /going deeper/i.test(document.querySelector(".mo-deeper")?.textContent ?? "")), "they take it: everyone sees it");
   await who.click("#mo-done");
-  ok(await until(third, () => /2 people felt this too/.test(document.querySelector("#mo-act")?.textContent ?? ""), null, 8000), "Done: '2 people felt this too'");
+  ok(await until(third, () => /2 people felt this too/.test(document.querySelector("#mo-room .dlg-text")?.textContent ?? ""), null, 8000), "Done: '2 people felt this too'");
   ok(!/(alice|bob|cy) (tapped|felt)/i.test(await text(who, "#mo-room")), "never who tapped");
   if (r3d) ok(await until(third, () => !window.__table.info().off.length), "the mask goes back on");
   await shot(who, "06-maskoff-same");
@@ -247,7 +262,7 @@ try {
   const a2 = ids[t2.asker];
   if (t2.asker !== moT) {
     await a2.click(`.mo-chip[data-who="${moT}"]`).catch(() => {});
-    ok(await until(a2, () => document.getElementById("mo-prompt")?.classList.contains("warn"), null, 3000) && !(await mo()).turn.who, "the one just asked can't be picked again straight away");
+    ok(await until(a2, () => /just asked/.test(document.querySelector("#mo-room .dlg-text")?.textContent ?? ""), null, 3000) && !(await mo()).turn.who, "the one just asked can't be picked again straight away (it says so in the dialog box)");
   }
   const w2 = s2.order.find(id => id !== t2.asker && id !== s2.lastWho);
   await a2.click(`.mo-chip[data-who="${w2}"]`);
@@ -255,7 +270,7 @@ try {
   await a2.click("#mo-ask");
   ok(await until(ids[w2], () => !!document.getElementById("mo-pass"), null, 8000), "asked");
   await ids[w2].click("#mo-pass");
-  ok(await until(ids[w2], () => /mask stays on/.test(document.querySelector("#mo-act")?.textContent ?? ""), null, 8000), "Pass: the mask stays on, no penalty, on to the next");
+  ok(await until(ids[w2], () => /mask stays on/.test(document.querySelector("#mo-room .dlg-text")?.textContent ?? ""), null, 8000), "Pass: the mask stays on, no penalty, on to the next");
   // through to the end
   for (let i = 0; i < 30 && (await mo())?.phase !== "end"; i++) { await A.locator("#hp-skip").first().click().catch(() => {}); await sleep(700); }
   ok(await until(A, () => /masks off/.test(document.querySelector(".mo-end")?.textContent ?? ""), null, 10000), "the end: masks off");
@@ -285,6 +300,7 @@ try {
   await startGame(A, "mask_off");
   ok(await until(A, () => !!document.getElementById("mo-go")), "Mask Off's setup");
   await A.click("#mo-go");
+  await heardHowto([A, B, C], "Mask Off, again (one line this time)");
   ok(await until(A, () => window.__game?.s?.phase === "choose", null, 20000), "Mask Off is under way");
   ok(await A.locator("#hp-end").isVisible() && !(await B.locator("#hp-end:visible").count()) && !(await C.locator("#hp-end:visible").count()), "only the host has End game");
   await A.click("#hp-end");
@@ -301,6 +317,7 @@ try {
   head("Humiliation Ritual — the Boss picks, only the performer gets the prompt, guesses feed the performer");
   await startGame(A, "ritual");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");
+  await heardHowto([A, B, C], "the Ritual");
   ok(await until(B, () => /Pick a capsule\. Any capsule\./.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 8000), "the Boss opens the turn: \"Pick a capsule. Any capsule.\"");
   // (polled from here: a page drawing 3D in the background gets few animation frames)
   let upLine = "";
@@ -337,7 +354,7 @@ try {
     const prompt = await text(performer, ".hr-prompt");
     ok(/ACT IT OUT/.test(await text(performer, ".hr-kick")) && prompt === slip, `only the performer sees the prompt (${prompt})`);
     ok((await Promise.all(guessers.map(pg => pg.locator(".hr-card").count()))).every(n => n === 0), "the guessers don't");
-    ok(await until(guessers[0], () => /Guess what they're doing/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "the guessers see 'Guess what they're doing!' and a text box");
+    ok(await until(guessers[0], () => /^Guess what .+ is doing\.$/.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? "") && !!document.querySelector(".hr-ui #gp-in")), "the guessers: 'Guess what [name] is doing.' in his dialog box, the guess box right above it");
     await guessers[0].fill("#gp-in", "a broken toaster");
     await guessers[0].click("#game-panel .gp-form button");
     await guessers[1].fill("#gp-in", prompt.toLowerCase());
@@ -348,7 +365,7 @@ try {
     await shot(performer, "08-ritual-performer");
     await shot(guessers[0], "09-ritual-guesser");
     await performer.locator("#hr-feed .hr-g.match").click();
-    ok(await until(guessers[0], t => /got it/.test(document.querySelector("#game-panel h2")?.textContent ?? "") && document.querySelector(".hr-reveal b")?.textContent === t, prompt), "the performer's tap ends the turn; the performer's phone reveals the answer, big");
+    ok(await until(guessers[0], t => /got it/.test(document.querySelector("#np-pill")?.textContent ?? "") && document.querySelector(".hr-reveal b")?.textContent === t, prompt), "the performer's tap ends the turn; the performer's phone reveals the answer, big");
   }
   ok(await A.evaluate(() => !document.getElementById("party-panel").hidden && document.getElementById("party-panel").classList.contains("pt-behind")), "the ritual is played over the party room (dimmed), not the map");
   ok(await skipUntil(A, A, t => /Humiliation Ritual/.test(t), 25), "the ritual plays through to results");
@@ -385,6 +402,7 @@ try {
   await A.locator("[data-swap]").first().click();
   ok(await until(A, t => (document.querySelector(".sd-card .sd-ctext > div:last-child")?.textContent ?? "") !== t, firstCard), "Swap deals a different card");
   await A.click("#sd-send");
+  await heardHowto([A, B, C], "Secret Diary");
   ok((await Promise.all([A, B, C].map(pg => until(pg, () => document.querySelectorAll(".sd-q").length === 5)))).every(Boolean), "everyone gets the whole batch at once");
   // bob's page reloads mid-answer (iOS does this to a backgrounded tab): he
   // comes back by the same link, and the host puts him straight back into
@@ -460,37 +478,34 @@ try {
   await A.click("#pp-again");
   ok((await Promise.all([A, B].map(pg => until(pg, () => !document.getElementById("pp") && /Game 1 of 3/.test(document.getElementById("pt-next")?.textContent ?? ""))))).every(Boolean), "a new set starts: game 1 of 3, the podium closes for everyone");
 
-  head("Art Gallery — Bunny unveils each photo, the titles on wall plaques");
+  head("Art Gallery — Bunny explains it, everyone hangs 3 photos, the titles float in front of her");
   await startGame(A, "artgallery");
-  ok(await until(B, () => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? "")), "everyone fills 3 frames");
-  ok(await B.evaluate(() => !!document.querySelector("#game-layer > .ag-bg.on")), "the gallery wall is behind the setup cards, not the map");
+  await heardHowto([A, B, C], "Art Gallery");
+  ok(await until(B, () => window.__game?.s?.phase === "photos" && document.querySelectorAll("#ag-ui .ag-frame").length === 3), "everyone fills 3 frames, in the action area over Bunny's dialog");
+  ok(await B.evaluate(() => !!document.querySelector("#game-panel.ag-full .ag-room") && !document.querySelector("#game-panel .stage")), "…in her gallery, the whole game: no white card");
   for (const [k, pg] of [A, B, C].entries()) for (let i = 0; i < 3; i++) {
     await until(pg, () => !!document.getElementById("ag-file"));
     await pg.setInputFiles("#ag-file", join(ROOT, `web/games/captions/c${(k * 3 + i) % 8}.jpg`));
     await sleep(500);
   }
   ok(await until(A, () => window.__game?.s?.phase === "title", null, 30000), "all 9 photos in, titling opens");
-  // wait for each phone to draw its title screen before deciding it has
-  // nothing to title — on a slow machine it may still show the photo step
-  const titleStep = () => /title this piece|titles locked|nothing to title/.test(document.querySelector("#game-panel h2")?.textContent ?? "") || !!document.querySelector(".ag-room");
+  // a title box, enabled: the next photo to title (none left: done)
+  const box = async pg => (await until(pg, () => { const i = document.getElementById("gp-in"); return (!!i && !i.disabled) || (window.__game?.s?.phase === "title" && !document.querySelector(".ag-tbox")) || window.__game?.s?.phase !== "title"; }, null, 8000))
+    && pg.evaluate(() => { const i = document.getElementById("gp-in"); return !!i && !i.disabled; });
   // A starts a title and leaves it half-typed while B and C finish all theirs
-  await until(A, titleStep);
-  const half = /title this piece/.test(await stageTitle(A)) && await until(A, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
+  const half = await box(A);
   if (half) await A.fill("#gp-in", "half-typed");
+  ok(!half || await A.evaluate(() => !!window.__bunny?.room && document.querySelector(".ag-room.r3d") ? !!window.__bunny.room.photoMesh?.material?.map : true), "the photo to title hangs in her gold frame");
   const titleAll = async pg => { for (let k = 0; k < 6; k++) {
-    await until(pg, titleStep);
-    const t = await stageTitle(pg);
-    if (!/title this piece/.test(t)) break;
-    await until(pg, () => document.getElementById("gp-in") && !document.getElementById("gp-in").disabled);
+    if (!(await box(pg))) break;
     await pg.fill("#gp-in", `${pg.label} title ${k + 1}`); await pg.click("#game-panel .gp-form button");
-    await until(pg, t => (document.querySelector("#game-panel h2")?.textContent ?? "") !== t, t, 5000);
+    await until(pg, () => { const i = document.getElementById("gp-in"); return !i || (!i.disabled && i.value === ""); }, null, 5000);
   } };
   await titleAll(B); await titleAll(C);
   if (half) ok(await A.inputValue("#gp-in").catch(() => "") === "half-typed", "others finishing their titles doesn't wipe a half-typed one");
   await titleAll(A);
   const inRoom = await until(B, () => !!document.querySelector("#game-panel.ag-full .ag-room"), null, 30000);
-  const where = inRoom ? "" : ` — host at ${await A.evaluate(() => `${window.__game?.s?.phase}/${window.__game?.s?.sub}`)}; screens: ${(await Promise.all([A, B, C].map(stageTitle))).join(" | ")}`;
-  ok(inRoom, "the gallery is a full-screen room, no white card" + where);
+  ok(inRoom && await until(B, () => window.__game?.s?.phase === "gallery", null, 30000), "the gallery opens");
   ok(await B.locator("#game-panel .stage").count() === 0, "the vote step has no stage card");
   ok(await until(A, () => document.querySelectorAll(".ag-room.covered .ag-pl-cloth").length === 2), "both title plaques start under cloth");
   // screenshot first: a screenshot stalls animations in the other tabs, so
@@ -516,14 +531,10 @@ try {
       const t1 = Date.now();
       // …and when they're both fully off (polled on, so a late start doesn't cut it short)
       out.done = null;
-      // the 3D plaques' own velvet (gala.js), where the 3D wall is up
-      const c3 = () => window.__bunny && room.classList.contains("r3d") ? window.__bunny.room.plaqueInfo().cover : null;
-      out.c3d = c3() && { at0: c3() }; out.done3d = null;
       const poll = () => {
         const o = op(); o.forEach((v, i) => { if (out.first[i] === null && v < 0.9) out.first[i] = Date.now() - t1; });
         if (out.done === null && o.every(v => v < 0.05)) out.done = Date.now() - t1;
-        if (out.c3d && out.done3d === null && c3().every(v => v < 0.05)) out.done3d = Date.now() - t1;
-        if (Date.now() - t1 < 4500 && (out.done === null || (out.c3d && out.done3d === null))) setTimeout(poll, 16); else res(out);
+        if (Date.now() - t1 < 4500 && out.done === null) setTimeout(poll, 16); else res(out);
       };
       poll();
     };
@@ -538,13 +549,12 @@ try {
   // own delay, not from the flip
   const late = Math.max(0, (f1 ?? 0) - (d1 || 900));
   ok(seq.done !== null && seq.done !== undefined && seq.done - late <= 2500, `both plaques unveiled within ~2.5 s (done at ${seq.done} ms, the unveil started ${Math.round(late)} ms late)`);
-  if (seq.c3d) {
-    // (read off their own schedule: a stalled runner can see the room flip
-    // to revealed late, after the 3D covers' clock has already run)
-    const sch = await A.evaluate(() => { const i = window.__bunny.room.plaqueInfo(); return { d: i.drapeAt, c: i.coverAt }; });
-    ok(sch.c[0] - sch.d >= 800 && sch.c[1] - sch.c[0] >= 400, `the 3D plaques on the wall keep their velvet while the painting is unveiled, then I, then II (+${sch.c[0] - sch.d} / +${sch.c[1] - sch.d} ms after the frame's drape)`);
-    ok(seq.done3d !== null && seq.done3d - late <= 3000, `…then it comes off them too (done at ${seq.done3d} ms)`);
-  } else console.log("  (no 3D wall on this browser: the plaques are the DOM ones)");
+  // the titles are floating cards in front of her, over her dialog box: none on her 3D wall
+  const fl = await A.evaluate(() => {
+    const pl = document.querySelector("#ag-ui .ag-plaques")?.getBoundingClientRect(), d = document.querySelector(".ag-room .dlg-box")?.getBoundingClientRect();
+    return { above: !!pl && !!d && pl.bottom <= d.top, wall: window.__bunny?.room?.plaques?.some(p => p.g.visible) ?? false };
+  });
+  ok(fl.above && !fl.wall, "the two titles float in front of Bunny, right above her dialog box (not on her wall)");
   // with 3 players each frame has 2 writers, so exactly one phone gets to vote
   let voter = null;
   for (let i = 0; i < 20 && !voter; i++) { for (const pg of [A, B, C]) if (await pg.locator(".ag-pl[data-v]").count() === 2) voter = pg; if (!voter) await sleep(250); }
@@ -552,13 +562,10 @@ try {
   if (voter) {
     const writer = [A, B, C].find(pg => pg !== voter);
     ok(await writer.locator(".ag-pl[data-v]").count() === 0 && /yours/.test(await text(writer, "#ag-pill")), "writers see the plaques but can't vote, and are told one is theirs");
-    // a tap where plaque II is on screen: with the 3D wall that's the plaque
-    // in the scene (the DOM one over it is invisible and lets taps through)
-    const in3d = await voter.evaluate(() => !!document.querySelector(".ag-plaques.in3d"));
     const bx = await voter.locator('.ag-pl[data-v="1"]').boundingBox();
     await voter.mouse.click(bx.x + bx.width / 2, bx.y + bx.height / 2);
-    ok(await until(voter, () => document.querySelector('.ag-pl[data-v="1"]')?.classList.contains("on") && document.querySelector(".ag-room")?.classList.contains("picked")), `tapping a plaque${in3d ? " on the 3D wall" : ""} casts the vote`);
-    if (in3d) ok(await until(voter, () => { const i = window.__bunny.room.plaqueInfo(); return i.picked === 1 && i.seal[1] > 0.9 && i.seal[0] === 0 && i.glow[1] > 0.2; }), "…and it gets the soft gold glow and the wax seal, the other doesn't");
+    ok(await until(voter, () => document.querySelector('.ag-pl[data-v="1"]')?.classList.contains("on") && document.querySelector(".ag-room")?.classList.contains("picked")), "tapping a title casts the vote");
+    ok(await until(voter, () => { const d = [...document.querySelectorAll(".ag-pl-dot")].map(x => getComputedStyle(x).display); return d[1] === "block" && d[0] === "none" && /255, 200, 61, 0\.55/.test(getComputedStyle(document.querySelector('.ag-pl[data-v="1"]')).boxShadow); }, null, 3000), "…it gets the gold glow and the wax seal, the other doesn't");
     await shot(voter, "20-gallery-voted");
     // a title that wraps must not make its plaque bigger than the other one
     const hs = await voter.evaluate(() => {
@@ -573,11 +580,10 @@ try {
   }
   ok(await until(A, () => document.querySelectorAll(".ag-room .ag-pl-n").length === 2, null, 20000), "the result shows authors and votes on the same plaques");
   ok(await A.locator(".ag-pl-by").count() === 2, "each plaque names its author once the votes are in");
-  if (await A.evaluate(() => !!document.querySelector(".ag-plaques.in3d"))) {
-    const info = await A.evaluate(async () => { await new Promise(r => setTimeout(r, 1200)); const f = window.__game.s.frames[window.__game.s.fi]; return { ...window.__bunny.room.plaqueInfo(), counts: f.counts }; });
-    const win = info.counts[0] === info.counts[1] ? null : info.counts[0] > info.counts[1] ? 0 : 1;
-    ok(info.texts.every(t => /vote/.test(t) && /—/.test(t)), "the 3D plaques show the authors and the votes");
-    ok(info.top === win && (win === null || info.dim[win] > 1 && info.dim[1 - win] < 0.6), `the winning plaque lights up, the other dims (${JSON.stringify({ counts: info.counts, dim: info.dim })})`);
+  {
+    const r = await A.evaluate(async () => { await new Promise(r => setTimeout(r, 1200)); const f = window.__game.s.frames[window.__game.s.fi]; return { counts: f.counts, win: [...document.querySelectorAll(".ag-pl")].map(p => p.classList.contains("win")), lose: [...document.querySelectorAll(".ag-pl")].map(p => p.classList.contains("lose")) }; });
+    const win = r.counts[0] === r.counts[1] ? null : r.counts[0] > r.counts[1] ? 0 : 1;
+    ok(win === null ? !r.win.some(Boolean) : r.win[win] && r.lose[1 - win], `the winning title lights up, the other dims (${JSON.stringify(r)})`);
   }
   await sleep(900);
   const ws = await A.evaluate(() => [...document.querySelectorAll(".ag-pl")].map(p => Math.round(p.getBoundingClientRect().width)));

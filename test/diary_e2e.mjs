@@ -115,6 +115,8 @@ const text = (pg, sel) => pg.locator(sel).first().innerText().catch(() => "");
 const until = async (pg, fn, arg, ms = 15000) => pg.waitForFunction(fn, arg, { timeout: ms }).then(() => true).catch(() => false);
 const h2 = pg => text(pg, "#game-panel .stage h2, #game-panel .hp-res-title");
 const all = (pgs, fn) => Promise.all(pgs.map(fn));
+// the diary's how-to-play comes first (howto.js): its lines in the dialog box, "Got it" / "Let's go" above it
+const heard = async pgs => { for (const pg of pgs) { await until(pg, () => !!document.querySelector("[data-how]"), null, 20000); await pg.evaluate(() => document.querySelector('[data-how="skip"], [data-how="go"]')?.click()); } };
 // nothing on the page is wider than the phone
 const fits = pg => pg.evaluate(() => {
   const w = document.documentElement.clientWidth;
@@ -184,6 +186,8 @@ try {
   // ------------------------------------------------------------------ answer
   head("Answer — everyone gets the whole batch at once");
   const players = [A, B, C, D, E];
+  ok((await all(players, pg => until(pg, () => !!document.querySelector("[data-how]") && !!document.querySelector(".gs-dlg .dlg-text")?.textContent, null, 20000))).every(Boolean), "first, how it goes: in the dialog box at the bottom");
+  await heard(players);
   ok((await all(players, pg => until(pg, () => document.querySelectorAll(".sd-q").length === 5))).every(Boolean), "all 5 phones show all 5 questions on one screen");
   ok(/0\/5/.test(await text(B, "#sd-mine")), `progress starts at "${await text(B, ".sd-prog")}"`);
   ok(await fits(B), "the answer screen fits the phone");
@@ -349,6 +353,7 @@ try {
   const second = await A.locator(".sd-card .sd-ctext > div:last-child").allInnerTexts();
   ok(!second.some(t => sent.includes(t) || swappedOut.includes(t)), "no card from the first game (sent or swapped) comes back");
   await A.click("#sd-send");
+  await heard([A, B, C, E, F]);
   ok(await until(F, () => document.querySelectorAll(".sd-q").length === 5, null, 15000), "fay gets the batch this time");
   ok(/^#[0-9a-f]{6}$/i.test(await F.locator("#sd-mydiary").evaluate(e => e.style.getPropertyValue("--dc").trim())), "…with a diary color of her own");
   ok(errors.length === 0, "no page errors: " + (errors[0] ?? "none"));

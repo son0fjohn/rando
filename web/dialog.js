@@ -14,8 +14,9 @@
 //
 // Korean and English both: text is typed by grapheme (Intl.Segmenter when
 // the browser has it) in the app's system font (SF Pro, Apple SD Gothic Neo
-// for Korean). The box's size is reserved up front, so it never grows while
-// it types. Styles: theme.css `.dlg-*`.
+// for Korean). The box is the same size for every line (a long one is set a
+// size smaller), so it never grows while it types. Choices come up just
+// above it, in the game screen's action area. Styles: theme.css `.dlg-*`.
 //
 //   d.quip("Patience.");   // a passing remark: shown, then the line before it comes back (choices stay)
 const reduce = () => !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -31,6 +32,13 @@ export function dialogBox(host, { name = "", blip = null, cps = 34, cls = "" } =
   const typed = el.querySelector(".dlg-typed"), rest = el.querySelector(".dlg-rest"), choices = el.querySelector(".dlg-choices");
   let timer = null, done = true, finish = () => {}, line = "", alive = true, quipT = null, quipBack = "";
   const setName = n => { nameEl.textContent = n ?? ""; nameEl.hidden = !n; };
+  // the box is always the same size (theme.css): a long line steps its text
+  // down a size or two instead of growing it
+  const fit = () => {
+    box.classList.remove("fit1", "fit2");
+    if (el.hidden || !el.isConnected || !box.clientHeight) return;
+    for (const c of ["fit1", "fit2"]) { if (box.scrollHeight <= box.clientHeight + 1) return; box.classList.add(c); }
+  };
   setName(name);
 
   // type `text` out; resolves once it's all on screen
@@ -44,6 +52,7 @@ export function dialogBox(host, { name = "", blip = null, cps = 34, cls = "" } =
     if (!keepChoices) { choices.hidden = true; choices.innerHTML = ""; }
     box.classList.remove("done");
     typed.textContent = ""; rest.textContent = line;            // the full line reserves its space
+    fit();
     done = false;
     return new Promise(res => {
       finish = () => { clearInterval(timer); typed.textContent = line; rest.textContent = ""; if (!done) { done = true; box.classList.add("done"); res(); } };
@@ -100,8 +109,8 @@ export function dialogBox(host, { name = "", blip = null, cps = 34, cls = "" } =
     skip: () => finish(),
     clearChoices() { choices.hidden = true; choices.innerHTML = ""; },
     hide() { el.hidden = true; },
-    show() { el.hidden = false; },
-    attach(to) { if (to && el.parentNode !== to) to.appendChild(el); },
+    show() { el.hidden = false; fit(); },
+    attach(to) { if (to && el.parentNode !== to) { to.appendChild(el); fit(); } },
     dispose() { alive = false; clearInterval(timer); clearTimeout(quipT); el.remove(); },
   };
 }

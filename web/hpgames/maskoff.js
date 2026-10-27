@@ -35,6 +35,9 @@ import { MASKOFF } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, shuffle, hostSkip, bindHostSkip, trash, roomBackdrop } from "./../hpkit.js";
 import { fairPick } from "./../fairpick.js";
 import { SKIN4_RGB, normalizeAvatar4 } from "./../items4.js";
+import { dialogBox } from "./../dialog.js";
+import { HOWTO_MS, howto, howtoOn, howtoInput, howtoDone, howtoTally } from "./../howto.js";
+import { t as tr } from "./../i18n.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -107,9 +110,17 @@ export const MASK_OFF = {
     const avatarOf = id => room.members.find(m => m.id === id)?.avatar ?? ctx.humans.find(h => h.id === id)?.avatar ?? (game.s?.players?.[id]?.avatar ?? {});
     const nameOf = (s, id) => (id === ctx.me.id ? "you" : esc(s.players?.[id]?.handle ?? "someone"));
     const handOf = (s, id) => s.hands?.[id] ?? [];
+    // no host at this table: what to do next comes up in the dialog box, in
+    // the same place as every game's (theme.css "the shared game screen")
+    const dlg = dialogBox(document.createElement("div"), { name: tr("host.mask_off"), blip: () => sfx.blip?.() });
+    trash.add(() => dlg.dispose());
+    const say = text => { if (!text) return; dlg.show(); if (dlg.text !== text && !dlg.quipping) dlg.say(text); };
+    const how = howto("mask_off", { dlg, send: v => game.input(v) });
 
     const rounds = new Rounds([
-      { name: "setup", ms: M.SETUP_MS, done: s => !!s.setup.go, next: s => { begin(s); return "pick"; } },
+      { name: "setup", ms: M.SETUP_MS, done: s => !!s.setup.go, next: s => { begin(s); return howtoOn(ctx) ? "howto" : "pick"; } },
+      // how it goes (howto.js), in the dialog box: over once everyone's read it
+      { name: "howto", ms: HOWTO_MS, enter: s => { s.howto = {}; }, done: howtoDone, next: () => "pick" },
       { name: "pick", ms: M.PICK_MS, enter: s => nextTurn(s), next: s => (turn(s)?.status === "left" ? "after" : "choose") },
       {
         name: "choose", ms: M.CHOOSE_MS,
@@ -170,6 +181,7 @@ export const MASK_OFF = {
       hostInput(s, m) {
         const fromHost = m.from === room.hostId;
         if (m.in === "skip" && fromHost && s.phase !== "setup") { s.left = 0; return; }
+        if (howtoInput(s, m)) return;
         if (s.phase === "setup") {
           if (!fromHost) return;
           const lv = new Set(s.setup.levels);
@@ -320,22 +332,25 @@ export const MASK_OFF = {
       const skin = SKIN4_RGB[normalizeAvatar4(avatarOf(ctx.me.id) ?? {}).skin] ?? [228, 182, 146];
       ui.panel(`<div class="np-room mo-room" id="mo-room">
           <div class="mo-3d" id="mo-3d"></div>
-          <div class="mo-top"><div class="mo-who" id="mo-who"></div><div class="mo-prompt" id="mo-prompt"></div><div class="mo-seatbar" id="mo-seatbar"></div></div>
+          <div class="np-pill mo-who" id="mo-who"></div>
+          <div class="mo-top"><div class="mo-seatbar" id="mo-seatbar"></div></div>
           <div class="mo-chips" id="mo-chips"></div>
           <div class="mo-flyer" id="mo-flyer"></div>
           <div class="mo-center" id="mo-center"></div>
           <div class="mo-motes" id="mo-motes"></div>
-          <div class="mo-low">
-            <div class="mo-act" id="mo-act"></div>
+          <div class="mo-low gs-low">
+            ${hostSkip(ctx)}
             <div class="mo-handwrap" id="mo-handwrap">
               <div class="mo-deck" id="mo-deck"><i></i><i></i><i></i></div>
               <div class="mo-hand" id="mo-hand"></div>
               ${HANDS(`rgb(${skin.join(",")})`)}
             </div>
+            <div class="mo-act gs-action" id="mo-act"></div>
+            <div class="mo-dlg" id="mo-dlg"></div>
           </div>
-          ${hostSkip(ctx)}
         </div>`, "np-full mo-full");
       bindHostSkip(game);
+      dlg.attach($("mo-dlg"));
       heldHand = [];
       loadTable().then(r => {
         const at = $("mo-3d");
@@ -405,12 +420,8 @@ export const MASK_OFF = {
       myPick = id; game.input("who", { who: id }); sfx.cursor(); buzz(10);
       lastHud = 0; renderMO(s);
     }
-    let flashT = 0;
-    function flash(text) {
-      const p = $("mo-prompt"); if (!p) return;
-      p.textContent = text; p.classList.add("warn"); clearTimeout(flashT);
-      flashT = setTimeout(() => { p.classList.remove("warn"); lastHud = 0; if (game.s) renderMO(game.s); }, 1800);
-    }
+    // a passing warning, in the dialog box; the line before it comes back
+    const flash = text => dlg.quip(text, { ms: 1800 });
 
     // ---- the hand: 5 cards fanned in your hands; tap one to raise it, again to lower
     function renderHand(s, { mine = false, canAskNow = false } = {}) {
@@ -442,9 +453,7 @@ export const MASK_OFF = {
       const act = $("mo-act");
       if (mine && act) {
         const who = turn(s)?.who ?? myPick;
-        const html = raised && who
-          ? `<button type="button" class="mo-btn warm" id="mo-ask">Ask ${nameOf(s, who)}</button>`
-          : `<p class="mo-hint">${who ? "pick a card from your hand" : "tap someone at the table, then pick a card"}</p>`;
+        const html = raised && who ? `<button type="button" class="mo-btn warm" id="mo-ask">Ask ${nameOf(s, who)}</button>` : "";
         if (act.dataset.k !== html) { act.dataset.k = html; act.innerHTML = html; }
         const b = $("mo-ask");
         if (b) b.onclick = () => {
@@ -488,13 +497,24 @@ export const MASK_OFF = {
       // per-turn local state resets on every phone, keyed off the state
       if (s.ti !== seenTurn) { seenTurn = s.ti; mySame = false; myPick = null; raised = null; rt?.sameReset(); }
       const now = performance.now(); if (now - lastHud < 120) return; lastHud = now;
-      const step = s.phase === "end" ? "masks off" : s.phase === "setup" ? "setup" : `turn ${Math.min((s.ti ?? 0) + 1, s.turns || 1)}/${s.turns || "?"}`;
+      const step = s.phase === "end" ? "masks off" : s.phase === "setup" ? "setup" : s.phase === "howto" ? "how to play" : `turn ${Math.min((s.ti ?? 0) + 1, s.turns || 1)}/${s.turns || "?"}`;
       const timed = s.phase === "choose";
       ui.hud(`<div class="hq"><b>MASK OFF</b><span>${step}</span>${timed ? `<span class="clk">${ui.clock(s.left)}</span>` : ""}</div>`);
 
       if (s.phase === "setup") return renderSetup(s);
       ensureRoom();
       seatTable(s);
+      room$()?.classList.toggle("howto", s.phase === "howto");
+      if (s.phase === "howto") {
+        rt?.state({ asker: null, who: null, picking: false, fresh: [], talker: null, off: [] });
+        chips(s, {});
+        renderHand(s);
+        how.render(s, $("mo-act"));
+        const w = $("mo-who"), pill = `how to play · <b>${howtoTally(s)}</b> ready`;
+        if (w && w.innerHTML !== pill) w.innerHTML = pill;
+        return;
+      }
+      how.stop();
       if (s.phase === "end") return renderEnd(s);
       if (!t) return;
       const asker = t.asker === ctx.me.id, answering = t.who === ctx.me.id;
@@ -506,16 +526,18 @@ export const MASK_OFF = {
       rt?.state({ asker: t.asker, who: s.phase === "choose" || s.phase === "talk" ? who : null, picking: pickable.length > 0, fresh,
         talker: s.phase === "talk" ? t.who : t.asker, off });
       chips(s, { pickable, fresh, who, asker: t.asker });
-      const whoEl = $("mo-who"), promptEl = $("mo-prompt"), act = $("mo-act"), center = $("mo-center");
+      const whoEl = $("mo-who"), act = $("mo-act"), center = $("mo-center");
       const setWho = html => { if (whoEl && whoEl.innerHTML !== html) whoEl.innerHTML = html; };
-      const setPrompt = text => { if (promptEl && !promptEl.classList.contains("warn") && promptEl.textContent !== text) promptEl.textContent = text; };
+      // (names in these lines are plain text: the dialog box never parses HTML)
+      const name = id => (id === ctx.me.id ? "you" : s.players?.[id]?.handle ?? "someone");
+      const setPrompt = say;
       const setAct = html => { if (act && act.dataset.k !== html) { act.dataset.k = html; act.innerHTML = html; return true; } return false; };
       const setCenter = html => { if (center && center.dataset.k !== html) { center.dataset.k = html; center.innerHTML = html; return true; } return false; };
 
       if (s.phase === "pick") {
         rt?.card(null);
         setWho(asker ? `your turn` : `${nameOf(s, t.asker)}'s turn`);
-        setPrompt("");
+        setPrompt(asker ? "Your turn. Pick someone to ask." : `${name(t.asker)}'s turn to ask.`);
         setCenter(""); setAct("");
         renderHand(s);
         return;
@@ -526,13 +548,13 @@ export const MASK_OFF = {
         setCenter("");
         if (asker) {
           setWho(who ? `you <i>→</i> ${nameOf(s, who)}` : "your turn");
-          setPrompt(who ? "now a card from your hand" : "Pick someone to ask.");
+          if (s.left <= M.NUDGE_MS) { const l = `No rush… the deck picks in ${Math.ceil(s.left / 1000)}s.`; if (dlg.text !== l && !dlg.quipping) dlg.set(l); }
+          else setPrompt(!who ? "Pick someone to ask. Tap them at the table." : raised ? `Ask ${name(who)} that one?` : "Now a card from your hand.");
           renderHand(s, { mine: true, canAskNow: true });
-          if (s.left <= M.NUDGE_MS) setPrompt(`no rush… the deck picks in ${Math.ceil(s.left / 1000)}s`);
           return;
         }
         setWho(who ? `${nameOf(s, t.asker)} <i>→</i> ${nameOf(s, who)}` : `${nameOf(s, t.asker)} is choosing…`);
-        setPrompt(answering ? "it's for you" : "");
+        setPrompt(answering ? `${name(t.asker)} is asking you. A card's coming.` : who ? `${name(t.asker)} is asking ${name(who)}.` : `${name(t.asker)} is choosing who to ask…`);
         setAct("");
         renderHand(s);
         return;
@@ -561,18 +583,16 @@ export const MASK_OFF = {
         let html;
         if (answering) {
           html = !t.status
-            ? `<div class="mo-row"><button type="button" class="mo-btn warm" id="mo-answer">Answer</button><button type="button" class="mo-btn ghost" id="mo-pass">Pass</button></div>
-               <p class="mo-hint">answer out loud. passing is fine — the mask just stays on.</p>`
-            : `${nudge}<div class="mo-row"><button type="button" class="mo-btn soft" id="mo-done">Done</button></div><p class="mo-hint">your mask is off. take your time.</p>`;
-          setPrompt("");
+            ? `<div class="mo-row"><button type="button" class="mo-btn warm" id="mo-answer">Answer</button><button type="button" class="mo-btn ghost" id="mo-pass">Pass</button></div>`
+            : `${nudge}<div class="mo-row"><button type="button" class="mo-btn soft" id="mo-done">Done</button></div>`;
+          setPrompt(!t.status ? "Answer out loud, or pass. Passing is fine: the mask just stays on." : "Your mask is off. Take your time. Tap Done when you're done.");
         } else {
           html = !t.status
-            ? `<p class="mo-hint">${nameOf(s, t.who)} is deciding…</p>`
+            ? ""
             : `${nudge}<div class="mo-row">
                 <button type="button" class="mo-btn same ${mySame ? "on" : ""}" id="mo-same" ${mySame ? "disabled" : ""}>${mySame ? "♥ same" : "♡ Same"}</button>
-                <button type="button" class="mo-btn ghost" id="mo-deep" ${(d && !d.state) || t.deepers >= M.DEEPER_MAX ? "disabled" : ""}>Go deeper</button></div>
-               <p class="mo-hint">listening. nobody sees who tapped same.</p>`;
-          setPrompt(answeringNow ? `${nameOf(s, t.who)}'s mask is off` : "");
+                <button type="button" class="mo-btn ghost" id="mo-deep" ${(d && !d.state) || t.deepers >= M.DEEPER_MAX ? "disabled" : ""}>Go deeper</button></div>`;
+          setPrompt(!t.status ? `${name(t.who)} is deciding…` : answeringNow ? `${name(t.who)}'s mask is off. Listen. Tap Same if it's you too; nobody sees who did.` : `${name(t.who)} is done.`);
         }
         if (setAct(html)) {
           const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
@@ -591,12 +611,12 @@ export const MASK_OFF = {
         renderHand(s);
         rt?.same(t.same ?? 0);
         setWho(t.status === "left" ? "" : `${nameOf(s, t.asker)} <i>→</i> ${nameOf(s, t.who)}`);
-        setPrompt("");
         let line;
-        if (t.status === "left") line = "someone had to go. on to the next one.";
-        else if (t.status === "passed") line = `${answering ? "you passed" : `${nameOf(s, t.who)} passed`} — the mask stays on. that's okay.`;
-        else line = t.same ? (t.same === 1 ? "someone felt this too" : `${t.same} people felt this too`) : "thank you for sharing.";
-        setAct(`<p class="mo-line">${line}</p>`);
+        if (t.status === "left") line = "Someone had to go. On to the next one.";
+        else if (t.status === "passed") line = `${answering ? "You passed" : `${name(t.who)} passed`}. The mask stays on. That's okay.`;
+        else line = t.same ? (t.same === 1 ? "Someone felt this too." : `${t.same} people felt this too.`) : "Thank you for sharing.";
+        setPrompt(line);
+        setAct("");
         if (!t.card) setCenter("");
         return;
       }
@@ -632,9 +652,10 @@ export const MASK_OFF = {
       rt?.end(true);
       const n = s.sameTotal ?? 0;
       const line = n ? `${n} ${n === 1 ? "moment" : "moments"} you weren't alone` : "thank you for being here";
-      const html = `<div class="mo-end"><div class="mo-end-k">masks off</div><b class="mo-end-n">${line}</b><p class="mo-hint">back to the party in a moment</p></div>`;
+      const html = `<div class="mo-end"><div class="mo-end-k">masks off</div><b class="mo-end-n">${line}</b></div>`;
       const c = $("mo-center"); if (c && c.dataset.k !== html) { c.dataset.k = html; c.innerHTML = html; }
-      for (const id of ["mo-who", "mo-prompt"]) { const e = $(id); if (e) e.textContent = ""; }
+      const w = $("mo-who"); if (w && w.textContent !== "masks off") w.textContent = "masks off";
+      say("Masks off. Back to the party in a moment.");
       const act = $("mo-act"); if (act) { act.innerHTML = ""; act.dataset.k = ""; }
       $("mo-handwrap")?.classList.add("gone");
       room$()?.classList.add("ending");

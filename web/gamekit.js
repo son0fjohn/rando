@@ -2,6 +2,7 @@
 // and the full-screen game UI primitives (panel, HUD, prompts, votes).
 import { mulberry, hashStr } from "./net.js";
 import { botAvatar } from "./bots.js";
+import { dialogBox } from "./dialog.js";
 
 const $ = id => document.getElementById(id);
 
@@ -126,7 +127,7 @@ export function gauss(rng, mu, sd) {
 // (centre), and a toast feed. Games swap the panel's content.
 export const ui = {
   show() { $("game-layer").hidden = false; },
-  hide() { $("game-layer").hidden = true; this.panel(""); this.hud(""); $("game-feed").innerHTML = ""; $("game-layer").className = ""; this._key = null; },
+  hide() { $("game-layer").hidden = true; this.panel(""); this.hud(""); $("game-feed").innerHTML = ""; $("game-layer").className = ""; this._key = null; this._dlg?.dispose(); this._dlg = null; },
   theme(arch) { $("game-layer").className = arch ? `arch-${arch}` : ""; },
   hud(html) { $("game-hud").innerHTML = html; },
   panel(html, cls = "") { const p = $("game-panel"); p.innerHTML = html; p.className = cls; p.hidden = !html; },
@@ -140,6 +141,32 @@ export const ui = {
   stage(title, body, sub = "") {
     this.panel(`<div class="stage"><div class="st-sub">${sub}</div><h2>${title}</h2><div class="st-body">${body}</div></div>`, "stage-wrap");
   },
+  // The shared game screen (theme.css "the shared game screen") for a game
+  // without a 3D room of its own: the status pill under the header, a card
+  // in the middle (it scrolls), the action area right above the dialog box.
+  // `say` is the dialog box's line (typed once, then left alone).
+  screen({ pill = "", title = "", body = "", action = "", say = "", cls = "" } = {}) {
+    this.panel(`<div class="np-pill gs-pill" id="gs-pill">${pill}</div><div class="gs-mid"><div class="stage gs-card ${cls}">${title ? `<h2>${title}</h2>` : ""}<div class="st-body">${body}</div></div></div>
+      <div class="gs-low"><div class="gs-action" id="gs-action">${action}</div><div class="gs-dlg" id="gs-dlg"></div></div>`, "gs-screen");
+    this._dlg?.attach($("gs-dlg"));
+    this.say(say);
+  },
+  // the screen's dialog box: one per game, `name` on its tab
+  dialog(name, opts = {}) {
+    this._dlg?.dispose();
+    this._dlg = dialogBox(document.createElement("div"), { name, ...opts });
+    const at = $("gs-dlg"); if (at) this._dlg.attach(at);
+    return this._dlg;
+  },
+  say(text) {
+    const d = this._dlg;
+    if (!d) return;
+    if (!text) { d.hide(); return; }
+    d.show();
+    if (d.text !== text) d.say(text);
+  },
+  // the pill, patched in place
+  pill(html) { const p = $("gs-pill"); if (p && p.innerHTML !== html) p.innerHTML = html; },
   // keyed render: only rebuild the panel when `key` changes (so inputs,
   // radios and focus survive the 150 ms render loop). Returns true if rebuilt.
   _key: null,

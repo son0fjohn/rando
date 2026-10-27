@@ -59,6 +59,8 @@ import { DIARY } from "./../hpconfig.js";
 import { Rounds, syncGone, active, esc, pick, shuffle, showResults, hostSkip, bindHostSkip, trash, tally, avatarHtml, roomBackdrop } from "./../hpkit.js";
 import { ANSWER_MAX, spreadHtml, paintSpreads, fitAll, bindSpread, fitPreview, textOf } from "../diarypage.js";
 import { promptLog } from "./../hplog.js";
+import { HOWTO_MS, howto, howtoOn, howtoInput, howtoDone, howtoTally } from "./../howto.js";
+import { t as tr } from "./../i18n.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -177,6 +179,10 @@ export const SECRET_DIARY = {
     const local = s => { if (!L || L.gameId !== s.gameId) { if (L) { Object.values(L.timers).forEach(clearTimeout); dropShelf(L); } L = freshLocal(s.gameId); } return L; };
     trash.add(() => { if (L) { Object.values(L.timers).forEach(clearTimeout); dropShelf(L); } L = null; });
     let lastHud = 0, lastTick = null;
+    // no host here: what to do comes up in the dialog box at the bottom, the
+    // card in the middle, the buttons right above the dialog (ui.screen)
+    const dlg = ui.dialog(tr("host.secretdiary"), { blip: () => sfx.blip?.() });
+    const how = howto("secretdiary", { dlg, send: v => game.input(v) });
 
     const guessMs = s => {
       const q = s.qs?.[s.qi];
@@ -188,8 +194,10 @@ export const SECRET_DIARY = {
     const rounds = new Rounds([
       {
         name: "deal", ms: DIARY.DEAL_MS,
-        next: s => s.batch.length ? "answer" : "end",
+        next: s => (s.batch.length ? (howtoOn(ctx) ? "howto" : "answer") : "end"),
       },
+      // how it goes (howto.js), in the dialog box: over once everyone's read it
+      { name: "howto", ms: HOWTO_MS, enter: s => { s.howto = {}; }, done: howtoDone, next: () => "answer" },
       {
         name: "answer", ms: s => DIARY.ANSWER_MS_PER_Q * s.batch.length,
         enter: s => {
@@ -255,6 +263,7 @@ export const SECRET_DIARY = {
       hostInput(s, m) {
         const fromHost = m.from === room.hostId;
         if (m.in === "skip" && fromHost) { s.left = 0; return; }            // "send" / skip ahead
+        if (howtoInput(s, m)) return;
         // "+30s": once per phase, per question while guessing
         if (m.in === "more" && fromHost && (s.phase === "answer" || s.phase === "reveal")) {
           const k = `${s.phase}:${s.phase === "reveal" ? s.qi : 0}`;
@@ -506,14 +515,14 @@ export const SECRET_DIARY = {
       const hudDue = now - lastHud >= 150;
       if (hudDue) {
         lastHud = now;
-        const where = { deal: "dealing", answer: `${n} questions`, reveal: `question ${(s.qi ?? 0) + 1}/${n}`, points: `question ${(s.qi ?? 0) + 1}/${n}`, end: "" }[s.phase] ?? "";
+        const where = { deal: "dealing", howto: "how to play", answer: `${n} questions`, reveal: `question ${(s.qi ?? 0) + 1}/${n}`, points: `question ${(s.qi ?? 0) + 1}/${n}`, end: "" }[s.phase] ?? "";
         const label = { deal: "", answer: "answering", reveal: s.batch?.[s.qi]?.type === "yesno" ? "who said yes?" : "matching", points: "points", end: "final" }[s.phase] ?? "";
         // the host's "+30s", while answering and guessing, once per phase
         const moreKey = `${s.phase}:${s.phase === "reveal" ? s.qi : 0}`;
         const more = isHost && (s.phase === "answer" || s.phase === "reveal") && s.moreUsed !== moreKey
           ? `<button type="button" class="sd-more" data-more="1">+30s</button>` : "";
         const urgent = s.left < DIARY.URGENT_MS && s.phase !== "end";
-        ui.hud(`<div class="hq"><b>SECRET DIARY</b><span>${where}</span><span>${label}</span><span class="clk ${urgent ? "urgent" : ""}">${ui.clock(s.left)}</span>${more}</div>`);
+        ui.hud(`<div class="hq"><b>SECRET DIARY</b><span>${[where, label].filter(Boolean).join(" · ")}</span><span class="clk ${urgent ? "urgent" : ""}">${ui.clock(s.left)}</span>${more}</div>`);
         // a soft tick each second of the last 10
         const sec = Math.ceil(s.left / 1000);
         if (urgent && s.phase !== "deal" && sec > 0 && sec !== lastTick) { lastTick = sec; sfx.tick(); }
@@ -521,7 +530,13 @@ export const SECRET_DIARY = {
       }
 
       if (s.phase !== "reveal" && l.shelf) dropShelf(l);
+      if (s.phase !== "howto") how.stop();
       if (s.phase === "deal") renderDeal(s, isHost);
+      else if (s.phase === "howto") {
+        if (ui.once(`howto:${s.gameId}`, () => {})) ui.screen({ pill: `how to play · <b id="sd-tally">${howtoTally(s)}</b> ready`, title: "Secret Diary", body: `<div class="sd-incoming">${esc(n)} question${n === 1 ? "" : "s"} tonight</div>` });
+        else ui.pill(`how to play · <b id="sd-tally">${howtoTally(s)}</b> ready`);
+        how.render(s, $("gs-action"));
+      }
       else if (s.phase === "answer") renderAnswer(s, l, me);
       else if (s.phase === "reveal") renderReveal(s, l, me);
       else if (s.phase === "points") renderPoints(s, l);
@@ -560,8 +575,8 @@ export const SECRET_DIARY = {
           <span class="sd-pt-delta ${delta(p.id) ? "" : "zero"}">+${delta(p.id)}</span>
           <b class="sd-pt-total" data-to="${p.score}">${p.score - delta(p.id)}</b></li>`).join("");
       const btn = ctx.isHost() ? `<button type="button" class="pt-btn pt-primary" id="sd-next">${last ? "see the results ▶" : "next question ▶"}</button>` : "";
-      ui.stage(`after question ${k + 1}`, `<ol class="sd-pts" id="sd-pts">${rows}</ol>
-        ${btn}<p class="ab-sub">just the points — which guesses landed stays secret · ${last ? "results" : "next question"} in <b id="sd-pts-cd">${left}</b>s</p>`, "points");
+      ui.screen({ pill: `${last ? "results" : "next question"} in <b id="sd-pts-cd">${left}</b>s`, title: `after question ${k + 1}`, body: `<ol class="sd-pts" id="sd-pts">${rows}</ol>`,
+        action: btn, say: "Just the points. Which guesses landed stays a secret." });
       const nb = $("sd-next");
       if (nb) nb.onclick = () => { game.input("skip"); sfx.pop(); nb.disabled = true; };
       // FLIP: the rows start in the old order, the totals tick up, then
@@ -591,21 +606,22 @@ export const SECRET_DIARY = {
       if (!ui.once(sig, () => {})) { const c = $("sd-cd"); if (c) c.textContent = Math.max(0, Math.ceil(s.left / 1000)); return; }
       if (!isHost) {
         const host = s.players[room.hostId]?.handle ?? "the host";
-        ui.stage("tonight's questions", `<div class="sd-incoming">${esc(host)} is picking the questions…</div>
-          <p class="ab-sub">you'll get them all at once. nobody will ever see your name next to an answer.</p>`, "get ready");
+        ui.screen({ pill: "get ready", title: "tonight's questions", body: `<div class="sd-incoming">${esc(host)} is picking the questions…</div>`,
+          say: "You'll get them all at once. Nobody will ever see your name next to an answer." });
         return;
       }
       const n = s.batch.length;
       const cards = s.batch.map((c, i) => `<div class="sd-card ${c.type}"><span class="sd-qn">${i + 1}</span>
           <div class="sd-ctext">${pills(c)}<div>${esc(c.text)}</div></div>
           <button type="button" class="sd-swap" data-swap="${i}" aria-label="swap card ${i + 1}">swap</button></div>`).join("");
-      ui.stage("deal the questions", `<div class="sd-size"><span>questions</span>
+      ui.screen({ pill: `host · ${esc(s.maxLevel)} max · sends in <b id="sd-cd">${Math.ceil(s.left / 1000)}</b>s`, title: "deal the questions",
+        body: `<div class="sd-size"><span>questions</span>
           <button type="button" data-size="${n - 1}" ${n <= DIARY.BATCH_MIN ? "disabled" : ""} aria-label="fewer">−</button>
           <b id="sd-n">${n}</b>
           <button type="button" data-size="${n + 1}" ${n >= DIARY.BATCH_MAX ? "disabled" : ""} aria-label="more">+</button></div>
-        <div class="sd-deck">${cards}</div>
-        <button type="button" class="pt-btn pt-primary" id="sd-send">send to everyone ▶</button>
-        <p class="ab-sub">only you can see these. swapped cards won't come back tonight · sends by itself in <b id="sd-cd">${Math.ceil(s.left / 1000)}</b>s</p>`, `host · ${s.maxLevel} max`);
+        <div class="sd-deck">${cards}</div>`,
+        action: `<button type="button" class="gs-btn gold" id="sd-send">send to everyone ▶</button>`,
+        say: "Only you can see these. Swap any you don't like; swapped ones won't come back tonight." });
       $("game-panel").querySelectorAll("[data-swap]").forEach(b => b.onclick = () => { game.input("swap", { i: +b.dataset.swap }); sfx.tick(); b.disabled = true; });
       $("game-panel").querySelectorAll("[data-size]").forEach(b => b.onclick = () => { game.input("size", { n: +b.dataset.size }); sfx.tick(); });
       $("sd-send").onclick = () => { game.input("send"); sfx.pop(); $("sd-send").disabled = true; };
@@ -620,14 +636,15 @@ export const SECRET_DIARY = {
         if (ctx.isHost() && !$("hp-skip")) { $("sd-foot")?.insertAdjacentHTML("beforeend", hostSkip(ctx)); bindHostSkip(game); }
         return;
       }
-      const tl = `<span id="sd-tally">${tally(s, p => p.done)}</span> done`;
+      const tl = `<b id="sd-tally">${tally(s, p => p.done)}</b> done`;
       if (!me) {
-        ui.stage("answering", `<p class="ab-sub">this batch started before you joined — you're in the next one. ${tl}</p>`, "watching");
+        ui.screen({ pill: tl, title: "answering", say: "This batch started before you joined. You're in the next one." });
         return;
       }
       if (done) {
-        ui.stage("sent", `<p class="ab-sub">${answeredCount(s, l) || "your"} answer${answeredCount(s, l) === 1 ? "" : "s"} locked in · ${tl} · it moves on by itself</p>
-          <div class="sd-incoming">waiting on the others…</div><div id="sd-foot">${hostSkip(ctx)}</div>`, "answers in");
+        const a = answeredCount(s, l);
+        ui.screen({ pill: tl, title: "sent", body: `<div class="sd-incoming">waiting on the others…</div>`, action: `<div id="sd-foot">${hostSkip(ctx)}</div>`,
+          say: `${a ? `${a} answer${a === 1 ? "" : "s"}` : "Your answers"} locked in. It moves on by itself.` });
         bindHostSkip(game);
         return;
       }
@@ -646,13 +663,11 @@ export const SECRET_DIARY = {
         return `<div class="sd-q ${c.type}" data-q="${k}"><div class="sd-qhead"><span class="sd-qn">${k + 1}</span>${pills(c)}</div>
           <div class="sd-prompt ${c.type}">${esc(c.text)}</div>${field}</div>`;
       }).join("");
-      ui.stage(`answer all ${n}`, `<div class="sd-mydiary" id="sd-mydiary" style="--dc:${myHex}"><span>your diary ${shape(myC)}</span><small>your color all batch · only you know it's yours</small></div>
-        <p class="ab-sub">nobody will ever see your name next to an answer. yes/no stays secret — only the total is ever shown.</p>
-        <div class="sd-batch">${qs}</div>
-        <div class="sd-foot" id="sd-foot"><div class="sd-prog"><b id="sd-mine">${answeredCount(s, l)}/${n}</b> answered · ${tl}</div>
-          <button type="button" class="pt-btn pt-primary" id="sd-submit">submit</button>${hostSkip(ctx)}</div>`, "in secret");
-      // the submit bar sits on the bottom edge of the screen while you scroll
-      $("game-panel").classList.add("sd-answering");
+      ui.screen({ pill: `<b id="sd-mine">${answeredCount(s, l)}/${n}</b> answered · ${tl}`, title: `answer all ${n}`,
+        body: `<div class="sd-mydiary" id="sd-mydiary" style="--dc:${myHex}"><span>your diary ${shape(myC)}</span><small>your color all batch · only you know it's yours</small></div>
+        <div class="sd-batch">${qs}</div>`,
+        action: `<div class="sd-foot gs-row" id="sd-foot"><button type="button" class="gs-btn gold" id="sd-submit">submit</button>${hostSkip(ctx)}</div>`,
+        say: "In secret. Nobody will ever see your name next to an answer; yes or no, only the total is ever shown." });
       const st = $("game-panel").querySelector(".stage");
       st.classList.add("sd-writing"); st.style.setProperty("--dc", myHex);
       const batchEl = st.querySelector(".sd-batch");
@@ -710,11 +725,10 @@ export const SECRET_DIARY = {
       const hexOf = i => DIARY.COLORS[q.colors?.[i] ?? i % DIARY.COLORS.length];
       const head = `<div class="sd-qcount">question ${k + 1} of ${s.batch.length}</div>
         <div class="sd-prompt big ${c.type}">${pills(c)}${esc(c.text)}</div>`;
-      const tl = `<span id="sd-tally">${tally(s, p => p.locked)}</span> locked in`;
-      const after = "points after this question — never which guesses landed";
-      const foot = locked
-        ? `<p class="ab-sub sd-locked">${me ? "locked in" : "watching"} · ${tl} · ${after}</p>`
-        : `<button type="button" class="pt-btn pt-primary" id="sd-lock">lock in</button><p class="ab-sub">${tl} · ${after}</p>`;
+      const tl = `<b id="sd-tally">${tally(s, p => p.locked)}</b> locked in`;
+      const pillHtml = `question ${k + 1} of ${s.batch.length} · ${tl}`;
+      const foot = locked ? `<div class="gs-row">${hostSkip(ctx)}</div>` : `<div class="gs-row"><button type="button" class="gs-btn gold" id="sd-lock">lock in</button>${hostSkip(ctx)}</div>`;
+      const lockedLine = me ? "Locked in. Points after this question; never which guesses landed." : "Watching this one. Points after each question.";
       const panel = () => $("game-panel");
       const unseal = () => panel()?.querySelectorAll(".sealed").forEach(el => el.classList.remove("sealed"));
 
@@ -738,10 +752,11 @@ export const SECRET_DIARY = {
           return `<div class="sd-match"><div class="sd-rowhead">${sw}<div class="sd-entry">${esc(e.text)}</div></div>${pickUi(e, g(e.eid), "data-eid")}</div>`;
         }).join("");
         const pager = pages.length > 1 ? `<div class="sd-pager"><button type="button" id="sd-prev" aria-label="previous diaries">‹</button><span id="sd-pg"></span><button type="button" id="sd-next" aria-label="more diaries">›</button></div>` : "";
-        ui.stage(`${n} diaries — who wrote which?`, head
+        ui.screen({ pill: pillHtml, title: `${n} diaries — who wrote which?`, body: head
           + `<div class="sd-shelf-wrap"><div class="sd-shelf" id="sd-shelf"></div>${pager}<p class="sd-hint">tap a diary to read it</p></div>`
           + `<div class="sd-matchlist ${l.opened.size ? "" : "sealed"}" id="sd-list">${rows}</div>`
-          + `<div class="sd-prog"><b id="sd-matched">${todo.filter(e => g(e.eid)).length}/${todo.length}</b> matched</div>${foot}${hostSkip(ctx)}`, "unsigned · shuffled · same colors all batch");
+          + `<div class="sd-prog"><b id="sd-matched">${todo.filter(e => g(e.eid)).length}/${todo.length}</b> matched</div>`,
+          action: foot, say: locked ? lockedLine : "Unsigned and shuffled. Tap a diary to read it, then match each one to who wrote it." });
         const P = panel();
         const used = () => { const u = new Set(todo.map(e => g(e.eid)).filter(Boolean)); P.querySelectorAll("[data-who]").forEach(b => b.classList.toggle("used", !b.classList.contains("on") && u.has(b.dataset.who))); };
         const prog = () => { const m = $("sd-matched"); if (m) m.textContent = `${todo.filter(e => g(e.eid)).length}/${todo.length}`; };
@@ -766,13 +781,12 @@ export const SECRET_DIARY = {
         cellInner = i => `<div class="sd-dstamp">${stamp(q.stamps?.[i] ?? null)}</div>`;
         const picked = id => (id in l.picks) ? l.picks[id] : !!me?.guesses?.[id];
         const sealed = l.opened.size ? "" : "sealed";
-        ui.stage("who said yes?", head
+        ui.screen({ pill: pillHtml, title: "who said yes?", body: head
           + `<div class="sd-shelf-wrap"><div class="sd-shelf yn" id="sd-shelf"></div></div>`
           + `<div class="sd-count ${sealed}" id="sd-count">${esc(q.countLabel ?? "")}</div>`
           + (q.soft ? `<p class="ab-sub sd-softnote ${sealed}">too close to all-or-nothing to show the stamps — just the rough count</p>` : "")
-          + `<div class="sd-picks ${sealed}"><p class="ab-sub">tap everyone you think said yes. a point for every person you read right — yes or no.</p>
-            <div class="sd-who sd-yn-pick">${cands.map(p => `<button type="button" class="${picked(p.id) ? "on" : ""}" data-pick="${esc(p.id)}" ${locked ? "disabled" : ""}>${esc(p.handle)}</button>`).join("")}</div></div>`
-          + `${foot}${hostSkip(ctx)}`, "unsigned · shuffled · same colors all batch");
+          + `<div class="sd-picks ${sealed}"><div class="sd-who sd-yn-pick">${cands.map(p => `<button type="button" class="${picked(p.id) ? "on" : ""}" data-pick="${esc(p.id)}" ${locked ? "disabled" : ""}>${esc(p.handle)}</button>`).join("")}</div></div>`,
+          action: foot, say: locked ? lockedLine : "Tap everyone you think said yes. A point for every person you read right, yes or no." });
         if (!locked) panel().querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
           const id = b.dataset.pick, on = !picked(id);
           l.picks[id] = on; b.classList.toggle("on", on);
