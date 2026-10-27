@@ -343,8 +343,8 @@ try {
     ok((await Promise.all(guessers.map(moments))).every(ms => ms.some(m => m.kind === "slam" && m.text === upName) && ms.some(m => m.kind === "banner" && m.text === `${upName} is performing`)),
       "everyone else's: the name slams in, \"[Name] is performing\"");
     ok((await Promise.all(guessers.map(pg => pg.locator(".hr-slip, .hr-card").count()))).every(n => n === 0)
-      && (await Promise.all(guessers.map(pg => until(pg, () => /^Shhh\.$/.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 5000)))).every(Boolean),
-      "everyone else gets his \"Shhh.\", no slip");
+      && (await Promise.all(guessers.map(pg => until(pg, () => /^Shhh\.$|^Guess what .+ is doing\.$/.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 5000)))).every(Boolean),
+      "everyone else gets his \"Shhh.\" (or, a slow runner, already his next line), no slip");
     await shot(performer, "08a-ritual-slip");
     await shot(guessers[0], "08b-ritual-shh");
     // the prompt never reaches another phone: not in the synced game state, not in the page
