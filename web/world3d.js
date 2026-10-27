@@ -577,6 +577,8 @@ export const world3d = {
   replaceAll() {
     if (this._lastZones) this.registerZones(this._lastZones);
     if (this._lastRemotes) this.setRemotes(this._lastRemotes);
+    // (a new origin: you're there at once, not walking over from the old one)
+    if (this.player) { this.removeChar(this.player, this.scene); this.player = null; this.followPos = null; }
     if (this._lastPlayerOpts) this.setPlayer(this._lastPlayerOpts);
     if (this._lastExplore) this.setExplore(...this._lastExplore);
     for (const def of ARCH_NPC_DEFS) {

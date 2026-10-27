@@ -1599,6 +1599,16 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   ok(!bar.groups.glow && tallest(bar) === tallest(plain), "…a venue's label-only entry leaves its building as it is");
   const tw = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, heroes: [{ ...lm, shape: "tower", h: 236, clear: 30 }] });
   ok(tw.groups.glow && tw.stats.hidden > 0 && tallest(tw) > worldHeight(236) * 0.95, `"tower": a placeholder tower stands at the pin (${tallest(tw).toFixed(0)} units), the buildings under it cleared`);
+  // a lake inside its park's outline (Seokchon Lake): the water shows, no trees on it
+  const sq = (a, b) => [a, a, b, a, b, b, a, b];
+  const lake = buildChunk({ b: [], r: [], a: [{ k: "park", p: sq(100, 4000) }, { k: "water", p: sq(1200, 2900) }] }, { z: 16, x: ix, y: iy, origin, lod: 0 });
+  const ys = g => new Set([...g.pos].filter((_, i) => i % 3 === 1));
+  const inLake = (() => { const r = buildChunk({ b: [], r: [], a: [{ k: "water", p: sq(1200, 2900) }] }, { z: 16, x: ix, y: iy, origin, lod: 0 }).groups.water.pos;
+    const xs = [...r].filter((_, i) => i % 3 === 0), zs = [...r].filter((_, i) => i % 3 === 2);
+    return (x, z) => x > Math.min(...xs) && x < Math.max(...xs) && z > Math.min(...zs) && z < Math.max(...zs); })();
+  let wetTrees = 0; for (let k = 0; k < lake.trees.length; k += 4) if (inLake(lake.trees[k], lake.trees[k + 1])) wetTrees++;
+  ok(Math.min(...ys(lake.groups.water)) > Math.max(...ys(lake.groups.ground)) && lake.trees.length > 0 && lake.trees.length % 4 === 0 && !wetTrees,
+    `a lake inside its park: the water drawn above the park, ${lake.trees.length / 4} trees round it and none on it`);
   // near Itaewon the hand-made map keeps its own middle
   const ex = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, exclude: { b: 820, r: 1420 } });
   ok(ex.stats.buildings === 0 && !ex.groups.road, "round Itaewon the procedural city leaves the hand-made map's middle alone (no buildings, no roads there)");

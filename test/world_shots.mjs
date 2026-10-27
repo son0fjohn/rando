@@ -78,7 +78,7 @@ for (const p of PLACES) {
   Object.assign(row, { chunks: st.chunks, buildings: st.buildings, tris: st.tris, draws: st.draws, chunkP50: med(st.chunkMs), fetchP50: med(st.fetch), buildP50: med(st.build) });
   console.log(`    ${st.chunks} chunks, ${st.buildings} buildings, ${(st.tris / 1000).toFixed(0)}k triangles, ${st.draws} draws · per chunk p50 ${row.chunkP50} ms (fetch ${row.fetchP50}, build ${row.buildP50})`);
   // again, from this phone's cache
-  await A.pg.reload();
+  await A.pg.reload({ waitUntil: "commit", timeout: 120000 });
   const warm = await A.pg.waitForFunction(() => window.__w?.city?.stats().firstRingMs, null, { timeout: 300000, polling: 300 }).then(h => h.jsonValue(), () => null);
   row.cachedRingMs = Math.round(warm ?? -1);
   console.log(`    from the device cache: first ring ${row.cachedRingMs} ms`);

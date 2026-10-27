@@ -415,19 +415,25 @@ export function buildChunk(payload, opts) {
 
   // --- parks, forests, plazas, water
   const Wt = buf("water");
-  const trees = [];
+  const trees = [], wet = [];
   for (const a of payload.a || []) {
     const ring = [];
     for (let k = 0; k < a.p.length; k += 2) ring.push(toW(a.p[k], a.p[k + 1]));
     if (ring.length < 3) continue;
     if (ex && Math.hypot(...ring[0]) < ex.b && Math.hypot(...ring[ring.length >> 1]) < ex.b) continue;
-    if (a.k === "water" || a.k === "ocean") { Wt.flat(ring, a.k === "ocean" ? 0.02 : 0.05, [1, 1, 1], 0, 0.02); continue; }
+    // (water above parks and plazas: a lake often sits inside its park's outline)
+    if (a.k === "water" || a.k === "ocean") { Wt.flat(ring, a.k === "ocean" ? 0.085 : 0.09, [1, 1, 1], 0, 0.02); wet.push(ring); continue; }
     const y = a.k === "plaza" ? 0.08 : a.k === "forest" ? 0.05 : 0.06;
     G.flat(ring, y, linRGB(rgb(GROUND[a.k] ?? GROUND.park)), 0);
     if (a.k === "park" || a.k === "forest") scatterTrees(trees, ring, a.k === "forest" ? 8.5 : 13, near ? 1 : 0.35, key ^ a.p.length);
   }
-  const maxTrees = near ? 320 : 110;
-  if (trees.length > maxTrees) trees.length = maxTrees;
+  if (wet.length) {           // no trees on the water
+    let n = 0;
+    for (let k = 0; k < trees.length; k += 4) if (!wet.some(r => pointInRing(trees[k], trees[k + 1], r))) { trees[n++] = trees[k]; trees[n++] = trees[k + 1]; trees[n++] = trees[k + 2]; trees[n++] = trees[k + 3]; }
+    trees.length = n;
+  }
+  const maxTrees = near ? 80 : 28;     // (4 numbers a tree)
+  if (trees.length > maxTrees * 4) trees.length = maxTrees * 4;
   stats.trees = trees.length / 4;
 
   // --- street lamps along lit streets (near chunks only)
