@@ -29,6 +29,22 @@ export function projector([lat0, lng0]) {
   };
 }
 
+// Itaewon's hand-made hills (world3d.js terrainY uses this too, so the two
+// can never disagree): Namsan rises to the north-west, the ground falls
+// gently south toward the river, light rolling noise elsewhere; flat again
+// past ~1.3 km, where the procedural city takes over. World units, origin
+// at Itaewon station.
+const sstep = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+export function itaewonHill(x, z) {
+  const nw = (-z) * 0.8 + (-x) * 0.5;
+  let h = 34 * sstep((nw - 260) / 480);
+  h -= 14 * sstep((z - 320) / 420);
+  h += 5 * Math.sin(x * 0.0055 + 1.7) * Math.sin(z * 0.0047 - 0.4);
+  const d = Math.hypot(x, z);
+  if (d > 900) h *= 1 - sstep((d - 900) / 380);
+  return h;
+}
+
 export function lngLatToTile(lng, lat, z) {
   const n = 2 ** z;
   const x = (lng + 180) / 360 * n;
@@ -269,7 +285,12 @@ export function earcut(ring) {
 
 // ---- the chunk
 // payload: the parsed tile JSON. opts: { z, x, y, origin:[lat,lng], lod: 0|1,
-// heroes: [{ lat, lng, clear (m), fp: [[lng,lat]...], osm }] with a glb }
+// heroes: [{ lat, lng, clear (m), fp: [[lng,lat]...], osm, glb, shape, h, glow }]:
+//   with a glb, the model replaces the procedural buildings at its spot;
+//   without one (yet) it still stands out: its building grows to the
+//   landmark's height with a glowing crown, or (shape "tower") a procedural
+//   tower stands there. exclude: { b, r } world units round the origin where
+//   the hand-made Itaewon map already has buildings (b) and roads (r).
 export function buildChunk(payload, opts) {
   const { z, x: tx, y: ty, lod = 0 } = opts;
   const P = projector(opts.origin);
@@ -282,8 +303,26 @@ export function buildChunk(payload, opts) {
 
   const heroes = (opts.heroes || []).map(h => {
     const [hx, hz] = P.fwd(h.lng, h.lat);
-    return { ...h, x: hx, z: hz, r: (h.clear ?? 0) * SCALE, fpW: h.fp ? h.fp.map(([lng, lat]) => P.fwd(lng, lat)) : null };
+    const [fx, fy] = lngLatToTile(h.lng, h.lat, z);
+    return { ...h, x: hx, z: hz, r: (h.clear ?? 0) * SCALE, fpW: h.fp ? h.fp.map(([lng, lat]) => P.fwd(lng, lat)) : null,
+      here: Math.floor(fx) === tx && Math.floor(fy) === ty };
   });
+  const hides = h => h.glb || (h.landmark && h.shape === "tower");
+  const ex = opts.exclude;
+  // a placeholder landmark's own building: the one under its pin (or the nearest within 25 m)
+  const boosted = new Map(); // building index -> hero
+  for (const h of heroes) {
+    if (hides(h) || !h.landmark) continue;
+    let best = -1, bd = 25 * SCALE;
+    (payload.b || []).forEach((b, i) => {
+      const ring = []; for (let k = 0; k < b.p.length; k += 2) ring.push(toW(b.p[k], b.p[k + 1]));
+      if ((h.osm && b.o === h.osm) || pointInRing(h.x, h.z, ring)) { best = i; bd = -1; return; }
+      if (bd < 0) return;
+      const [cx, cz] = centroid(ring), d = Math.hypot(cx - h.x, cz - h.z);
+      if (d < bd) { bd = d; best = i; }
+    });
+    if (best >= 0) boosted.set(best, h);
+  }
 
   // roads first: shopfronts and lamps look for them
   const roads = [];
@@ -291,6 +330,7 @@ export function buildChunk(payload, opts) {
     const pts = [];
     for (let k = 0; k < r.p.length; k += 2) pts.push(toW(r.p[k], r.p[k + 1]));
     if (pts.length < 2) continue;
+    if (ex) { const [mx, mz] = pts[pts.length >> 1]; if (Math.hypot(mx, mz) < ex.r) continue; }
     if (!near && MINOR.has(r.c)) continue; // far away: streets only, no paths
     roads.push({ c: r.c, n: r.n, pts, w: ROAD_W[r.c] ?? 5 });
   }
@@ -305,7 +345,8 @@ export function buildChunk(payload, opts) {
     if (ring.length < 3) continue;
     if (ringArea(ring) < 0) ring = ring.reverse(); // CCW in (x,z): outward normal is (dz,-dx)
     const [cx, cz] = centroid(ring);
-    if (heroes.some(h => (h.osm && b.o === h.osm) || (h.fpW && pointInRing(cx, cz, h.fpW)) || (h.r && Math.hypot(cx - h.x, cz - h.z) < h.r)) ||
+    if (ex && Math.hypot(cx, cz) < ex.b) continue;
+    if (heroes.some(h => hides(h) && ((h.osm && b.o === h.osm) || (h.fpW && pointInRing(cx, cz, h.fpW)) || (h.r && Math.hypot(cx - h.x, cz - h.z) < h.r))) ||
         (opts.clearAt && (pointInRing(0, 0, ring) || Math.hypot(cx, cz) < opts.clearAt * SCALE))) {
       stats.hidden++;
       continue;
@@ -317,7 +358,8 @@ export function buildChunk(payload, opts) {
     const fc = parseHex(b.fc);
     const jit = 0.97 + (s % 97) / 97 * 0.09;
     const wallC = linRGB(rgb(fc ?? pick(WALLS[kind], s >>> 3), jit));
-    const top = worldHeight(b.h);
+    const hero = boosted.get(i);
+    const top = worldHeight(hero ? Math.max(b.h, hero.h ?? b.h) : b.h);
     const y0 = -0.4;
     const floors = Math.max(1, b.f || Math.round(b.h / 3.2));
     const seedF = (s % 997) / 997;
@@ -335,6 +377,7 @@ export function buildChunk(payload, opts) {
         [[u0, 0], [u1, 0], [u1, floors], [u0, floors]], wallC, seedF, [nx, 0, nz]);
     }
     if (near) outline(buf("lines"), ring, y0, top);
+    if (hero) crown(buf("glow"), ring, top, linRGB(rgb(parseHex(hero.glow) ?? 0xffd36b)), seedF);
     // roof
     const R = buf("roof");
     const box = b.r !== "f" ? orientedBox(ring) : null;
@@ -367,6 +410,9 @@ export function buildChunk(payload, opts) {
     if (near && MAIN.has(r.c) && r.w >= 9) dashes(G, r.pts, 0.22, markC);
   }
 
+  // --- placeholder towers (landmarks with no model yet, shape "tower")
+  for (const h of heroes) if (h.here && !h.glb && h.landmark && h.shape === "tower") tower(buf, h, linRGB(rgb(parseHex(h.glow) ?? 0xffd36b)));
+
   // --- parks, forests, plazas, water
   const Wt = buf("water");
   const trees = [];
@@ -374,6 +420,7 @@ export function buildChunk(payload, opts) {
     const ring = [];
     for (let k = 0; k < a.p.length; k += 2) ring.push(toW(a.p[k], a.p[k + 1]));
     if (ring.length < 3) continue;
+    if (ex && Math.hypot(...ring[0]) < ex.b && Math.hypot(...ring[ring.length >> 1]) < ex.b) continue;
     if (a.k === "water" || a.k === "ocean") { Wt.flat(ring, a.k === "ocean" ? 0.02 : 0.05, [1, 1, 1], 0, 0.02); continue; }
     const y = a.k === "plaza" ? 0.08 : a.k === "forest" ? 0.05 : 0.06;
     G.flat(ring, y, linRGB(rgb(GROUND[a.k] ?? GROUND.park)), 0);
@@ -416,9 +463,18 @@ export function buildChunk(payload, opts) {
     if (L > (best.get(r.n)?.L ?? 40)) best.set(r.n, { L, p: r.pts[r.pts.length >> 1] });
   }
   for (const [n, v] of best) labels.push({ text: n, x: v.p[0], z: v.p[1] });
+  // names the data carries as points (the worldwide tiles: main roads, major places)
+  for (const l of payload.l || []) {
+    if (best.has(l.t) || labels.some(o => o.text === l.t)) continue;
+    const [x, z] = toW(l.x, l.y);
+    if (ex && Math.hypot(x, z) < ex.r) continue;
+    labels.push({ text: l.t, x, z, poi: !!l.poi });
+  }
 
   const groups = {};
   for (const [k, b] of Object.entries(B)) { const o = b.out(); if (o) groups[k] = o; }
+  // round Itaewon the procedural city stands on the hand-made map's hills
+  if (ex) for (const g of Object.values(groups)) for (let k = 0; k < g.pos.length; k += 3) g.pos[k + 1] += itaewonHill(g.pos[k], g.pos[k + 2]);
   return { groups, trees: new Float32Array(trees), lamps: new Float32Array(lamps), labels, stats, nightWin };
 }
 
@@ -598,4 +654,41 @@ function scatterTrees(out, ring, step, keep, seed) {
       out.push(jx, jz, 0.8 + ((s >> 4) & 63) / 63 * 0.6, s % 3);
     }
   }
+}
+
+// a landmark's glowing crown: a lit band round the top of its walls
+function crown(G, ring, top, c, seed) {
+  const n = ring.length, h = Math.max(1.2, top * 0.035);
+  for (let k = 0; k < n; k++) {
+    const [ax, az] = ring[k], [bx, bz] = ring[(k + 1) % n];
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 0.05) continue;
+    const nx = (bz - az) / len * 0.18, nz = -(bx - ax) / len * 0.18;
+    G.face([[ax + nx, top - h, az + nz], [bx + nx, top - h, bz + nz], [bx + nx, top + 0.15, bz + nz], [ax + nx, top + 0.15, az + nz]],
+      null, c, seed, [nx, 0, nz]);
+  }
+}
+
+// a placeholder tower: an eight-sided shaft, a pod near the top with a lit
+// band, a mast (N Seoul Tower, Calgary Tower until their models are in)
+function tower(buf, h, glowC) {
+  const H = worldHeight(h.h ?? 150), R = (h.radius ?? 7) * SCALE, sd = 8;
+  const prism = (B, r0, r1, y0, y1, c) => {
+    const ring = k => [h.x + Math.cos(k / sd * Math.PI * 2) * 1, h.z + Math.sin(k / sd * Math.PI * 2) * 1];
+    for (let k = 0; k < sd; k++) {
+      const [ax, az] = ring(k), [bx, bz] = ring(k + 1);
+      const ox = (ax - h.x), oz = (az - h.z), px = (bx - h.x), pz = (bz - h.z);
+      B.face([[h.x + ox * r0, y0, h.z + oz * r0], [h.x + px * r0, y0, h.z + pz * r0], [h.x + px * r1, y1, h.z + pz * r1], [h.x + ox * r1, y1, h.z + oz * r1]],
+        null, c, 0.5, [(ox + px) / 2, 0, (oz + pz) / 2]);
+    }
+    const capR = r1, cap = []; for (let k = 0; k < sd; k++) cap.push([h.x + (ring(k)[0] - h.x) * capR, h.z + (ring(k)[1] - h.z) * capR]);
+    B.flat(cap.reverse(), y1, c, 0.5);
+  };
+  const shaft = linRGB(rgb(0xe9e4d8)), pod = linRGB(rgb(0xd7d2c6)), mast = linRGB(rgb(0xc9c4b8));
+  const R0 = buf("roof"), G = buf("glow");
+  prism(R0, R * 1.25, R * 0.85, -0.4, H * 0.72, shaft);
+  prism(R0, R * 2.3, R * 2.6, H * 0.72, H * 0.8, pod);
+  prism(G, R * 2.62, R * 2.62, H * 0.765, H * 0.785, glowC);
+  prism(R0, R * 2.6, R * 1.6, H * 0.8, H * 0.86, pod);
+  prism(R0, R * 0.35, R * 0.18, H * 0.86, H, mast);
 }

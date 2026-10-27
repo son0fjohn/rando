@@ -12,6 +12,7 @@ import { makeHumanCharacter, makeHumanCharacterSync, loadHumanTemplate,
 import { staticize, matteify } from "./avatar3.js";
 import { THEME } from "./theme.js";
 import { CityTiles, cityUniforms } from "./citytiles.js";
+import { worldHeight, itaewonHill } from "./citygen.js";
 
 // generated GLB characters are the default; ?glb=0 falls back to procedural
 // character system: the avatar4 clay character by default; ?legacy=glb keeps the old
@@ -45,6 +46,16 @@ const CITY_URL = CITY_Q.get("tiles") || "tiles/cities.pmtiles";
 // world3d.enterCity / exitCity; Manhunt plays on the real streets)
 let cityOn = CITY_MODE;
 const ITAEWON = [GEO_CENTER[0], GEO_CENTER[1]];
+// The city anywhere the archive has no chunk: OpenFreeMap's worldwide
+// OpenMapTiles (OpenStreetMap, free, no key; web/cityomt.js). ?omt=<TileJSON
+// or a {z}/{x}/{y} url> points it elsewhere, ?omt=0 turns it off.
+const OMT_URL = CITY_Q.get("omt") === "0" ? null : CITY_Q.get("omt") || "https://tiles.openfreemap.org/planet";
+// Near Itaewon the hand-made map stays and the procedural city fills in round
+// it (where the hand-made buildings / roads end, world units); further away
+// the whole map is the procedural city, centred where you are.
+const ITAEWON_KEEP_M = 3000;
+const BLEND = { b: 820, r: 1420 };
+const metresFrom = (lat, lng, [lat0, lng0]) => Math.hypot((lat - lat0) * 110540, (lng - lng0) * 111320 * Math.cos(lat0 * Math.PI / 180));
 let WORLD_EDGE = CITY_MODE ? 12000 : 1050; // far positions clamp to this radius
 
 // world x,z -> [lat, lng] (geoPos's inverse, inside the edge)
@@ -65,17 +76,19 @@ export function geoPos(lat, lng) {
   return new THREE.Vector3(x, terrainY(x, z), z);
 }
 
+// a spot's world x/z with no clamping at the map's edge
+function geoPosRaw(lat, lng) {
+  const mLat = 110540.0, mLng = 111320.0 * Math.cos(GEO_CENTER[0] * Math.PI / 180);
+  return { x: (Number(lng) - GEO_CENTER[1]) * mLng * GEO_SCALE, z: -(Number(lat) - GEO_CENTER[0]) * mLat * GEO_SCALE };
+}
+
 // ---- hillside terrain (grocery-street reference): Namsan rises to the
 // north-west, ground falls gently south toward the river, light rolling
 // noise elsewhere. Gameplay plazas blend flat so gathering areas stay level.
+// (the shape itself is citygen.js itaewonHill: the procedural city round
+// Itaewon stands on the same hills)
 const sstep = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
-function rawTerrain(x, z) {
-  const nw = (-z) * 0.8 + (-x) * 0.5;
-  let h = 34 * sstep((nw - 260) / 480);
-  h -= 14 * sstep((z - 320) / 420);
-  h += 5 * Math.sin(x * 0.0055 + 1.7) * Math.sin(z * 0.0047 - 0.4);
-  return h;
-}
+const rawTerrain = itaewonHill;
 let TERRAIN_ANCHORS = null; // lazy: ZONE_FLAVOR is declared further down
 // Named districts — how Itaewon is actually navigated ("meet me on World
 // Food Street"). Anchors are best-knowledge centers of the real streets;
@@ -279,11 +292,14 @@ export const world3d = {
       if (at.length === 2 && at.every(Number.isFinite)) this.startCity(at[0], at[1]);
       else setTimeout(() => this.startCity(GEO_CENTER[0], GEO_CENTER[1]), 2500);
     } else {
-      this.loadWorld(); // async: real roads + zone-flavored buildings/trees
+      // async: real roads + zone-flavored buildings/trees. The world only
+      // moves (worldAt) once it's in: its labels and heights are Itaewon's
+      this.itaewonLoading = this.loadWorld().catch(e => console.warn("[rando] Itaewon map", e)).finally(() => { this.itaewonLoading = null; });
     }
 
     this.bindControls();
     window.addEventListener("resize", () => this.resize());
+    if (CITY_Q.get("fps") === "1") this.fpsMeter();
 
     // interval-driven ticks (works even in throttled tabs) + rAF when live
     setInterval(() => this.tick(), 90);
@@ -412,7 +428,7 @@ export const world3d = {
     if (this._cityStarting) return this._cityStarting;
     let done;
     this._cityStarting = new Promise(r => { done = r; });
-    cityOn = true; WORLD_EDGE = 12000;
+    cityOn = true; WORLD_EDGE = 12000; this.groundLevel = 0;
     GEO_CENTER[0] = lat; GEO_CENTER[1] = lng;
     TERRAIN_ANCHORS = null;
     if (this.worldRoot) this.worldRoot.visible = false;
@@ -423,9 +439,11 @@ export const world3d = {
     this.replaceAll();
     this.heroes ??= (async () => { try { return (await (await fetch("data/heroes.json")).json()).heroes; } catch { return []; } })();
     const heroes = await this.heroes;
-    this.city = new CityTiles(this, { url: CITY_URL, origin: [lat, lng], night: NIGHT, heroes });
-    if (!this._cityHeroes) { this._cityHeroes = true; this.cityHeroes(heroes); }
+    const near = heroes.filter(h => metresFrom(h.lat, h.lng, [lat, lng]) < 15000);
+    this.city = new CityTiles(this, { url: CITY_URL, origin: [lat, lng], night: NIGHT, heroes: near, omt: OMT_URL });
+    this.cityHeroes(near);
     this._cityStarting = null;
+    this.credit();
     done(this.city);
     this.needsRender = true;
     return this.city;
@@ -435,6 +453,8 @@ export const world3d = {
   exitCity() {
     if (!this.city || CITY_MODE) return;
     this.city.dispose(); this.city = null;
+    this.cityHeroes([]);
+    this.blending = false;
     cityOn = false; WORLD_EDGE = 1050;
     GEO_CENTER[0] = ITAEWON[0]; GEO_CENTER[1] = ITAEWON[1];
     TERRAIN_ANCHORS = null;
@@ -444,9 +464,103 @@ export const world3d = {
     this.scene.fog = new THREE.Fog(M.fog, 340, 1250);
     this.target.set(0, 0, 0);
     this.replaceAll();
+    this.credit();
     this.needsRender = true;
   },
   get cityOn() { return cityOn; },
+  // the ground's height at a world point (the hills round Itaewon, flat in a city)
+  groundY(x, z) { return terrainY(x, z); },
+
+  // The world for a spot on Earth (the player's, or Explore's): near
+  // Itaewon its hand-made map with the procedural city round its edges,
+  // anywhere else the procedural city centred there. Cheap to call often:
+  // it only acts when the answer changes. While the start screen's scenery
+  // holds the world (scenery.js), the spot waits until it lets go.
+  worldAt(lat, lng) {
+    if (lat == null || lng == null) return Promise.resolve(null);
+    this._spot = [lat, lng];
+    if (CITY_MODE) return this.city || this._cityStarting ? Promise.resolve(this.city) : this.enterCity(lat, lng);
+    if (this.holdWorld) { this._wantWorld = [lat, lng]; return Promise.resolve(null); }
+    if (this.itaewonLoading) return this.itaewonLoading.then(() => { const w = this._spot; return w ? this.worldAt(...w) : null; });
+    if (metresFrom(lat, lng, ITAEWON) < ITAEWON_KEEP_M) {
+      if (cityOn) this.exitCity();
+      return this.blendCity();
+    }
+    if (cityOn && this.city && metresFrom(lat, lng, this.city.origin) < 2500) return Promise.resolve(this.city);
+    if (this.blending) { this.city?.dispose(); this.city = null; this.blending = false; }
+    return this.enterCity(lat, lng);
+  },
+  holdWorld: false,
+  // the start screen shows Itaewon (its still image is Itaewon): hand-made
+  // map only while it's up, whatever world you were in
+  hold() {
+    if (CITY_MODE) return;
+    this.holdWorld = true;
+    if (cityOn) this.exitCity();
+    else if (this.blending) { this.city?.dispose(); this.city = null; this.blending = false; this.cityHeroes([]); WORLD_EDGE = 1050; if (this.ground) this.ground.visible = false; this.credit(); }
+  },
+  releaseWorld(spot = null) {
+    if (!this.holdWorld) return Promise.resolve(null);
+    this.holdWorld = false;
+    const w = spot ?? this._wantWorld ?? this._spot; this._wantWorld = null;
+    return w ? this.worldAt(...w) : Promise.resolve(null);
+  },
+  // is a spot far enough from Itaewon to get the procedural city of its own?
+  isAway(lat, lng) { return !CITY_MODE && metresFrom(lat, lng, ITAEWON) >= ITAEWON_KEEP_M; },
+  // Itaewon's hand-made map, and the procedural city past its edges
+  async blendCity() {
+    if (this.blending || this._blendStarting || cityOn || CITY_Q.get("blend") === "0") return this.city;
+    this._blendStarting = true;
+    try {
+      this.heroes ??= (async () => { try { return (await (await fetch("data/heroes.json")).json()).heroes; } catch { return []; } })();
+      const heroes = (await this.heroes).filter(h => {
+        const d = metresFrom(h.lat, h.lng, ITAEWON);
+        return d < 15000 && Math.hypot(...Object.values(geoPosRaw(h.lat, h.lng))) > BLEND.b;   // (the hand-made map has its own)
+      });
+      if (cityOn || this.blending) return this.city;
+      WORLD_EDGE = ITAEWON_KEEP_M * GEO_SCALE * 1.25;
+      if (!this.ground) this.buildCityGround();
+      this.ground.visible = true;
+      this.groundLevel = -0.6;           // under the hand-made ground where they overlap
+      this.city = new CityTiles(this, { url: CITY_URL, origin: [...ITAEWON], night: NIGHT, heroes, omt: OMT_URL, exclude: BLEND });
+      this.blending = true;
+      this.cityHeroes(heroes);
+      this.credit();
+      this.needsRender = true;
+      return this.city;
+    } finally { this._blendStarting = false; }
+  },
+  // ?fps=1: frames per second, what's drawn, and how the city's chunks are
+  // loading, in a corner (for trying it on a real phone)
+  fpsMeter() {
+    const el = Object.assign(document.createElement("div"), { id: "fps-meter" });
+    el.style.cssText = "position:fixed;right:6px;top:calc(env(safe-area-inset-top) + 6px);z-index:9999;padding:5px 7px;border-radius:8px;background:rgba(0,0,0,.6);color:#fff;font:600 11px/1.35 ui-monospace,monospace;pointer-events:none;white-space:pre";
+    document.body.appendChild(el);
+    let n = 0, t0 = performance.now();
+    const loop = () => {
+      n++;
+      const t = performance.now();
+      if (t - t0 >= 1000) {
+        const info = this.renderer.info.render, st = this.city?.stats();
+        const cold = st?.log.filter(l => !l.empty) ?? [];
+        const last = cold[cold.length - 1];
+        el.textContent = `${Math.round(n * 1000 / (t - t0))} fps · ${info.calls} draws · ${(info.triangles / 1000).toFixed(0)}k tris` +
+          (st ? `\ncity: ${st.chunks} chunks (${st.inflight + st.queued} loading) · ring ${st.firstRingMs ? (st.firstRingMs / 1000).toFixed(1) + " s" : "…"}` +
+            (last ? `\nlast chunk ${last.ms.toFixed(0)} ms (fetch ${last.fetch.toFixed(0)}, build ${last.build.toFixed(0)})${last.cached ? " · " + last.cached : ""}` : "") +
+            `\n${this.blending ? "Itaewon + city" : cityOn ? "city" : "Itaewon"}` : "");
+        n = 0; t0 = t;
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  },
+
+  // the small print for whatever map data is on screen
+  credit() {
+    const el = document.getElementById("osm-credit");
+    if (!el) return;
+    el.textContent = this.city ? "© OpenStreetMap contributors · Overture Maps Foundation · OpenMapTiles" : "roads © OpenStreetMap contributors";
+  },
   geo: (lat, lng) => geoPos(lat, lng),
   ungeo: (x, z) => geoInv(x, z),
   // your own character to where you really are (a game reading your GPS on
@@ -471,23 +585,30 @@ export const world3d = {
     }
   },
 
-  // city mode heroes (data/heroes.json): a label for every one; a model for
-  // the ones that have one, fitted to its height, turned and offset as the
-  // entry says, lit by the same night uniform as the procedural city
+  // the landmarks round the map's origin (data/heroes.json): a label each,
+  // and the model where there is one, fitted to its height, turned and
+  // offset as the entry says, lit by the procedural city's night uniform.
+  // One without a model still stands out: the chunk makes its building
+  // taller with a glowing crown, or raises a placeholder tower (citygen.js).
+  // Called again when the origin moves: the old ones go first.
   cityHeroes(heroes) {
+    for (const o of this._heroObjs ?? []) { if (o.isObject3D) this.scene.remove(o); else this.removeLabel(o); }
+    this._heroObjs = [];
     const loader = new GLTFLoader();
     for (const h of heroes) {
       const pos = geoPos(h.lat, h.lng);
       if (h.label) {
-        const top = new THREE.Vector3(pos.x, (h.h ?? 12) * GEO_SCALE * 2.4 + 6, pos.z);
-        this.addLabel(h.label, "hero", 3, () => top, h.glow);
+        const top = new THREE.Vector3(pos.x, worldHeight(h.h ?? 30) + 6, pos.z);
+        this._heroObjs.push(this.addLabel(h.label, "hero", 3, () => top, h.glow, { city: true }));
       }
       if (!h.glb) continue;
+      const objs = this._heroObjs;
       loader.load(h.glb, gltf => {
+        if (this._heroObjs !== objs) return;   // the origin moved on meanwhile
         const obj = gltf.scene;
         const box = new THREE.Box3().setFromObject(obj);
         const size = box.getSize(new THREE.Vector3());
-        const k = ((h.h ?? 12) * GEO_SCALE * 2.4) / Math.max(0.001, size.y) * (h.scale ?? 1);
+        const k = worldHeight(h.h ?? 12) / Math.max(0.001, size.y) * (h.scale ?? 1);
         obj.scale.setScalar(k);
         const off = h.offset || [0, 0, 0];
         obj.position.set(pos.x + off[0] * GEO_SCALE, -box.min.y * k + off[1] * GEO_SCALE * 2.4, pos.z - off[2] * GEO_SCALE);
@@ -507,6 +628,7 @@ export const world3d = {
           o.material = mat;
         });
         this.scene.add(obj);
+        objs.push(obj);
         this.needsRender = true;
       }, undefined, err => console.warn("hero", h.id, err?.message || err));
     }
@@ -770,7 +892,7 @@ export const world3d = {
       // data/heroes.json is in metres and lng/lat; this loader works in
       // world units (footprint, height, clear radius), so convert
       landmarks = (await (await fetch("data/heroes.json")).json()).heroes
-        .filter(l => l.lat != null && l.lng != null && l.status !== "proposed")
+        .filter(l => l.lat != null && l.lng != null && l.status !== "proposed" && metresFrom(l.lat, l.lng, ITAEWON) < 1800)
         .map(l => ({ ...l, name: l.label, yaw: l.rot ?? undefined, pos: geoPos(l.lat, l.lng),
           h: (l.h ?? 12) * GEO_SCALE * 2.4, clear: (l.clear ?? 20) * GEO_SCALE,
           fp: l.fp ? l.fp.slice(0, l.fp.length > 3 && l.fp[0][0] === l.fp.at(-1)[0] && l.fp[0][1] === l.fp.at(-1)[1] ? -1 : undefined)
@@ -1809,7 +1931,10 @@ export const world3d = {
   // locked look for the WORLD — but pixelated text reads as a bug). Labels
   // are DOM nodes projected to screen per frame: vector-crisp glyphs at any
   // zoom, distance scale/fade, and priority-based decluttering in px space.
-  addLabel(text, kind, pri, getPos, accent) {
+  // opts.city: the procedural city's own (a street of a chunk, a landmark);
+  // anything else of these kinds once the hand-made map has loaded is
+  // Itaewon's, hidden while the map is a city elsewhere
+  addLabel(text, kind, pri, getPos, accent, opts = {}) {
     const el = document.createElement("div");
     el.className = `wlabel wl-${kind}`;
     if (accent) {
@@ -1824,7 +1949,7 @@ export const world3d = {
     el.appendChild(document.createTextNode(text));
     this.labelLayer.appendChild(el);
     const rec = { el, getPos, pri, kind, len: text.length };
-    if (this._loadingOld && !this.city && ["street", "district", "hero", "exit"].includes(kind)) { rec.old = true; rec.hidden = cityOn; }
+    if (this._loadingOld && !opts.city && ["street", "district", "hero", "exit"].includes(kind)) { rec.old = true; rec.hidden = cityOn; }
     this.labels.push(rec);
     return rec;
   },
@@ -2065,7 +2190,7 @@ export const world3d = {
   },
 
   setPlayer(opts) { // { avatar, lat, lng } | null
-    if (CITY_MODE && opts && !this.city && !this._cityStarting) this.enterCity(opts.lat, opts.lng);
+    if (opts) this.worldAt(opts.lat, opts.lng);
     this._lastPlayerOpts = opts || null;
     const prevPos = this.player ? this.player.api.group.position.clone() : null;
     if (this.player) {
@@ -2184,7 +2309,7 @@ export const world3d = {
   // of your real location (read on this phone, never sent); null turns it off
   setExplore(lat, lng, radiusM = 1500) {
     if (lat == null || lng == null) { this.homePos = null; this.exploreR = null; this._lastExplore = null; return; }
-    if (CITY_MODE && !this.city && !this._cityStarting) this.enterCity(lat, lng);
+    this.worldAt(lat, lng);
     this._lastExplore = [lat, lng, radiusM];
     this.homePos = geoPos(lat, lng);
     this.exploreR = radiusM * GEO_SCALE;
@@ -2196,7 +2321,7 @@ export const world3d = {
       const dx = this.target.x - this.homePos.x, dz = this.target.z - this.homePos.z, d = Math.hypot(dx, dz);
       if (d > this.exploreR) { this.target.x = this.homePos.x + dx / d * this.exploreR; this.target.z = this.homePos.z + dz / d * this.exploreR; }
     }
-    const box = cityOn ? 8000 : 1100;
+    const box = cityOn ? 8000 : this.blending ? 2000 : 1100;
     this.target.x = Math.max(-box, Math.min(box, this.target.x));
     this.target.z = Math.max(-box, Math.min(box, this.target.z));
   },
@@ -2442,7 +2567,7 @@ export const world3d = {
       this.city.update(this.target);
       // the ground and the sky go where you go (snapped: the paving stays put)
       const P = this.groundPeriod || 80;
-      this.ground?.position.set(Math.round(this.target.x / P) * P, 0, Math.round(this.target.z / P) * P);
+      this.ground?.position.set(Math.round(this.target.x / P) * P, this.groundLevel ?? 0, Math.round(this.target.z / P) * P);
       this.sky?.position.set(this.target.x, 430, this.target.z);
       this.skyCap?.position.set(this.target.x, 1725, this.target.z);
     }

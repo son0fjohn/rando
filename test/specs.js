@@ -20,6 +20,8 @@ import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
 import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
 import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea } from "/web/citygen.js";
+import { decodeMVT, ringArea as mvtArea } from "/web/mvt.js";
+import { omtChunks } from "/web/cityomt.js";
 import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
 import { EVENTS, clean, track } from "/web/analytics.js";
 import { starterLook, e164, otpWait, otpError, OTP } from "/web/onbkit.js";
@@ -1541,7 +1543,8 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   const ranged = new PMTiles("x", { fetch: async (u, o) => { ranges++; const [, a, b] = /bytes=(\d+)-(\d+)/.exec(o.headers.Range); return new Response(buf.slice(+a, +b + 1), { status: 206 }); } });
   const whole = new PMTiles("x", { fetch: async () => new Response(buf.slice(), { status: 200 }) });
   const meta = await ranged.metadata();
-  ok(meta.areas?.length === 6 && /OpenStreetMap/.test(meta.attribution), `the test archive: ${meta.areas.map(a => a.id).join(", ")}, with attribution`);
+  ok(["itaewon", "gangnam", "hongdae", "calgary", "edmonton", "jamsil", "coex", "namsan"].every(id => meta.areas?.some(a => a.id === id)) && /OpenStreetMap/.test(meta.attribution),
+    `the test archive: ${meta.areas.map(a => a.id).join(", ")}, with attribution`);
   ok(zxyToTileId(0, 0, 0) === 0 && zxyToTileId(1, 0, 0) === 1 && zxyToTileId(16, 55886, 25386) === 4875776909, "tile ids follow the PMTiles Hilbert order");
   const at = (lat, lng) => lngLatToTile(lng, lat, 16).map(Math.floor);
   const [ix, iy] = at(37.5346, 126.9946);
@@ -1583,6 +1586,99 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   const heroes = (await (await fetch("/web/data/heroes.json")).json()).heroes;
   ok(heroes.length >= 12 && heroes.every(h => h.id && h.label && Number.isFinite(h.lat) && Number.isFinite(h.lng) && "glb" in h && Array.isArray(h.offset)), "data/heroes.json: every hero has an id, a label, a spot, a model slot and an offset");
   ok(heroes.every(h => !h.fp || h.fp.every(([lng, lat]) => Math.abs(lng - h.lng) < 0.002 && Math.abs(lat - h.lat) < 0.002)), "hero footprints are lng/lat around their own pin");
+  const famous = ["lotte-world-tower", "n-seoul-tower", "coex", "gangnam-station", "calgary-tower", "muttart-conservatory", "rogers-place"];
+  ok(famous.every(id => heroes.some(h => h.id === id && h.landmark && h.glow)), "the landmark list: Lotte World Tower, N Seoul Tower, COEX, Gangnam Station, Calgary Tower, Muttart, Rogers Place");
+  // a landmark with no model yet still stands out; a bar's label-only entry doesn't
+  const tallest = o => Math.max(...[...o.groups.roof.pos].filter((_, i) => i % 3 === 1));
+  const plain = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1 });
+  const lm = { lat: 37.534673, lng: 126.994076, h: 300, landmark: true, glow: "#9fd4ff" };
+  const boosted = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, heroes: [lm] });
+  ok(boosted.groups.glow && tallest(boosted) > tallest(plain) * 2 && boosted.stats.buildings === plain.stats.buildings,
+    `a landmark with no model: its building grows to its height with a glowing crown (top ${tallest(plain).toFixed(0)} -> ${tallest(boosted).toFixed(0)})`);
+  const bar = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, heroes: [{ ...lm, landmark: false }] });
+  ok(!bar.groups.glow && tallest(bar) === tallest(plain), "…a venue's label-only entry leaves its building as it is");
+  const tw = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, heroes: [{ ...lm, shape: "tower", h: 236, clear: 30 }] });
+  ok(tw.groups.glow && tw.stats.hidden > 0 && tallest(tw) > worldHeight(236) * 0.95, `"tower": a placeholder tower stands at the pin (${tallest(tw).toFixed(0)} units), the buildings under it cleared`);
+  // near Itaewon the hand-made map keeps its own middle
+  const ex = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, exclude: { b: 820, r: 1420 } });
+  ok(ex.stats.buildings === 0 && !ex.groups.road, "round Itaewon the procedural city leaves the hand-made map's middle alone (no buildings, no roads there)");
+  // a chunk the area only partly covers says so (the worldwide tiles fill the rest)
+  const [ex1, ey1] = lngLatToTile(126.9946 + 0.0145, 37.5346, 16).map(Math.floor);
+  const edge = JSON.parse(new TextDecoder().decode(await ranged.tile(16, ex1, ey1) ?? new Uint8Array([123, 125])));
+  ok(Array.isArray(edge.cut) && edge.cut[0].length === 3, "a chunk at an area's edge carries the circle it was cut by");
+}
+
+group("The map anywhere — vector tiles (MVT) and OpenMapTiles -> chunks");
+{
+  // a tiny MVT, encoded here: one building, a main road with its name, a park, a tunnel
+  const enc = (() => {
+    const vint = (a, v) => { while (v > 127) { a.push((v & 127) | 128); v = Math.floor(v / 128); } a.push(v); };
+    const zz = v => (v << 1) ^ (v >> 31);
+    const field = (a, f, w) => vint(a, (f << 3) | w);
+    const bytes = (a, f, b) => { field(a, f, 2); vint(a, b.length); a.push(...b); };
+    const str = s => [...new TextEncoder().encode(s)];
+    const packed = (a, f, vs) => { const b = []; for (const v of vs) vint(b, v); bytes(a, f, b); };
+    const geom = (type, rings) => {
+      const c = []; let x = 0, y = 0;
+      for (const r of rings) {
+        const pts = type === 3 ? r.slice(0, -1) : r;
+        c.push((1 & 7) | (1 << 3), zz(pts[0][0] - x), zz(pts[0][1] - y)); x = pts[0][0]; y = pts[0][1];
+        c.push((2 & 7) | ((pts.length - 1) << 3));
+        for (const p of pts.slice(1)) { c.push(zz(p[0] - x), zz(p[1] - y)); x = p[0]; y = p[1]; }
+        if (type === 3) c.push(7 | (1 << 3));
+      }
+      return c;
+    };
+    return layers => {
+      const tile = [];
+      for (const [name, feats] of Object.entries(layers)) {
+        const L = [], keys = [], vals = [];
+        bytes(L, 1, str(name));
+        const fbufs = feats.map(f => {
+          const F = [], tags = [];
+          for (const [k, v] of Object.entries(f.props)) {
+            let ki = keys.indexOf(k); if (ki < 0) { keys.push(k); ki = keys.length - 1; }
+            let vi = vals.findIndex(o => o === v); if (vi < 0) { vals.push(v); vi = vals.length - 1; }
+            tags.push(ki, vi);
+          }
+          packed(F, 2, tags); field(F, 3, 0); vint(F, f.type); packed(F, 4, geom(f.type, f.geom));
+          return F;
+        });
+        for (const F of fbufs) bytes(L, 2, F);
+        for (const k of keys) bytes(L, 3, str(k));
+        for (const v of vals) { const V = []; if (typeof v === "string") bytes(V, 1, str(v)); else { field(V, 5, 0); vint(V, v); } bytes(L, 4, V); }
+        field(L, 5, 0); vint(L, 4096);
+        bytes(tile, 3, L);
+      }
+      return new Uint8Array(tile);
+    };
+  })();
+  const sq = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+  const bytes = enc({
+    building: [{ type: 3, props: { render_height: 42 }, geom: [sq(100, 100, 60, 40)] },
+               { type: 3, props: { render_height: 5 }, geom: [sq(300, 100, 12, 10)] },
+               { type: 3, props: { render_height: 5 }, geom: [sq(2100, 2100, 40, 30)] }],
+    transportation: [{ type: 2, props: { class: "primary" }, geom: [[[0, 200], [4096, 200]]] },
+                     { type: 2, props: { class: "minor", brunnel: "tunnel" }, geom: [[[0, 900], [900, 900]]] }],
+    transportation_name: [{ type: 2, props: { class: "primary", name: "Test-ro" }, geom: [[[100, 200], [900, 200]]] }],
+    park: [{ type: 3, props: { class: "park" }, geom: [sq(1500, 1500, 1200, 1200)] }],
+  });
+  const L = decodeMVT(bytes);
+  ok(L.building?.features.length === 3 && L.building.features[0].props.render_height === 42 && L.building.extent === 4096 && L.transportation_name.features[0].props.name === "Test-ro",
+    "an MVT decodes: layers, properties, geometry");
+  ok(mvtArea(L.building.features[0].geom[0]) > 0, "…outer rings keep the spec's winding");
+  const m = omtChunks(bytes, 13976, 6346);
+  const all = [...m.values()];
+  ok(m.size === 16, "one z14 tile -> its 16 chunks");
+  const bs = all.flatMap(c => c.b);
+  ok(bs.length === 3 && bs.some(b => b.m && b.h === 42) && bs.filter(b => !b.m).length === 2, "a height the map has is kept; OpenMapTiles' 5 m filler counts as unknown");
+  const small = bs.find(b => !b.m && b.f <= 4);
+  ok(small && ["s", "h", "c"].includes(small.k), `…and is guessed from size, shape and the road (a small one off the main road: ${small?.k})`);
+  const rd = all.flatMap(c => c.r);
+  ok(rd.length >= 4 && rd.every(r => r.c === "primary"), `roads are clipped into each chunk they cross (${rd.length} pieces); tunnels are left out`);
+  ok(all.some(c => c.l.some(l => l.t === "Test-ro")) && all.flatMap(c => c.a).filter(a => a.k === "park").length === 4, "main road names and parks come along");
+  const ch = m.get(`${13976 * 4},${6346 * 4}`), built = buildChunk(ch, { z: 16, x: 13976 * 4, y: 6346 * 4, origin: [37.5, 127], lod: 0 });
+  ok(built.stats.buildings === 2 && built.groups.road && built.labels.some(l => l.text === "Test-ro"), "…and build like a baked chunk");
 }
 }
 group("Onboarding — English and Korean, guest setup, invite links, analytics");

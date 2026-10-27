@@ -58,6 +58,7 @@ export const scenery = {
   on() {
     if (on || !world3d.camera) return;
     on = true;
+    world3d.hold?.();          // Itaewon's own map while the start screen is up
     document.body.classList.add("scenery");
     // full screen, not the map's phone-shaped frame
     world3d.resize();
@@ -98,6 +99,7 @@ export const scenery = {
     document.body.classList.remove("scenery");
     world3d.resize();
     world3d.recenter();
+    world3d.releaseWorld?.();
   },
 
   _goLive() {
@@ -161,6 +163,38 @@ export const scenery = {
       requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
+  },
+
+  // Explore the world: from wherever the drift is, a glide down onto the
+  // map's own view over a spot (world x/z), as smooth as the dive; the map
+  // takes over from there (scenery.off, then the explore mode)
+  glide(to, ms = 1800) {
+    if (!on || REDUCED) return Promise.resolve(false);
+    const w = world3d, cam = w.camera, d = w.CAM_DEFAULT;
+    const T = { x: to.x, y: to.y ?? terrainY(to.x, to.z), z: to.z };
+    const P0 = cam.position.clone();
+    const L0 = w.target.clone(); L0.y += CHAR_H + 4;
+    const P1 = { x: T.x + d.dist * Math.sin(d.theta) * Math.cos(d.elev), y: T.y + d.dist * Math.sin(d.elev), z: T.z + d.dist * Math.cos(d.theta) * Math.cos(d.elev) };
+    const L1 = { x: T.x, y: T.y + CHAR_H + 4, z: T.z };
+    w.target.set(T.x, T.y, T.z);       // (the city streams round where we're going)
+    return new Promise(res => {
+      let s0 = 0;
+      diving = t => {
+        if (!s0) s0 = t;
+        const k = Math.min(1, (t - s0) * 1000 / ms), e = ease(k), lk = ease(Math.min(1, k * 1.25));
+        // a gentle arc: a little lift mid-way so it reads as flying, not sliding
+        const lift = Math.sin(Math.PI * e) * 40;
+        cam.position.set(P0.x + (P1.x - P0.x) * e, P0.y + (P1.y - P0.y) * e + lift, P0.z + (P1.z - P0.z) * e);
+        cam.lookAt(L0.x + (L1.x - L0.x) * lk, L0.y + (L1.y - L0.y) * lk, L0.z + (L1.z - L0.z) * lk);
+        w.needsRender = true;
+        if (k >= 1) {
+          Object.assign(w.cam, d);
+          w.applyCamera();
+          diving = () => {};
+          res(true);
+        }
+      };
+    });
   },
 
   // which building is the party's: one of the tallest near the middle of

@@ -21,8 +21,8 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   to playing in under a minute: the start screen on every open, a glass
   panel (Start a party / Join a party) over our 3D Itaewon at night,
   drifting (`web/scenery.js`: pure scenery, the drift, the dive into the
-  party's building, slow phones -> lite glass; `web/start/night.jpg` its
-  still first frame), an invite link straight in, name, character, Home,
+  party's building, the glide down for Explore the world, slow phones ->
+  lite glass; `web/start/night.jpg` its still first frame), an invite link straight in, name, character, Home,
   the invite sheet with its QR; accounts: a guest first,
   "Save your account" with Kakao / Apple / Google (`linkIdentity`, the same
   account), sign in on a new phone; phone verification only for the
@@ -38,14 +38,20 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
   the style screen, NPC dialog),
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
-  the city map (`?city=tiles`, and what Manhunt plays on): `web/citytiles.js`
+  the city map, everywhere (see `docs/map_city.md`): near Itaewon its
+  hand-made map with the procedural city round its edges, anywhere else the
+  procedural city centred where you are (`world3d.worldAt`; `?city=tiles`
+  the city only, what Manhunt plays on): `web/citytiles.js`
   (chunks of buildings, roads, parks and water streamed round the camera
   from `web/tiles/cities.pmtiles`, built in `web/citygen.worker.js` off
   `web/citygen.js`, cached on the device by `web/citycache.js`; LOD rings,
   lit windows at night, the see-through cut), `web/pmtiles.js` (the archive
   reader), `web/data/heroes.json` (hand-made landmark glbs and where they
   stand); baked by `scripts/fetch_overture.py` + `scripts/bake_city_tiles.py`
-  for the areas in `scripts/city_areas.json`,
+  for the areas in `scripts/city_areas.json`; anywhere else the worldwide
+  OpenFreeMap tiles, `web/cityomt.js` + `web/mvt.js` (OpenMapTiles -> our
+  chunks, in the worker); landmarks and their placeholders in
+  `web/data/heroes.json`; `?fps=1` for a phone's numbers,
   `web/charview.js` (a character in 3D, alive: drag to spin, pinch to zoom,
   double-tap to reset, Idle/Walk preview; the Style screen's lit stage),
   `web/avatar4.js` (the player character: one shared clay base,
@@ -206,6 +212,7 @@ node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the
 node test/auth_rec.mjs <dir> [en|ko|both]   # accounts: a guest from an invite (no phone), Save your account with Kakao (same account, back in the party), a Kakao account that's taken, the phone prompt when going public (reason, 30 s, Send it again), the SMS provider refusing, a new phone signing in
 node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
 node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps
+node test/world_shots.mjs <dir> [places]  # the map anywhere: Gangnam, Itaewon (+ its edge), Hongdae, Calgary, Edmonton, Lotte World Tower: top-down next to a plan from the raw data (scripts/plan_map.py), street + wide at night, load times cold / cached; Calgary from the worldwide tiles alone (scripts/omt_fixture.py)
 test/hunter.html                       # Manhunt's Hunter on his own: poses, doors, counter, orbit (open it on npm run serve:test)
 ```
 

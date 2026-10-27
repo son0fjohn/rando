@@ -17,6 +17,7 @@ import { PMTiles } from "./pmtiles.js";
 import { THEME } from "./theme.js";
 
 const Z = 16;
+const REDUCED = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const NEAR = 1, FAR = 2, DROP = 3;
 const MAX_INFLIGHT = 3;
 
@@ -209,9 +210,11 @@ function patch(mat, { facade = false, sign = false, shop = false, darken = true 
 
 export class CityTiles {
   // world: world3d (scene, labels, needsRender, loadImage, mirrorBlockTex)
-  constructor(world, { url, origin, night = false, heroes = [] }) {
+  constructor(world, { url, origin, night = false, heroes = [], exclude = null, omt = null }) {
     this.world = world;
     this.url = url;
+    this.exclude = exclude;    // round the origin: the hand-made Itaewon map's own (citygen.js)
+    this.omt = omt;            // the worldwide fallback's TileJSON (cityomt.js), or null
     this.origin = origin;
     this.P = projector(origin);
     this.heroes = heroes;
@@ -253,6 +256,13 @@ export class CityTiles {
       const t = tex(canvas(256, 256, g => g.drawImage(img, 0.545 * img.width, 0.75 * img.height, 0.027 * img.width, 0.20 * img.height, 0, 0, 256, 256)));
       M.road.map = t; M.road.needsUpdate = true; this.world.needsRender = true;
     }).catch(() => {});
+    // landmarks with no model yet: their crown band, the placeholder tower's ring
+    M.glow = new THREE.MeshBasicMaterial({ vertexColors: true, fog: true });
+    M.glow.onBeforeCompile = sh => {
+      Object.assign(sh.uniforms, { uNight: cityUniforms.uNight });
+      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform float uNight;")
+        .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.rgb *= 0.75 + uNight * 0.9;");
+    };
     M.water = new THREE.MeshPhongMaterial({ color: night ? 0x2b4a77 : 0x86bcd9, specular: night ? 0x334466 : 0x9fb8c8, shininess: 70,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     // instanced bits
@@ -275,7 +285,9 @@ export class CityTiles {
   }
 
   startWorker() {
-    const init = { type: "init", url: this.url, base: document.baseURI, origin: this.origin, heroes: this.heroes.filter(h => h.glb), clearAt: 14 };
+    const heroes = this.heroes.map(({ id, lat, lng, clear, fp, osm, glb, shape, h, glow, radius, landmark }) => ({ id, lat, lng, clear, fp, osm, glb: !!glb, shape, h, glow, radius, landmark: !!landmark }));
+    const init = { type: "init", url: this.url, base: document.baseURI, origin: this.origin, heroes, clearAt: this.exclude ? 0 : 14,
+      exclude: this.exclude, omt: this.omt ? new URL(this.omt, document.baseURI).href : null };
     const onMsg = m => {
       if (m.type === "meta") { this.bounds = m.bounds; return; }
       if (m.type === "error") { this.error = m.error; console.warn("city tiles:", m.error); return; }
@@ -330,6 +342,14 @@ export class CityTiles {
     this.pump();
     // mount at most two finished chunks per tick so a frame never stalls
     for (let n = 0; n < 2 && this.ready.length; n++) this.mount(this.ready.shift());
+    const now = performance.now();
+    for (const c of this.chunks.values()) {
+      if (!c.rise) continue;
+      const k = Math.min(1, (now - c.rise) / 520), e = 1 - (1 - k) ** 3;
+      for (const mesh of c.meshes) { mesh.scale.y = Math.max(0.02, e); mesh.updateMatrix(); }
+      if (k >= 1) c.rise = 0;
+      this.world.needsRender = true;
+    }
   }
 
   retarget(cx, cy, fx, fy) {
@@ -406,6 +426,8 @@ export class CityTiles {
     }
     if (m.error) console.warn("city chunk", r.key, m.error);
     if (old) this.drop(r.key);
+    // a chunk seen for the first time rises out of the ground (a LOD swap doesn't)
+    else if (!m.empty && !REDUCED) { rec.rise = performance.now(); for (const mesh of rec.meshes) { mesh.scale.y = 0.02; mesh.updateMatrix(); } }
     for (const mesh of rec.meshes) this.group.add(mesh);
     this.chunks.set(r.key, rec);
     this.log.push({ key: r.key, lod: r.lod, ms: t1 - r.t0, fetch: m.t?.fetch ?? 0, build: m.t?.build ?? 0,
@@ -418,6 +440,7 @@ export class CityTiles {
   }
 
   instanced(rec, m) {
+    const gy = this.exclude && this.world.groundY ? (x, z) => this.world.groundY(x, z) : () => 0;
     const t = m.trees, n = t ? t.length / 4 : 0;
     const dummy = new THREE.Object3D();
     if (n) {
@@ -425,7 +448,7 @@ export class CityTiles {
       const trunk = new THREE.InstancedMesh(this.trunkGeo, this.mats.trunk, n);
       const greens = [0x7fa35e, 0x6d9450, 0x93b56c].map(c => new THREE.Color(c));
       for (let i = 0; i < n; i++) {
-        dummy.position.set(t[i * 4], 0, t[i * 4 + 1]);
+        dummy.position.set(t[i * 4], gy(t[i * 4], t[i * 4 + 1]), t[i * 4 + 1]);
         dummy.rotation.set(0, i * 1.7, 0);
         dummy.scale.setScalar(t[i * 4 + 2]);
         dummy.updateMatrix();
@@ -440,7 +463,7 @@ export class CityTiles {
       const head = new THREE.InstancedMesh(this.headGeo, this.mats.head, nl);
       const pool = cityUniforms.uNight.value > 0.5 ? new THREE.InstancedMesh(this.poolGeo, this.mats.pool, nl) : null;
       for (let i = 0; i < nl; i++) {
-        dummy.position.set(L[i * 3], 0, L[i * 3 + 1]);
+        dummy.position.set(L[i * 3], gy(L[i * 3], L[i * 3 + 1]), L[i * 3 + 1]);
         dummy.rotation.set(0, L[i * 3 + 2] + Math.PI / 2, 0);
         dummy.scale.setScalar(1);
         dummy.updateMatrix();
@@ -457,7 +480,7 @@ export class CityTiles {
     const prev = this.labelNames.get(l.text);
     if (prev && prev.some(p => Math.hypot(p.x - l.x, p.z - l.z) < 260)) return;
     const pos = new THREE.Vector3(l.x, FLOOR_U * 0.8, l.z);
-    const lr = this.world.addLabel(l.text, "street", 1, () => pos);
+    const lr = this.world.addLabel(l.text, l.poi ? "district" : "street", l.poi ? 2 : 1, () => pos, null, { city: true });
     lr.at = l;
     rec.labels.push(lr);
     this.labelNames.set(l.text, [...(prev || []), l]);

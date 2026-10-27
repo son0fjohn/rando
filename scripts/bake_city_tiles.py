@@ -20,7 +20,9 @@ convention, so the same archive layout works for a worldwide build):
     "a": [{ "k": "park", "p": [...] }] }   park | forest | plaza | water | ocean
 
 Buildings go to the tile holding their centroid (never clipped, never
-duplicated); roads and areas are clipped to the tile.
+duplicated); roads and areas are clipped to the tile. A chunk the area's
+circle only partly covers carries "cut": [[lat, lng, r_metres], ...]: the
+client fills what lies outside from the worldwide tiles (web/cityomt.js).
 
 Height when the data has none (deterministic per building, floors × 3.2 m):
 houses 2-4 floors, apartments 10-20, commercial 3-6, offices 8-20, civic
@@ -246,7 +248,13 @@ def bake_area(a, tiles):
     circle = transform(inv, shapely.Point(0, 0).buffer(a["r"], 64))
     area_tiles = list(mercantile.tiles(*circle.bounds, Z))
     for t in area_tiles:
-        tiles.setdefault((t.z, t.x, t.y), {"b": [], "r": [], "a": [], "_seen": set()})
+        tl = tiles.setdefault((t.z, t.x, t.y), {"b": [], "r": [], "a": [], "_seen": set()})
+        # a chunk the circle only partly covers says so: the client fills the
+        # rest from the worldwide tiles (web/cityomt.js), so areas fade into
+        # the world around them instead of stopping at a ring
+        bb = mercantile.bounds(t)
+        if not circle.contains(box(bb.west, bb.south, bb.east, bb.north)):
+            tl.setdefault("cut", []).append([lat0, lng0, a["r"]])
 
     # roads first: buildings ask which of them front a main road
     main_lines = []
