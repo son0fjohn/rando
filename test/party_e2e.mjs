@@ -318,7 +318,8 @@ try {
   await startGame(A, "ritual");
   ok(await until(A, () => !document.getElementById("game-layer").hidden), "the ritual starts");
   await heardHowto([A, B, C], "the Ritual");
-  ok(await until(B, () => /Pick a capsule\. Any capsule\./.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 8000), "the Boss opens the turn: \"Pick a capsule. Any capsule.\"");
+  // (after the how-to the pick line is up ~3 s: a slow runner may first look once he's on to the name)
+  ok(await until(B, () => /Pick a capsule\. Any capsule\.|\. You're up\.$/.test(document.querySelector(".hr-room .dlg-text")?.textContent ?? ""), null, 12000), "the Boss opens the turn: \"Pick a capsule. Any capsule.\" (or already \"[Name]. You're up.\")");
   // (polled from here: a page drawing 3D in the background gets few animation frames)
   let upLine = "";
   for (let i = 0; i < 60 && !upLine; i++) { upLine = await C.evaluate(() => { const t = document.querySelector(".hr-room .dlg-text")?.textContent ?? ""; return /\. You're up\.$/.test(t) ? t : ""; }); if (!upLine) await sleep(250); }
