@@ -87,9 +87,10 @@ export class Room {
   get hostId() { const m = this.members; return m.length ? m[0].id : null; }
   get isHost() { return this.hostId === this.me.id; }
 
+  // -> the channel's answer ("ok" / "error" / "timed out"), for callers that care (a big photo)
   send(type, payload = {}) {
-    if (!this.ch || !this.alive) return;
-    this.ch.send({ type: "broadcast", event: "msg", payload: { type, from: this.me.id, t: Date.now(), ...payload } });
+    if (!this.ch || !this.alive) return Promise.resolve("closed");
+    return Promise.resolve(this.ch.send({ type: "broadcast", event: "msg", payload: { type, from: this.me.id, t: Date.now(), ...payload } })).catch(() => "error");
   }
   on(type, fn) { (this.handlers[type] ??= []).push(fn); return this; }
   off(type, fn) { this.handlers[type] = (this.handlers[type] || []).filter(f => f !== fn); }

@@ -37,6 +37,7 @@ const TITLE_LEN = 60;
 const PHOTO_MS = 180000, TITLE_MS = 90000, COVER_MS = 3500, VOTE_MS = 25000, RESULT_MS = 6000, END_MS = 20000;
 const MAX_FRAMES = 8;          // gallery cap so big parties don't drag
 const MAX_EDGE = 640, MAX_CHARS = 180000;   // shrunk photo: longest edge px / data-URL length budget
+const SHRINK_STEPS = [MAX_EDGE, 480, 360];  // a photo the room won't take goes again, smaller
 const STOCK = [0, 1, 2, 3, 4, 5, 6, 7].map(i => `games/captions/c${i}.jpg`);   // bot photos
 const ASSET = "games/artgallery/";
 // transparent opening of frame.png, measured from its alpha (% of each edge)
@@ -432,18 +433,47 @@ export const ART_GALLERY = {
     }
 
     // ---- client: photo capture ----
-    async function onFile(file) {
-      if (!file || busy || mine.length >= PHOTOS_PER) return;
-      busy = true; ui.resetKey();
-      try {
-        const data = await shrink(file);
+    // Pick one or several at once. The picker lives outside the panel (a
+    // re-render while the phone's photo sheet is open must not swap it out),
+    // and the photos queue: each is shrunk on the phone and sent to the room;
+    // one the room won't take is shrunk again, smaller.
+    const picker = filePicker(), queue = [];
+    let upl = null;                     // { i, n, note }: "Uploading 2/3…"
+    picker.onchange = e => { const files = [...(e.target.files ?? [])]; e.target.value = ""; addFiles(files); };
+    trash.add(() => { picker.onchange = null; });
+    async function addFiles(files) {
+      queue.push(...files);
+      if (busy) return;
+      busy = true;
+      let i = 0;
+      while (queue.length && mine.length < PHOTOS_PER) {
+        const n = i + Math.min(queue.length, PHOTOS_PER - mine.length);     // this batch, as far as the frames go
+        const file = queue.shift();
+        upl = { i: ++i, n, note: "" }; ui.resetKey();
+        try { await addOne(file); }
+        catch (e) {
+          console.warn("[artgallery] photo", e?.message ?? e);
+          ui.toast(e?.message === "unreadable" ? "couldn't read that photo — try another" : "that photo didn't go through — try another", "rip");
+        }
+      }
+      queue.length = 0; upl = null; busy = false; ui.resetKey();
+    }
+    async function addOne(file) {
+      for (const [k, edge] of SHRINK_STEPS.entries()) {
+        const data = await shrink(file, edge);
+        if (data.length > MAX_CHARS) continue;              // still too big at this size: smaller
         const pid = `${ctx.me.id.slice(0, 6)}-${mine.length}-${Date.now().toString(36)}`;
+        const r = await room.send("agphoto", { pid, data });
+        if (r === "error" || r === "timed out") {
+          if (k < SHRINK_STEPS.length - 1) { upl.note = "that photo is too big, trying again smaller"; ui.resetKey(); }
+          continue;
+        }
         photos.set(pid, data); mine.push(pid);
-        room.send("agphoto", { pid, data });
         game.input("photo", { pid });
         sfx.pop();
-      } catch (e) { console.warn("[artgallery] photo", e); ui.toast("couldn't read that photo — try another", "rip"); }
-      busy = false; ui.resetKey();
+        return;
+      }
+      throw new Error("too big");
     }
 
     // ---- render (everyone) ----
@@ -462,23 +492,25 @@ export const ART_GALLERY = {
         for (const pid of me?.photos ?? []) if (!mine.includes(pid) && mine.length < PHOTOS_PER) mine.push(pid);
         const ready = active.filter(p => p.photos.length >= PHOTOS_PER).length;
         const shown = mine.filter(pid => srcOf(pid, s)).length;
-        if (!ui.once(`p:${mine.length}:${shown}:${ready}:${active.length}:${busy ? 1 : 0}`, () => {})) return;
+        if (!ui.once(`p:${mine.length}:${shown}:${ready}:${active.length}:${busy ? 1 : 0}:${upl ? `${upl.i}/${upl.n}${upl.note}` : ""}`, () => {})) return;
         const inset = `top:${FRAME_INSET.t}%;right:${FRAME_INSET.r}%;bottom:${FRAME_INSET.b}%;left:${FRAME_INSET.l}%`;
         const frames = [0, 1, 2].map(i => {
           const pid = mine[i], src = pid && srcOf(pid, s);
           const inner = pid ? (src ? `<img src="${src}" alt="">` : "<span>photo loading…</span>") : `<span>${busy && i === mine.length ? "loading…" : "tap to add a photo"}</span>`;
           return `<div class="pt-box ag-frame ${pid ? "" : "ag-empty"}" data-i="${i}"><div class="ag-hang"><div class="ag-photo" style="${inset}">${inner}</div><img class="ag-frameimg" src="${ASSET}frame.png" alt=""></div></div>`;
         }).join("");
-        ui.stage("fill your 3 frames", `<div class="ag-frames">${frames}</div><input type="file" id="ag-file" accept="image/*" hidden>
-          <p class="ab-sub">${mine.length}/${PHOTOS_PER} of yours in · ${ready}/${active.length} players ready · take a photo or pick one from your camera roll</p>${skipBtn()}`, `setup · ${ui.clock(s.left)}`);
-        const inp = $("ag-file");
-        $("game-panel").querySelectorAll(".ag-empty").forEach(b => b.onclick = async () => {
+        const status = upl ? `<b class="ag-upl">Uploading ${upl.i}/${upl.n}…</b>${upl.note ? ` · ${upl.note}` : ""}`
+          : `${mine.length}/${PHOTOS_PER} of yours in · ${ready}/${active.length} players ready · take photos or pick a few from your camera roll`;
+        ui.stage("fill your 3 frames", `<div class="ag-frames">${frames}</div>
+          <p class="ab-sub" aria-live="polite">${status}</p>${skipBtn()}`, `setup · ${ui.clock(s.left)}`);
+        $("game-panel").querySelectorAll(".ag-empty").forEach(b => b.onclick = () => {
           if (busy || mine.length >= PHOTOS_PER) return;
-          // the first time on this phone: what the photos are for, then the picker
-          if (!localStorage.getItem("rando-perm-camera")) { if (!(await prePrompt("camera"))) return; try { localStorage.setItem("rando-perm-camera", "1"); } catch {} }
-          inp.click();
+          picker.multiple = PHOTOS_PER - mine.length > 1;
+          // the first time on this phone: what the photos are for, then the
+          // picker, opened from the tap on yes itself (iPhone needs a real tap)
+          if (localStorage.getItem("rando-perm-camera")) { picker.click(); return; }
+          prePrompt("camera", { onYes: () => { try { localStorage.setItem("rando-perm-camera", "1"); } catch {} picker.click(); } });
         });
-        inp.onchange = e => { const f = e.target.files?.[0]; e.target.value = ""; onFile(f); };
         bindSkip();
       } else if (s.phase === "title") {
         const assigned = me?.assigned ?? [];
@@ -595,16 +627,27 @@ export const ART_GALLERY = {
   },
 };
 
-// shrink on-device: longest edge MAX_EDGE, JPEG, quality stepped down until
+// the one file input, kept out of the game panel (which re-renders)
+let _picker = null;
+function filePicker() {
+  if (!_picker?.isConnected) {
+    _picker = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", id: "ag-file", multiple: true, hidden: true });
+    document.body.appendChild(_picker);
+  }
+  return _picker;
+}
+
+// shrink on-device: longest edge `edge`, JPEG, quality stepped down until
 // the data URL fits the budget (keeps every broadcast comfortably small)
-async function shrink(file) {
+async function shrink(file, edge = MAX_EDGE) {
   let img;
   try { img = await createImageBitmap(file, { imageOrientation: "from-image" }); }
   catch {
-    img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+    img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); })
+      .catch(() => { throw new Error("unreadable"); });      // e.g. a HEIC on a desktop browser
   }
   const w = img.width || img.naturalWidth, h = img.height || img.naturalHeight;
-  const sc = Math.min(1, MAX_EDGE / Math.max(w, h));
+  const sc = Math.min(1, edge / Math.max(w, h));
   const cv = document.createElement("canvas");
   cv.width = Math.max(1, Math.round(w * sc)); cv.height = Math.max(1, Math.round(h * sc));
   cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);

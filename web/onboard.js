@@ -366,8 +366,8 @@ export const onboard = {
       };
       el.querySelector("[data-sms]").onclick = () => sent("sms");
       el.querySelector("[data-copy]").onclick = async () => { try { await navigator.clipboard.writeText(link); toast(t("inv.copied")); buzz(10); sent("copy"); } catch {} };
-      el.querySelector("[data-contacts]")?.addEventListener("click", async () => {
-        if (!(await prePrompt("contacts"))) return;
+      // the contact picker opens from the tap on the card's yes itself (it needs a real tap)
+      const pick = async () => {
         try {
           const picked = await navigator.contacts.select(["tel"], { multiple: true });
           const tels = picked.flatMap(p => p.tel?.slice(0, 1) ?? []);
@@ -376,7 +376,8 @@ export const onboard = {
           sent("contacts");
           location.href = `sms:${tels.join(",")}?&body=${encodeURIComponent(msg)}`;
         } catch { track("permission_declined", { permission: "contacts" }); }
-      });
+      };
+      el.querySelector("[data-contacts]")?.addEventListener("click", () => prePrompt("contacts", { onYes: pick }));
       el.querySelector("[data-close]").onclick = () => closeSheet();
       // tap the code to show it big to the people in the room
       const qr = el.querySelector(".onb-qr");

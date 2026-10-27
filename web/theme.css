@@ -1657,7 +1657,9 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 .onb-or::before, .onb-or::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, .14); }
 .onb-again { min-height: 1.3em; }
 /* the permission pre-prompt */
-.onb-perm { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(6, 8, 24, .6); animation: y-fade .2s both; }
+/* above every layer, game screens included (#game-layer is 500): a game asks too */
+.onb-perm { position: fixed; inset: 0; z-index: 760; display: grid; place-items: center; padding: 16px; background: rgba(6, 8, 24, .6); animation: y-fade .2s both;
+  color: var(--y-ink); font-family: var(--f-sys); -webkit-tap-highlight-color: transparent; }
 .onb-perm-card { width: min(100%, 360px); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 24px 18px 12px; border-radius: 24px;
   background: rgba(15, 26, 58, .95); border: 1px solid rgba(255, 255, 255, .12); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); animation: onb-in .26s ease both; }
 .onb-perm-card b { font-size: 21px; line-height: 1.25; }
