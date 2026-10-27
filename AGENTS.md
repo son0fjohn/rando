@@ -20,7 +20,7 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
 - **Onboarding** (see `docs/onboarding.md`): `web/onboard.js` (first open
   to playing in under a minute: an invite link's landing, name, character,
   the intro, Home, the invite sheet with its QR, phone verification only
-  where it matters, Settings, the safety card before a first game, a game
+  where it matters (off unless `FLAGS.PHONE_VERIFY` in `hpconfig.js`), Settings, the safety card before a first game, a game
   host's first lines, one-time hints, the first party's recap),
   `web/onbkit.js` (its pure parts), `web/i18n.js` (English and Korean, the
   device's language, switchable), `web/permissions.js` (a pre-prompt before

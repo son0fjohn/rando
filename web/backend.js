@@ -15,6 +15,7 @@ import { drawFace4 } from "./face4.js";
 import { onboard } from "./onboard.js";
 import { setSink } from "./analytics.js";
 import { askPermission } from "./permissions.js";
+import { FLAGS } from "./hpconfig.js";
 // the new player character (avatar4) everywhere; the old names stay local so
 // the rest of this file reads unchanged
 const DEFAULT_AVATAR = DEFAULT_AVATAR4;
@@ -215,9 +216,11 @@ const onboardEnv = {
   // so its character, coins and friends stay; another phone signs in with it
   verify: {
     _avail: null,
-    // only where the server has an SMS provider: until then nothing is gated
+    // only when FLAGS.PHONE_VERIFY is on and the server has phone auth:
+    // until then nothing is gated
     available() {
       if (typeof sb.__phoneAuth === "boolean") return Promise.resolve(sb.__phoneAuth);
+      if (!FLAGS.PHONE_VERIFY) return Promise.resolve(false);
       return this._avail ??= fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_ANON_KEY } })
         .then(r => r.json()).then(j => !!j?.external?.phone).catch(() => false);
     },

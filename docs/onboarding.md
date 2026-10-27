@@ -58,11 +58,15 @@ character, coins and friends stay and they carry on where they were; another
 phone signs in with the number (Settings). Korean numbers can be typed the
 local way (010-…).
 
-**Setup:** the gates switch themselves on only when the Supabase project has
-an SMS provider (`/auth/v1/settings` → `external.phone`); until then nothing
-is gated. To turn it on: Supabase → Authentication → Providers → Phone, with
-an SMS provider (Twilio, MessageBird, Vonage…). Korean 본인인증 (PASS / NICE)
-would be a server integration later.
+**Setup:** the gates are off (`FLAGS.PHONE_VERIFY` in `web/hpconfig.js`):
+guests can host, go public, add friends and spend coins. To turn them on:
+Supabase → Authentication → Providers → Phone with a working SMS provider
+(Twilio, MessageBird, Vonage…), then set `PHONE_VERIFY: true`. Even then they
+stay off if the project's `/auth/v1/settings` doesn't report `external.phone`.
+(The flag exists because the project's Phone provider is enabled from the old
+phone login, so detecting it alone gated hosting on production.) The gates
+are client-side only; no SQL checks verification. Korean 본인인증 (PASS /
+NICE) would be a server integration later.
 
 ## Permissions at their moment
 

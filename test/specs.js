@@ -1559,6 +1559,7 @@ group("Onboarding — English and Korean, guest setup, invite links, analytics")
   const names = Array.from({ length: 300 }, () => suggestName(rng, "en")).concat(Array.from({ length: 300 }, () => suggestName(rng, "ko")));
   ok(names.every(n => n.length >= 2 && n.length <= 20 && n === n.trim()), "name suggestions always fit the server's rule (2–20, trimmed)");
   ok(new Set(names).size > 150, `…and vary (${new Set(names).size} different in 600)`);
+  ok(CONFIG.FLAGS.PHONE_VERIFY === false, "phone verification is off: guests can host (FLAGS.PHONE_VERIFY, on only once SMS is set up)");
   setLang("ko"); const k = tr("recap.with", { n: 3, names: tr.list(["재", "미나", "솔"]) }); setLang("en");
   ok(k === "재, 미나, 솔랑 게임 3개를 했어요" && tr.list(["Jae", "Mina", "Sol"]) === "Jae, Mina and Sol", "lists and numbers read right in both");
   setLang(lang0);

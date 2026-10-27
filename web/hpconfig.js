@@ -17,6 +17,12 @@ export const FLAGS = {
   SPICY: false,
   // No proximity check this pass: anyone with the code can join from anywhere.
   GATE_BY_GPS: false,
+  // Phone verification before hosting, public parties, adding friends and
+  // spending coins (docs/onboarding.md). OFF: guests can do everything.
+  // Turn it on only once the Supabase project sends real SMS (Authentication
+  // -> Providers -> Phone, with Twilio or similar): the project's Phone
+  // provider being enabled is not enough on its own.
+  PHONE_VERIFY: false,
 };
 
 export const PARTY = {
