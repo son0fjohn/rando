@@ -490,7 +490,9 @@ try {
   }
   ok(await until(A, () => window.__game?.s?.phase === "title", null, 30000), "all 9 photos in, titling opens");
   // a title box, enabled: the next photo to title (none left: done)
-  const box = async pg => (await until(pg, () => { const i = document.getElementById("gp-in"); return (!!i && !i.disabled) || (window.__game?.s?.phase === "title" && !document.querySelector(".ag-tbox")) || window.__game?.s?.phase !== "title"; }, null, 8000))
+  // (a phone still drawing the photo step, or a step behind the host, isn't
+  // "done titling": wait for its title box, or for the action area to empty)
+  const box = async pg => (await until(pg, () => { const i = document.getElementById("gp-in"); const ph = window.__game?.s?.phase; return (!!i && !i.disabled) || (ph === "title" && document.getElementById("ag-ui")?.innerHTML === "") || ph === "gallery" || ph === "end"; }, null, 15000))
     && pg.evaluate(() => { const i = document.getElementById("gp-in"); return !!i && !i.disabled; });
   // A starts a title and leaves it half-typed while B and C finish all theirs
   const half = await box(A);
