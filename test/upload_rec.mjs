@@ -44,7 +44,9 @@ async function run(name, type, device) {
   await pg.evaluate(() => document.querySelector('[data-game="artgallery"] .pv-t > b')?.click());
   // the first game: the safety card, then the gallery
   if (await until(() => !!document.querySelector(".onb-safety"), null, 30000)) { await sleep(600); await tap(".onb-safety button"); }
-  ok(await until(() => /fill your 3 frames/.test(document.querySelector("#game-panel h2")?.textContent ?? ""), null, 60000), "the gallery: fill your 3 frames");
+  // Bunny explains it first (howto.js): a first game, so in full; then the frames
+  if (await until(() => !!document.querySelector("[data-how]"), null, 60000)) { await sleep(2500); await tap('[data-how="skip"], [data-how="go"]'); }
+  ok(await until(() => window.__game?.s?.phase === "photos" && document.querySelectorAll("#ag-ui .ag-frame").length === 3, null, 60000), "the gallery: fill your 3 frames");
   await sleep(1500);
   await pg.screenshot({ path: join(OUT, `${name}-1-frames.png`) });
 
