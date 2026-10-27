@@ -12,22 +12,28 @@
 //   Coming back: Home (your character, Throw a party, what's happening
 //     nearby, friends' parties, what's new). No onboarding again.
 //
-// Later moments, each once: the invite sheet when you throw a party, phone
-// verification only when it matters (hosting, public parties, friends,
-// spending coins, keeping progress), permissions with a pre-prompt
+// Accounts: everyone is a guest first (no phone, no email), kept on this
+// phone. "Save your account" links Kakao / Apple / Google to that same
+// account (after the first party's recap, in Settings, and "Already have an
+// account? Sign in" for a new phone). Phone verification only for the
+// stranger features: making a party public, joining public parties, adding
+// friends, earning and spending coins (a Kakao account counts).
+//
+// Later moments, each once: the invite sheet when you throw a party, permissions with a pre-prompt
 // (permissions.js), a one-tap safety card before the first game, a game's
 // host saying what to do the first time you play it, one-time hints, and the
 // first party's recap (share it, throw your own).
 //
 // backend.js hands in what needs the server (onboard.start(env)):
 //   env.profile() -> { handle, avatar | null } · env.saveName(name) ·
-//   env.saveAvatar(look) · env.openMap() · env.openStyle() · env.verify
-//   ({ available, isVerified, phone, send, confirm, signInSend, signInConfirm })
+//   env.saveAvatar(look) · env.openMap() · env.openStyle() · env.account
+//   ({ providers, user, linked, isGuest, link, signIn }) · env.verify
+//   ({ available, sms, isVerified, phone, send, confirm, signInSend, signInConfirm })
 //   · env.friendParties() -> [{ id, name, hostName, count }]
 import { t, lang, setLang, onLang, suggestName } from "./i18n.js";
 import { track, trackOnce, sinceFirstOpen } from "./analytics.js";
 import { askPermission, prePrompt, permState, toast } from "./permissions.js";
-import { starterLook, e164 } from "./onbkit.js";
+import { starterLook, e164, otpWait, otpError } from "./onbkit.js";
 import { mountCharView } from "./charview.js";
 import { renderLook, warmLooks } from "./charrender.js";
 import { silhouetteFor, SPRITE } from "./charsprite.js";
@@ -59,6 +65,7 @@ const st = load();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch {} };
 
 let env = null, root = null, screen = null, homeView = null, pending = null;
+let canSignIn = false;     // this server offers a sign-in (Kakao / Apple / Google / phone): the name screen says so
 
 export const onboard = {
   get state() { return st; },
@@ -77,6 +84,21 @@ export const onboard = {
     root = OFF ? null : $("onb");
     if (!root) return;
     onLang(() => { if (screen?.redraw) screen.redraw(); });
+    Promise.all([env.account?.providers?.().catch(() => []) ?? [], env.verify?.sms?.().catch(() => false)]).then(([p, sms]) => {
+      canSignIn = p.length > 0 || !!sms;
+      if (canSignIn && screen?.id === "name") screen.redraw?.();
+    });
+    // back from Kakao / Apple / Google: say how it went, and go back into the party they were in
+    const back = this._back();
+    if (back) {
+      setTimeout(() => this._afterOAuth(back), 900);
+      if (back.party && !needsSetup(env.profile())) {
+        if (pending?.code === back.party) clearPending();
+        hide(); party.togglePanel(true);
+        party.joinByCode(back.party);
+        return;
+      }
+    }
     // a code kept from an earlier open (reload, sign-in, install) still counts
     if (!pending && st.pending && Date.now() - st.pending.at < PENDING_MS) pending = st.pending;
     const source = pending ? "invite_link" : "organic";
@@ -128,9 +150,11 @@ export const onboard = {
             <p class="onb-err" id="onb-name-err"></p>
             <button type="button" class="onb-btn gold big" data-next>${esc(t("name.next"))}</button>
             <p class="onb-fine">${esc(t("name.note"))}</p>
+            ${canSignIn ? `<button type="button" class="onb-btn text" data-have>${esc(t("acct.haveOne"))}</button>` : ""}
             ${langToggle()}
           </div>`, { redraw: draw, bind: el => {
         bindLang(el);
+        el.querySelector("[data-have]")?.addEventListener("click", () => { sfx.cursor?.(); this.signInSheet(); });
         const inp = el.querySelector("#onb-name"), err = el.querySelector("#onb-name-err");
         inp.oninput = () => { value = inp.value; err.textContent = ""; };
         setTimeout(() => inp.focus(), 250);
@@ -360,8 +384,10 @@ export const onboard = {
     });
   },
 
-  // ================================================================ verification, only when it matters
-  // resolves true when they may go on (verified, or verification isn't set up on this server)
+  // ================================================================ phone verification: the stranger features only
+  // (making a party public, joining public parties, adding friends, earning
+  // and spending coins). Private parties with friends never wait on it.
+  // Resolves true when they may go on (verified, or verification is off).
   async requireVerified(trigger) {
     if (!env?.verify) return true;
     if (!(await env.verify.available())) return true;
@@ -369,77 +395,215 @@ export const onboard = {
     track("verification_prompted", { trigger });
     return this.verifySheet(trigger);
   },
-  verifySheet(trigger, { signIn = false } = {}) {
+  // may this phone do a stranger feature right now, without asking (coins after a game)
+  async verifiedOrUngated() {
+    if (!env?.verify || !(await env.verify.available())) return true;
+    return env.verify.isVerified();
+  },
+  async verifySheet(trigger, { signIn = false } = {}) {
+    const sms = await env.verify.sms?.() ?? true;
+    const kakao = !signIn && (await env.account?.providers?.().catch(() => []) ?? []).includes("kakao");
     return new Promise(res => {
-      let phone = null;
+      let phone = null, tick = null;
+      const finish = ok => { clearInterval(tick); res(ok); };
+      const viaKakao = el => el.querySelector("[data-oauth]")?.addEventListener("click", () => { clearInterval(tick); this.oauth("link", "kakao", trigger); });
+      // ask for a code: this phone's own limit first, then the server's
+      const ask = async (btn, err) => {
+        const wait = otpWait(otpLog());
+        if (wait) { err.textContent = t("ver.wait", { t: waitText(wait) }); sfx.back?.(); return false; }
+        btn.disabled = true;
+        try { await (signIn ? env.verify.signInSend(phone) : env.verify.send(phone)); }
+        catch (x) {
+          btn.disabled = false;
+          const e = otpError(x?.message);
+          track("verification_failed", { trigger, reason: e.reason });
+          if (e.wait) otpHold(e.wait);
+          err.textContent = e.reason === "rate_limited" ? t("ver.wait", { t: waitText(e.wait) }) : e.reason === "taken" ? t("ver.taken")
+            : e.reason === "bad_number" ? t("ver.badPhone") : t(kakao ? "ver.cantSendK" : "ver.cantSend");
+          sfx.back?.();
+          return false;
+        }
+        otpMark();
+        track("verification_code_sent", { trigger });
+        btn.disabled = false;
+        return true;
+      };
       const stepPhone = () => sheet("verify", `
           <b class="onb-h">${esc(t("ver.title"))}</b>
           <p class="onb-sub">${esc(t(signIn ? "set.signin" : `ver.why.${trigger}`))}</p>
-          <input id="onb-phone" class="onb-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="${lang === "ko" ? "010-1234-5678" : "+1 555 123 4567"}" aria-label="${esc(t("ver.phone"))}">
+          ${sms ? `<input id="onb-phone" class="onb-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="${lang === "ko" ? "010-1234-5678" : "+1 555 123 4567"}" aria-label="${esc(t("ver.phone"))}" value="${esc(phone ?? "")}">
           <p class="onb-err" id="onb-ver-err"></p>
-          <button type="button" class="onb-btn gold big" data-send>${esc(t("ver.send"))}</button>
+          <button type="button" class="onb-btn gold big" data-send>${esc(t("ver.send"))}</button>` : ""}
+          ${kakao ? `${sms ? `<div class="onb-or"><span>${esc(t("acct.or"))}</span></div>` : ""}${oauthBtn("kakao")}` : ""}
           <button type="button" class="onb-btn text" data-later>${esc(t("ver.later"))}</button>
-          <p class="onb-fine">${esc(t("ver.note"))}</p>`, el => {
+          <p class="onb-fine">${esc(t(kakao ? "ver.noteK" : "ver.note"))}</p>`, el => {
         const inp = el.querySelector("#onb-phone"), err = el.querySelector("#onb-ver-err");
-        setTimeout(() => inp.focus(), 250);
-        el.querySelector("[data-later]").onclick = () => { closeSheet(); res(false); };
-        el.querySelector("[data-send]").onclick = async e => {
+        if (inp) setTimeout(() => inp.focus(), 250);
+        viaKakao(el);
+        el.querySelector("[data-later]").onclick = () => { closeSheet(); finish(false); };
+        el.querySelector("[data-send]")?.addEventListener("click", async e => {
           phone = e164(inp.value);
           if (!phone) { err.textContent = t("ver.badPhone"); sfx.back?.(); return; }
-          e.currentTarget.disabled = true;
-          try { await (signIn ? env.verify.signInSend(phone) : env.verify.send(phone)); stepCode(); }
-          catch (x) { e.currentTarget.disabled = false; err.textContent = /registered|exists|already/i.test(x?.message ?? "") ? t("ver.taken") : (x?.message || t("ver.badPhone")); sfx.back?.(); }
-        };
-      }, { onClose: () => res(false) });
+          if (await ask(e.currentTarget, err)) stepCode();
+        });
+      }, { onClose: () => finish(false) });
       const stepCode = () => sheet("verify", `
           <b class="onb-h">${esc(t("ver.title"))}</b>
           <p class="onb-sub">${esc(t("ver.sent", { phone }))}</p>
           <input id="onb-otp" class="onb-input otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="${esc(t("ver.code"))}">
           <p class="onb-err" id="onb-ver-err"></p>
           <button type="button" class="onb-btn gold big" data-verify>${esc(t("ver.verify"))}</button>
+          <p class="onb-fine onb-again" id="onb-again" aria-live="polite"></p>
+          <button type="button" class="onb-btn ghost" data-again hidden>${esc(t("ver.again"))}</button>
+          ${kakao ? oauthBtn("kakao") : ""}
           <button type="button" class="onb-btn text" data-back>${esc(t("ver.resend"))}</button>`, el => {
-        const inp = el.querySelector("#onb-otp"), err = el.querySelector("#onb-ver-err");
+        const inp = el.querySelector("#onb-otp"), err = el.querySelector("#onb-ver-err"), again = el.querySelector("[data-again]"), line = el.querySelector("#onb-again");
         setTimeout(() => inp.focus(), 250);
-        el.querySelector("[data-back]").onclick = () => stepPhone();
+        viaKakao(el);
+        // "Didn't get it? Try again in 30s (or sign in with Kakao)", then a Send again button
+        const count = () => {
+          const w = otpWait(otpLog());
+          line.textContent = w ? t(kakao ? "ver.noCodeK" : "ver.noCode", { t: waitText(w) }) : t(kakao ? "ver.noCodeNowK" : "ver.noCodeNow");
+          again.hidden = !!w;
+        };
+        clearInterval(tick); tick = setInterval(count, 1000); count();
+        again.onclick = async () => { if (await ask(again, err)) { err.textContent = ""; toast(t("ver.sentAgain")); } count(); };
+        el.querySelector("[data-back]").onclick = () => { clearInterval(tick); stepPhone(); };
         const go = async () => {
           const code = inp.value.trim();
           if (!/^\d{4,8}$/.test(code)) { err.textContent = t("ver.badCode"); return; }
           el.querySelector("[data-verify]").disabled = true;
           try { await (signIn ? env.verify.signInConfirm(phone, code) : env.verify.confirm(phone, code)); }
-          catch { el.querySelector("[data-verify]").disabled = false; err.textContent = t("ver.badCode"); sfx.back?.(); return; }
+          catch (x) { el.querySelector("[data-verify]").disabled = false; err.textContent = t("ver.badCode"); track("verification_failed", { trigger, reason: otpError(x?.message).reason }); sfx.back?.(); return; }
           track("verification_completed", { trigger });
           sfx.win?.(); buzz([20, 40, 20]);
           toast(t("ver.done"));
           closeSheet();
-          res(true);
+          finish(true);
         };
         el.querySelector("[data-verify]").onclick = go;
         inp.oninput = () => { if (inp.value.trim().length === 6) go(); };
-      }, { onClose: () => res(false) });
+      }, { onClose: () => finish(false) });
       stepPhone();
     });
   },
 
+  // ================================================================ the account: a guest, saved with one tap
+  // Save: link Kakao / Apple / Google to this same guest account (nothing is
+  // lost). Sign in: on another phone, or after a reinstall. Both go to the
+  // provider and come back here; st.oauth remembers why and which party.
+  async saveSheet(trigger = "save") {
+    const provs = await env.account?.providers?.().catch(() => []) ?? [];
+    const linked = await env.account.linked();
+    const offer = provs.filter(p => !linked.includes(p) && !(p === "google" && inAppBrowser()));
+    if (!offer.length) { toast(t("acct.none")); return; }
+    track("account_save_prompted", { trigger });
+    sheet("save", `
+      <b class="onb-h">${esc(t("acct.title"))}</b>
+      <p class="onb-sub">${esc(t("acct.sub"))}</p>
+      <div class="onb-oauth">${offer.map(oauthBtn).join("")}</div>
+      <button type="button" class="onb-btn text" data-have>${esc(t("acct.haveOne"))}</button>
+      <button type="button" class="onb-btn text" data-close>${esc(t("ver.later"))}</button>
+      <p class="onb-fine">${esc(t("acct.note"))}</p>`, el => {
+      el.querySelectorAll("[data-oauth]").forEach(b => b.onclick = () => this.oauth("link", b.dataset.oauth, trigger));
+      el.querySelector("[data-have]").onclick = () => this.signInSheet();
+      el.querySelector("[data-close]").onclick = () => closeSheet();
+    });
+  },
+  async signInSheet() {
+    const provs = (await env.account?.providers?.().catch(() => []) ?? []).filter(p => !(p === "google" && inAppBrowser()));
+    const sms = await env.verify?.sms?.();
+    const guest = await env.account?.isGuest?.(), progress = guest && !needsSetup(env.profile());
+    sheet("signin", `
+      <b class="onb-h">${esc(t("acct.signinTitle"))}</b>
+      <p class="onb-sub">${esc(t("acct.signinSub"))}</p>
+      <div class="onb-oauth">${provs.map(oauthBtn).join("")}</div>
+      ${sms ? `<button type="button" class="onb-btn ghost" data-phone>${esc(t("acct.phone"))}</button>` : ""}
+      ${progress ? `<p class="onb-fine">${esc(t("acct.guestLost"))}</p>` : ""}
+      <button type="button" class="onb-btn text" data-close>${esc(t("set.close"))}</button>`, el => {
+      el.querySelectorAll("[data-oauth]").forEach(b => b.onclick = () => this.oauth("signin", b.dataset.oauth));
+      el.querySelector("[data-phone]")?.addEventListener("click", async () => { if (await this.verifySheet("save", { signIn: true })) location.reload(); });
+      el.querySelector("[data-close]").onclick = () => closeSheet();
+    });
+  },
+  async oauth(mode, provider, trigger = "save") {
+    const c = party.current;
+    st.oauth = { mode, provider, trigger, at: Date.now(), party: c ? c.room.id.replace(/^party-/, "") : null }; save();
+    buzz(15);
+    try { await (mode === "link" ? env.account.link(provider, backUrl()) : env.account.signIn(provider, backUrl())); }
+    catch (e) {
+      delete st.oauth; save();
+      console.warn("[onboard] oauth", e?.message ?? e);
+      toast(/manual linking/i.test(e?.message ?? "") ? t("acct.none") : t("acct.failed", { p: providerName(provider) }));
+    }
+  },
+  // back from the provider: what happened (or null), the address cleaned up
+  _back() {
+    const q = new URLSearchParams(location.search), h = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const code = q.get("error_code") ?? h.get("error_code"), error = q.get("error") ?? h.get("error");
+    if (code || error) {
+      const u = new URL(location.href);
+      for (const k of ["error", "error_code", "error_description"]) u.searchParams.delete(k);
+      if (h.get("error")) u.hash = "";
+      history.replaceState(null, "", u);
+    }
+    const o = st.oauth;
+    if (!o) return null;
+    delete st.oauth; save();
+    if (Date.now() - o.at > 30 * 60e3) return null;
+    return { ...o, error: code || error || null };
+  },
+  async _afterOAuth(b) {
+    const name = providerName(b.provider);
+    if (b.error === "identity_already_exists") {
+      sheet("taken", `
+        <b class="onb-h">${esc(t("acct.taken", { p: name }))}</b>
+        <p class="onb-sub">${esc(t("acct.takenSub"))}</p>
+        ${oauthBtn(b.provider).replace(esc(t(`acct.${b.provider}`)), esc(t("acct.useIt")))}
+        <button type="button" class="onb-btn text" data-close>${esc(t("acct.keepGuest"))}</button>`, el => {
+        el.querySelector("[data-oauth]").onclick = () => this.oauth("signin", b.provider);
+        el.querySelector("[data-close]").onclick = () => closeSheet();
+      });
+      return;
+    }
+    if (b.error) { toast(b.error === "access_denied" ? t("acct.cancelled") : t("acct.failed", { p: name })); return; }
+    if (b.mode === "link") {
+      if (!(await env.account.linked()).includes(b.provider)) { toast(t("acct.failed", { p: name })); return; }
+      track("account_saved", { provider: b.provider, trigger: b.trigger });
+      if (b.provider === "kakao" && ["public", "friends", "coins"].includes(b.trigger)) track("verification_completed", { trigger: b.trigger });
+      toast(t("acct.saved", { p: name }));
+    } else {
+      track("account_signed_in", { provider: b.provider });
+      toast(t("acct.signedIn", { p: name }));
+    }
+    sfx.win?.(); buzz([20, 40, 20]);
+  },
+
   // ================================================================ settings
   async settings() {
-    const v = env?.verify;
-    const [loc, notif, avail, verified, phone] = await Promise.all([permState("location"), permState("notifications"), v?.available() ?? false, v?.isVerified() ?? false, v?.phone?.() ?? ""]);
+    const v = env?.verify, a = env?.account;
+    const [loc, notif, gated, verified, phone, provs, linked, guest, sms] = await Promise.all([permState("location"), permState("notifications"),
+      v?.available() ?? false, v?.isVerified() ?? false, v?.phone?.() ?? "", a?.providers?.().catch(() => []) ?? [], a?.linked?.() ?? [], a?.isGuest?.() ?? true, v?.sms?.() ?? false]);
     const row = (label, state, kind) => `<div class="onb-set-row"><span>${esc(label)}</span>${state === "granted" ? `<em class="on">${esc(t("set.on"))}</em>`
       : state === "denied" ? `<em class="off" title="${esc(t("set.blocked"))}">${esc(t("set.off"))}</em>` : state === "unsupported" ? `<em class="off">—</em>`
       : `<button type="button" class="onb-btn ghost sm" data-perm="${kind}">${esc(t("set.turnOn"))}</button>`}</div>`;
+    const canSave = provs.some(p => !linked.includes(p)) && (guest || !linked.length);
     sheet("settings", `
       <b class="onb-h">${esc(t("set.title"))}</b>
       <div class="onb-set-row"><span>${esc(t("set.lang"))}</span>${langToggle()}</div>
       ${row(t("set.location"), loc, "location")}
       ${row(t("set.notif"), notif, "notifications")}
       ${loc === "denied" || notif === "denied" ? `<p class="onb-fine">${esc(t("set.blocked"))}</p>` : ""}
-      ${avail ? `<div class="onb-set-row"><span>${esc(t("set.account"))}</span><em class="${verified ? "on" : ""}">${esc(verified ? t("set.verified", { phone: phone ? `•••${phone.slice(-4)}` : "" }) : t("set.guest"))}</em></div>
-        ${verified ? "" : `<button type="button" class="onb-btn gold" data-save>${esc(t("set.save"))}</button><button type="button" class="onb-btn text" data-signin>${esc(t("set.signin"))}</button>`}` : ""}
+      <div class="onb-set-row"><span>${esc(t("set.account"))}</span><em class="${linked.length || !guest ? "on" : ""}">${esc(linked.length ? t("set.savedWith", { p: linked.map(providerName).join(", ") }) : guest ? t("set.guest") : t("set.saved"))}</em></div>
+      ${gated ? `<div class="onb-set-row"><span>${esc(t("set.phone"))}<small>${esc(t("set.phoneWhy"))}</small></span>${verified ? `<em class="on">${esc(phone ? t("set.verified", { phone: `•••${phone.slice(-4)}` }) : t("set.verifiedKakao"))}</em>` : `<button type="button" class="onb-btn ghost sm" data-verify>${esc(t("set.verifyBtn"))}</button>`}</div>` : ""}
+      ${canSave ? `<button type="button" class="onb-btn gold" data-save>${esc(t("acct.title"))}</button>` : ""}
+      ${provs.length || sms ? `<button type="button" class="onb-btn text" data-signin>${esc(t(guest ? "acct.haveOne" : "set.switch"))}</button>` : ""}
       <button type="button" class="onb-btn text" data-close>${esc(t("set.close"))}</button>`, el => {
       bindLang(el, () => this.settings());
       el.querySelectorAll("[data-perm]").forEach(b => b.onclick = async () => { closeSheet(); await askPermission(b.dataset.perm); this.settings(); });
-      el.querySelector("[data-save]")?.addEventListener("click", async () => { track("verification_prompted", { trigger: "save" }); await this.verifySheet("save"); this.settings(); });
-      el.querySelector("[data-signin]")?.addEventListener("click", async () => { if (await this.verifySheet("save", { signIn: true })) location.reload(); });
+      el.querySelector("[data-save]")?.addEventListener("click", () => this.saveSheet("save"));
+      el.querySelector("[data-verify]")?.addEventListener("click", async () => { track("verification_prompted", { trigger: "save" }); await this.verifySheet("save"); this.settings(); });
+      el.querySelector("[data-signin]")?.addEventListener("click", () => this.signInSheet());
       el.querySelector("[data-close]").onclick = () => closeSheet();
     });
   },
@@ -478,6 +642,32 @@ export const onboard = {
 // ================================================================ helpers
 function needsSetup(p) { return AUTO_HANDLE.test(p.handle ?? "") || !p.avatar; }
 function clearPending() { pending = null; delete st.pending; save(); }
+
+// ---- asking for codes: when this phone asked (and any wait the server asked for)
+const OTP_KEY = "rando-otp";
+function otpLog() { try { return JSON.parse(localStorage.getItem(OTP_KEY) ?? "{}"); } catch { return {}; } }
+function otpSave(o) { try { localStorage.setItem(OTP_KEY, JSON.stringify(o)); } catch {} }
+function otpMark() { const o = otpLog(); otpSave({ ...o, sent: [...(o.sent ?? []).filter(x => Date.now() - x < 3600e3), Date.now()] }); }
+function otpHold(s) { otpSave({ ...otpLog(), until: Date.now() + s * 1000 }); }
+const waitText = s => s > 90 ? t("ver.min", { n: Math.ceil(s / 60) }) : t("ver.sec", { n: s });
+
+// ---- one-tap sign-in buttons, in each provider's own colours (their brand rules, not our accent)
+const OAUTH_MARK = {
+  kakao: `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#000" d="M12 3.2c-5.3 0-9.6 3.4-9.6 7.6 0 2.7 1.8 5.1 4.5 6.4l-1 3.6c-.1.3.3.6.6.4l4.2-2.8c.4 0 .9.1 1.3.1 5.3 0 9.6-3.4 9.6-7.7S17.3 3.2 12 3.2z"/></svg>`,
+  apple: `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#000" d="M16.4 12.6c0-2.2 1.8-3.3 1.9-3.3-1-1.5-2.6-1.7-3.2-1.7-1.3-.1-2.6.8-3.3.8s-1.7-.8-2.9-.8c-1.5 0-2.8.9-3.6 2.2-1.5 2.7-.4 6.6 1.1 8.8.7 1.1 1.6 2.2 2.7 2.2s1.5-.7 2.8-.7 1.7.7 2.9.7 1.9-1.1 2.6-2.1c.8-1.2 1.2-2.4 1.2-2.5 0 0-2.3-.9-2.3-3.6zM14.2 6c.6-.7 1-1.7.9-2.8-.9 0-1.9.6-2.5 1.3-.6.6-1.1 1.7-.9 2.7 1 .1 2-.5 2.5-1.2z"/></svg>`,
+  google: `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.7 1.2 9.2 3.6l6.9-6.9C35.9 2.4 30.5 0 24 0 14.6 0 6.5 5.4 2.6 13.2l8 6.2C12.4 13.7 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M47 24.6c0-1.6-.2-3.1-.4-4.6H24v9h12.9c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 7.2-10.4 7.2-17.6z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6l-8-6.2C.9 16.5 0 20.1 0 24s.9 7.5 2.6 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-4.9 2.3-8.2 2.3-6.3 0-11.6-4.2-13.5-9.9l-8 6.2C6.5 42.6 14.6 48 24 48z"/></svg>`,
+};
+function oauthBtn(p) { return `<button type="button" class="onb-btn oauth ${p}" data-oauth="${p}">${OAUTH_MARK[p] ?? ""}<span>${esc(t(`acct.${p}`))}</span></button>`; }
+const providerName = p => t(`prov.${p}`);
+// KakaoTalk / Instagram / Facebook / LINE open links in their own browser; Google refuses to sign in there
+const inAppBrowser = () => /KAKAOTALK|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
+// where the provider sends them back: here, minus an invite's link bits (the party is in st.oauth)
+function backUrl() {
+  const u = new URL(location.href);
+  for (const k of ["party", "from", "n", "c", "error", "error_code", "error_description"]) u.searchParams.delete(k);
+  u.hash = "";
+  return u.toString();
+}
 
 function langToggle() {
   return `<span class="onb-lang" role="group" aria-label="Language"><button type="button" data-lang="en" class="${lang === "en" ? "on" : ""}">EN</button><button type="button" data-lang="ko" class="${lang === "ko" ? "on" : ""}">한</button></span>`;
@@ -672,7 +862,9 @@ async function recap(c) {
   const people = c.room.members.slice(0, 6);
   let coins = 0;
   try { coins = await party.hooks.coins?.partyCoins({ session: c.set.session, set: c.set.no }) ?? 0; } catch {}
-  const canVerify = !!(env?.verify && await env.verify.available() && !(await env.verify.isVerified()));
+  // the natural moment to keep all this: save the account (one tap), and collect coins that wait on a verified number
+  const canSave = !!(env?.account && await env.account.isGuest() && (await env.account.providers().catch(() => [])).length);
+  const canClaim = !!c.unclaimed?.length;
   const notifAsk = (await permState("notifications")) === "prompt";
   const withLine = names.length ? t("recap.with", { n, names: t.list(names) }) : "";
   sheet("recap", `
@@ -685,7 +877,8 @@ async function recap(c) {
       <button type="button" class="onb-btn gold big" data-throw>${esc(t("recap.throw"))}</button>
       <button type="button" class="onb-btn ghost" data-share>${esc(t("recap.share"))}</button>
       ${notifAsk ? `<button type="button" class="onb-btn text" data-notif>🔔 ${esc(t("perm.notif.title"))}</button>` : ""}
-      ${canVerify ? `<button type="button" class="onb-btn text" data-verify>${esc(t("recap.save"))}</button>` : ""}
+      ${canSave ? `<button type="button" class="onb-btn ghost" data-save>${esc(t("acct.recap"))}</button>` : ""}
+      ${canClaim ? `<button type="button" class="onb-btn text" data-claim>${esc(t("coins.claimRecap"))}</button>` : ""}
       <button type="button" class="onb-btn text" data-close>${esc(t("recap.close"))}</button>
     </div>`, el => {
     const imgs = people.map((m, i) => renderLook(m.avatar ?? {}, { frame: "full" }).then(u => { const im = el.querySelector(`img[data-r="${i}"]`); if (im) im.src = u; return u; }).catch(() => null));
@@ -703,7 +896,8 @@ async function recap(c) {
       } catch {}
     };
     el.querySelector("[data-notif]")?.addEventListener("click", async () => { st.notifAsked = true; save(); await askPermission("notifications"); });
-    el.querySelector("[data-verify]")?.addEventListener("click", async () => { track("verification_prompted", { trigger: "recap" }); await onboard.verifySheet("save"); });
+    el.querySelector("[data-save]")?.addEventListener("click", () => onboard.saveSheet("recap"));
+    el.querySelector("[data-claim]")?.addEventListener("click", async () => { closeSheet(); await party.claimUnclaimed(c); });
     el.querySelector("[data-close]").onclick = () => closeSheet();
   });
 }

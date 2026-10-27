@@ -21,7 +21,7 @@ import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
 import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea } from "/web/citygen.js";
 import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
 import { EVENTS, clean, track } from "/web/analytics.js";
-import { starterLook, e164 } from "/web/onbkit.js";
+import { starterLook, e164, otpWait, otpError, OTP } from "/web/onbkit.js";
 import { invitePage } from "/api/invite.mjs";
 import { STARTER_OUTFITS4, normalizeAvatar4 } from "/web/items4.js";
 
@@ -1559,7 +1559,6 @@ group("Onboarding — English and Korean, guest setup, invite links, analytics")
   const names = Array.from({ length: 300 }, () => suggestName(rng, "en")).concat(Array.from({ length: 300 }, () => suggestName(rng, "ko")));
   ok(names.every(n => n.length >= 2 && n.length <= 20 && n === n.trim()), "name suggestions always fit the server's rule (2–20, trimmed)");
   ok(new Set(names).size > 150, `…and vary (${new Set(names).size} different in 600)`);
-  ok(CONFIG.FLAGS.PHONE_VERIFY === false, "phone verification is off: guests can host (FLAGS.PHONE_VERIFY, on only once SMS is set up)");
   setLang("ko"); const k = tr("recap.with", { n: 3, names: tr.list(["재", "미나", "솔"]) }); setLang("en");
   ok(k === "재, 미나, 솔랑 게임 3개를 했어요" && tr.list(["Jae", "Mina", "Sol"]) === "Jae, Mina and Sol", "lists and numbers read right in both");
   setLang(lang0);
@@ -1568,6 +1567,16 @@ group("Onboarding — English and Korean, guest setup, invite links, analytics")
   ok(looks.every(l => JSON.stringify(normalizeAvatar4(l)) === JSON.stringify(l)) && new Set(looks.map(l => l.skin)).size > 3 && new Set(looks.map(l => l.eyes)).size > 3, "…with a random skin, hair and eyes, and nothing that clashes");
   ok(e164("010-1234-5678", "en") === "+821012345678" && e164("01012345678", "ko") === "+821012345678" && e164("+1 (555) 123-4567") === "+15551234567" && e164("5551234567", "en") === "+15551234567" && e164("12", "en") === null,
     "phone numbers: Korean local -> +82, international kept, junk refused");
+  ok(["+82 010-1234-5678", "+82 10 1234 5678", "0082 10 1234 5678", "82 10-1234-5678", "8210 1234 5678"].every(n => e164(n, "en") === "+821012345678"),
+    "…and the half-international ways Koreans write theirs (+82 010…, 0082…, 82 10…): never a trunk 0 after +82");
+  const now = 1e12, min = 60e3;
+  ok(otpWait({}, now) === 0 && otpWait({ sent: [now - 10e3] }, now) === OTP.COOLDOWN_S - 10 && otpWait({ sent: [now - OTP.COOLDOWN_S * 1000] }, now) === 0,
+    `asking for codes: one every ${OTP.COOLDOWN_S} s`);
+  ok(otpWait({ sent: [50, 40, 30, 20, 10].map(m => now - m * min) }, now) === 10 * 60 && otpWait({ until: now + 45e3 }, now) === 45,
+    `…at most ${OTP.MAX_PER_HOUR} an hour, and the server's own wait is kept`);
+  ok(otpError("For security purposes, you can only request this after 53 seconds.").wait === 53 && otpError("Token has expired or is invalid").reason === "bad_code"
+    && otpError("Error sending confirmation OTP to provider: Permission to send an SMS has not been enabled for the region").reason === "provider" && otpError("Phone number already registered").reason === "taken",
+    "a failed code request becomes one reason (rate limited / provider / bad code / taken), never the server's text");
   const page = invitePage({ code: "ab12", name: `Jae's <b>party</b>"`, count: 4 });
   ok(/og:title" content="Jae&#39;s &lt;b&gt;party&lt;\/b&gt;&quot; · 4 inside"/.test(page) && !/<b>party/.test(page), "the invite link's preview: the party's name and who's in, escaped");
   ok(/url=\/\?party=AB12&amp;from=invite/.test(page) && invitePage({ code: "bad!" }) === null, "…then on to the party (a bad code goes nowhere)");
@@ -1578,7 +1587,8 @@ group("Onboarding — English and Korean, guest setup, invite links, analytics")
   track("made_up_event", {});
   const row = window.__events.slice(before);
   ok(row.length === 1 && JSON.stringify(Object.keys(row[0].props)) === JSON.stringify(["source", "ms"]) && row[0].device && !("user" in row[0]), "an event keeps only whitelisted props (no code, name or place), with an install id, no account");
-  ok(EVENTS.length === 17 && JSON.stringify(clean({ permission: "location", trigger: "host", count: 3 })) === JSON.stringify({ permission: "location", trigger: "host", count: 3 }), "the 17 onboarding events, and their props");
+  ok(EVENTS.length === 22 && JSON.stringify(clean({ permission: "location", trigger: "public", count: 3 })) === JSON.stringify({ permission: "location", trigger: "public", count: 3 }), "the 22 onboarding events, and their props");
+  ok(JSON.stringify(clean({ provider: "kakao", reason: "provider" })) === JSON.stringify({ provider: "kakao", reason: "provider" }) && !("provider" in clean({ provider: "naver" })) && !("reason" in clean({ reason: "Error sending to +821012345678" })), "accounts and SMS codes: only the provider and a fixed reason, never a number");
 }
 log("head", `\n${pass} passed, ${fail} failed`);
 window.__done = { pass, fail };

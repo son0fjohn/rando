@@ -19,8 +19,10 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   database tables for game state: rooms, games and chat die with the room.
 - **Onboarding** (see `docs/onboarding.md`): `web/onboard.js` (first open
   to playing in under a minute: an invite link's landing, name, character,
-  the intro, Home, the invite sheet with its QR, phone verification only
-  where it matters (off unless `FLAGS.PHONE_VERIFY` in `hpconfig.js`), Settings, the safety card before a first game, a game
+  the intro, Home, the invite sheet with its QR; accounts: a guest first,
+  "Save your account" with Kakao / Apple / Google (`linkIdentity`, the same
+  account), sign in on a new phone; phone verification only for the
+  stranger features (`FLAGS.PHONE_VERIFY` in `hpconfig.js`), Settings, the safety card before a first game, a game
   host's first lines, one-time hints, the first party's recap),
   `web/onbkit.js` (its pure parts), `web/i18n.js` (English and Korean, the
   device's language, switchable), `web/permissions.js` (a pre-prompt before
@@ -145,7 +147,8 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   `web/data/ritual_prompts.json` (the SQL test checks they match).
 - **Analytics:** `017_events.sql`: the insert-only `events` table and the
   admin-only `onboarding_stats()` (the dashboard, `web/stats.html`; admins are
-  rows in `admins`, added by hand).
+  rows in `admins`, added by hand). `018_account_events.sql` allows the
+  account and SMS-code events; a new event name needs the check list there.
 - **Coins and the shop:** `013_coins_shop.sql`. Balances, payouts and purchases
   happen only in SQL functions (`report_game`, `confirm_game`, `buy_item`);
   the client only displays them. `016_wardrobe4.sql` is the new wardrobe's
@@ -185,6 +188,7 @@ node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edg
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
 node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the real app page, fresh phones each in their own browser context: Path A (invite link -> landing -> name -> character -> room -> first game) and Path B (intro -> Home -> verify -> throw a party -> invite) recorded, every screen in EN + KO, a declined location, an interrupted install, a guest verifying mid-party, tap -> first game for 5 fresh phones (FFMPEG=... for the mp4s)
+node test/auth_rec.mjs <dir> [en|ko|both]   # accounts: a guest from an invite (no phone), Save your account with Kakao (same account, back in the party), a Kakao account that's taken, the phone prompt when going public (reason, 30 s, Send it again), the SMS provider refusing, a new phone signing in
 node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
 node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps
 test/hunter.html                       # Manhunt's Hunter on his own: poses, doors, counter, orbit (open it on npm run serve:test)
@@ -275,6 +279,13 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   admin-only (`onboarding_stats()`).
 - An invite link carries the party's name and how many are in (parties live
   in no table), never anyone's handle or location.
+- Accounts: anyone plays as a guest with just a name and a character; no
+  phone or email to open the app, follow an invite, or host / join a private
+  party. Phone verification (or a linked Kakao account) is asked only for the
+  stranger features: making a party public, joining public parties, adding
+  friends, earning and spending coins. Saving an account links a provider to
+  the same user id (`linkIdentity`), never a new account; the phone number is
+  never shown to anyone or sent to analytics.
 - Friendships only ever come from a verified in-person meetup (server-side).
   There is no client "add friend" action; the profile card only shows status.
 - Reports (`reports`) are insert-only from clients and carry no message text.

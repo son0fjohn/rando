@@ -22,6 +22,16 @@
 //             so verification gates are on; the code is always 123456;
 //             +821000000000 is "already registered"
 //   events    the onboarding's analytics land in db.events (window.__db)
+//   oauth     ?oauth=kakao,apple,google (or localStorage stub-oauth): those
+//             one-tap sign-ins are "switched on". linkIdentity adds the
+//             provider to this same account and comes straight back to
+//             redirectTo (no provider page); ?oauthTaken=1 (stub-oauth-taken)
+//             makes it come back with identity_already_exists instead.
+//             signInWithOAuth switches this browser to that provider's
+//             account (u-guest-<provider>acct), a returning player.
+//   sms fails ?smsFail=provider (stub-sms-fail): the provider refuses to text
+//             (Twilio's region error, as Supabase passes it on); =rate: the
+//             server's "only request this after 53 seconds"
 import { StubChannel } from "./bcchannel.js";
 import { ITEMS4, HAIRCOLOR_SHOP, STARTER_OUTFITS4 } from "/web/items4.js";
 
@@ -229,7 +239,18 @@ const RPC = {
 };
 
 const phone0 = ls.get(`stub-phone-${myId}`);
-const session = { user: { id: myId, is_anonymous: !phone0, phone: phone0 ?? "", phone_confirmed_at: phone0 ? new Date().toISOString() : null }, access_token: "stub" };
+const ids0 = JSON.parse(ls.get(`stub-ids-${myId}`) ?? "[]");
+const session = { user: { id: myId, is_anonymous: !phone0 && !ids0.length, phone: phone0 ?? "", phone_confirmed_at: phone0 ? new Date().toISOString() : null,
+  identities: ids0.map(provider => ({ provider })), app_metadata: { providers: ids0 } }, access_token: "stub" };
+const oauthOn = (q.get("oauth") ?? ls.get("stub-oauth") ?? "").split(",").filter(Boolean);
+const oauthTaken = (q.get("oauthTaken") ?? ls.get("stub-oauth-taken")) === "1";
+const smsFail = () => ({
+  provider: { message: "Error sending confirmation OTP to provider: Permission to send an SMS has not been enabled for the region indicated by the 'To' number" },
+  rate: { message: "For security purposes, you can only request this after 53 seconds." },
+}[q.get("smsFail") ?? ls.get("stub-sms-fail")] ?? null);
+// "the provider" sends the browser back: a real navigation, like the real thing
+// (a fresh page load even when only the #fragment differs, as coming back from another site is)
+const goBack = (to, hash = "") => setTimeout(() => { history.replaceState(null, "", to.split("#")[0] + hash); location.reload(); }, 250);
 const authListeners = new Set();
 let pendingPhone = null;
 const phoneAuth = (q.get("verify") ?? ls.get("stub-verify")) === "1";
@@ -239,10 +260,11 @@ export function createClient() {
       getSession: async () => ({ data: { session } }),
       onAuthStateChange(cb) { authListeners.add(cb); return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } }; },
       signInAnonymously: async () => ({ data: { session }, error: null }),
-      signInWithOtp: async ({ phone } = {}) => { pendingPhone = phone; return { error: null }; },
+      signInWithOtp: async ({ phone } = {}) => { if (smsFail()) return { error: smsFail() }; pendingPhone = phone; return { error: null }; },
       // a guest linking a number (type phone_change) keeps its id: nothing is lost
       updateUser: async ({ phone } = {}) => {
         if (!phone) return { data: { user: session.user }, error: null };
+        if (smsFail()) return { data: null, error: smsFail() };
         if (phone === "+821000000000") return { data: null, error: { message: "Phone number already registered" } };
         pendingPhone = phone; return { data: { user: session.user }, error: null };
       },
@@ -255,6 +277,25 @@ export function createClient() {
         return { data: { session }, error: null };
       },
       signOut: async () => ({ error: null }),
+      // a guest saved with Kakao / Apple / Google: the same id, now with that sign-in
+      linkIdentity: async ({ provider, options } = {}) => {
+        if (!oauthOn.includes(provider)) return { data: null, error: { message: "Unsupported provider: provider is not enabled" } };
+        if (oauthTaken) { goBack(options?.redirectTo ?? location.href, "#error=server_error&error_code=identity_already_exists&error_description=Identity+is+already+linked+to+another+user"); return { data: {}, error: null }; }
+        const ids = [...new Set([...ids0, provider])];
+        ls.set(`stub-ids-${myId}`, JSON.stringify(ids));
+        goBack(options?.redirectTo ?? location.href);
+        return { data: {}, error: null };
+      },
+      // another phone signs in: this browser becomes that provider's (returning) account
+      signInWithOAuth: async ({ provider, options } = {}) => {
+        if (!oauthOn.includes(provider)) return { data: null, error: { message: "Unsupported provider: provider is not enabled" } };
+        const id = `${provider}acct`;
+        ls.set("stub-guest", id);
+        ls.set(`stub-ids-u-guest-${id}`, JSON.stringify([provider]));
+        if (!ls.get(`stub-handle-u-guest-${id}`)) { ls.set(`stub-handle-u-guest-${id}`, "minji"); ls.set(`stub-avatar-u-guest-${id}`, JSON.stringify(STARTER_OUTFITS4[1] ? { skin: "2", eyes: "round", iris: "brown", hairColor: "black", hair: "bob", ...(({ id: _i, name: _n, ...o }) => o)(STARTER_OUTFITS4[1]) } : {})); }
+        goBack(options?.redirectTo ?? location.href);
+        return { data: {}, error: null };
+      },
     },
     from: t => new Query(t),
     rpc: async (name, args) => {
@@ -263,6 +304,7 @@ export function createClient() {
     },
     channel: (name, cfg) => new StubChannel(name, cfg),
     __phoneAuth: phoneAuth,
+    __authSettings: { phone: phoneAuth, ...Object.fromEntries(oauthOn.map(p => [p, true])) },
     removeChannel: ch => ch.close(),
   };
 }
