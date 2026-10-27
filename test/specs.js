@@ -890,8 +890,8 @@ group("Mask Off — the deck");
 {
   const ids = MO.map(c => c.id);
   const deck = await (await fetch("/web/data/mask_off_cards.json")).json();
-  ok(MO.length === 70, `70 cards (${MO.length})`);
-  ok([[1, 22], [2, 24], [3, 24]].every(([l, n]) => MO.filter(c => c.level === l).length === n), "22 light, 24 real, 24 deep");
+  ok(MO.length === 93, `93 cards (${MO.length})`);
+  ok([[1, 30], [2, 29], [3, 34]].every(([l, n]) => MO.filter(c => c.level === l).length === n), "30 light, 29 real, 34 deep");
   ok(new Set(ids).size === ids.length && ids.every(id => /^mo-[123]\d\d$/.test(id)), "every card has its own permanent id");
   ok(deck.retired?.length === 21 && !deck.retired.some(id => ids.includes(id)), "the old cards' ids are retired, never reused");
   ok(MO.find(c => c.id === "mo-101")?.text === "What's something that always makes you feel like a kid again?"
