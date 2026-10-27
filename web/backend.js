@@ -15,6 +15,7 @@ import { drawFace4 } from "./face4.js";
 import { onboard } from "./onboard.js";
 import { setSink } from "./analytics.js";
 import { askPermission } from "./permissions.js";
+import { FLAGS } from "./hpconfig.js";
 // the new player character (avatar4) everywhere; the old names stay local so
 // the rest of this file reads unchanged
 const DEFAULT_AVATAR = DEFAULT_AVATAR4;
@@ -169,6 +170,7 @@ async function refreshStatus() {
     Object.assign(party.hooks, {
       holdInvite: code => onboard.holdInvite(code),
       gate: trigger => onboard.requireVerified(trigger),
+      canEarn: () => onboard.verifiedOrUngated(),
       invite: c => onboard.invite(c),
       joined: c => onboard.joined(c),
       beforeGame: (g, c) => onboard.beforeGame(g, c),
@@ -190,6 +192,7 @@ const onboardEnv = {
     if (error) return { error: error.message };
     me.profile.handle = name;
     if (rooms.me) rooms.me.handle = name;
+    party.refreshForm();     // the host form's "<name>'s party"
     nickname.dismissed = true;
     return {};
   },
@@ -211,18 +214,45 @@ const onboardEnv = {
   },
   openStyle() { styleView.open(); },
   friendParties: () => party.nearby.filter(r => party.hooks.isFriend?.(r.hostId)).map(r => ({ id: r.id, name: r.name ?? r.hostName, hostName: r.hostName, count: r.count })),
-  // phone verification: a guest (anonymous) account gets the number linked,
-  // so its character, coins and friends stay; another phone signs in with it
-  verify: {
-    _avail: null,
-    // only where the server has an SMS provider: until then nothing is gated
-    available() {
-      if (typeof sb.__phoneAuth === "boolean") return Promise.resolve(sb.__phoneAuth);
-      return this._avail ??= fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_ANON_KEY } })
-        .then(r => r.json()).then(j => !!j?.external?.phone).catch(() => false);
+  // the account: everyone starts as a guest (anonymous sign-in, kept on this
+  // phone). Saving it links Kakao / Apple / Google to the SAME user id
+  // (linkIdentity), so the character, coins, friends and history stay;
+  // another phone signs in with that provider. Only providers the Supabase
+  // project has switched on are offered.
+  account: {
+    async providers() {
+      const ext = await authSettings();
+      return OAUTH.filter(p => ext[p]);
     },
     async user() { return (await sb.auth.getSession()).data.session?.user ?? null; },
-    async isVerified() { const u = await this.user(); return !!(u?.phone_confirmed_at || (u?.phone && u.is_anonymous === false)); },
+    async linked() {
+      const u = await this.user();
+      return [...new Set([...(u?.identities ?? []).map(i => i.provider), ...(u?.app_metadata?.providers ?? [])])].filter(p => OAUTH.includes(p));
+    },
+    async isGuest() { const u = await this.user(); return !!u?.is_anonymous; },
+    // both leave the page for the provider and come back to `back`
+    async link(provider, back) { const { error } = await sb.auth.linkIdentity({ provider, options: { redirectTo: back } }); if (error) throw error; },
+    async signIn(provider, back) { const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo: back } }); if (error) throw error; },
+  },
+  // phone verification: only for the stranger features (making a party
+  // public, joining public parties, adding friends, earning and spending
+  // coins). A guest gets the number linked to the same account; another
+  // phone signs in with it. Kakao counts too: a Kakao account is tied to a
+  // phone number already.
+  verify: {
+    // gated only when FLAGS.PHONE_VERIFY is on and the server can verify
+    // someone (SMS or Kakao); otherwise nothing waits on it
+    async available() {
+      if (!FLAGS.PHONE_VERIFY && !sb.__authSettings) return false;
+      const ext = await authSettings();
+      return !!(ext.phone || ext.kakao);
+    },
+    async sms() { return !!(await authSettings()).phone; },
+    async user() { return (await sb.auth.getSession()).data.session?.user ?? null; },
+    async isVerified() {
+      const u = await this.user();
+      return !!(u?.phone_confirmed_at || (u?.phone && u.is_anonymous === false) || (u?.identities ?? []).some(i => i.provider === "kakao"));
+    },
     async phone() { return (await this.user())?.phone ?? ""; },
     async send(phone) { const { error } = await sb.auth.updateUser({ phone }); if (error) throw error; },
     async confirm(phone, token) { const { error } = await sb.auth.verifyOtp({ phone, token, type: "phone_change" }); if (error) throw error; },
@@ -230,6 +260,16 @@ const onboardEnv = {
     async signInConfirm(phone, token) { const { error } = await sb.auth.verifyOtp({ phone, token, type: "sms" }); if (error) throw error; },
   },
 };
+// one-tap sign-in providers, in the order they're offered (Kakao first: it's how Korea logs in)
+const OAUTH = ["kakao", "apple", "google"];
+// which sign-ins the Supabase project has switched on (read once; the test
+// stub answers for itself)
+let _authSettings = null;
+function authSettings() {
+  if (sb.__authSettings) return Promise.resolve(sb.__authSettings);
+  return _authSettings ??= fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_ANON_KEY } })
+    .then(r => r.json()).then(j => j?.external ?? {}).catch(() => ({}));
+}
 // onboarding analytics -> the insert-only events table (migrations/017); the
 // server stamps the time
 setSink(async rows => {

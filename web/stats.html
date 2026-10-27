@@ -53,6 +53,8 @@
         ${tile(pct(d.first_parties_finished, d.first_games), "finish their first party", `${d.first_parties_finished} of ${d.first_games} who played a game`)}
         ${tile(pct(d.hosted_within_7d, d.eligible_7d), "host within 7 days", `${d.hosted_within_7d} of ${d.eligible_7d} installs at least 7 days old`)}
         ${tile(d.installs, "installs")}
+        ${tile(pct(d.events?.verification_completed ?? 0, d.events?.verification_code_sent ?? 0), "SMS codes that got verified", `${d.events?.verification_completed ?? 0} verified (incl. Kakao) · ${d.events?.verification_code_sent ?? 0} codes sent · ${d.events?.verification_failed ?? 0} failed to send or check`)}
+        ${tile(d.events?.account_saved ?? 0, "guests who saved their account", `${d.events?.account_save_prompted ?? 0} saw Save your account · ${d.events?.account_signed_in ?? 0} signed in on another phone`)}
       </div>
       <table>${Object.entries(d.events ?? {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr><td>${esc(k)}</td><td>${n}</td></tr>`).join("")}</table>`;
   }

@@ -126,12 +126,16 @@ export const party = {
   //   only (migrations/015); null = the performer's phone draws it itself
   //   onboarding (onboard.js, real app only; every one optional):
   //   holdInvite(code) -> true: the invite landing takes this link over
-  //   gate(trigger) -> Promise<bool>: phone verification where it matters
-  //   ("host", "public"); false = don't
+  //   gate(trigger) -> Promise<bool>: phone verification for the stranger
+  //   features only ("public": making a party public or joining one,
+  //   "coins": collecting what a game paid); false = don't. Private parties
+  //   with friends are never behind it.
+  //   canEarn() -> Promise<bool>: may this phone collect coins now (false: a
+  //   game's coins wait, unclaimed, until it's verified)
   //   invite(c) -> the invite sheet · joined(c) · beforeGame(g, c) ·
   //   gameEnded(c, g, results) · setEnded(c, rows)
   hooks: { isFriend: null, report: null, beaconZone: null, coins: null, ritualDraw: null,
-    holdInvite: null, gate: null, invite: null, joined: null, beforeGame: null, gameEnded: null, setEnded: null },
+    holdInvite: null, gate: null, canEarn: null, invite: null, joined: null, beforeGame: null, gameEnded: null, setEnded: null },
   _view: null,
   _inited: false,
 
@@ -156,8 +160,8 @@ export const party = {
   async create() {
     const { vibe } = this.form;
     const privacy = FLAGS.PUBLIC_PARTIES && this.form.privacy === "public" ? "public" : "private";
-    // phone verification only where it matters: hosting (and a public party)
-    if (this.hooks.gate && !(await this.hooks.gate(privacy === "public" ? "public" : "host"))) return false;
+    // phone verification only for a public party (strangers); a private one with friends needs none
+    if (privacy === "public" && this.hooks.gate && !(await this.hooks.gate("public"))) return false;
     const cap = Math.max(PARTY.CAP_MIN, Math.min(PARTY.CAP_MAX, +this.form.cap || PARTY.CAP_DEFAULT));
     const name = (this.form.name || "").trim().slice(0, PARTY.NAME_MAX) || `${this.me.handle}'s party`;
     this.err("");
@@ -559,6 +563,16 @@ export const party = {
     for (let i = 0; i < 20 && !c.set.session && this.current === c; i++) await new Promise(r => setTimeout(r, 250));
     const g = { session: c.set.session, set: c.set.no, idx };
     if (!g.session) return;
+    // earning coins needs a verified number: until then the game waits, unclaimed
+    if (this.hooks.canEarn && !(await this.hooks.canEarn())) {
+      (c.unclaimed ??= []).some(u => u.session === g.session && u.set === g.set && u.idx === g.idx) || c.unclaimed.push(g);
+      if (this.current === c) this._claimToast(c);
+      return;
+    }
+    await this._claim(c, g);
+  },
+  async _claim(c, g) {
+    const coins = this.hooks.coins;
     try {
       await coins.confirmGame(g);
       await new Promise(r => setTimeout(r, 1800));      // let the host's report land
@@ -567,6 +581,23 @@ export const party = {
       c.coins[g.set] = total;
       if (this.current === c && total > before) this._coinToast(total - before);
     } catch (e) { console.warn("[party] coin confirm", e?.message ?? e); }
+  },
+  // the games this phone played but couldn't collect yet: verify, then collect them all
+  async claimUnclaimed(c = this.current) {
+    if (!c?.unclaimed?.length || !this.hooks.gate || !(await this.hooks.gate("coins"))) return false;
+    const list = c.unclaimed.splice(0);
+    for (const g of list) await this._claim(c, g);
+    return true;
+  },
+  _claimToast(c) {
+    const wrap = document.querySelector("#party-panel .pt-floor-wrap"); if (!wrap || wrap.querySelector(".pt-claim")) return;
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "pt-cointoast pt-claim";
+    el.innerHTML = `<i class="coin"></i><span>${esc(t("coins.claim"))}</span><b>${esc(t("coins.verify"))}</b>`;
+    el.onclick = async () => { el.remove(); await this.claimUnclaimed(c); };
+    wrap.appendChild(el);
+    setTimeout(() => el.remove(), 9000);
   },
   _coinToast(n) {
     const wrap = document.querySelector("#party-panel .pt-floor-wrap"); if (!wrap) return;
@@ -680,6 +711,8 @@ export const party = {
     this._syncPause();
   },
   err(msg) { const el = $("pt-err"); if (el) el.textContent = msg || ""; if (msg) $("party-panel").hidden = false; },
+  // the host form again (its "<name>'s party" once the name is set)
+  refreshForm() { if (!this.current) { this._view = null; this.render(); } },
 
   render() {
     const p = $("party-panel"); if (!p) return;
@@ -768,7 +801,9 @@ export const party = {
       this.form.vibe = b.dataset.vibe; sfx.cursor();
       p.querySelectorAll("[data-vibe]").forEach(x => x.classList.toggle("on", x === b));
     });
-    p.querySelectorAll("[data-priv]").forEach(b => b.onclick = () => {
+    p.querySelectorAll("[data-priv]").forEach(b => b.onclick = async () => {
+      // going public asks for a verified number right here (with its reason); no = stays invite only
+      if (b.dataset.priv === "public" && this.hooks.gate && !(await this.hooks.gate("public"))) return;
       this.form.privacy = b.dataset.priv; sfx.cursor();
       p.querySelectorAll("[data-priv]").forEach(x => x.classList.toggle("on", x === b));
     });

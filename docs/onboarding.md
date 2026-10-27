@@ -46,23 +46,76 @@ and the QR code (tap it to show it big). Alone in your own room: "Invite your
 friends: games work best with 3+" with the QR, big. The map has a Home
 button (top left).
 
-## Verification only when it matters
+## Accounts: guests first, saved with one tap
 
-Guests join and play with nothing but a name. Phone verification is asked at
-the moment it's needed, with a one-line reason: hosting, public parties
-(making one, joining one from the map or a friend's), adding friends (the
-in-person "We met" confirm), spending coins, and Settings → Save my progress.
-A guest (anonymous account) gets the number linked to the same account
-(`updateUser({ phone })` + `verifyOtp(type: "phone_change")`), so the
-character, coins and friends stay and they carry on where they were; another
-phone signs in with the number (Settings). Korean numbers can be typed the
-local way (010-…).
+Anyone can open the app or an invite link and play right away with just a
+name and a character: no phone, no email. That's a guest account (Supabase
+anonymous sign-in), kept on the phone (the session in localStorage).
 
-**Setup:** the gates switch themselves on only when the Supabase project has
-an SMS provider (`/auth/v1/settings` → `external.phone`); until then nothing
-is gated. To turn it on: Supabase → Authentication → Providers → Phone, with
-an SMS provider (Twilio, MessageBird, Vonage…). Korean 본인인증 (PASS / NICE)
-would be a server integration later.
+**Save your account** links Kakao (first: it's how Korea logs in), Apple or
+Google to that same account with `linkIdentity`, so the user id, character,
+coins, friends and history all stay. It's offered at the natural moments:
+the first party's recap, Settings, and, for a new phone, "Already have an
+account? Sign in" on the name screen and in Settings (`signInWithOAuth`;
+that phone becomes that account, its own guest progress stays behind).
+Both leave for the provider and come back to the same page; `st.oauth`
+(onboard.js) remembers why and which party, so they land back in it, with
+"Saved with Kakao". A provider account that already belongs to someone else
+comes back as `identity_already_exists`: the app offers to sign in with it
+instead, or to keep playing as a guest. Only the providers the Supabase
+project has switched on are shown (`/auth/v1/settings`); Google is hidden
+inside KakaoTalk / Instagram's in-app browsers, where Google refuses to sign
+in. Existing accounts keep working: phone sign-in stays in Settings.
+
+**Setup (Supabase dashboard):**
+- Authentication → Sign In / Providers: turn on **Allow manual linking**
+  (linkIdentity needs it) and keep **Allow anonymous sign-ins** on.
+- Authentication → URL Configuration → Redirect URLs: add
+  `https://randoirl.vercel.app/**`, `https://*-randoirl.vercel.app/**` (the
+  previews) and `http://localhost:8743/**`.
+- **Kakao** (a built-in Supabase provider): Kakao Developers → create an app
+  → Kakao Login on → Redirect URI
+  `https://ghhenktihhjqnhtmacin.supabase.co/auth/v1/callback`; consent items
+  profile_nickname, profile_image (account_email needs Kakao's business
+  verification: until then, use Supabase's "allow users without an email"
+  option for Kakao if your project offers it, or get the app verified) →
+  REST API key = client ID, Client Secret (Security tab) = secret → paste
+  both into Supabase → Providers → Kakao.
+- **Apple**: needs the Apple Developer Program; a Services ID, a Sign in with
+  Apple key; Supabase → Providers → Apple. The secret key expires every six
+  months.
+- **Google**: a Google Cloud OAuth client (Web), the same callback URL;
+  Supabase → Providers → Google.
+
+## Phone verification: the stranger features only
+
+Required only for: making a party public, joining public parties (from the
+map or a friend's), adding friends (the in-person "We met" confirm), and
+earning and spending coins. Never for private parties with friends: hosting
+one, joining by link or code. Each ask has one line of why ("Verify your
+number to play with people nearby. Keeps everyone safe."). A game's coins
+wait, unclaimed, until the number is verified ("Coins wait for a verified
+number · Verify"), then they're all collected. A Kakao account counts as
+verified (it's tied to a phone number already), so "Continue with Kakao" is
+offered right in the phone sheet.
+
+A guest gets the number linked to the same account (`updateUser({ phone })` +
+`verifyOtp(type: "phone_change")`); another phone signs in with it
+(Settings). Numbers are sent as E.164: 010-…, +82 010…, 0082 10… and 82 10…
+all become +8210… (`onbkit.js` `e164`).
+
+**Codes:** this phone asks at most once every 30 s and 5 times an hour
+(`otpWait`), on top of the server's own limit (its "only request this after
+N seconds" is honoured). The code step says "Didn't get it? Try again in 30s
+or sign in with Kakao", then offers Send it again. A failure is shown plainly
+(the provider refused, too soon, a bad code) and logged as a reason only
+(`verification_failed`), never the number or the server's text.
+
+**Switches:** `FLAGS.PHONE_VERIFY` (`web/hpconfig.js`, on) turns every gate
+off when false. The gates only run where the project can verify someone
+(its Phone provider, or Kakao). They're enforced in the app; the SQL doesn't
+check verification yet (a next step: `confirm_game` / `buy_item` could
+require it). Korean 본인인증 (PASS / NICE) would be the native app's.
 
 ## Permissions at their moment
 
@@ -100,7 +153,9 @@ together, "You played 3 games with Jae, Mina and Sol", the best moment if
 there is one (Side Quest's top-rated quest, Art Gallery's winning title),
 the coins earned, Throw your own party (gold), Share (a 1080×1350 picture
 with the characters, the line, the moment and the link, through the share
-sheet), and a turn-on for party alerts and a verify-to-keep-your-coins.
+sheet), Save your account (Kakao / Apple / Google), a turn-on for party
+alerts, and "Verify your number to collect your coins" if a game's coins are
+waiting.
 
 ## Analytics (privacy-safe)
 
@@ -114,14 +169,19 @@ language. Never a location, a name, a party code or anything typed. Events:
 `recap_shown`, `recap_shared`, `own_party_created`, `invite_sent` (channel:
 share / sms / copy / qr / contacts), `verification_prompted` /
 `verification_completed` (trigger), `permission_prompted` /
-`permission_granted` / `permission_declined` (permission).
+`permission_granted` / `permission_declined` (permission), and (018)
+`account_save_prompted` (trigger), `account_saved` / `account_signed_in`
+(provider), `verification_code_sent` (trigger), `verification_failed`
+(trigger, reason: rate_limited / provider / bad_code / bad_number / taken /
+other). Sent vs completed vs failed by reason is how SMS delivery shows up
+on the dashboard.
 
 The dashboard, `web/stats.html`: median time from first open to first game,
 % of invite opens that join, % who finish their first party, % who host
 within 7 days, a count per event. Only accounts in the `admins` table can
 read it (`onboarding_stats()`): insert your account's id by hand.
 
-**Apply:** `python3 scripts/apply_migration.py supabase/migrations/017_events.sql`
+**Apply:** `python3 scripts/apply_migration.py supabase/migrations/017_events.sql`, then `018_account_events.sql`
 (until it's applied, the app's events just aren't sent).
 
 ## The web vs. a native app
@@ -155,6 +215,13 @@ read it (`onboarding_stats()`): insert your account's id by hand.
   first game for 5 fresh phones (sizes, languages; human-paced unless
   `--quick`). The stub's `?verify=1` / `stub-verify` turns phone auth on; the
   code is always 123456.
+- `node test/auth_rec.mjs <dir> [en|ko|both]`: accounts on the real app page:
+  a guest from an invite (no phone anywhere), saving with Kakao from the
+  recap (same account, back in the party), a Kakao account that's taken, the
+  phone prompt when going public (reason line, 30 s, Send it again, +82 010…),
+  the SMS provider refusing, a new phone signing in. The stub's
+  `stub-oauth=kakao,apple,google` switches providers on, `stub-oauth-taken`
+  and `stub-sms-fail=provider|rate` the failures.
 - `?onb=0` turns the onboarding off (the older real-page tests); `?lang=ko|en`.
 - A real 5-person test (people who've never seen the app, an invite link,
   timed tap → first game, watching where they hesitate) is the next step;

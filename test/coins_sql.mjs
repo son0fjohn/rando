@@ -25,6 +25,7 @@ await db.exec(await readFile(`${ROOT}supabase/migrations/014_mask_off.sql`, "utf
 await db.exec(await readFile(`${ROOT}supabase/migrations/015_ritual_prompts.sql`, "utf8"));
 await db.exec(await readFile(`${ROOT}supabase/migrations/016_wardrobe4.sql`, "utf8"));
 await db.exec(await readFile(`${ROOT}supabase/migrations/017_events.sql`, "utf8"));
+await db.exec(await readFile(`${ROOT}supabase/migrations/018_account_events.sql`, "utf8"));
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 for (let i = 1; i <= 9; i++) { await db.query("insert into auth.users values ($1)", [U(i)]); await db.query("insert into profiles (id, handle) values ($1, $2)", [U(i), `p${i}`]); }
@@ -146,6 +147,9 @@ head("Onboarding analytics (017): insert-only, no people in it, numbers for admi
   const cols = (await as(0, "select string_agg(column_name, ',' order by ordinal_position) c from information_schema.columns where table_name = 'events'"))[0].c;
   ok(cols === "id,at,device,name,props,lang", `no user id, location or text column (${cols})`);
   ok((await err(as(1, "insert into events (device, name) values ('dev-aaaaaaaa', 'joined_a_cult')")))?.includes("check"), "only the known event names");
+  const { EVENTS } = await import("../web/analytics.js").catch(() => ({ EVENTS: null }));
+  const named = (await as(0, "select pg_get_constraintdef(oid) d from pg_constraint where conname = 'events_name_check'"))[0].d;
+  ok(EVENTS ? EVENTS.every(n => named.includes(`'${n}'`)) : named.includes("'verification_failed'"), "every event the app sends is allowed (018: accounts, SMS codes sent / failed)");
   ok((await err(as(1, "insert into events (device, name, props) values ('dev-aaaaaaaa', 'app_open', $1::jsonb)", [JSON.stringify({ note: "x".repeat(600) })])))?.includes("check"), "props stay small");
   ok((await err(as(1, "insert into events (device, name) values ('nope', 'app_open')")))?.includes("check"), "the device id has a fixed shape");
   // three installs: one invited (joins, plays in 40 s, finishes the party), one invited who never joins, one organic who hosts on day 2

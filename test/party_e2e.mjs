@@ -201,7 +201,8 @@ try {
   ok(await until(asker, () => document.querySelectorAll("#mo-hand [data-card]").length === 5 && document.querySelector(".mo-handwrap.turn") && /Pick someone to ask/.test(document.getElementById("mo-prompt")?.textContent ?? "")), "their hand of 5 glows: 'Pick someone to ask.'");
   const myHand = await asker.evaluate(() => [...document.querySelectorAll("#mo-hand [data-card]")].map(b => b.dataset.card));
   ok(await askers[0].evaluate(h => document.querySelectorAll("#mo-hand [data-card]").length === 5 && !document.querySelector(".mo-handwrap.turn") && !h.some(id => document.querySelector(`[data-card="${id}"]`)), myHand), "everyone holds their own hand; nobody else's cards are on their screen");
-  ok(/is choosing/.test(await text(askers[0], "#mo-who")), "the others see '[asker] is choosing…'");
+  // (waits: the watching phone renders the turn a moment after the asker's does)
+  ok(await until(askers[0], () => /is choosing/.test(document.getElementById("mo-who")?.innerText ?? "")), "the others see '[asker] is choosing…'");
   await shot(asker, "04-maskoff-your-turn");
   // pick someone: a tap on their character at the table (their name, if they're out of view)
   const moT = s1.order.find(id => id !== t1.asker), who = ids[moT], third = [A, B, C].find(pg => pg !== asker && pg !== who);

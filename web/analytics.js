@@ -13,6 +13,8 @@ export const EVENTS = [
   "app_open", "party_link_opened", "joined_party", "name_set", "character_shuffled", "character_confirmed",
   "first_game_started", "first_game_finished", "recap_shown", "recap_shared", "own_party_created", "invite_sent",
   "verification_prompted", "verification_completed", "permission_prompted", "permission_granted", "permission_declined",
+  // accounts (migrations/018): saving a guest with Kakao / Apple / Google, signing in, and how SMS codes fare
+  "account_save_prompted", "account_saved", "account_signed_in", "verification_code_sent", "verification_failed",
 ];
 // the only props an event can carry, and what they may hold
 const PROPS = {
@@ -24,6 +26,8 @@ const PROPS = {
   count: v => Number.isInteger(v) && v >= 0 && v < 1e4,
   ms: v => Number.isFinite(v) && v >= 0 && v < 1e10,
   returning: v => typeof v === "boolean",
+  provider: v => ["kakao", "apple", "google"].includes(v),
+  reason: v => ["rate_limited", "taken", "bad_number", "provider", "bad_code", "other"].includes(v),
 };
 
 const store = {
