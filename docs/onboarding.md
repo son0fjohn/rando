@@ -7,6 +7,46 @@ Korean), `web/permissions.js` (pre-prompts), `web/analytics.js` +
 `supabase/migrations/017_events.sql` (events), `api/invite.mjs` (the invite
 link's preview), `web/stats.html` (the dashboard).
 
+## The start screen (every open)
+
+The first screen, every time: our real 3D Itaewon at night, full screen,
+behind one frosted glass panel (`.glass` in `theme.css`) with the logo,
+**Start a party** (gold) and **Join a party** (clear glass). `web/scenery.js`
+turns the map into pure scenery while it's up: no players, no mascots, no
+labels or pins, no nav bar; the camera drifts slowly round a loop over the
+busiest blocks (station, Ikovox cafe, Grand Ole Opry), at 30 fps. The app
+always opens at night now (`index.html` sets `__RANDO_FIRST_NIGHT` unless
+`?onb=0`).
+
+- **Nobody waits on the 3D.** `web/start/night.jpg` is the drift's first
+  frame, shown from the first paint (`html.start-boot`), and crossfades to
+  the live city once the buildings are up. Re-shoot it with
+  `node test/start_rec.mjs --still` when the city or the path changes.
+- **Slow phones.** Frames are timed in 1.5 s windows while it's up; two
+  windows in a row with a median over 50 ms turn
+  the glass "lite" (`body.glass-lite`: a deeper tint, no live blur)
+  and drop the city to 20 fps. No `backdrop-filter`, or reduced
+  transparency: lite too. Reduced motion: the city holds still and there's
+  no dive.
+- **Start a party** → (a first open: name → character) → the party opens
+  with its room still hidden → the panel fades and scales away while the
+  camera dives (~1.5 s) from the sky into the party's building (picked by
+  the party code: everyone in a party dives into the same one) → navy for a
+  beat → the lobby and the invite sheet. If the 3D isn't drawing yet, no
+  dive: straight in.
+- **Join a party** flips the panel to the code, friends' public parties and
+  "See what's happening nearby" (the map); joining dives the same way.
+- **Explore the world** (a quiet text button with a map icon under the
+  two): no party, the map itself. A location pre-prompt (once); the panel
+  fades, the camera glides down onto the map's own view over where you are
+  (your location read on the phone if allowed, else Itaewon), the nav bar
+  slides up, the pins and spots fade in. Far from Itaewon the city there
+  swaps in under a quick navy blink first (`docs/map_city.md`).
+- Corners: EN / 한 (left), You (Home) and Settings (right).
+- **The lobby** has one way out: back (top left) → "Leave the party?" →
+  the start screen. The host also has the host menu (top right: the game
+  votes sheet with the party settings). No nav bar.
+
 ## Path A: an invite link (the main path)
 
 1. The host's invite is `https://randoirl.vercel.app/p/CODE?n=<party name>&c=<people>`.
@@ -15,36 +55,30 @@ link's preview), `web/stats.html` (the dashboard).
    (Korean phones: "Jae's party · 4명 참여 중"), then sends the browser to
    `/?party=CODE&from=invite`. Parties live in no table, so the name and the
    count ride in the link (the count as it was when shared).
-2. The landing: the party room's backdrop with the people inside (the host
-   first, crowned), the party's name, who's hosting and how many are in, one
-   gold "Join the party". It peeks into the party without joining it
+2. The start screen with no buttons: "You're invited", the party's name and
+   "Joining…" on the glass. It peeks into the party without joining it
    (`net.js` `peekRoom`: the host answers with the name, the members and
-   their looks, what's playing); the room's backdrop and the people's
-   characters load while they look.
-3. Join → the name (one field, a 🎲 suggestion) → the character (a random
-   starter outfit with a random skin, hair and eyes, spinning on a
-   platform; Shuffle / This is me; "customize later in Style") → straight
-   into the room: "You're in!", everyone already there waves.
-4. A game already running: the landing says so, and the room line says
-   "<game> is on — you're in the next one".
+   their looks); their characters warm up meanwhile.
+3. A first open: the name (one field, a 🎲 suggestion) → the character (a
+   random starter outfit, spinning on a platform; Shuffle / This is me) →
+   back on the glass → the same dive straight into the room: "You're in!",
+   everyone already there waves.
+4. An ended or full party says so on the glass and offers Start / Join.
 5. The code is kept on the phone (12 h) until they're in, so a reload, a
    sign-in or an interrupted install that reopens the app comes back to the
-   same landing.
+   same party.
 
-## Path B: opening the app on your own
+## Home
 
-Two intro screens over the night city slowly turning (a first open is
-always night, `__RANDO_FIRST_NIGHT`), skippable → name → character → Home.
-
-**Home** (every later open lands here too): your character, Throw a party
-(gold), See what's happening nearby, join with a code, friends' public
-parties, what's new (tap to dismiss), EN / 한 and Settings. Throw a party
-creates an invite-only party at once and opens the invite sheet: Share link
-(the phone's share sheet: KakaoTalk, iMessage, Instagram…), Messages, Copy
-link, Invite from contacts (where the Contact Picker exists: Android Chrome),
-and the QR code (tap it to show it big). Alone in your own room: "Invite your
-friends: games work best with 3+" with the QR, big. The map has a Home
-button (top left).
+The "You" button on the start screen: your character, Style, friends'
+public parties, what's new (tap to dismiss), join with a code, EN / 한 and
+Settings. Starting a party (here or on the start screen) creates an
+invite-only party at once and opens the invite sheet: Share link (the
+phone's share sheet: KakaoTalk, iMessage, Instagram…), Messages, Copy link,
+Invite from contacts (where the Contact Picker exists: Android Chrome), and
+the QR code (tap it to show it big). Alone in your own room: "Invite your
+friends: games work best with 3+" with the QR, big. The map has a button
+back to the start screen (top left).
 
 ## Accounts: guests first, saved with one tap
 
@@ -124,7 +158,7 @@ own dialog, and "Not now" always works (a note says Settings can turn it on):
 
 | | When | Pre-prompt |
 | --- | --- | --- |
-| Location | Home → "nearby", the Explore tab (going visible), Manhunt's "I'm in" | "See parties happening nearby. We only show your area, never your exact spot." |
+| Location | Join a party → "nearby", the Explore tab (going visible), Manhunt's "I'm in" | "See parties happening nearby. We only show your area, never your exact spot." |
 | Notifications | right after the first finished game; again as a button on the recap | "Want to know when friends throw a party?" |
 | Contacts | only on "Invite from contacts" | "Pick who to text. Your contacts never leave your phone." |
 | Camera / photos | the first time you add an Art Gallery photo | "Take or pick photos for this game. They're gone when the party ends." |

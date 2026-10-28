@@ -88,7 +88,7 @@ await A.screenshot({ path: join(OUT, "04-host-flow.png"), timeout: 120000 });
 // host a party, go back to the map: "My party"
 await A.locator("#pt-name").fill("Tony's party");
 await A.click("#pt-create"); await sleep(3000);
-await A.click("#pt-hide"); await sleep(1500);
+await A.evaluate(() => window.__onb.party.togglePanel(false)); await sleep(1500);   // (the lobby has no way back to the map now: a test hook)
 const mine = await A.evaluate(() => { const h = document.getElementById("nav-host"); return { hosting: h.classList.contains("hosting"), label: h.querySelector(".nav-lbl").textContent,
   fill: getComputedStyle(h.querySelector(".nav-ring")).backgroundColor }; });
 ok(mine.hosting && mine.fill === "rgb(255, 200, 61)", "while hosting, the ring stays filled gold");

@@ -3,7 +3,7 @@
 // before/after design reviews: the map, going visible, tapping an NPC, the
 // style screen, hosting a party, the party room with 4+ players, the TV.
 //
-//   node test/app_shots.mjs <dir> [--video]
+//   node test/app_shots.mjs <dir> [--video] [--light=day|sunset|night]
 //
 // --video screencasts phone 1 through the whole flow (open app -> bottom bar
 // -> host a party -> room fills up -> tap the TV) into <dir>/flow/, and with
@@ -20,6 +20,8 @@ const args = process.argv.slice(2);
 const OUT = args.find(a => !a.startsWith("--"));
 if (!OUT) { console.error("usage: node test/app_shots.mjs <dir> [--video]"); process.exit(2); }
 const VIDEO = args.includes("--video");
+// --light=day|sunset|night: the glass and the map by that light (daylight.js)
+const LIGHT = args.find(a => a.startsWith("--light=")) ? `&light=${args.find(a => a.startsWith("--light=")).slice(8)}` : "";
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve();
 const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
@@ -44,7 +46,7 @@ async function phone(name, qs = "") {
     return pg;
   }
   pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
-  await pg.goto(`${base}/app.html?onb=0&me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}&devlat=37.5347&devlng=126.9945${qs}`);
+  await pg.goto(`${base}/app.html?onb=0&me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}&devlat=37.5347&devlng=126.9945${qs}${LIGHT}`);
   await pg.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 30000 });
   return pg;
 }
@@ -187,8 +189,9 @@ if (stop) console.log(`flow: ${await stop(join(OUT, "flow"))} frames`);
 await A.evaluate(() => document.getElementById("pt-picker-x")?.click());
 await sleep(500);
 // back to the map: a public party is a neon house over its area
-if (await A.locator("#pt-hide").count()) {
-  await A.click("#pt-hide"); await sleep(3000);
+// (the lobby's only way out is leaving now; the map behind a party, as a test hook)
+{
+  await A.evaluate(() => window.__onb.party.togglePanel(false)); await sleep(3000);
   // bring the house to the middle of the screen (it's in your zone, not on you)
   const at = await A.evaluate(() => { const b = document.querySelector(".pbeacon"); if (!b) return null; const m = b.style.transform.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/); return m ? [+m[1], +m[2]] : null; });
   if (at) {

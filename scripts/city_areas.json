@@ -1,11 +1,16 @@
 {
   "comment": "Areas baked into city tiles for tests and previews (scripts/fetch_overture.py, scripts/bake_city_tiles.py). r is the radius in metres.",
   "areas": [
-    {"id": "itaewon",  "label": "Itaewon",              "lat": 37.5346, "lng": 126.9946, "r": 1300, "registry": "web/data/registry_buildings.json"},
-    {"id": "hongdae",  "label": "Hongdae",              "lat": 37.5563, "lng": 126.9236, "r": 1000},
-    {"id": "gangnam",  "label": "Gangnam",              "lat": 37.4979, "lng": 127.0276, "r": 1000},
-    {"id": "yeonhui",  "label": "Yeonhui-dong (quiet)", "lat": 37.5665, "lng": 126.9310, "r": 900},
-    {"id": "haeundae", "label": "Busan Haeundae",       "lat": 35.1600, "lng": 129.1600, "r": 1000},
-    {"id": "shibuya",  "label": "Tokyo Shibuya",        "lat": 35.6595, "lng": 139.7005, "r": 1000}
+    {"id": "itaewon", "label": "Itaewon", "lat": 37.5346, "lng": 126.9946, "r": 1300, "registry": "web/data/registry_buildings.json"},
+    {"id": "hongdae", "label": "Hongdae", "lat": 37.5563, "lng": 126.9236, "r": 1000},
+    {"id": "gangnam", "label": "Gangnam", "lat": 37.4979, "lng": 127.0276, "r": 1000},
+    {"id": "yeonhui", "label": "Yeonhui-dong (quiet)", "lat": 37.5665, "lng": 126.931, "r": 900},
+    {"id": "haeundae", "label": "Busan Haeundae", "lat": 35.16, "lng": 129.16, "r": 1000},
+    {"id": "shibuya", "label": "Tokyo Shibuya", "lat": 35.6595, "lng": 139.7005, "r": 1000},
+    {"id": "jamsil", "label": "Jamsil (Lotte World Tower)", "lat": 37.5126, "lng": 127.1025, "r": 700},
+    {"id": "coex", "label": "COEX", "lat": 37.5116, "lng": 127.059, "r": 700},
+    {"id": "namsan", "label": "Namsan (N Seoul Tower)", "lat": 37.5512, "lng": 126.9882, "r": 600},
+    {"id": "calgary", "label": "Downtown Calgary", "lat": 51.0447, "lng": -114.0631, "r": 1200},
+    {"id": "edmonton", "label": "Downtown Edmonton", "lat": 53.543, "lng": -113.49, "r": 1500}
   ]
 }

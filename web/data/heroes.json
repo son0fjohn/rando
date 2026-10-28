@@ -1,5 +1,5 @@
 {
- "comment": "Hero landmarks: handmade models that replace (and hide) the procedural building at a spot. One entry per hero: where it is (lat/lng; fp = footprint [[lng,lat]...] when known; osm = the OSM way id 'w123' when known), the model (glb, relative to web/; null = the procedural building stays and only the label shows), how it sits (scale, rot = yaw in degrees or null to face the footprint's long side, offset = [east, up, north] metres), h = height in metres to fit to, clear = metres around the pin whose procedural buildings are hidden once the model is in, label + glow for the map. status: label (no model yet), live (model in), proposed (on the list, not approved). retired_glb = the old Tripo model kept for reference (not shown). Pipeline: scripts/hero_landmark.py; see docs/map_city.md.",
+ "comment": "Hero landmarks: handmade models that replace (and hide) the procedural building at a spot. One entry per hero: where it is (lat/lng; fp = footprint [[lng,lat]...] when known; osm = the OSM way id 'w123' when known), the model (glb, relative to web/; null = the procedural building stays and only the label shows), how it sits (scale, rot = yaw in degrees or null to face the footprint's long side, offset = [east, up, north] metres), h = height in metres to fit to, clear = metres around the pin whose procedural buildings are hidden once the model is in, label + glow for the map. status: label (no model yet), live (model in), proposed (on the list, not approved). landmark: true for famous places: with no model yet the map still makes them stand out (their building grows to h with a glowing crown in the glow colour; shape \"tower\" puts up a placeholder tower of h metres, radius = its shaft in metres, and clears procedural buildings within clear). retired_glb = the old Tripo model kept for reference (not shown). Pipeline: scripts/hero_landmark.py; see docs/map_city.md.",
  "heroes": [
   {
    "id": "hamilton-hotel",
@@ -580,6 +580,124 @@
    "addr": "서울특별시 용산구 우사단로 40",
    "status": "label",
    "retired_glb": "world2/landmarks/grainhaus.glb"
+  },
+  {
+   "id": "lotte-world-tower",
+   "label": "Lotte World Tower",
+   "lat": 37.512559,
+   "lng": 127.102543,
+   "h": 555,
+   "glb": null,
+   "landmark": true,
+   "status": "label",
+   "glow": "#9fd4ff",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "n-seoul-tower",
+   "label": "N Seoul Tower",
+   "lat": 37.551169,
+   "lng": 126.988227,
+   "h": 236,
+   "glb": null,
+   "landmark": true,
+   "shape": "tower",
+   "radius": 6,
+   "clear": 30,
+   "status": "label",
+   "glow": "#ffb36b",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "coex",
+   "label": "COEX",
+   "lat": 37.5116,
+   "lng": 127.059,
+   "h": null,
+   "glb": null,
+   "landmark": true,
+   "status": "label",
+   "glow": "#b9a6ff",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "gangnam-station",
+   "label": "Gangnam Station",
+   "lat": 37.497942,
+   "lng": 127.027621,
+   "h": null,
+   "glb": null,
+   "landmark": true,
+   "status": "label",
+   "glow": "#7fe0c4",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "calgary-tower",
+   "label": "Calgary Tower",
+   "lat": 51.044344,
+   "lng": -114.063123,
+   "h": 191,
+   "glb": null,
+   "landmark": true,
+   "shape": "tower",
+   "radius": 8,
+   "clear": 25,
+   "status": "label",
+   "glow": "#ff6b5e",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "muttart-conservatory",
+   "label": "Muttart Conservatory",
+   "lat": 53.535694,
+   "lng": -113.477306,
+   "h": 24,
+   "glb": null,
+   "landmark": true,
+   "status": "label",
+   "glow": "#9ff0a8",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "rogers-place",
+   "label": "Rogers Place",
+   "lat": 53.546944,
+   "lng": -113.497778,
+   "h": 40,
+   "glb": null,
+   "landmark": true,
+   "status": "label",
+   "glow": "#ff8a3d",
+   "offset": [
+    0,
+    0,
+    0
+   ]
   }
  ]
 }

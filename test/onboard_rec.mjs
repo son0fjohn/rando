@@ -1,12 +1,13 @@
 // The onboarding on the REAL app page (Supabase faked offline), recorded:
-//   Path A  a host (a returning player) throws a party from Home and shares
-//           the invite; two friends are in; a FRESH phone (its own storage,
-//           no account) opens the invite link /p/CODE: the landing, Join,
-//           name, character, the room ("you're in!"), the host starts the
-//           suggested first game: the safety card, the game's host lines.
-//   Path B  a fresh phone opens the app on its own: the intro, name,
-//           character, Home, Throw a party (phone verification on: the
-//           gate, the code), the invite sheet, the empty room with its QR.
+//   Path A  a host (a returning player) starts a party from the start screen
+//           and shares the invite; two friends are in; a FRESH phone (its
+//           own storage, no account) opens the invite link /p/CODE: the
+//           start screen with the party's name, name, character, the room
+//           ("you're in!"), the host starts the suggested first game: the
+//           safety card, the game's host lines.
+//   Path B  a fresh phone opens the app on its own: the start screen, Start
+//           a party, name, character, the invite sheet, the empty room with
+//           its QR. (test/start_rec.mjs: the glass, the drift, the dive.)
 //   checks  a declined location pre-prompt (the map still works), an
 //           interrupted install (the invite survives a cold reopen), a guest
 //           verifying mid-party (same account, still in the party), and
@@ -116,11 +117,11 @@ async function typeName(pg, sel, text) { await pg.click(sel); await pg.keyboard.
 async function hostParty(lang, { shots = true } = {}) {
   const ctx = await phoneContext({ lang });
   const H = await page(ctx, appUrl(`&me=jae&av=${encodeURIComponent(JSON.stringify(LOOKS.jae))}`), "jae");
-  ok(await screenIs(H, "home", 90000), `${lang}: a returning player lands on Home`);
+  ok(await screenIs(H, "start", 90000), `${lang}: a returning player lands on the start screen`);
   await sleep(4000);
-  if (shots) await shot(H, lang, "B5-home", "Home: your character, Throw a party, nearby");
-  await tap(H, "[data-throw]");
-  ok(await sheetIs(H, "invite"), `${lang}: Throw a party -> a party, and the invite sheet`);
+  if (shots) await shot(H, lang, "B5-start", "the start screen: Start a party, Join a party");
+  await tap(H, ".st-panel [data-start]");
+  ok(await sheetIs(H, "invite"), `${lang}: Start a party -> a party, and the invite sheet`);
   await sleep(1200);
   if (shots) await shot(H, lang, "B7-invite", "the invite sheet: share, messages, copy, QR");
   const link = await H.evaluate(() => document.querySelector("[data-share]")?.dataset.link);
@@ -140,15 +141,10 @@ async function pathA(lang, party, { record = false, shots = true, viewport, name
   const casts = record ? [await cast(N), await cast(party.H)] : [];
   const t0 = Date.now();
   await N.goto(party.link.replace(/^https?:\/\/[^/]+/, base));
-  ok(await screenIs(N, "landing", 60000), `${lang}${tag}: the invite opens the party's landing`);
-  const steps = { landing: Date.now() - t0 };
-  // (a person taps Join without waiting for every character; the timing runs don't wait either)
-  if (shots) ok(await until(N, () => document.querySelectorAll(".onb-land-people figure").length >= 3, null, 20000), `${lang}${tag}: the landing shows the people inside (host first)`);
-  await sleep(shots ? 3500 : 300);
-  if (shots) await shot(N, lang, "A1-landing", "the invite landing: party name, who's in, Join");
-  await read();
-  await tap(N, "[data-join]");
-  ok(await screenIs(N, "name"), `${lang}${tag}: Join -> what should people call you`);
+  ok(await screenIs(N, "start", 60000), `${lang}${tag}: the invite opens the start screen, the party's name on it`);
+  const steps = { start: Date.now() - t0 };
+  if (shots) { await until(N, () => !!document.querySelector(".st-invite b") && document.querySelector(".st-invite b").textContent !== "…", null, 20000); await shot(N, lang, "A1-invite", "an invite: the party's name on the glass, no buttons"); }
+  ok(await screenIs(N, "name"), `${lang}${tag}: straight on -> what should people call you`);
   steps.name = Date.now() - t0;
   if (shots) { await tap(N, "[data-suggest]"); await sleep(400); await shot(N, lang, "A2-name", "the name, with a suggestion"); await N.fill("#onb-name", ""); }
   await typeName(N, "#onb-name", name);
@@ -216,13 +212,11 @@ async function pathB(lang, { record = false, shots = true } = {}) {
   const P = await page(ctx, null, "cold");
   const casts = record ? [await cast(P)] : [];
   await P.goto(appUrl());
-  ok(await screenIs(P, "intro", 90000), `${lang}: a cold open: the intro over the night city`);
+  ok(await screenIs(P, "start", 90000), `${lang}: a cold open: the start screen over the night city`);
   await sleep(5000);
-  if (shots) await shot(P, lang, "B1-intro-1", "intro 1: the pitch");
-  await read(); await tap(P, "[data-next]"); await sleep(600);
-  if (shots) await shot(P, lang, "B2-intro-2", "intro 2");
-  await read(); await tap(P, "[data-next]");
-  ok(await screenIs(P, "name"), `${lang}: -> name`);
+  if (shots) await shot(P, lang, "B1-start", "the start screen");
+  await read(); await tap(P, ".st-panel [data-start]");
+  ok(await screenIs(P, "name"), `${lang}: Start a party -> name`);
   await sleep(500);
   if (shots) await shot(P, lang, "B3-name", "the name");
   await typeName(P, "#onb-name", lang === "ko" ? "새벽 여우" : "Midnight Fox"); await read(500);
@@ -232,12 +226,8 @@ async function pathB(lang, { record = false, shots = true } = {}) {
   if (shots) await shot(P, lang, "B4-character", "the character");
   await tap(P, "[data-shuffle]"); await read(1400);
   await tap(P, "[data-ok]");
-  ok(await screenIs(P, "home", 30000), `${lang}: -> Home`);
-  await sleep(4000);
-  await read();
-  await tap(P, "[data-throw]");
   // a private party with friends never asks for a number (test/auth_rec.mjs covers the stranger features)
-  ok(await sheetIs(P, "invite"), `${lang}: Throw a party -> straight to the party and its invite sheet (no phone)`);
+  ok(await sheetIs(P, "invite", 45000), `${lang}: -> straight to the party and its invite sheet (no phone)`);
   ok(await P.evaluate(() => !document.querySelector('.onb-sheet[data-sheet="verify"]')), `${lang}: …no verification asked for a private party`);
   await sleep(1200);
   if (shots) await shot(P, lang, "B7b-invite-own", "your own party's invite sheet");
@@ -260,8 +250,9 @@ async function pathB(lang, { record = false, shots = true } = {}) {
 async function declinedLocation(lang) {
   const ctx = await phoneContext({ lang });
   const P = await page(ctx, appUrl(`&me=dana&av=${encodeURIComponent(JSON.stringify(LOOKS.mina))}`), "dana");
-  await screenIs(P, "home", 90000); await sleep(2000);
-  await tap(P, "[data-nearby]");
+  await screenIs(P, "start", 90000); await sleep(2000);
+  await tap(P, ".st-panel [data-join]"); await sleep(300);
+  await tap(P, ".st-panel [data-nearby]");
   ok(await until(P, () => !!document.querySelector(".onb-perm")), `${lang}: "nearby" asks first, with a pre-prompt (no system dialog yet)`);
   await sleep(500);
   await shot(P, lang, "C1-location-preprompt", "the location pre-prompt");
@@ -271,7 +262,7 @@ async function declinedLocation(lang) {
   await shot(P, lang, "C2-map-declined", "declined: the map works, a gentle note");
   const ev = await P.evaluate(() => (window.__events ?? []).filter(e => /permission/.test(e.name)).map(e => `${e.name}:${e.props.permission}`));
   ok(ev.includes("permission_prompted:location") && ev.includes("permission_declined:location"), `${lang}: ${ev.join(", ")}`);
-  ok(await P.evaluate(() => !document.getElementById("nav-home").hidden), `${lang}: a Home button on the map`);
+  ok(await P.evaluate(() => !document.getElementById("nav-home").hidden), `${lang}: a way back to the start screen on the map`);
   await ctx.close(); contexts.splice(contexts.indexOf(ctx), 1);
 }
 
@@ -279,16 +270,15 @@ async function declinedLocation(lang) {
 async function interrupted(lang, party) {
   const ctx = await phoneContext({ lang });
   const N = await page(ctx, party.link.replace(/^https?:\/\/[^/]+/, base), "interrupted");
-  ok(await screenIs(N, "landing", 60000), `${lang}: the invite's landing`);
-  await tap(N, "[data-join]"); await screenIs(N, "name");
+  ok(await screenIs(N, "start", 60000), `${lang}: the invite's start screen`);
+  await screenIs(N, "name", 60000);
   await N.goto(appUrl());     // the app closed and opened again, with no link
-  ok(await screenIs(N, "landing", 60000), `${lang}: reopened cold: the same party's landing is back (kept on the phone)`);
-  await tap(N, "[data-join]");
-  await screenIs(N, "name"); await typeName(N, "#onb-name", "Reo"); await tap(N, "[data-next]");
+  ok(await until(N, () => !!document.querySelector(".st-panel .st-invite"), null, 60000), `${lang}: reopened cold: the same party's invite is back (kept on the phone)`);
+  await screenIs(N, "name", 60000); await typeName(N, "#onb-name", "Reo"); await tap(N, "[data-next]");
   await screenIs(N, "char"); await sleep(800); await tap(N, "[data-ok]");
   ok(await until(N, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor"), null, 30000), `${lang}: -> in that party`);
   ok(await N.evaluate(() => !JSON.parse(localStorage.getItem("rando-onb-v1") ?? "{}").pending), `${lang}: the kept invite is cleared once they're in`);
-  await tap(N, "#pt-leave");
+  await N.evaluate(() => window.__onb.party.leave());
   await ctx.close(); contexts.splice(contexts.indexOf(ctx), 1);
 }
 
@@ -296,8 +286,7 @@ async function interrupted(lang, party) {
 async function upgradeMidParty(lang, party) {
   const ctx = await phoneContext({ lang, verify: true });
   const N = await page(ctx, party.link.replace(/^https?:\/\/[^/]+/, base), "upgrader");
-  await screenIs(N, "landing", 60000); await tap(N, "[data-join]");
-  await screenIs(N, "name"); await typeName(N, "#onb-name", "Kit"); await tap(N, "[data-next]");
+  await screenIs(N, "name", 60000); await typeName(N, "#onb-name", "Kit"); await tap(N, "[data-next]");
   await screenIs(N, "char"); await sleep(800); await tap(N, "[data-ok]");
   await until(N, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor"), null, 30000);
   const id0 = await N.evaluate(async () => (await import("/web/backend.js")).sb.auth.getSession().then(r => r.data.session.user.id));
@@ -311,7 +300,7 @@ async function upgradeMidParty(lang, party) {
   ok(after.id === id0 && after.phone === "+821098765432" && after.anon === false, `${lang}: verified, same account (${after.id}), the number linked (${after.phone})`);
   ok(await N.evaluate(() => !document.querySelector("#party-panel")?.hidden && !!document.querySelector("#pt-floor")), `${lang}: still in the party`);
   ok(await until(party.H, id => [...document.querySelectorAll(".lr-av")].length >= 4, after.id, 10000), `${lang}: the host still sees them`);
-  await tap(N, "#pt-leave");
+  await N.evaluate(() => window.__onb.party.leave());
   await ctx.close(); contexts.splice(contexts.indexOf(ctx), 1);
 }
 
