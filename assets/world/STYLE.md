@@ -52,7 +52,7 @@ Day and night are chosen once at load (`NIGHT`), the glass UI follows
   `#6a7390` at night. Sits 0.14 u above the grass.
 - **Grass** outside the city and in parks: the lawn crop of
   `world2/road_grass.jpg` (3–30 %), mirrored blocks about 79 u per repeat,
-  tinted `#e6e6d4` by day / `#49536b` at night.
+  tinted `#e6e6d4` by day / `#6b7c9c` at night (lifted from `#49536b`: a park read as a black hole at night).
 - **Terrain**: Itaewon has its hills (`citygen.js` `itaewonHill`); the
   procedural city is flat and, in the blend, follows the same hills.
 - There is no separate sidewalk geometry: the paving *is* the sidewalk.

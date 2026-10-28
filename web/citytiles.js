@@ -223,8 +223,11 @@ export class CityTiles {
     // 5.6 outlines and the shadow film
     M.lines = new THREE.LineBasicMaterial({ color: night ? STYLE.outline.night : STYLE.outline.day, transparent: true, opacity: STYLE.outline.opacity });
     M.lines.onBeforeCompile = cut;
+    // overlapping shadows (a downtown block of towers) darken a pixel once,
+    // not once per building: the stencil marks it the first time
     M.shadow = new THREE.MeshBasicMaterial({ color: STYLE.shadow.color, transparent: true, opacity: STYLE.shadow.opacity, depthWrite: false,
-      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+      stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc, stencilZPass: THREE.ReplaceStencilOp });
     // 5.7 the street pass
     M.ac = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
     M.awn = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
