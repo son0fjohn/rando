@@ -80,8 +80,13 @@ async function toName(pg) {
   await pg.goto(appUrl());
   await screenIs(pg, "start", 120000);
   await pg.evaluate(() => { window.__onb.setup(); });
-  return screenIs(pg, "name", 60000);
+  return cardIs(pg, 60000);
 }
+// the setup card on the start panel: the name (a random one, selected), the character, Let's go
+const cardIs = (pg, ms = 30000) => until(pg, () => !!document.querySelector(".st-panel [data-setup] #su-name"), null, ms);
+async function throughCard(pg, name) { await setField(pg, "#su-name", name); await sleep(300); await tap(pg, ".st-panel [data-go]"); }
+// (set from the page: a fill/click would wait on a "stable" element, which the live city behind the glass never is on software GL)
+const setField = (pg, sel, v) => pg.evaluate(([sel, v]) => { const i = document.querySelector(sel); if (!i) return; i.value = v; i.dispatchEvent(new Event("input", { bubbles: true })); }, [sel, v]);
 const setUp = pg => until(pg, () => !!JSON.parse(localStorage.getItem("rando-onb-v1") ?? "{}").done, null, 60000);
 
 for (const lang of LANGS) {
@@ -104,16 +109,12 @@ for (const lang of LANGS) {
   ok(await screenIs(N, "start"), `${lang}: the invite opens the start screen, the party's name on it`);
   await sleep(1500);
   await shot(N, lang, "A1-invite", "an invite: the party's name on the glass");
-  ok(await screenIs(N, "name"), `${lang}: straight on -> a name`);
+  ok(await cardIs(N), `${lang}: straight on -> the setup card: a name and a character`);
   ok(await until(N, () => !!document.querySelector("[data-have]"), null, 10000), `${lang}: …with "Already have an account? Sign in" for a returning player`);
-  await sleep(400);
-  await N.fill("#onb-name", lang === "ko" ? "민지" : "Sam"); await sleep(300);
-  await shot(N, lang, "A2-name", "just a name (no phone, no email)");
-  await tap(N, "[data-next]");
-  ok(await screenIs(N, "char"), `${lang}: -> a character`);
-  await sleep(3500);
-  await shot(N, lang, "A3-character", "and a character");
-  await tap(N, "[data-ok]");
+  await until(N, () => !!document.querySelector("#su-stage canvas"), null, 30000); await sleep(1500);
+  await setField(N, "#su-name", lang === "ko" ? "민지" : "Sam"); await sleep(300);
+  await shot(N, lang, "A2-card", "just a name and a character (no phone, no email)");
+  await tap(N, ".st-panel [data-go]");
   ok(await until(N, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor"), null, 40000), `${lang}: -> straight into the party`);
   ok(await until(N, () => !!document.querySelector(".onb-in") || window.__youreIn, null, 20000), `${lang}: "You're in!"`);
   await sleep(1200);
@@ -183,10 +184,8 @@ for (const lang of LANGS) {
   if (ONLY.includes("C")) {
   console.log("\nC  the phone prompt when making a party public");
   const { ctx: gctx, pg: G } = await phone(lang);
-  ok(await toName(G), `${lang}: a first open: the name`);
-  await G.fill(".onb-screen:not(.out) #onb-name", lang === "ko" ? "하루" : "Haru"); await tap(G, ".onb-screen:not(.out) [data-next]");
-  ok(await screenIs(G, "char"), `${lang}: the character`);
-  await sleep(1500); await tap(G, ".onb-screen:not(.out) [data-ok]");
+  ok(await toName(G), `${lang}: a first open: the setup card`);
+  await sleep(1500); await throughCard(G, lang === "ko" ? "하루" : "Haru");
   ok(await setUp(G), `${lang}: a new guest, set up`);
   // the map's Host button: the party form, with invite only / public
   await G.evaluate(() => { window.__onb.hide(); window.__onb.party.togglePanel(true); });

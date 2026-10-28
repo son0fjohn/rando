@@ -27,7 +27,7 @@ import { setDay, getDay } from "/web/daylight.js";
 import { sunAltitude, lightAt, phaseOf } from "/web/sun.js";
 import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
 import { EVENTS, clean, track } from "/web/analytics.js";
-import { starterLook, e164, otpWait, otpError, OTP } from "/web/onbkit.js";
+import { starterLook, e164, otpWait, otpError, OTP, needsSetup, ESSENTIALS, cycleLook } from "/web/onbkit.js";
 import { invitePage } from "/api/invite.mjs";
 import { STARTER_OUTFITS4, normalizeAvatar4 } from "/web/items4.js";
 
@@ -1781,6 +1781,24 @@ group("Onboarding — English and Korean, guest setup, invite links, analytics")
   const looks = Array.from({ length: 60 }, () => starterLook(rng));
   ok(looks.every(l => STARTER_OUTFITS4.some(o => o.top === l.top && o.bottom === l.bottom && o.shoes === l.shoes)), "a new character always wears one of the six starter outfits");
   ok(looks.every(l => JSON.stringify(normalizeAvatar4(l)) === JSON.stringify(l)) && new Set(looks.map(l => l.skin)).size > 3 && new Set(looks.map(l => l.eyes)).size > 3, "…with a random skin, hair and eyes, and nothing that clashes");
+  // the setup card: who sees it (a placeholder handle or no character), and never a returning player
+  const look0 = looks[0];
+  ok(needsSetup(null) && needsSetup({ handle: "rando-1a2b3c", avatar: look0 }) && needsSetup({ handle: "Alex", avatar: null }) && needsSetup({ handle: "", avatar: look0 }),
+    "the setup card: a guest with the placeholder handle, or no character yet");
+  ok(!needsSetup({ handle: "Alex", avatar: look0 }) && !needsSetup({ handle: "rando-fan", avatar: look0 }), "…never a returning player (a real name and a character): they go straight in");
+  // its essentials: one tap each moves exactly that one thing to the next option, always a valid free look, and wraps round
+  const changed = (a, b) => Object.keys(a).filter(k => a[k] !== b[k]);
+  const KEY = { skin: ["skin"], hair: ["hair"], color: ["hairColor"], eyes: ["eyes"], hat: ["head"] };
+  ok(ESSENTIALS.length === 6 && ESSENTIALS.every(k => k === "outfit" || changed(look0, cycleLook(look0, k)).every(c => KEY[k].includes(c))),
+    `the card's ${ESSENTIALS.length} essentials each change one thing (${ESSENTIALS.join(", ")})`);
+  const allValid = ESSENTIALS.every(k => { let l = look0; for (let i = 0; i < 25; i++) { l = cycleLook(l, k); if (JSON.stringify(normalizeAvatar4(l)) !== JSON.stringify(l)) return false; } return true; });
+  ok(allValid, "…every result is a normalized look (nothing that clashes)");
+  ok(ESSENTIALS.filter(k => k !== "outfit").every(k => { let l = look0; for (let i = 0; i < 40; i++) { l = cycleLook(l, k); if (JSON.stringify(l) === JSON.stringify(cycleLook(look0, k, 0))) return true; } return false; }), "…and each one wraps back round to where it started, nothing else knocked off on the way");
+  ok(["hair", "hat"].every(k => { let l = look0; for (let i = 0; i < 30; i++) { const n = cycleLook(l, k); if (n.hair === "none" && l.hair !== "none" || (k === "hair" && n.head !== l.head) || (k === "hat" && n.hair !== l.hair)) return false; l = n; } return true; }), "a Hair tap never takes the hat off, a Hat tap never takes the hair off (only what fits is offered)");
+  const outfits = new Set(); { let l = look0; for (let i = 0; i < 6; i++) { l = cycleLook(l, "outfit"); outfits.add(`${l.top}|${l.bottom}|${l.shoes}`); } }
+  ok(outfits.size === 6 && [...outfits].every(o => STARTER_OUTFITS4.some(s => `${s.top}|${s.bottom}|${s.shoes}` === o)), "Outfit cycles through the six starter outfits");
+  const hats = new Set(); { let l = look0; for (let i = 0; i < 20; i++) { l = cycleLook(l, "hat"); hats.add(l.head); } }
+  ok(hats.has("none") && hats.size > 3 && cycleLook(look0, "nothing") && changed(look0, cycleLook(look0, "nothing")).length === 0, "Hat includes none; an unknown key changes nothing");
   ok(e164("010-1234-5678", "en") === "+821012345678" && e164("01012345678", "ko") === "+821012345678" && e164("+1 (555) 123-4567") === "+15551234567" && e164("5551234567", "en") === "+15551234567" && e164("12", "en") === null,
     "phone numbers: Korean local -> +82, international kept, junk refused");
   ok(["+82 010-1234-5678", "+82 10 1234 5678", "0082 10 1234 5678", "82 10-1234-5678", "8210 1234 5678"].every(n => e164(n, "en") === "+821012345678"),

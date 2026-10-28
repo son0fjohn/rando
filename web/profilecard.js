@@ -18,9 +18,9 @@ const REASONS = ["harassment", "hateful", "sexual", "spam", "something else"];
 export function openCard(host, person, { me, isHost = false, friend = false, blocked = false, onWave, onBlock, onReport } = {}) {
   close(host, true);
   const wrap = document.createElement("div");
-  wrap.className = "y-card-wrap";
+  wrap.className = "y-card-wrap glass-scrim";
   wrap.id = "y-card";
-  wrap.innerHTML = `<div class="y-card" role="dialog" aria-label="${esc(person.handle)}'s profile">
+  wrap.innerHTML = `<div class="y-card glass glass-sheet" role="dialog" aria-label="${esc(person.handle)}'s profile">
       <div class="y-card-grip"></div>
       <div class="y-card-top">
         <div class="y-card-3d" id="y-card-3d"><small>drag to spin</small></div>
@@ -32,12 +32,12 @@ export function openCard(host, person, { me, isHost = false, friend = false, blo
         </div>
       </div>
       <div class="y-card-btns">
-        <button type="button" class="y-btn accent" id="y-card-wave">wave</button>
-        <button type="button" class="y-btn ${friend ? "lime" : "dim"}" id="y-card-friend" disabled>${friend ? "friends ✓" : "add friend"}</button>
-        <button type="button" class="y-btn dim small" id="y-card-report">report</button>
-        <button type="button" class="y-btn dim small" id="y-card-block">${blocked ? "unblock" : "block"}</button>
+        <button type="button" class="glass-btn gold sm" id="y-card-wave">wave</button>
+        <button type="button" class="glass-btn clear sm" id="y-card-friend" disabled>${friend ? "friends ✓" : "add friend"}</button>
+        <button type="button" class="glass-btn clear xs" id="y-card-report">report</button>
+        <button type="button" class="glass-btn clear xs" id="y-card-block">${blocked ? "unblock" : "block"}</button>
       </div>
-      <div class="y-card-report" id="y-card-reasons" hidden>${REASONS.map(r => `<button type="button" class="y-btn dim small" data-reason="${r}">${r}</button>`).join("")}</div>
+      <div class="y-card-report" id="y-card-reasons" hidden>${REASONS.map(r => `<button type="button" class="glass-btn clear xs fit" data-reason="${r}">${r}</button>`).join("")}</div>
       <div class="y-card-note" id="y-card-note">${friend ? "" : "add each other by meeting up in person"}</div>
     </div>`;
   host.appendChild(wrap);

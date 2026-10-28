@@ -228,10 +228,10 @@ export const party = {
     const p = $("party-panel");
     if (!this.current || p.querySelector(".pt-confirm")) return;
     const el = document.createElement("div");
-    el.className = "pt-confirm";
-    el.innerHTML = `<div class="pt-confirm-card glass" role="alertdialog" aria-modal="true" aria-labelledby="pt-confirm-t">
+    el.className = "pt-confirm glass-scrim";
+    el.innerHTML = `<div class="pt-confirm-card glass glass-dialog" role="alertdialog" aria-modal="true" aria-labelledby="pt-confirm-t">
         <b id="pt-confirm-t">${esc(t("leave.title"))}</b><p>${esc(t("leave.sub"))}</p>
-        <div class="pt-confirm-btns"><button type="button" class="glass-btn clear sm" data-no>${esc(t("leave.no"))}</button><button type="button" class="glass-btn gold sm" data-yes>${esc(t("leave.yes"))}</button></div>
+        <div class="glass-row"><button type="button" class="glass-btn clear sm" data-no>${esc(t("leave.no"))}</button><button type="button" class="glass-btn gold sm" data-yes>${esc(t("leave.yes"))}</button></div>
       </div>`;
     const close = () => el.remove();
     el.onclick = e => { if (e.target === el) { sfx.back(); close(); } };
@@ -511,10 +511,10 @@ export const party = {
     if (!c?.launched || !c.room.isHost || $("hp-end-ask")) return;
     sfx.cursor();
     const ask = document.createElement("div");
-    ask.id = "hp-end-ask"; ask.className = "hp-ask";
-    ask.innerHTML = `<div class="hp-ask-card" role="alertdialog" aria-labelledby="hp-ask-t"><b id="hp-ask-t">End this game for everyone?</b>
+    ask.id = "hp-end-ask"; ask.className = "hp-ask glass-scrim";
+    ask.innerHTML = `<div class="hp-ask-card glass glass-dialog" role="alertdialog" aria-labelledby="hp-ask-t"><b id="hp-ask-t">End this game for everyone?</b>
       <p>Points so far still count on the party board. It won't count as one of the 3 games, and nobody gets coins for it.</p>
-      <div class="hp-ask-btns"><button type="button" class="y-btn dim" id="hp-ask-no">Cancel</button><button type="button" class="y-btn hp-ask-yes" id="hp-ask-yes">End game</button></div></div>`;
+      <div class="hp-ask-btns"><button type="button" class="glass-btn clear sm" id="hp-ask-no">Cancel</button><button type="button" class="glass-btn gold sm hp-ask-yes" id="hp-ask-yes">End game</button></div></div>`;
     $("game-layer").appendChild(ask);
     $("hp-ask-no").onclick = () => { sfx.back(); ask.remove(); };
     ask.onclick = e => { if (e.target === ask) { sfx.back(); ask.remove(); } };
@@ -529,7 +529,7 @@ export const party = {
   _toast(text) {
     const wrap = document.querySelector("#party-panel .pt-floor-wrap") ?? $("party-panel"); if (!wrap) return;
     const t = document.createElement("div");
-    t.className = "pt-toast"; t.textContent = text;
+    t.className = "pt-toast glass-toast"; t.textContent = text;
     wrap.appendChild(t);
     setTimeout(() => t.remove(), 3200);
   },
@@ -612,7 +612,7 @@ export const party = {
     const wrap = document.querySelector("#party-panel .pt-floor-wrap"); if (!wrap || wrap.querySelector(".pt-claim")) return;
     const el = document.createElement("button");
     el.type = "button";
-    el.className = "pt-cointoast pt-claim";
+    el.className = "pt-cointoast pt-claim glass-toast";
     el.innerHTML = `<i class="coin"></i><span>${esc(t("coins.claim"))}</span><b>${esc(t("coins.verify"))}</b>`;
     el.onclick = async () => { el.remove(); await this.claimUnclaimed(c); };
     wrap.appendChild(el);
@@ -621,7 +621,7 @@ export const party = {
   _coinToast(n) {
     const wrap = document.querySelector("#party-panel .pt-floor-wrap"); if (!wrap) return;
     const t = document.createElement("div");
-    t.className = "pt-cointoast";
+    t.className = "pt-cointoast glass-toast";
     t.innerHTML = `<i class="coin"></i><b>+${n}</b> coins`;
     wrap.appendChild(t);
     coinBurst(t, 8);
@@ -680,14 +680,14 @@ export const party = {
     const el = $("party-card"); if (!el || !r) return;
     this._card = r.id;
     const full = r.count >= r.cap, playing = r.state === "playing", mine = this.current?.room.id === r.id;
-    el.innerHTML = `<div class="pc-sheet y-panel" role="dialog" aria-label="${esc(r.name)}">
+    el.innerHTML = `<div class="pc-sheet glass glass-sheet" role="dialog" aria-label="${esc(r.name)}">
         <div class="y-card-grip"></div>
         <div class="pc-head"><span class="pc-house" aria-hidden="true"></span><div><b>${esc(r.name || `${r.hostName}'s party`)}</b>
           <small><i class="lr-crown" aria-label="host"></i>${esc(r.hostName)} is hosting</small></div></div>
         <div class="pc-stats"><span class="pc-vibe v-${esc(r.vibe)}">${esc(r.vibe)}</span><span><b>${r.count}</b>/${r.cap} in</span><span>${playing ? "mid-game" : "in the lobby"}</span></div>
         <div class="pc-note">public party · somewhere around here — the exact spot is never shown</div>
-        <div class="pc-btns"><button type="button" class="y-btn dim" id="pc-close">later</button>
-          <button type="button" class="y-btn accent" id="pc-join" ${full || playing || mine ? "disabled" : ""}>${mine ? "you're in" : full ? "full" : playing ? "wait for the round" : "join ▶"}</button></div>
+        <div class="pc-btns"><button type="button" class="glass-btn clear sm" id="pc-close">later</button>
+          <button type="button" class="glass-btn gold sm" id="pc-join" ${full || playing || mine ? "disabled" : ""}>${mine ? "you're in" : full ? "full" : playing ? "wait for the round" : "join ▶"}</button></div>
       </div>`;
     el.hidden = false;
     sfx.open();
@@ -762,23 +762,23 @@ export const party = {
     const f = this.form;
     const VIBE_ART = { chill: "☾", chaotic: "✦", sporty: "➶" };
     return `<div class="pt-menu">
-      <div class="pt-mhead"><b>host a party</b><span id="pt-mute"></span><button id="pt-close" class="y-btn small dim" type="button" aria-label="Close">&#10005;</button></div>
+      <div class="pt-mhead"><b>host a party</b><span id="pt-mute"></span><button id="pt-close" class="glass-icon sm" type="button" aria-label="Close">&#10005;</button></div>
       <label class="pt-lbl" for="pt-name">party name</label>
       <input id="pt-name" class="y-input" maxlength="${PARTY.NAME_MAX}" placeholder="${esc(this.me?.handle ?? "my")}'s party" value="${esc(f.name)}" autocomplete="off">
       <div class="pt-lbl">vibe <small>— picks the room's neon, every game works with any vibe</small></div>
       <div class="pt-tiles three" id="pt-vibe">${VIBES.map(v => `<button type="button" class="pt-tile v-${v} ${f.vibe === v ? "on" : ""}" data-vibe="${v}"><i aria-hidden="true">${VIBE_ART[v] ?? "★"}</i>${v}</button>`).join("")}</div>
       <div class="pt-lbl">players</div>
-      <div class="pt-step"><button type="button" class="y-btn small dim" data-cap="-1" aria-label="fewer">&#9664;</button><b class="pt-capv" id="pt-capv">${f.cap}</b><span>max</span><button type="button" class="y-btn small dim" data-cap="1" aria-label="more">&#9654;</button>
+      <div class="pt-step"><button type="button" class="glass-btn clear xs fit" data-cap="-1" aria-label="fewer">&#9664;</button><b class="pt-capv" id="pt-capv">${f.cap}</b><span>max</span><button type="button" class="glass-btn clear xs fit" data-cap="1" aria-label="more">&#9654;</button>
         <input id="pt-cap" type="hidden" value="${f.cap}"></div>
       ${FLAGS.PUBLIC_PARTIES ? `<div class="pt-lbl">who can come</div>
       <div class="pt-tiles two" id="pt-priv">
         <button type="button" class="pt-tile ${f.privacy !== "public" ? "on" : ""}" data-priv="private"><i aria-hidden="true">✉</i>invite only<small>code or link</small></button>
         <button type="button" class="pt-tile ${f.privacy === "public" ? "on" : ""}" data-priv="public"><i aria-hidden="true">⌂</i>public<small>a house on the map</small></button></div>` : ""}
-      <button id="pt-create" class="y-btn host pt-big" type="button">throw the party &#9654;</button>
+      <button id="pt-create" class="glass-btn gold pt-big" type="button">throw the party &#9654;</button>
       <div id="pt-err" class="pt-err"></div>
       ${FLAGS.PUBLIC_PARTIES ? `<div class="pt-sep"><span>parties nearby</span></div><div id="pt-list"></div>` : ""}
       <div class="pt-sep"><span>got an invite code?</span></div>
-      <form id="pt-code-form" class="pt-codeform"><input id="pt-code" class="y-input pt-codein" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false"><button type="submit" class="y-btn small">join</button></form>
+      <form id="pt-code-form" class="pt-codeform"><input id="pt-code" class="y-input pt-codein" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false"><button type="submit" class="glass-btn clear sm fit">join</button></form>
       ${FLAGS.PUBLIC_PARTIES ? "" : `<div class="pt-note">parties are invite-only this build — share the code or the link</div>`}
     </div>`;
   },
@@ -787,10 +787,10 @@ export const party = {
   _inHtml() {
     return `<div class="pt-top">
         <div class="pt-top-row">
-          <button id="pt-back" type="button" class="pt-icon pt-back" aria-label="${esc(t("room.back"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+          <button id="pt-back" type="button" class="pt-icon glass-icon pt-back" aria-label="${esc(t("room.back"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
           <b id="pt-title">party</b>
           <span id="pt-mute"></span>
-          <button id="pt-hostmenu" type="button" class="pt-icon" hidden aria-label="${esc(t("room.hostMenu"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg></button>
+          <button id="pt-hostmenu" type="button" class="pt-icon glass-icon" hidden aria-label="${esc(t("room.hostMenu"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg></button>
         </div>
         <div class="pt-top-row">
           <div id="pt-sub" class="rp-sub"></div>
@@ -805,7 +805,7 @@ export const party = {
       <div class="pt-bottom">
         <div id="pt-next" class="pt-next"></div>
         <div id="pt-err" class="pt-err"></div>
-        <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="${t("room.say")}" autocomplete="off"><button type="submit" aria-label="send">&#8593;</button><button type="button" id="pt-vote" class="y-btn small host pt-vote"></button></form>
+        <form id="pt-chat-form"><input id="pt-chat-input" maxlength="160" placeholder="${t("room.say")}" autocomplete="off"><button type="submit" class="glass-icon" aria-label="send">&#8593;</button><button type="button" id="pt-vote" class="glass-btn gold xs pt-vote"></button></form>
       </div>
       <div id="pt-picker" class="pt-picker" hidden></div>`;
   },
@@ -864,11 +864,12 @@ export const party = {
     if (el.hidden === !alone && el.dataset.code === c.meta.code) return;
     el.hidden = !alone; el.dataset.code = c.meta.code;
     if (!alone) { el.innerHTML = ""; return; }
-    el.innerHTML = `<button type="button" class="pt-empty-x" aria-label="Close">&#10005;</button>
+    el.classList.add("glass", "glass-dialog");
+    el.innerHTML = `<button type="button" class="pt-empty-x glass-icon sm" aria-label="Close">&#10005;</button>
       <b>${esc(t("room.empty"))}</b>
       <div class="pt-empty-qr">${qrSvg(this.link(c))}</div>
       <p>${esc(t("inv.qr"))}</p>
-      <button type="button" class="y-btn host pt-empty-inv">${esc(t("room.invite"))}</button>`;
+      <button type="button" class="glass-btn gold sm pt-empty-inv">${esc(t("room.invite"))}</button>`;
     el.querySelector(".pt-empty-x").onclick = () => { c.emptyDismissed = true; sfx.back(); this._renderEmpty(); };
     el.querySelector(".pt-empty-inv").onclick = () => { sfx.confirm(); this.invite(); };
   },
@@ -1007,8 +1008,9 @@ export const party = {
         }).join("")}</div>
           <small>${st.adult ? "" : "unhinged needs 18+ on · "}levels still build up: rounds 1-2 mild, 3-4 up to spicy, then up to this</small></div>` : ""}
       </div>`;
-    el.innerHTML = `<div class="pt-picker-sheet pv-sheet">
-        <div class="pt-picker-head"><button type="button" class="pt-back" id="pt-picker-back" aria-label="Back to the lobby">&#8249; Back</button><b>${esc(isHost ? t("room.pickHost") : t("room.pickGuest"))}</b><button type="button" class="pt-icon" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
+    el.classList.add("glass-scrim");
+    el.innerHTML = `<div class="pt-picker-sheet pv-sheet glass glass-sheet">
+        <div class="pt-picker-head"><button type="button" class="pt-back glass-btn clear xs fit" id="pt-picker-back" aria-label="Back to the lobby">&#8249; Back</button><b>${esc(isHost ? t("room.pickHost") : t("room.pickGuest"))}</b><button type="button" class="pt-icon glass-icon sm" id="pt-picker-x" aria-label="Close">&#10005;</button></div>
         <p class="pv-sub">Game ${nextGameNo(c.set)} of ${PARTY.GAMES_PER_SET} · ${isHost ? `${total} vote${total === 1 ? "" : "s"} so far · tap a game to start it` : `one vote each — you can change it until ${esc(host)} starts a game`}</p>
         <div id="pv-err" class="pv-err"></div>
         <div class="pv-list">${rows}</div>

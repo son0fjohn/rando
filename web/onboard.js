@@ -3,15 +3,21 @@
 //
 //   Every open: the start screen, our 3D Itaewon at night drifting behind
 //     one glass panel (scenery.js): the logo, Start a party, Join a party
-//     (a code, friends' parties, the map). Either one ends in the camera
-//     diving from the sky into the party's building, then the lobby. A
-//     first open sets up a name and a character on the way (a guest).
+//     (a code, friends' parties, the map), Explore the world. Either one
+//     ends in the camera diving from the sky into the party's building,
+//     then the lobby. A first open sets up a name and a character on the
+//     way (a guest): the setup card, the same panel with its insides
+//     swapped (the character on a small stage in 3D or as the room's 2D
+//     sprite, Randomize, one tap per essential, a random name to keep or
+//     replace, Let's go: ~10 seconds, nothing to read). A returning player
+//     (a real name and a character) goes straight in; the panel shows their
+//     chip on top, and tapping it opens the same card to edit.
 //   An invite link (?party=CODE, or /p/CODE via api/invite.mjs): the same
-//     screen with the party's name instead of the buttons, then (name ->
-//     character ->) the same dive straight into its lobby and a "you're
-//     in!" moment. The code is kept on the phone until they're in, so a
-//     reload, a sign-in or an interrupted install comes back to the same
-//     party. An ended or full party says so and offers the buttons.
+//     screen with the party's name instead of the buttons, then (the setup
+//     card ->) the same dive straight into its lobby and a "you're in!"
+//     moment. The code is kept on the phone until they're in, so a reload,
+//     a sign-in or an interrupted install comes back to the same party. An
+//     ended or full party says so and offers the buttons.
 //   Home (the "you" button): your character, Style, friends' parties,
 //     what's new.
 //
@@ -36,9 +42,11 @@
 import { t, lang, setLang, onLang, suggestName } from "./i18n.js";
 import { track, trackOnce, sinceFirstOpen } from "./analytics.js";
 import { askPermission, prePrompt, permState, toast } from "./permissions.js";
-import { starterLook, e164, otpWait, otpError } from "./onbkit.js";
-import { mountCharView } from "./charview.js";
+import { starterLook, e164, otpWait, otpError, needsSetup, AUTO_HANDLE, ESSENTIALS, cycleLook } from "./onbkit.js";
+import { mountCharView, mountLookView } from "./charview.js";
 import { renderLook, warmLooks } from "./charrender.js";
+import { spriteFor, silhouetteFor, SPRITE } from "./charsprite.js";
+import { normalizeAvatar4 } from "./items4.js";
 import { qrSvg } from "./qr.js";
 import { sfx, buzz } from "./fx.js";
 import { esc } from "./hpkit.js";
@@ -52,7 +60,6 @@ const params = new URLSearchParams(location.search);
 const OFF = params.get("onb") === "0";
 const KEY = "rando-onb-v1";
 const PENDING_MS = 12 * 60 * 60 * 1000;      // an invite kept on the phone this long
-const AUTO_HANDLE = /^rando-[0-9a-f]{6}$/;
 const $ = id => document.getElementById(id);
 
 // what's new (Home shows each until it's tapped away)
@@ -123,6 +130,21 @@ export const onboard = {
     const panel = () => {
       const friends = env.friendParties?.() ?? [];
       const logo = `<div class="st-logo">rando</div>`;
+      const p = env.profile();
+      // a returning player's chip: their room sprite and name; tap to edit
+      const chip = !needsSetup(p) ? `<button type="button" class="st-me" data-me-chip aria-label="${esc(t("setup.edit"))}"><i class="st-me-av" id="st-me-av"></i><b>${esc(p.handle)}</b><span aria-hidden="true">✎</span></button>` : "";
+      if (mode === "setup" && this._su) {
+        const su = this._su;
+        return `${su.edit ? `<button type="button" class="st-back" data-back>‹ ${esc(t("start.back"))}</button>` : ""}
+          <div class="su" data-setup>
+            <div class="su-stage" id="su-stage"><button type="button" class="glass-btn clear su-random" data-random><span class="onb-dice" aria-hidden="true">🎲</span>${esc(t("setup.random"))}</button></div>
+            <div class="su-cyc">${ESSENTIALS.map(k => `<button type="button" class="su-chip" data-cycle="${k}"><span>${esc(t(`setup.${k}`))}</span><i aria-hidden="true">›</i></button>`).join("")}</div>
+            <input id="su-name" class="glass-field su-name" maxlength="20" autocomplete="nickname" autocapitalize="words" enterkeyhint="go" placeholder="${esc(t("setup.name"))}" aria-label="${esc(t("setup.name"))}" value="${esc(su.name)}">
+            <p class="onb-err" id="su-err"></p>
+            <button type="button" class="glass-btn gold" data-go>${esc(t(su.edit ? "setup.save" : "setup.go"))}</button>
+            ${canSignIn && !su.edit ? `<button type="button" class="st-explore su-have" data-have>${esc(t("acct.haveOne"))}</button>` : ""}
+          </div>`;
+      }
       if (mode === "invite") {
         const name = info?.name || invite.name || (info?.hostName ? t("land.party", { host: info.hostName }) : "");
         const gone = !looking && !info, full = !!info && info.count >= (info.cap ?? 99);
@@ -142,7 +164,7 @@ export const onboard = {
         <p class="onb-err" id="st-err">${esc(msg)}</p>
         ${friends.length ? `<span class="st-sub">${esc(t("home.friends"))}</span>${friends.map(f => `<div class="st-fp"><b>${esc(f.name)}</b><span>${esc(t("land.inside", { n: f.count }))}</span><button type="button" class="glass-btn clear sm" data-fjoin="${esc(f.id)}">${esc(t("home.join"))}</button></div>`).join("")}` : ""}
         <button type="button" class="glass-btn clear sm" data-nearby>${esc(t("home.nearby"))}</button>`;
-      return `${logo}<p class="st-line">${esc(t("start.tag"))}</p>
+      return `${chip}${logo}<p class="st-line">${esc(t("start.tag"))}</p>
         <button type="button" class="glass-btn gold" data-start>${esc(t("start.start"))}</button>
         <button type="button" class="glass-btn clear" data-join>${esc(t("start.join"))}</button>
         <button type="button" class="st-explore" data-explore><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 3.8 6.6v12.9L9 17.4l6 2.1 5.2-2.1V4.5L15 6.6z"/><path d="M9 4.5v12.9M15 6.6v12.9"/></svg>${esc(t("start.explore"))}</button>
@@ -151,6 +173,14 @@ export const onboard = {
     const bindPanel = el => {
       const pn = el.querySelector(".st-panel");
       pn.dataset.view = mode;
+      const av = pn.querySelector("#st-me-av");
+      if (av) av.appendChild(faceTile(env.profile().avatar));
+      pn.querySelector("[data-me-chip]")?.addEventListener("click", async () => {
+        sfx.open?.(); buzz(8);
+        await this.setup({ edit: true });
+        if (screen?.id === "start" && mode === "setup") { mode = "main"; redraw(); }
+      });
+      if (mode === "setup" && this._su) this._bindSetup(pn);
       pn.querySelector("[data-start]")?.addEventListener("click", () => { sfx.confirm?.(); buzz(15); clearPending(); this.go("start"); });
       pn.querySelector("[data-join]")?.addEventListener("click", () => { sfx.cursor?.(); clearPending(); mode = "join"; msg = ""; redraw(); setTimeout(() => pn.querySelector("#st-code input")?.focus(), 60); });
       pn.querySelector("[data-back]")?.addEventListener("click", () => { sfx.back?.(); mode = "main"; msg = ""; redraw(); });
@@ -173,6 +203,7 @@ export const onboard = {
     const redraw = () => {
       const el = screen?.id === "start" ? screen.el : null;
       if (!el) return draw();
+      this._su?.view?.dispose();
       el.querySelector(".st-panel").innerHTML = panel();
       bindPanel(el);
     };
@@ -215,7 +246,7 @@ export const onboard = {
     this._going = true;
     try {
       const busy = kind === "start" ? "busy-start" : "busy";
-      if (needsSetup(env.profile())) await this.setup();
+      if (needsSetup(env.profile()) && !(await this.setup())) return false;
       if (screen?.id === "start") this._startView(busy);
       else this.startScreen({ view: busy });
       // a phone still building the city: no dive then, so the 3D rests and the party comes first
@@ -246,6 +277,8 @@ export const onboard = {
     if (this._going) return;
     this._going = true;
     try {
+      // a first open: the setup card first, then the panel's main view fades out under the glide
+      if (needsSetup(env.profile())) { if (!(await this.setup())) return; this._startView?.("main"); await scenery.wait(120); }
       await askPermission("location");       // (a pre-prompt; "not now" is fine)
       const spot = (await env.exploreHome?.().catch(() => null)) ?? { lat: 37.5346, lng: 126.9946 };
       const el = screen?.id === "start" ? screen.el : null;
@@ -290,91 +323,75 @@ export const onboard = {
     veil.classList.remove("on");
   },
 
-  // ================================================================ quick guest setup
-  async setup() {
+  // ================================================================ the setup card
+  // A first open (Start, Join, an invite, Explore): the start panel's insides
+  // become the card, over the same drifting city: the character on a small
+  // stage (3D, or the room's 2D sprite, remembered), Randomize, one tap per
+  // essential (skin, hair, colour, eyes, outfit, hat), the name (a random
+  // one, selected: keep it with one tap or just type), Let's go. Nothing to
+  // read. Returning players never see it unless they tap their chip (edit:
+  // the same card, Save, Back). Resolves true once saved, false if left.
+  setup({ edit = false } = {}) {
+    if (this._su) return this._su.promise;
     const p = env.profile();
-    if (AUTO_HANDLE.test(p.handle ?? "")) await this.nameScreen();
-    if (!p.avatar) await this.characterScreen();
-    st.done = true; save();
+    const auto = !p.handle || AUTO_HANDLE.test(p.handle);
+    const su = this._su = { edit, look: p.avatar ? normalizeAvatar4(p.avatar) : starterLook(), name: auto ? suggestName() : p.handle, typed: false, shuffles: 0, view: null, res: null };
+    su.promise = new Promise(res => { su.res = res; });
+    if (screen?.id === "start" && this._startView) this._startView("setup"); else this.startScreen({ view: "setup" });
+    import("./avatar4.js").catch(() => {});      // (the 3D, loading meanwhile)
+    return su.promise;
   },
-
-  nameScreen() {
-    return new Promise(res => {
-      let value = "";
-      const draw = () => show("name", `
-          <div class="onb-card onb-name">
-            <b class="onb-h">${esc(t("name.title"))}</b>
-            <div class="onb-namerow"><input id="onb-name" class="onb-input" maxlength="20" autocomplete="nickname" autocapitalize="words" enterkeyhint="next" placeholder="${esc(t("name.ph"))}" value="${esc(value)}">
-              <button type="button" class="onb-btn ghost" data-suggest aria-label="${esc(t("name.suggest"))}">🎲 ${esc(t("name.suggest"))}</button></div>
-            <p class="onb-err" id="onb-name-err"></p>
-            <button type="button" class="onb-btn gold big" data-next>${esc(t("name.next"))}</button>
-            <p class="onb-fine">${esc(t("name.note"))}</p>
-            ${canSignIn ? `<button type="button" class="onb-btn text" data-have>${esc(t("acct.haveOne"))}</button>` : ""}
-            ${langToggle()}
-          </div>`, { redraw: draw, bind: el => {
-        bindLang(el);
-        el.querySelector("[data-have]")?.addEventListener("click", () => { sfx.cursor?.(); this.signInSheet(); });
-        const inp = el.querySelector("#onb-name"), err = el.querySelector("#onb-name-err");
-        inp.oninput = () => { value = inp.value; err.textContent = ""; };
-        setTimeout(() => inp.focus(), 250);
-        el.querySelector("[data-suggest]").onclick = () => { value = inp.value = suggestName(); sfx.cursor?.(); buzz(8); inp.focus(); };
-        const go = async () => {
-          const name = inp.value.trim();
-          if (name.length < 2 || name.length > 20) { err.textContent = t("name.len"); sfx.back?.(); return; }
-          const btn = el.querySelector("[data-next]"); btn.disabled = true;
-          const r = await env.saveName(name);
+  _endSetup(ok) {
+    const su = this._su; if (!su) return;
+    this._su = null;
+    su.view?.dispose(); su.view = null;
+    su.res?.(ok);
+  },
+  _bindSetup(pn) {
+    const su = this._su, stage = pn.querySelector("#su-stage"), inp = pn.querySelector("#su-name"), err = pn.querySelector("#su-err");
+    su.view?.dispose();
+    su.view = mountLookView(stage, su.look, { yaw: 0.5, toggle: true });
+    const swap = next => { su.look = next; su.shuffles++; su.view.setAvatar(next); sfx.pop?.(); buzz(8); };
+    pn.querySelectorAll("[data-cycle]").forEach(b => b.onclick = () => swap(cycleLook(su.look, b.dataset.cycle)));
+    pn.querySelector("[data-random]").onclick = e => {
+      swap(starterLook());
+      const b = e.currentTarget; b.classList.remove("spin"); void b.offsetWidth; b.classList.add("spin");
+      sparkle(stage);
+    };
+    inp.oninput = () => { su.name = inp.value; su.typed = true; err.textContent = ""; };
+    setTimeout(() => { if (!inp.isConnected) return; inp.focus({ preventScroll: true }); if (!su.edit) inp.select(); }, 220);
+    pn.querySelector("[data-have]")?.addEventListener("click", () => { sfx.cursor?.(); this.signInSheet(); });
+    pn.querySelector("[data-back]")?.addEventListener("click", () => { sfx.back?.(); this._endSetup(false); });
+    const go = async () => {
+      if (this._su !== su) return;
+      const name = inp.value.trim(), p = env.profile();
+      if (name.length < 2 || name.length > 20) { err.textContent = t("name.len"); sfx.back?.(); return; }
+      const btn = pn.querySelector("[data-go]"); btn.disabled = true;
+      if (name !== p.handle) {
+        const r = await env.saveName(name);
+        if (r?.error) {
           btn.disabled = false;
-          if (r?.error) { err.textContent = /duplicate|unique|taken/i.test(r.error) ? t("name.taken") : r.error; sfx.back?.(); return; }
-          track("name_set");
-          sfx.confirm?.(); buzz(15);
-          inp.blur();
-          res(name);
-        };
-        el.querySelector("[data-next]").onclick = go;
-        inp.onkeydown = e => { if (e.key === "Enter") go(); };
-      } });
-      draw();
-      // while they type: the next screen's 3D and the party's people get ready
-      import("./avatar4.js").catch(() => {});
-    });
-  },
-
-  characterScreen() {
-    return new Promise(res => {
-      let look = starterLook(), shuffles = 0, view = null;
-      const draw = () => {
-        show("char", `
-          <div class="onb-card onb-char">
-            <b class="onb-h">${esc(t("char.title"))}</b>
-            <div class="onb-stage" id="onb-stage"><div class="onb-plat"></div></div>
-            <div class="onb-row2">
-              <button type="button" class="onb-btn ghost big" data-shuffle><span class="onb-dice">🎲</span> ${esc(t("char.shuffle"))}</button>
-              <button type="button" class="onb-btn gold big" data-ok>${esc(t("char.ok"))}</button>
-            </div>
-            <p class="onb-fine">${esc(t("char.later"))}</p>
-          </div>`, { redraw: draw, bind: el => {
-          view?.dispose();
-          view = mountCharView(el.querySelector("#onb-stage"), look, { stage: true, yaw: 0.5 });
-          el.querySelector("[data-shuffle]").onclick = e => {
-            look = starterLook(); shuffles++;
-            view.setAvatar(look);
-            sfx.pop?.(); buzz(10);
-            const b = e.currentTarget; b.classList.remove("spin"); void b.offsetWidth; b.classList.add("spin");
-            sparkle(el.querySelector("#onb-stage"));
-          };
-          el.querySelector("[data-ok]").onclick = async e => {
-            e.currentTarget.disabled = true;
-            await env.saveAvatar(look);
-            track("character_shuffled", { count: shuffles });
-            track("character_confirmed");
-            sfx.win?.(); buzz([20, 40, 20]);
-            sparkle(el.querySelector("#onb-stage"), 16);
-            setTimeout(() => { view?.dispose(); res(look); }, 450);
-          };
-        } });
-      };
-      draw();
-    });
+          const taken = /duplicate|unique|taken/i.test(r.error);
+          err.textContent = taken ? t("name.taken") : r.error;
+          if (taken && !su.typed) { su.name = inp.value = suggestName(); inp.focus(); inp.select(); }   // (a taken default: another one, ready)
+          sfx.back?.(); return;
+        }
+        track("name_set");
+      }
+      if (!p.avatar || JSON.stringify(normalizeAvatar4(p.avatar)) !== JSON.stringify(su.look)) {
+        const r = await env.saveAvatar(su.look);
+        if (r?.error) { btn.disabled = false; err.textContent = r.error; sfx.back?.(); return; }
+        track("character_shuffled", { count: su.shuffles });
+        track("character_confirmed");
+      }
+      st.done = true; save();
+      sfx.win?.(); buzz([20, 40, 20]);
+      sparkle(stage, 14);
+      inp.blur();
+      this._endSetup(true);
+    };
+    pn.querySelector("[data-go]").onclick = go;
+    inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); go(); } };
   },
 
   // a code from Home: the same way in as from the start screen
@@ -394,17 +411,17 @@ export const onboard = {
         <div class="onb-home">
           <div class="onb-home-top">
             <button type="button" class="onb-logo sm onb-home-back" data-startscreen aria-label="${esc(t("start.back"))}">‹ rando</button>
-            <span class="onb-home-r">${langToggle()}<button type="button" class="onb-icon" data-settings aria-label="${esc(t("home.settings"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5"/></svg></button></span>
+            <span class="onb-home-r">${langToggle()}<button type="button" class="glass-icon onb-icon" data-settings aria-label="${esc(t("home.settings"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5"/></svg></button></span>
           </div>
           <b class="onb-hi">${esc(t("home.hi", { name: p.handle ?? "" }))}</b>
-          <div class="onb-stage home" id="onb-home-stage"><div class="onb-plat"></div><button type="button" class="onb-chip" data-style>✦ ${esc(t("home.style"))}</button></div>
+          <div class="onb-stage home" id="onb-home-stage"><div class="onb-plat"></div><button type="button" class="glass-btn clear fit onb-chip" data-style>✦ ${esc(t("home.style"))}</button></div>
           ${news.length ? `<div class="onb-news">${news.map(n => `<button type="button" class="onb-new" data-new="${n.id}"><i>${esc(t("home.new"))}</i>${esc(n[lang] ?? n.en)}<span aria-hidden="true">✕</span></button>`).join("")}</div>` : ""}
-          ${friends.length ? `<div class="onb-friends"><small>${esc(t("home.friends"))}</small>${friends.map(f => `<div class="onb-fp"><b>${esc(f.name)}</b><span>${esc(t("land.inside", { n: f.count }))}</span><button type="button" class="onb-btn ghost sm" data-fjoin="${esc(f.id)}">${esc(t("home.join"))}</button></div>`).join("")}</div>` : ""}
+          ${friends.length ? `<div class="onb-friends"><small>${esc(t("home.friends"))}</small>${friends.map(f => `<div class="onb-fp"><b>${esc(f.name)}</b><span>${esc(t("land.inside", { n: f.count }))}</span><button type="button" class="glass-btn clear xs fit" data-fjoin="${esc(f.id)}">${esc(t("home.join"))}</button></div>`).join("")}</div>` : ""}
           <div class="onb-home-acts">
-            ${inParty ? `<button type="button" class="onb-btn gold big" data-back>${esc(t("home.myParty"))}</button>`
-              : `<button type="button" class="onb-btn gold big throw" data-throw><span>${esc(t("home.throw"))}</span><small>${esc(t("home.throwSub"))}</small></button>`}
-            <button type="button" class="onb-btn ghost big" data-nearby>${esc(t("home.nearby"))}</button>
-            <form class="onb-code" id="onb-code"><label>${esc(t("home.code"))}</label><input maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD"><button class="onb-btn ghost sm">${esc(t("home.codeJoin"))}</button></form>
+            ${inParty ? `<button type="button" class="glass-btn gold" data-back>${esc(t("home.myParty"))}</button>`
+              : `<button type="button" class="glass-btn gold col throw" data-throw><span>${esc(t("home.throw"))}</span><small>${esc(t("home.throwSub"))}</small></button>`}
+            <button type="button" class="glass-btn clear" data-nearby>${esc(t("home.nearby"))}</button>
+            <form class="onb-code" id="onb-code"><label>${esc(t("home.code"))}</label><input maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD"><button class="glass-btn clear xs fit">${esc(t("home.codeJoin"))}</button></form>
           </div>
         </div>`, { cls: "home", redraw: draw, bind: el => {
         bindLang(el);
@@ -452,9 +469,9 @@ export const onboard = {
       <b class="onb-h">${esc(t("inv.title"))}</b>
       <div class="onb-inv-code"><small>${esc(t("inv.code"))}</small>${[...c.meta.code].map(ch => `<span>${esc(ch)}</span>`).join("")}</div>
       <div class="onb-inv-btns">
-        <button type="button" class="onb-btn gold big" data-share data-link="${esc(link)}"><span>${esc(t("inv.share"))}</span><small>${esc(t("inv.shareSub"))}</small></button>
-        <div class="onb-row2"><a class="onb-btn ghost" data-sms href="sms:?&body=${encodeURIComponent(msg)}">${esc(t("inv.sms"))}</a><button type="button" class="onb-btn ghost" data-copy>${esc(t("inv.copy"))}</button></div>
-        ${contacts ? `<button type="button" class="onb-btn ghost" data-contacts>${esc(t("inv.contacts"))}</button>` : ""}
+        <button type="button" class="glass-btn gold col" data-share data-link="${esc(link)}"><span>${esc(t("inv.share"))}</span><small>${esc(t("inv.shareSub"))}</small></button>
+        <div class="onb-row2"><a class="glass-btn clear sm" data-sms href="sms:?&body=${encodeURIComponent(msg)}">${esc(t("inv.sms"))}</a><button type="button" class="glass-btn clear sm" data-copy>${esc(t("inv.copy"))}</button></div>
+        ${contacts ? `<button type="button" class="glass-btn clear sm" data-contacts>${esc(t("inv.contacts"))}</button>` : ""}
       </div>
       <div class="onb-qr">${qrSvg(link)}<p>${esc(t("inv.qr"))}</p></div>
       <button type="button" class="onb-btn text" data-close>${esc(t("inv.done"))}</button>`, el => {
@@ -532,9 +549,9 @@ export const onboard = {
       const stepPhone = () => sheet("verify", `
           <b class="onb-h">${esc(t("ver.title"))}</b>
           <p class="onb-sub">${esc(t(signIn ? "set.signin" : `ver.why.${trigger}`))}</p>
-          ${sms ? `<input id="onb-phone" class="onb-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="${lang === "ko" ? "010-1234-5678" : "+1 555 123 4567"}" aria-label="${esc(t("ver.phone"))}" value="${esc(phone ?? "")}">
+          ${sms ? `<input id="onb-phone" class="glass-field onb-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="${lang === "ko" ? "010-1234-5678" : "+1 555 123 4567"}" aria-label="${esc(t("ver.phone"))}" value="${esc(phone ?? "")}">
           <p class="onb-err" id="onb-ver-err"></p>
-          <button type="button" class="onb-btn gold big" data-send>${esc(t("ver.send"))}</button>` : ""}
+          <button type="button" class="glass-btn gold" data-send>${esc(t("ver.send"))}</button>` : ""}
           ${kakao ? `${sms ? `<div class="onb-or"><span>${esc(t("acct.or"))}</span></div>` : ""}${oauthBtn("kakao")}` : ""}
           <button type="button" class="onb-btn text" data-later>${esc(t("ver.later"))}</button>
           <p class="onb-fine">${esc(t(kakao ? "ver.noteK" : "ver.note"))}</p>`, el => {
@@ -551,11 +568,11 @@ export const onboard = {
       const stepCode = () => sheet("verify", `
           <b class="onb-h">${esc(t("ver.title"))}</b>
           <p class="onb-sub">${esc(t("ver.sent", { phone }))}</p>
-          <input id="onb-otp" class="onb-input otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="${esc(t("ver.code"))}">
+          <input id="onb-otp" class="glass-field onb-input otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="${esc(t("ver.code"))}">
           <p class="onb-err" id="onb-ver-err"></p>
-          <button type="button" class="onb-btn gold big" data-verify>${esc(t("ver.verify"))}</button>
+          <button type="button" class="glass-btn gold" data-verify>${esc(t("ver.verify"))}</button>
           <p class="onb-fine onb-again" id="onb-again" aria-live="polite"></p>
-          <button type="button" class="onb-btn ghost" data-again hidden>${esc(t("ver.again"))}</button>
+          <button type="button" class="glass-btn clear sm" data-again hidden>${esc(t("ver.again"))}</button>
           ${kakao ? oauthBtn("kakao") : ""}
           <button type="button" class="onb-btn text" data-back>${esc(t("ver.resend"))}</button>`, el => {
         const inp = el.querySelector("#onb-otp"), err = el.querySelector("#onb-ver-err"), again = el.querySelector("[data-again]"), line = el.querySelector("#onb-again");
@@ -619,7 +636,7 @@ export const onboard = {
       <b class="onb-h">${esc(t("acct.signinTitle"))}</b>
       <p class="onb-sub">${esc(t("acct.signinSub"))}</p>
       <div class="onb-oauth">${provs.map(oauthBtn).join("")}</div>
-      ${sms ? `<button type="button" class="onb-btn ghost" data-phone>${esc(t("acct.phone"))}</button>` : ""}
+      ${sms ? `<button type="button" class="glass-btn clear sm" data-phone>${esc(t("acct.phone"))}</button>` : ""}
       ${progress ? `<p class="onb-fine">${esc(t("acct.guestLost"))}</p>` : ""}
       <button type="button" class="onb-btn text" data-close>${esc(t("set.close"))}</button>`, el => {
       el.querySelectorAll("[data-oauth]").forEach(b => b.onclick = () => this.oauth("signin", b.dataset.oauth));
@@ -687,7 +704,7 @@ export const onboard = {
       v?.available() ?? false, v?.isVerified() ?? false, v?.phone?.() ?? "", a?.providers?.().catch(() => []) ?? [], a?.linked?.() ?? [], a?.isGuest?.() ?? true, v?.sms?.() ?? false]);
     const row = (label, state, kind) => `<div class="onb-set-row"><span>${esc(label)}</span>${state === "granted" ? `<em class="on">${esc(t("set.on"))}</em>`
       : state === "denied" ? `<em class="off" title="${esc(t("set.blocked"))}">${esc(t("set.off"))}</em>` : state === "unsupported" ? `<em class="off">—</em>`
-      : `<button type="button" class="onb-btn ghost sm" data-perm="${kind}">${esc(t("set.turnOn"))}</button>`}</div>`;
+      : `<button type="button" class="glass-btn clear xs fit" data-perm="${kind}">${esc(t("set.turnOn"))}</button>`}</div>`;
     const canSave = provs.some(p => !linked.includes(p)) && (guest || !linked.length);
     sheet("settings", `
       <b class="onb-h">${esc(t("set.title"))}</b>
@@ -696,8 +713,8 @@ export const onboard = {
       ${row(t("set.notif"), notif, "notifications")}
       ${loc === "denied" || notif === "denied" ? `<p class="onb-fine">${esc(t("set.blocked"))}</p>` : ""}
       <div class="onb-set-row"><span>${esc(t("set.account"))}</span><em class="${linked.length || !guest ? "on" : ""}">${esc(linked.length ? t("set.savedWith", { p: linked.map(providerName).join(", ") }) : guest ? t("set.guest") : t("set.saved"))}</em></div>
-      ${gated ? `<div class="onb-set-row"><span>${esc(t("set.phone"))}<small>${esc(t("set.phoneWhy"))}</small></span>${verified ? `<em class="on">${esc(phone ? t("set.verified", { phone: `•••${phone.slice(-4)}` }) : t("set.verifiedKakao"))}</em>` : `<button type="button" class="onb-btn ghost sm" data-verify>${esc(t("set.verifyBtn"))}</button>`}</div>` : ""}
-      ${canSave ? `<button type="button" class="onb-btn gold" data-save>${esc(t("acct.title"))}</button>` : ""}
+      ${gated ? `<div class="onb-set-row"><span>${esc(t("set.phone"))}<small>${esc(t("set.phoneWhy"))}</small></span>${verified ? `<em class="on">${esc(phone ? t("set.verified", { phone: `•••${phone.slice(-4)}` }) : t("set.verifiedKakao"))}</em>` : `<button type="button" class="glass-btn clear xs fit" data-verify>${esc(t("set.verifyBtn"))}</button>`}</div>` : ""}
+      ${canSave ? `<button type="button" class="glass-btn gold sm" data-save>${esc(t("acct.title"))}</button>` : ""}
       ${provs.length || sms ? `<button type="button" class="onb-btn text" data-signin>${esc(t(guest ? "acct.haveOne" : "set.switch"))}</button>` : ""}
       <button type="button" class="onb-btn text" data-close>${esc(t("set.close"))}</button>`, el => {
       bindLang(el, () => this.settings());
@@ -747,7 +764,6 @@ export const onboard = {
 };
 
 // ================================================================ helpers
-function needsSetup(p) { return AUTO_HANDLE.test(p.handle ?? "") || !p.avatar; }
 function clearPending() { pending = null; delete st.pending; save(); }
 
 // ---- asking for codes: when this phone asked (and any wait the server asked for)
@@ -777,13 +793,25 @@ function backUrl() {
 }
 
 function langToggle() {
-  return `<span class="onb-lang" role="group" aria-label="Language"><button type="button" data-lang="en" class="${lang === "en" ? "on" : ""}">EN</button><button type="button" data-lang="ko" class="${lang === "ko" ? "on" : ""}">한</button></span>`;
+  return `<span class="onb-lang glass-seg" role="group" aria-label="Language"><button type="button" data-lang="en" class="${lang === "en" ? "on" : ""}">EN</button><button type="button" data-lang="ko" class="${lang === "ko" ? "on" : ""}">한</button></span>`;
 }
 function bindLang(el, after) {
   el.querySelectorAll("[data-lang]").forEach(b => b.onclick = () => { sfx.cursor?.(); setLang(b.dataset.lang); after?.(); });
 }
 
-// a sprite sheet's first frame (facing front, standing) as a picture
+// a sprite sheet's first frame (facing front, standing) as a picture: the
+// room's own sprite at 2x, cropped to the head and shoulders (the chip)
+function faceTile(avatar) {
+  const el = document.createElement("i");
+  el.className = "st-face";
+  const k = 2;
+  el.style.backgroundSize = `${SPRITE.W * SPRITE.COLS * k}px ${SPRITE.H * SPRITE.FACINGS.length * k}px`;
+  el.style.backgroundImage = `url(${silhouetteFor(avatar ?? {}).url})`;
+  // the real sprite once the start screen has settled (building one is 3D work; the city comes first)
+  const later = globalThis.requestIdleCallback ?? (fn => setTimeout(fn, 1500));
+  later(() => { if (el.isConnected) spriteFor(avatar ?? {}).then(sh => { if (el.isConnected) el.style.backgroundImage = `url(${sh.url})`; }); }, { timeout: 4000 });
+  return el;
+}
 
 // a full screen of the onboarding (one at a time)
 function show(id, html, { cls = "", redraw = null, bind = null } = {}) {
@@ -793,6 +821,7 @@ function show(id, html, { cls = "", redraw = null, bind = null } = {}) {
   const old = root.querySelector(".onb-screen");
   if (old && screen?.id !== id) { old.classList.add("out"); setTimeout(() => old.remove(), 260); }
   else old?.remove();
+  if (id !== "start") onboard._endSetup?.(false);
   const el = document.createElement("div");
   el.className = `onb-screen ${cls}`;
   el.dataset.screen = id;
@@ -807,6 +836,7 @@ function show(id, html, { cls = "", redraw = null, bind = null } = {}) {
 }
 function hide() {
   if (!root) return;
+  onboard._endSetup?.(false);
   root.querySelector(".onb-screen")?.classList.add("out");
   const el = root.querySelector(".onb-screen");
   setTimeout(() => { el?.remove(); if (!root.querySelector(".onb-sheet, .onb-perm, .onb-screen")) root.hidden = true; }, 260);
@@ -827,9 +857,9 @@ function sheet(id, html, bind, { onClose = null } = {}) {
   closeSheet(true);
   root.hidden = false;
   const wrap = document.createElement("div");
-  wrap.className = "onb-sheet";
+  wrap.className = "onb-sheet glass-scrim";
   wrap.dataset.sheet = id;
-  wrap.innerHTML = `<div class="onb-sheet-card" role="dialog">${html}</div>`;
+  wrap.innerHTML = `<div class="onb-sheet-card glass glass-sheet" role="dialog">${html}</div>`;
   root.appendChild(wrap);
   sheetClose = onClose;
   wrap.onclick = e => { if (e.target === wrap) { const f = sheetClose; closeSheet(); f?.(); } };
@@ -881,13 +911,13 @@ function youreIn() {
 function safetyCard(then) {
   const layer = document.body;
   const el = document.createElement("div");
-  el.className = "onb-safety";
-  el.innerHTML = `<div class="onb-safety-card" role="dialog" aria-labelledby="onb-safe-t">
+  el.className = "onb-safety glass-scrim";
+  el.innerHTML = `<div class="onb-safety-card glass glass-dialog" role="dialog" aria-labelledby="onb-safe-t">
       <span class="onb-safe-ico" aria-hidden="true">✌</span>
       <b id="onb-safe-t">${esc(t("safe.title"))}</b>
       <p>${esc(t("safe.body"))}</p>
       <small>${esc(t("safe.report"))}</small>
-      <button type="button" class="onb-btn gold big">${esc(t("safe.ok"))}</button>
+      <button type="button" class="glass-btn gold">${esc(t("safe.ok"))}</button>
     </div>`;
   layer.appendChild(el);
   el.querySelector("button").onclick = () => {
@@ -936,10 +966,10 @@ async function recap(c) {
       <b class="onb-h">${esc(withLine)}</b>
       ${moment ? `<div class="onb-moment"><small>${esc(t("recap.moment"))}</small><q>${esc(moment.text)}</q>${moment.by ? `<span>— ${esc(moment.by)}</span>` : ""}</div>` : ""}
       ${coins ? `<div class="onb-coins"><i class="coin"></i>${esc(t("recap.coins", { n: coins }))}</div>` : ""}
-      <button type="button" class="onb-btn gold big" data-throw>${esc(t("recap.throw"))}</button>
-      <button type="button" class="onb-btn ghost" data-share>${esc(t("recap.share"))}</button>
+      <button type="button" class="glass-btn gold" data-throw>${esc(t("recap.throw"))}</button>
+      <button type="button" class="glass-btn clear sm" data-share>${esc(t("recap.share"))}</button>
       ${notifAsk ? `<button type="button" class="onb-btn text" data-notif>🔔 ${esc(t("perm.notif.title"))}</button>` : ""}
-      ${canSave ? `<button type="button" class="onb-btn ghost" data-save>${esc(t("acct.recap"))}</button>` : ""}
+      ${canSave ? `<button type="button" class="glass-btn clear sm" data-save>${esc(t("acct.recap"))}</button>` : ""}
       ${canClaim ? `<button type="button" class="onb-btn text" data-claim>${esc(t("coins.claimRecap"))}</button>` : ""}
       <button type="button" class="onb-btn text" data-close>${esc(t("recap.close"))}</button>
     </div>`, el => {
@@ -995,5 +1025,6 @@ function wrap(g, text, x, y, maxW, lh) {
 
 // tests: the flow's pieces on their own (the recap without playing a whole set)
 onboard.recapPreview = c => recap(c);
+onboard.setupState = () => onboard._su ? { look: onboard._su.look, name: onboard._su.name, mode: onboard._su.view?.mode ?? null, edit: onboard._su.edit } : null;
 onboard.party = party;
 globalThis.__onb = onboard;

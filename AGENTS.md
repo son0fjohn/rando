@@ -22,7 +22,11 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   panel (Start a party / Join a party) over our 3D Itaewon at night,
   drifting (`web/scenery.js`: pure scenery, the drift, the dive into the
   party's building, the glide down for Explore the world, slow phones ->
-  lite glass; `web/start/night.jpg` its still first frame), an invite link straight in, name, character, Home,
+  lite glass; `web/start/night.jpg` its still first frame), an invite link straight in,
+  first-timers' setup card (the same panel: a random name to keep, the
+  character in 3D or as the room's 2D sprite, Randomize, one tap per
+  essential, Let's go; returning players skip it and get a chip to edit;
+  `onbkit.js` `needsSetup` / `cycleLook`), Home,
   the invite sheet with its QR; accounts: a guest first,
   "Save your account" with Kakao / Apple / Google (`linkIdentity`, the same
   account), sign in on a new phone; phone verification only for the
@@ -53,7 +57,10 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   chunks, in the worker); landmarks and their placeholders in
   `web/data/heroes.json`; `?fps=1` for a phone's numbers,
   `web/charview.js` (a character in 3D, alive: drag to spin, pinch to zoom,
-  double-tap to reset, Idle/Walk preview; the Style screen's lit stage),
+  double-tap to reset, Idle/Walk preview; the Style screen's lit stage;
+  `mountLookView`: the same box behind a 3D / 2D toggle, 2D being the party
+  room's own pixel sprite big and crisp (`charsprite.js`), the choice kept
+  on the phone),
   `web/avatar4.js` (the player character: one shared clay base,
   `web/avatar4/base.glb`, a 20-joint rig with procedural idle/walk; skin,
   the tee/shorts underlayer and items are code tints; the eyes are a
@@ -68,9 +75,14 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   and `cel.js` are the old character, kept only for `staticize`/`matteify`.)
   `web/retro.js` (DS-style typing dialog, mute toggle, wipes; sounds are
   synthesized in `web/fx.js`), `web/theme.css` (the theme: system font (SF Pro, Apple SD Gothic Neo
-  for Korean) and frosted-glass panels; `.glass` / `.glass-btn` the
-  reusable Frutiger Aero glass (tint, blur, bevel, top shine; lite on slow
-  phones); one accent, gold `--color-accent`
+  for Korean) and liquid glass everywhere: `.glass` (a panel), `.glass-dialog`,
+  `.glass-sheet`, `.glass-scrim`, `.glass-btn` (`.gold` the one primary
+  action / `.clear`), `.glass-icon`, `.glass-seg`, `.glass-field`,
+  `.glass-toast` are THE shared surfaces (clear tint, blur, specular rim,
+  12px buttons; lite on slow phones): every new dialog, sheet, popup or
+  button takes them, and `node test/glass_shots.mjs` shoots them all; the
+  party room's pixel speech bubbles and the games' `.dlg-*` box stay as
+  they are; one accent, gold `--color-accent`
   with navy `--color-on-accent` text, never a hardcoded accent hex; pixel art only in the room art and
   sprites, never in text, buttons or panels; day and night: every glass surface over the map
   follows `--day` (0 night, 1 day, blended at sunrise/sunset) through the
@@ -212,7 +224,8 @@ node test/upload_rec.mjs <dir> [chromium|webkit|both|iphone-profile]   # Art Gal
 node test/app_shots.mjs <dir> [--video] # the REAL app page offline: map, bar, explore, NPC, style, host, room, beacon
 node test/start_rec.mjs <dir> [--quick] | --still   # the start screen on the real app page: the still, the live drift, Start -> the dive -> the lobby, an invite link (no buttons, the same dive), Join with a code, back -> Leave the party?, the glass over the brightest stretch, a 6x-throttled phone (lite glass), Start before the 3D is up; --still re-shoots web/start/night.jpg (FFMPEG=... for the mp4s)
 node test/start_film.mjs <dir> [start|invite]   # the start screen filmed frame by frame for machines without a GPU: the scenery's clock stepped, each 3D frame read out of WebGL, the page's own glass/UI layered on in a canvas page (blur included); Start -> the dive -> the lobby, and an invite link -> name -> character -> the dive (FFMPEG=... for the mp4s)
-node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the real app page, fresh phones each in their own browser context: Path A (invite link -> the start screen with the party's name -> name -> character -> room -> first game) and Path B (the start screen -> Start a party -> name -> character -> invite) recorded, every screen in EN + KO, a declined location, an interrupted install, a guest verifying mid-party, tap -> first game for 5 fresh phones (FFMPEG=... for the mp4s)
+node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]   # the onboarding on the real app page, fresh phones each in their own browser context: a returning player (the chip, straight in), Path A (invite link -> the start screen with the party's name -> the setup card (3D / 2D) -> room -> first game) and Path B (the start screen -> Start a party -> the setup card -> invite) recorded, every screen in EN + KO, a declined location, an interrupted install, a guest verifying mid-party, tap -> first game for 5 fresh phones (FFMPEG=... for the mp4s)
+node test/glass_shots.mjs <dir> [--prefix=before] [--only=a,b,c,d]   # every dialog, sheet, popup and button surface on the real app page (the setup card, sheets, confirms, toasts, Home, the recap, the votes sheet, the lobby, a profile card, End game?, the results, the host menu, Style, the shop, a beacon's card): before/after a change to the shared glass
 node test/auth_rec.mjs <dir> [en|ko|both]   # accounts: a guest from an invite (no phone), Save your account with Kakao (same account, back in the party), a Kakao account that's taken, the phone prompt when going public (reason, 30 s, Send it again), the SMS provider refusing, a new phone signing in
 node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
 node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps

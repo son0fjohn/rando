@@ -165,6 +165,7 @@ async function city(pg, vt) {
 }
 const state = pg => pg.evaluate(() => ({
   screen: document.querySelector("#onb .onb-screen:not(.out)")?.dataset.screen ?? null,
+  setup: !!document.querySelector(".st-panel [data-setup]"),
   panelSig: (() => { const p = document.querySelector(".onb-screen.start .st-panel"); return p ? `${p.dataset.view}|${p.textContent.trim().slice(0, 80)}` : ""; })(),
   going: !!document.querySelector(".onb-screen.start.going"),
   veil: !!document.querySelector("#dive-veil.on"),
@@ -267,20 +268,19 @@ if (ONLY.includes("invite") && link) {
   await N.goto(link.replace(/^https?:\/\/[^/]+/, base));
   await until(N, () => document.body.classList.contains("scenery-live") && !!document.querySelector(".st-invite"), null, 180000);
   await N.evaluate(async () => { (await import("/web/world3d.js")).world3d.setPaused(true); });
-  // the party's name on the glass, drifting, until the name screen takes over
-  let r = await stepStart(N, F, { vt: 0, from: 0, still, stillFor: 0.5, done: async s => s.screen === "name" });
-  // name and character: real screenshots, typed a letter at a time
-  await sleep(600);
-  await hold(F, await shotB64(N, false), 0.8, "name0");
-  await N.click("#onb-name");
+  // the party's name on the glass, drifting, until the setup card takes the panel over
+  let r = await stepStart(N, F, { vt: 0, from: 0, still, stillFor: 0.5, done: async s => s.setup });
+  // the setup card (a name and the character on the same glass): real screenshots, typed a letter at a time
+  await until(N, () => !!document.querySelector("#su-stage canvas"), null, 30000);
+  await sleep(1200);
+  await hold(F, await shotB64(N, false), 0.8, "card0");
+  await N.evaluate(() => { const i = document.querySelector("#su-name"); i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true })); i.focus(); });
   for (const [k, ch] of [..."Alex"].entries()) { await N.keyboard.type(ch); await sleep(120); await hold(F, await shotB64(N, false), 0.22, `name${k + 1}`); }
-  await hold(F, await shotB64(N, false), 0.6, "name5");
-  await N.evaluate(() => document.querySelector("[data-next]").click());
-  await until(N, () => document.querySelector(".onb-screen:not(.out)")?.dataset.screen === "char", null, 20000);
-  await sleep(4000);
-  await hold(F, await shotB64(N, false), 1.6, "char");
-  await N.evaluate(() => document.querySelector("[data-ok]").click());
-  await until(N, () => document.querySelector(".onb-screen:not(.out)")?.dataset.screen === "start", null, 20000);
+  await N.evaluate(() => document.querySelector("[data-random]").click());
+  await sleep(1800);
+  await hold(F, await shotB64(N, false), 1.2, "card1");
+  await N.evaluate(() => document.querySelector("[data-go]").click());
+  await until(N, () => !document.querySelector(".st-panel [data-setup]"), null, 20000);
   await N.evaluate(async () => { (await import("/web/world3d.js")).world3d.setPaused(true); });
   // back on the glass, joining: the dive, the lobby, you're in
   r = await stepStart(N, F, { vt: r.vt, done: async (s, vt, { veilOff }) => veilOff != null && vt - veilOff > 0.4 });

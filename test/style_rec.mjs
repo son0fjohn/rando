@@ -46,7 +46,8 @@ const state = () => A.evaluate(() => ({
 await A.click("#nav-host"); await sleep(900);
 await A.locator("#pt-name").fill("Tony's party").catch(() => {});
 await A.click("#pt-create").catch(() => {}); await sleep(3000);
-await A.click("#pt-hide").catch(() => {}); await sleep(1200);
+// (the lobby has no hide button any more, only Leave: back to the map behind the party, as a test hook)
+await A.evaluate(() => window.__onb?.party.togglePanel(false)); await sleep(1200);
 
 await A.click("#nav-style");
 await A.waitForFunction(() => !!document.querySelector("#style-view canvas"), null, { timeout: 60000 }).catch(() => {});
@@ -58,6 +59,16 @@ const tabs = await A.locator("#outfit-tabs button").evaluateAll(bs => bs.map(b =
 ok(tabs.join(",") === "Eyes,Hair,Head,Face,Top,Bottom,Shoes,Neck/back,Shop", `icon tabs, in order: ${tabs.join(" · ")}`);
 ok(await A.evaluate(() => getComputedStyle(document.querySelector("#outfit-tabs .active")).color.replace(/\s/g, "")) === "rgb(255,200,61)", "the active tab is gold (#FFC83D)");
 await shot("01-open");
+
+// 3D / 2D: the 2D view is the party room's own sprite, big; it follows what you try on; the choice is kept
+await A.locator('#style-view [data-mode="2d"]').click(); await sleep(2500);
+const twoD = await A.evaluate(() => { const v = document.getElementById("style-view"), s = v.querySelector(".cv-2d-spr"); return { look: v.dataset.look, sprite: !!s && getComputedStyle(s).backgroundImage.startsWith("url("), canvas: !!v.querySelector("canvas"), px: parseInt(getComputedStyle(v.querySelector(".cv-2d")).getPropertyValue("--px")), kept: localStorage.getItem("rando-look-mode") }; });
+ok(twoD.look === "2d" && twoD.sprite && !twoD.canvas && twoD.px >= 2 && twoD.kept === "2d", `3D / 2D toggle: 2D shows the room sprite at ${twoD.px}x, no 3D canvas, kept (${JSON.stringify(twoD)})`);
+await shot("01b-2d");
+await A.locator('#style-view [data-mode="3d"]').click();
+await A.waitForFunction(() => !!document.querySelector("#style-view canvas"), null, { timeout: 60000 }).catch(() => {});
+ok(await A.evaluate(() => document.getElementById("style-view").dataset.look === "3d" && localStorage.getItem("rando-look-mode") === "3d"), "…and back to 3D (kept)");
+await sleep(1500);
 
 // hair: a style, then a color swatch
 await A.locator("#outfit-tabs button", { hasText: /^Hair$/ }).click(); await sleep(2500);

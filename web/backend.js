@@ -8,7 +8,7 @@ import { rooms } from "./rooms.js";
 import { party } from "./party.js";
 import { sfx } from "./fx.js";
 import { typeDialog, muteButton } from "./retro.js";
-import { mountCharView } from "./charview.js";
+import { mountLookView } from "./charview.js";
 import { PART_OPTIONS4, DEFAULT_AVATAR4, normalizeAvatar4, avatarThumb4, SKIN4_RGB, HAIR4_RGB, pieceThumb4 } from "./avatar4.js";
 import { ITEMS4, IRIS4, EYE_NAMES, STARTER_OUTFITS4, HAIRCOLOR_SHOP, randomAvatar4, LOOK_KEYS4, clash4 } from "./items4.js";
 import { drawFace4 } from "./face4.js";
@@ -1748,8 +1748,8 @@ export const wallet = {
       const vis = art ? `<img src="${BLANK}" alt="">` : `<span class="shop-swatch" style="background:${rgbCss(HAIR4_RGB[it.value] ?? [128, 128, 128])}"></span>`;
       return `<div class="shop-item r-${rarityOf(it.slot, it.value, it)} ${own ? "owned" : ""} ${avatar.focus === it.id ? "focus" : ""}" data-item="${it.id}">
           <div class="shop-vis">${vis}</div><b>${escHtml(it.name)}</b>
-          ${own ? `<button type="button" class="y-btn small ${wearing ? "dim" : "lime"}" data-wear="${it.id}" ${wearing ? "disabled" : ""}>${wearing ? "wearing" : "owned · wear"}</button>`
-                : `<button type="button" class="y-btn small gold" data-buy="${it.id}" ${this.coins < it.price ? "disabled" : ""}><i class="coin"></i>${it.price}</button>`}
+          ${own ? `<button type="button" class="glass-btn clear xs fit" data-wear="${it.id}" ${wearing ? "disabled" : ""}>${wearing ? "wearing" : "owned · wear"}</button>`
+                : `<button type="button" class="glass-btn gold xs fit" data-buy="${it.id}" ${this.coins < it.price ? "disabled" : ""}><i class="coin"></i>${it.price}</button>`}
         </div>`;
     }).join("") + `<p class="shop-note" id="shop-note">earn coins at house parties · ${this.owned.size} owned</p>`;
     grid.querySelectorAll("[data-buy]").forEach(b => b.onclick = () => this.buy(b.dataset.buy));
@@ -1793,7 +1793,8 @@ const styleView = {
     styleScreen.hidden = false;
     styleScreen.classList.remove("y-in-wipe"); void styleScreen.offsetWidth; styleScreen.classList.add("y-in-wipe");
     world3d.setPaused(true);
-    this.view = mountCharView(document.getElementById("style-view"), avatar.draft, { zoom: true, yaw: 0.2, stage: true, onReady: () => this._ready?.() });
+    // the stage: the live 3D character, or the room's own 2D sprite (a toggle in the corner; the choice is kept)
+    this.view = mountLookView(document.getElementById("style-view"), avatar.draft, { zoom: true, yaw: 0.2, stage: true, toggle: true, onReady: () => this._ready?.() });
     this.setPreview("idle");
     sfx.open();
   },
@@ -1807,7 +1808,7 @@ const styleView = {
     if (styleScreen.hidden) return;
     document.getElementById("ss-ask").hidden = true;
     this.view?.dispose(); this.view = null;
-    document.getElementById("style-view").querySelectorAll("canvas, .cv-spr").forEach(n => n.remove());
+    document.getElementById("style-view").querySelectorAll("canvas, .cv-spr, .cv-2d, .cv-2d-hint").forEach(n => n.remove());
     styleScreen.hidden = true;
     avatar.draft = null;
     world3d.setPaused(false);
@@ -1840,13 +1841,14 @@ const styleView = {
     const locked = avatar.locked(look);
     const dirty = !same(look, avatar.mine);
     btn.classList.toggle("ready", dirty && !locked.length);
+    btn.classList.toggle("gold", dirty && !locked.length); btn.classList.toggle("clear", !(dirty && !locked.length));
     btn.disabled = !dirty || locked.length > 0;
     btn.textContent = locked.length ? "Unlock to save" : dirty ? "Save" : justSaved ? "Saved ✓" : "Saved";
     if (locked.length) {
       const it = locked[0];
       buy.hidden = false;
       buy.innerHTML = `<span><b>${escHtml(it.name)}</b> is a shop item</span>
-        <button type="button" class="gold" data-ss-buy="${it.id}" ${wallet.coins < it.price ? "disabled" : ""}><i class="coin"></i>${it.price}</button>`;
+        <button type="button" class="glass-btn gold xs fit" data-ss-buy="${it.id}" ${wallet.coins < it.price ? "disabled" : ""}><i class="coin"></i>${it.price}</button>`;
       buy.querySelector("[data-ss-buy]").onclick = () => wallet.buy(it.id);
     } else { buy.hidden = true; buy.innerHTML = ""; }
   },
