@@ -3,7 +3,7 @@
 // before/after design reviews: the map, going visible, tapping an NPC, the
 // style screen, hosting a party, the party room with 4+ players, the TV.
 //
-//   node test/app_shots.mjs <dir> [--video]
+//   node test/app_shots.mjs <dir> [--video] [--light=day|sunset|night]
 //
 // --video screencasts phone 1 through the whole flow (open app -> bottom bar
 // -> host a party -> room fills up -> tap the TV) into <dir>/flow/, and with
@@ -20,6 +20,8 @@ const args = process.argv.slice(2);
 const OUT = args.find(a => !a.startsWith("--"));
 if (!OUT) { console.error("usage: node test/app_shots.mjs <dir> [--video]"); process.exit(2); }
 const VIDEO = args.includes("--video");
+// --light=day|sunset|night: the glass and the map by that light (daylight.js)
+const LIGHT = args.find(a => a.startsWith("--light=")) ? `&light=${args.find(a => a.startsWith("--light=")).slice(8)}` : "";
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve();
 const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
@@ -44,7 +46,7 @@ async function phone(name, qs = "") {
     return pg;
   }
   pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
-  await pg.goto(`${base}/app.html?onb=0&me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}&devlat=37.5347&devlng=126.9945${qs}`);
+  await pg.goto(`${base}/app.html?onb=0&me=${name}&av=${encodeURIComponent(JSON.stringify(LOOKS[name]))}&devlat=37.5347&devlng=126.9945${qs}${LIGHT}`);
   await pg.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 30000 });
   return pg;
 }

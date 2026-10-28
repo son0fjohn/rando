@@ -13,6 +13,7 @@ import { staticize, matteify } from "./avatar3.js";
 import { THEME } from "./theme.js";
 import { CityTiles, cityUniforms } from "./citytiles.js";
 import { worldHeight, itaewonHill } from "./citygen.js";
+import { startDaylight, lightOverride } from "./daylight.js";
 
 // generated GLB characters are the default; ?glb=0 falls back to procedural
 // character system: the avatar4 clay character by default; ?legacy=glb keeps the old
@@ -155,8 +156,12 @@ const modeParam = new URLSearchParams(location.search).get("mode");
 const hourNow = new Date().getHours();
 // (a first open is always night: the onboarding's flyover is the night
 // city; index.html sets __RANDO_FIRST_NIGHT before any module loads)
-export const NIGHT = modeParam === "night" ||
+// (the dev light override, daylight.js, picks the palette too)
+const lightOv = lightOverride();
+export const NIGHT = lightOv != null ? lightOv < 0.5 : modeParam === "night" ||
   (modeParam !== "day" && (!!globalThis.__RANDO_FIRST_NIGHT || hourNow >= 19 || hourNow < 6.5));
+// the app's glass follows the map's light (theme.css, --day)
+startDaylight({ night: NIGHT, forced: modeParam === "day" || modeParam === "night" || !!globalThis.__RANDO_FIRST_NIGHT });
 // ONE lighting rig for every scene, from theme.js — plus per-mode extras
 const L = NIGHT ? THEME.lighting.night : THEME.lighting.day;
 const M = {

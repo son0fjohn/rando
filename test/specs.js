@@ -22,6 +22,7 @@ import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
 import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea } from "/web/citygen.js";
 import { decodeMVT, ringArea as mvtArea } from "/web/mvt.js";
 import { omtChunks } from "/web/cityomt.js";
+import { dayness, setDay, getDay } from "/web/daylight.js";
 import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
 import { EVENTS, clean, track } from "/web/analytics.js";
 import { starterLook, e164, otpWait, otpError, OTP } from "/web/onbkit.js";
@@ -1691,6 +1692,20 @@ group("The map anywhere — vector tiles (MVT) and OpenMapTiles -> chunks");
   ok(built.stats.buildings === 2 && built.groups.road && built.labels.some(l => l.text === "Test-ro"), "…and build like a baked chunk");
 }
 }
+group("Day and night glass — one light for every panel, blending at sunrise and sunset");
+{
+  const at = h => dayness(h);
+  ok(at(2) === 0 && at(5.9) === 0 && at(12) === 1 && at(18.4) === 1 && at(20) === 0, "night until 6:00, day from 7:00 to 18:30, night from 19:30");
+  const up = [6, 6.25, 6.5, 6.75, 7].map(at), down = [18.5, 18.75, 19, 19.25, 19.5].map(at);
+  ok(up.every((v, i) => !i || v > up[i - 1]) && down.every((v, i) => !i || v < down[i - 1]), "sunrise and sunset blend in steps, never a jump");
+  ok(Math.abs(at(6.5) - .5) < 1e-9 && Math.abs(at(19) - .5) < 1e-9, "halfway at the map's own switch (6:30 and 19:00)");
+  let worst = 0; for (let m = 0; m < 24 * 60; m++) worst = Math.max(worst, Math.abs(at((m + 1) / 60) - at(m / 60)));
+  ok(worst < .05, `no minute changes the light by more than 5% (${(worst * 100).toFixed(1)}%)`);
+  setDay(.73); const v = getComputedStyle(document.documentElement).getPropertyValue("--day").trim();
+  ok(getDay() === .73 && v === "0.73" && document.documentElement.classList.contains("is-day"), "the light goes on the page root as --day");
+  setDay(0);
+}
+
 group("Onboarding — English and Korean, guest setup, invite links, analytics");
 {
   const en = Object.keys(STRINGS.en), ko = Object.keys(STRINGS.ko);
