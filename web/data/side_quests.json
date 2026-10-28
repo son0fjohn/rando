@@ -199,6 +199,18 @@
       "level": "mild"
     },
     {
+      "id": "sq-strangers-mild-23",
+      "text": "Talk to a stranger, but sing everything you say like a song the entire time",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
+      "id": "sq-strangers-mild-24",
+      "text": "Talk to a stranger, but rap everything you say the entire time",
+      "category": "strangers",
+      "level": "mild"
+    },
+    {
       "id": "sq-strangers-spicy-01",
       "text": "Take a selfie with a stranger and caption it \"hard launch 😝\"",
       "category": "strangers",

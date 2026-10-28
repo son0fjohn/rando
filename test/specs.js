@@ -791,7 +791,10 @@ group("Side Quest — the quest pool");
 {
   const ids = new Set(SQ.quests.map(q => q.id));
   const by = (c, l) => SQ.quests.filter(q => q.category === c && q.level === l).length;
-  ok(SQ.quests.length === 47 && by("anywhere", "mild") === 7 && by("strangers", "mild") === 22 && by("strangers", "spicy") === 15 && by("unhinged", "unhinged") === 3, `47 quests: 7 anywhere, 22 + 15 strangers (mild/spicy), 3 unhinged (got ${SQ.quests.length})`);
+  ok(SQ.quests.length === 49 && by("anywhere", "mild") === 7 && by("strangers", "mild") === 24 && by("strangers", "spicy") === 15 && by("unhinged", "unhinged") === 3, `49 quests: 7 anywhere, 24 + 15 strangers (mild/spicy), 3 unhinged (got ${SQ.quests.length})`);
+  ok(SQ.quests.some(q => q.id === "sq-strangers-mild-23" && q.text === "Talk to a stranger, but sing everything you say like a song the entire time") &&
+    SQ.quests.some(q => q.id === "sq-strangers-mild-24" && q.text === "Talk to a stranger, but rap everything you say the entire time") &&
+    ["sq-strangers-mild-23", "sq-strangers-mild-24"].every(id => questsFor(SQ.quests, { settings: { adult: false } }).some(q => q.id === id)), "the sing and rap quests are in every party's pool");
   ok(ids.size === SQ.quests.length && SQ.quests.every(q => q.id.startsWith(`sq-${q.category}-${q.level}-`)), "unique ids that name category and level");
   ok(SQ.quests.some(q => q.text === "Crash out and throw a tantrum in COMPLETE SILENCE") && SQ.quests.some(q => q.text === "Take a selfie with a stranger and caption it \"hard launch 😝\""), "texts are exactly as supplied");
   ok(!questsFor(SQ.quests, { settings: { adult: false } }).some(q => q.level === "unhinged"), "no unhinged quests without 18+");
