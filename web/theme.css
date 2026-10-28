@@ -2108,3 +2108,81 @@ body.world-arrive #label-layer, body.world-arrive #beacon-layer, body.world-arri
   --g-name: rgb(calc(159 - 133 * var(--ink-t)), calc(232 - 121 * var(--ink-t)), calc(255 - 79 * var(--ink-t)));
   --dlg-edge: rgb(calc(184 + 71 * var(--ink-t)), calc(201 + 54 * var(--ink-t)), calc(236 + 19 * var(--ink-t)));
 }
+
+/* ================================================================ Notes (web/notes.js, docs/notes.md)
+   Short notes on the map: the markers, the "Leave a note" button, the
+   composer sheet, an opened note, the two confirms. Every surface is the
+   shared glass (.glass, .glass-sheet, .glass-dialog, .glass-btn, .glass-icon,
+   .glass-seg, .glass-field, .glass-toast) and follows --day like the rest of
+   the map's chrome; these rules only place and size things. */
+#notes-layer { position: absolute; inset: 0; z-index: 88; pointer-events: none; overflow: hidden; }
+body:not(.notes-on) #notes-layer, body:not(.notes-on) #notes-leave { display: none; }
+/* right, over "Back to me" (the plaza chat has the bottom left) */
+#notes-leave { position: absolute; right: 12px; bottom: calc(var(--nav-h) + 132px + env(safe-area-inset-bottom)); z-index: 125; gap: 6px; }
+#notes-leave svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linejoin: round; stroke-linecap: round; }
+/* a marker: a small glass disc with the kind's icon, a stem to the street */
+.note-pin { position: absolute; left: 0; top: 0; width: 34px; height: 34px; margin: -34px 0 0 -17px; padding: 0; border: 0; background: none;
+  pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; transform-origin: 50% 100%; }
+.note-pin .np-pin { position: absolute; inset: 3px; display: grid; place-items: center; border-radius: 50%; color: var(--g-ink);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .24), rgba(255, 255, 255, .06)), var(--glass-tint-deep); border: 1px solid rgba(255, 255, 255, .6);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: 0 4px 12px rgba(3, 6, 20, calc(.45 - .2 * var(--day))), inset 0 1px 0 rgba(255, 255, 255, .55); }
+.note-pin::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 2px; height: 8px; margin-left: -1px; border-radius: 1px; background: rgba(255, 255, 255, .7); box-shadow: 0 1px 3px rgba(3, 6, 20, .5); }
+.note-pin svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.note-pin svg .ln { fill: none; stroke: rgb(var(--g-shade-rgb)); stroke-width: 1.7; stroke-linecap: round; }
+.note-pin.landmark { width: 42px; height: 42px; margin: -42px 0 0 -21px; }
+.note-pin.landmark .np-pin { color: var(--color-on-accent); background: linear-gradient(180deg, var(--color-accent), var(--color-accent-deep)); border-color: rgba(255, 240, 200, .9); box-shadow: var(--gold-shadow); }
+.note-pin.landmark svg { width: 20px; height: 20px; }
+.note-pin .np-me { position: absolute; right: 1px; top: 1px; width: 9px; height: 9px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 1.5px rgb(var(--g-shade-rgb)); }
+.note-pin.pending .np-pin { border-style: dashed; opacity: .78; }
+.note-pin.rejected .np-pin { opacity: .45; filter: grayscale(1); }
+/* within 80 m: a soft glowing ring */
+.note-pin .np-ring { position: absolute; inset: -7px; border-radius: 50%; opacity: 0; pointer-events: none; transition: opacity .35s ease;
+  box-shadow: 0 0 0 2px rgba(var(--color-accent-rgb), .85), 0 0 16px 5px rgba(var(--color-accent-rgb), .42), inset 0 0 10px rgba(var(--color-accent-rgb), .3); }
+.note-pin.near .np-ring { opacity: 1; animation: np-glow 2.4s ease-in-out infinite; }
+@keyframes np-glow { 0%, 100% { transform: scale(.94); opacity: .7; } 50% { transform: scale(1.06); opacity: 1; } }
+/* a spot's notes, folded into one when zoomed out */
+.note-hub { position: absolute; left: 0; top: 0; width: 0; height: 0; padding: 0; border: 0; background: none; pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.note-hub .nh-in { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px 4px 4px;
+  border-radius: 999px; white-space: nowrap; font: 700 13px/1 var(--f-sys); }
+.note-hub .nh-n { display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; box-sizing: border-box; border-radius: 999px;
+  background: linear-gradient(180deg, var(--color-accent), var(--color-accent-deep)); color: var(--color-on-accent); text-shadow: none; font: 800 14px/1 var(--f-sys); }
+/* sheets and dialogs */
+.notes-scrim { position: fixed; inset: 0; z-index: 420; display: flex; align-items: flex-end; justify-content: center; }
+.notes-scrim.note-confirm, .notes-scrim.note-blocked { align-items: center; padding: 16px; z-index: 430; }
+.notes-scrim.out { opacity: 0; transition: opacity .2s ease; }
+.note-card .nc-top, .note-sheet .ns-top { display: flex; align-items: center; gap: 8px; }
+.note-card .nc-kind svg { width: 20px; height: 20px; fill: currentColor; stroke: none; display: block; }
+.note-card .nc-kind svg .ln { fill: none; stroke: rgb(var(--g-shade-rgb)); stroke-width: 1.7; stroke-linecap: round; }
+.note-card .nc-where { flex: 1; min-width: 0; font: 700 15px/1.2 var(--f-sys); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-card .nc-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 999px; font: 800 12px/1 var(--f-sys); text-shadow: none; }
+.note-card .nc-badge.gold { background: var(--color-accent); color: var(--color-on-accent); }
+.note-card .nc-badge svg { width: 13px; height: 13px; fill: currentColor; }
+.note-card .nc-text { margin: 2px 0; font: 600 21px/1.35 var(--f-sys); white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-card .nc-pic img { display: block; width: 100%; max-height: 50vh; min-height: 120px; object-fit: contain; border-radius: 14px; background: rgba(0, 0, 0, .28); }
+.note-card .nc-state { margin: 0; padding: 7px 11px; border-radius: 10px; border: 1px dashed rgba(var(--g-ink-rgb), .45); font: 600 13px/1.35 var(--f-sys); color: var(--g-ink-soft); }
+.note-card .nc-meta { margin: 0; font: 500 13px/1.3 var(--f-sys); color: var(--g-ink-soft); }
+.note-card .nc-react { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.note-card .nc-vote { display: flex; align-items: center; gap: 6px; margin-right: auto; }
+.note-card .nc-vote .glass-icon svg { fill: currentColor; stroke: none; width: 18px; height: 18px; }
+.note-card .nc-score { min-width: 34px; text-align: center; font: 800 18px/1 var(--f-sys); }
+.note-card .on { box-shadow: var(--color-accent-glow); }
+.note-card .nc-react .glass-btn b { margin-left: 4px; font-weight: 800; }
+.note-card button:disabled { opacity: .45; cursor: default; }
+.note-card .nc-foot { display: flex; justify-content: flex-end; }
+.note-card .nc-link { padding: 6px 2px; border: 0; background: none; color: var(--g-ink-soft); font: 600 13px var(--f-sys); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.note-sheet .ns-top b { flex: 1; font: 700 20px/1.2 var(--f-sys); }
+.note-sheet .ns-sub { margin: -4px 0 0; font: 500 13.5px/1.4 var(--f-sys); color: var(--g-ink-soft); }
+.note-sheet .ns-seg { align-self: flex-start; }
+.note-sheet .ns-pane { display: flex; flex-direction: column; gap: 8px; }
+.note-sheet .ns-pane[hidden], .note-sheet [hidden] { display: none; }
+.note-sheet .ns-text { min-height: 100px; padding: 12px 14px; resize: none; font: 600 17px/1.35 var(--f-sys); }
+.note-sheet .ns-pick { display: flex; gap: 8px; }
+.note-sheet .ns-preview { display: block; width: 100%; height: auto; max-height: 38vh; object-fit: contain; border-radius: 14px; background: rgba(0, 0, 0, .3); }
+.note-sheet .ns-meme { display: flex; flex-direction: column; gap: 8px; }
+.note-sheet .ns-err { margin: 0; min-height: 18px; font: 600 13px/1.35 var(--f-sys);
+  color: rgb(calc(255 - 75 * var(--ink-t)), calc(156 - 120 * var(--ink-t)), calc(138 - 110 * var(--ink-t))); }
+.note-sheet .ns-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.note-sheet .ns-left { font: 600 13px var(--f-sys); color: var(--g-ink-soft); }
+@media (prefers-reduced-motion: reduce) { .note-pin.near .np-ring { animation: none; } }
+/* ================================================================ /Notes */

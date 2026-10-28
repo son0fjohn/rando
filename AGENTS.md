@@ -338,6 +338,19 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
 - Friendships only ever come from a verified in-person meetup (server-side).
   There is no client "add friend" action; the profile card only shows status.
 - Reports (`reports`) are insert-only from clients and carry no message text.
+- Notes on the map (`web/notes.js`, `019_notes.sql`, `docs/notes.md`): a
+  note's position is stored snapped to the 20 m grid (the phone snaps before
+  sending, the server snaps again), never the author's GPS point. A reader's
+  position reaches open / vote / react / report already snapped on the
+  phone, is used for the 80 m check and is never stored, logged or
+  returned; markers come from the visible map's box, never "near me". The
+  author is tied to the note server-side only and never returned to anyone
+  (the public image is named after the note, not the upload path).
+  Photos / memes are redrawn and re-encoded on the phone (no EXIF / GPS)
+  and stay pending, seen only by their author, until the moderation
+  function passes them. A reported note is hidden at once, for everyone,
+  until an admin reviews it. Notes are never left on a home (the phone's
+  map-data check).
 
 ### Coins
 - Never trust the client with coins. No table holding balances, ledger rows or

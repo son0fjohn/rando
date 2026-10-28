@@ -2113,3 +2113,6 @@ const safeRefresh = () => refreshStatus().catch(e => {
 });
 sb.auth.onAuthStateChange(() => { safeRefresh(); });
 safeRefresh();
+
+// ---- notes on the map (web/notes.js, docs/notes.md): markers, Leave a note
+import("./notes.js").then(m => m.notes.init(sb)).catch(e => console.warn("[rando] notes:", e));

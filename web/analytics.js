@@ -20,7 +20,7 @@ export const EVENTS = [
 const PROPS = {
   source: v => ["invite_link", "organic"].includes(v),
   channel: v => ["share", "sms", "copy", "qr", "contacts", "kakao", "recap"].includes(v),
-  trigger: v => ["host", "public", "friends", "coins", "save", "recap"].includes(v),
+  trigger: v => ["host", "public", "friends", "coins", "save", "recap", "notes"].includes(v),
   permission: v => ["location", "notifications", "contacts", "camera"].includes(v),
   game: v => /^[a-z_]{2,20}$/.test(v),
   count: v => Number.isInteger(v) && v >= 0 && v < 1e4,
