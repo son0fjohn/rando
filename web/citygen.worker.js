@@ -109,7 +109,7 @@ self.onmessage = async e => {
       const out = buildChunk(p, { z: m.z, x: m.x, y: m.y, origin: cfg.origin, lod: m.lod, heroes: cfg.heroes, clearAt: cfg.clearAt, exclude: cfg.exclude });
       out.stats.src = p.src ?? (p.cut ? "baked+omt" : "baked");
       const t2 = performance.now();
-      const xfer = [out.trees.buffer, out.lamps.buffer];
+      const xfer = [out.trees.buffer, out.lamps.buffer, out.poles.buffer, out.lanterns.buffer];
       for (const g of Object.values(out.groups)) xfer.push(...[g.pos, g.nrm, g.uv, g.col, g.seed, g.idx].filter(Boolean).map(a => a.buffer));
       self.postMessage({ type: "chunk", id: m.id, ...out, cached, t: { fetch: t1 - t0, build: t2 - t1 } }, xfer);
     } catch (err) {

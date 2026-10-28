@@ -19,7 +19,8 @@ import { HOWTO, HOWTO_MS } from "/web/howto.js";
 import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
 import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
-import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea } from "/web/citygen.js";
+import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea, ROAD_W } from "/web/citygen.js";
+import { STYLE, styleClass, wallIndex } from "/web/style.js";
 import { decodeMVT, ringArea as mvtArea } from "/web/mvt.js";
 import { omtChunks } from "/web/cityomt.js";
 import { dayness, setDay, getDay } from "/web/daylight.js";
@@ -1562,7 +1563,7 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   ok(all.some(b => b.m) && all.every(b => b.h > 2 && b.h < 650), "measured and registry heights are kept as they are");
   const kinds = new Set(all.map(b => b.k)), roofs = new Set(all.map(b => b.r));
   ok(["h", "a", "c", "o"].every(k => kinds.has(k)) && roofs.has("f") && (roofs.has("g") || roofs.has("h")), `types ${[...kinds].join("")} and roofs ${[...roofs].join("")} (flat, gabled, hipped)`);
-  ok(worldHeight(25) === 25 * 0.55 * 2.4 && worldHeight(200) < 200 * 0.55 * 2.4 && worldHeight(200) > worldHeight(100), "the map's 2.4x vertical up to 25 m, gentler above, never shrinking");
+  ok(worldHeight(25) === 25 * 0.55 * 2.4 && worldHeight(50) === 50 * 0.55 * 2.4 && worldHeight(200) < 200 * 0.55 * 2.4 && worldHeight(200) > worldHeight(100), "the map's 2.4x vertical up to 50 m, gentler above, never shrinking");
   // geometry
   const tri = earcut([[0, 0], [10, 0], [10, 10], [5, 4], [0, 10]]);
   ok(tri.length === 9, "a concave footprint triangulates into n-2 triangles");
@@ -1572,8 +1573,10 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   const near = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 0 });
   const far = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1 });
   const tris = o => Object.values(o.groups).reduce((n, g) => n + (g.idx ? g.idx.length / 3 : 0), 0);
-  ok(near.groups.shop && near.groups.sign && near.lamps.length > 0 && near.groups.lines, `up close: shopfronts (${near.stats.shops}), lit signs (${near.stats.signs}), lamps (${near.stats.lamps}), outlines`);
-  ok(!far.groups.shop && !far.groups.sign && !far.lamps.length && far.groups.wall_g && tris(far) < tris(near) * 0.7, `further out: walls and roofs only, ${tris(far)} triangles vs ${tris(near)}`);
+  ok(near.groups.ac && (near.groups.awn || near.groups.panel) && near.lamps.length > 0 && near.poles.length > 0 && near.groups.wires && near.groups.lines,
+    `up close: AC boxes, awnings (${near.stats.awnings}) and sign panels, lamps (${near.stats.lamps}), poles (${near.stats.poles}) with wires, outlines`);
+  ok(!far.groups.ac && !far.groups.awn && !far.groups.panel && !far.lamps.length && !far.poles.length && !far.groups.lines && far.groups.roof && far.groups.shadow && tris(far) < tris(near) * 0.8,
+    `further out: walls, roofs and shadows only, ${tris(far)} triangles vs ${tris(near)}`);
   const again = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 0 });
   ok(again.groups.roof.pos.length === near.groups.roof.pos.length && again.groups.roof.pos.every((v, i) => v === near.groups.roof.pos[i]), "a chunk builds the same every time (you come back to the same street)");
   const floats = Object.values(near.groups).flatMap(g => [g.pos]).every(p => p.every(Number.isFinite));
@@ -1608,7 +1611,7 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
     const xs = [...r].filter((_, i) => i % 3 === 0), zs = [...r].filter((_, i) => i % 3 === 2);
     return (x, z) => x > Math.min(...xs) && x < Math.max(...xs) && z > Math.min(...zs) && z < Math.max(...zs); })();
   let wetTrees = 0; for (let k = 0; k < lake.trees.length; k += 4) if (inLake(lake.trees[k], lake.trees[k + 1])) wetTrees++;
-  ok(Math.min(...ys(lake.groups.water)) > Math.max(...ys(lake.groups.ground)) && lake.trees.length > 0 && lake.trees.length % 4 === 0 && !wetTrees,
+  ok(Math.min(...ys(lake.groups.water)) > Math.max(...ys(lake.groups.grass)) && lake.trees.length > 0 && lake.trees.length % 4 === 0 && !wetTrees,
     `a lake inside its park: the water drawn above the park, ${lake.trees.length / 4} trees round it and none on it`);
   // near Itaewon the hand-made map keeps its own middle
   const ex = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, exclude: { b: 820, r: 1420 } });
@@ -1617,6 +1620,51 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   const [ex1, ey1] = lngLatToTile(126.9946 + 0.0145, 37.5346, 16).map(Math.floor);
   const edge = JSON.parse(new TextDecoder().decode(await ranged.tile(16, ex1, ey1) ?? new Uint8Array([123, 125])));
   ok(Array.isArray(edge.cut) && edge.cut[0].length === 3, "a chunk at an area's edge carries the circle it was cut by");
+}
+
+group("The Itaewon style — the procedural city follows STYLE.md (web/style.js)");
+{
+  const buf = new Uint8Array(await (await fetch("/web/tiles/cities.pmtiles")).arrayBuffer());
+  const pm = new PMTiles("x", { fetch: async (u, o) => { const [, a, b] = /bytes=(\d+)-(\d+)/.exec(o.headers.Range); return new Response(buf.slice(+a, +b + 1), { status: 206 }); } });
+  const at = (lat, lng) => lngLatToTile(lng, lat, 16).map(Math.floor);
+  const spots = { gangnam: [37.4979, 127.0276], hongdae: [37.5563, 126.9236], calgary: [51.0447, -114.0719] };
+  const built = {};
+  for (const [id, [lat, lng]] of Object.entries(spots)) {
+    const [x, y] = at(lat, lng), t = await pm.tile(16, x, y);
+    built[id] = buildChunk(JSON.parse(new TextDecoder().decode(t)), { z: 16, x, y, origin: [lat, lng], lod: 0 });
+  }
+  const chunks = Object.values(built);
+  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const creams = STYLE.walls.map(h => [16, 8, 0].map(sh => lin((h >> sh) & 255)));
+  const near = (a, b) => Math.abs(a - b) < 1e-3;
+  const colours = g => { const out = []; for (let i = 0; i < g.col.length; i += 3) out.push([g.col[i], g.col[i + 1], g.col[i + 2]]); return out; };
+  const wallGroups = chunks.flatMap(c => Object.entries(c.groups).filter(([k]) => k.startsWith("wall_")));
+  ok(wallGroups.length && wallGroups.every(([k]) => STYLE.classes.includes(k.slice(5))) && new Set(wallGroups.map(([k]) => k)).size >= 3,
+    `walls come in the four classes only (${[...new Set(wallGroups.map(([k]) => k.slice(5)))].join(", ")})`);
+  const wallCols = wallGroups.flatMap(([, g]) => colours(g));
+  ok(wallCols.every(c => creams.some(w => near(w[0], c[0]) && near(w[1], c[1]) && near(w[2], c[2]))) && new Set(wallCols.map(c => c.join())).size === 6,
+    `every wall is one of the six creams, and all six are used (${wallCols.length} vertices)`);
+  const roofs = chunks.map(c => c.groups.roof);
+  ok(roofs.every(g => { for (let i = 1; i < g.nrm.length; i += 3) if (g.nrm[i] < 0.999) return false; return true; }), "every roof is flat (no gabled or hipped roofs anywhere)");
+  const dark = creams.map(w => w.map(v => v * STYLE.roofMul));
+  ok(roofs.flatMap(colours).every(c => dark.some(w => near(w[0], c[0]) && near(w[1], c[1]) && near(w[2], c[2]))), "every roof is its wall's cream × 0.8");
+  ok(chunks.every(c => c.groups.shadow && [...c.groups.shadow.pos].filter((_, i) => i % 3 === 1).every(v => v === STYLE.shadow.y)), `the baked shadow film lies at y ${STYLE.shadow.y} under every building`);
+  ok(ROAD_W === STYLE.roads && ROAD_W.primary === 24 && ROAD_W.secondary === 19 && ROAD_W.tertiary === 15 && ROAD_W.residential === 11 && ROAD_W.footway === 4, "road widths are Itaewon's table (24 / 19 / 15 / 11 / 4)");
+  ok(!chunks.some(c => c.groups.ground || c.groups.shop || c.groups.sign || c.groups.wall_g), "no sidewalk slabs, shopfronts or abstract signs are built any more");
+  ok(chunks.every(c => c.trees.length % 4 === 0 && [...c.trees].filter((_, i) => i % 4 === 3).every(v => v === 0 || v === 1)) &&
+    chunks.every(c => { let p = 0, n = c.trees.length / 4; for (let i = 3; i < c.trees.length; i += 4) p += c.trees[i]; return !n || p / n <= 0.3; }),
+    "trees carry a palm flag, palms a small minority");
+  ok(chunks.every(c => c.trees.length / 4 <= STYLE.tree.maxNear), `at most ${STYLE.tree.maxNear} trees a chunk up close`);
+  ok(chunks.every(c => c.lamps.length % 3 === 0 && c.lamps.length / 3 <= STYLE.lamp.maxPerChunk && c.poles.length % 3 === 0 && c.poles.length / 3 <= STYLE.pole.maxPerChunk && c.lanterns.length % 3 === 0),
+    "street lights and power poles stay under their per-chunk caps");
+  const lit = chunks.flatMap(c => [...c.poles].filter((_, i) => i % 3 === 2));
+  ok(lit.every(v => v === 0 || v === 1) && lit.some(v => v === 1) && lit.filter(v => v).length <= Math.ceil(lit.length / STYLE.pole.lampEvery) + chunks.length, "a lamp on every third pole");
+  ok(chunks.some(c => c.groups.wires) && chunks.every(c => !c.groups.wires || (c.groups.wires.lines && c.groups.wires.pos.length % 6 === 0)), "wires hang between the poles as line segments");
+  ok(styleClass({ floors: 6, area: 400, main: false }) === "office" && styleClass({ floors: 3, area: 200, main: true }) === "shop" && styleClass({ floors: 2, area: 40, main: false }) === "res" && styleClass({ floors: 3, area: 200, main: false }) === "mixed" && styleClass({ floors: 5, area: 40, main: true }) === "mixed",
+    "the class rule: 6+ floors office; main road and ≤4 floors shop; ≤2 floors and small res; else mixed");
+  ok([0, 1, 2, 3, 4, 5].every(i => wallIndex(i, 0) >= 0 && wallIndex(i, 0) < 6) && new Set(Array.from({ length: 60 }, (_, i) => wallIndex(i * 7.3, i * 2.1))).size === 6, "the cream is picked by position, all six in play");
+  const seeds = wallGroups.flatMap(([, g]) => [...g.seed]);
+  ok(seeds.every(v => v >= 0 && v < 6) && new Set(seeds.map(Math.floor)).size === 6, "each wall's seed carries its lit-window variant (0-5) and its own hash");
 }
 
 group("The map anywhere — vector tiles (MVT) and OpenMapTiles -> chunks");

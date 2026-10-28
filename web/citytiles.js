@@ -3,16 +3,20 @@
 // PMTiles archive of z16 chunks (scripts/bake_city_tiles.py; web/tiles/ for
 // tests, a worldwide build on R2 in production); geometry is built in a
 // worker (citygen.worker.js -> citygen.js) and mounted here with shared
-// materials: per-type window facades whose night lights are picked per
-// building in the shader, roofs, shopfronts and abstract lit signs,
-// asphalt, ground, water, instanced trees and street lamps.
+// materials that follow STYLE.md (web/style.js): Itaewon's four painted
+// window tiles whose night lights are picked per building in the shader (six
+// variants, 12 % lit), flat roofs, the baked shadow film, awnings, sign
+// panels, bins, asphalt, the lawn tile, water, and instanced street lights,
+// power poles with wires and lanterns, and the painted GLB trees.
 //
-// Rings: chunks within NEAR tiles of the target get full detail (shopfronts,
-// signs, rooftop boxes, lamps, lane marks); out to FAR they're walls + roofs
-// + ground; beyond that they're dropped. Everything is deterministic per
+// Rings: chunks within NEAR tiles of the target get full detail (the street
+// pass, lamps, poles, outlines); out to FAR they're walls + roofs + shadows
+// + parks; beyond that they're dropped. Everything is deterministic per
 // chunk, so a chunk you left looks the same when you come back.
 import * as THREE from "https://esm.sh/three@0.160.0";
+import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 import { buildChunk, projector, lngLatToTile, FLOOR_U } from "./citygen.js";
+import { STYLE } from "./style.js";
 import { PMTiles } from "./pmtiles.js";
 import { THEME } from "./theme.js";
 
@@ -35,115 +39,47 @@ function tex(c, srgb = true) {
   return t;
 }
 
-// one storey x two bays of facade per kind: the map (wall white, so the
-// vertex colour tints it; glass dark) and the window mask (white glass)
-const FACADES = {
-  h: (g, m, W, H) => { for (const bx of [0, W / 2]) win(g, m, bx + 18, 18, 28, 30, 3); sill(g, W, H); },
-  a: (g, m, W, H) => {
-    for (const bx of [0, W / 2]) win(g, m, bx + 6, 14, 52, 34, 2);
-    g.fillStyle = "#d8d6d0"; g.fillRect(0, 52, W, 5); g.fillStyle = "#c9c7c0";
-    for (let x = 4; x < W; x += 8) g.fillRect(x, 48, 2, 6);
-    g.fillStyle = "#bdbab2"; g.fillRect(0, H - 4, W, 4);
-  },
-  c: (g, m, W, H) => {
-    for (const bx of [0, W / 2]) win(g, m, bx + 8, 14, 48, 40, 3);
-    g.fillStyle = "#cfc7b8"; g.fillRect(0, H - 8, W, 8);
-  },
-  o: (g, m, W, H) => {
-    g.fillStyle = "#71849a"; g.fillRect(0, 0, W, H - 12);
-    g.fillStyle = "#8ea0b4"; g.fillRect(0, 0, W, 18);
-    m.fillStyle = "#fff"; m.fillRect(0, 0, W, H - 12);
-    g.fillStyle = "#c5cdd6"; for (let x = 0; x < W; x += 16) g.fillRect(x, 0, 2, H);
-    m.fillStyle = "#000"; for (let x = 0; x < W; x += 16) m.fillRect(x, 0, 2, H);
-    g.fillStyle = "#dfe4e9"; g.fillRect(0, H - 12, W, 12);
-  },
-  v: (g, m, W, H) => { for (const bx of [0, W / 4, W / 2, (3 * W) / 4]) win(g, m, bx + 9, 10, 14, 52, 2); sill(g, W, H); },
-  i: (g, m, W, H) => {
-    win(g, m, 8, 8, W - 16, 12, 2);
-    g.fillStyle = "#d2d2cc"; for (let x = 0; x < W; x += 12) g.fillRect(x, 26, 1, H - 26);
-  },
-  s: (g, m, W, H) => { g.fillStyle = "#d9d5cc"; for (let x = 0; x < W; x += 10) g.fillRect(x, 0, 1, H); },
-  g: (g, m, W, H) => { for (const bx of [0, W / 2]) win(g, m, bx + 10, 16, 44, 36, 2); },
-};
-function win(g, m, x, y, w, h, f) {
-  g.fillStyle = "#d6d1c6"; g.fillRect(x - f, y - f, w + f * 2, h + f * 2);
-  g.fillStyle = "#8696a6"; g.fillRect(x, y, w, h);
-  g.fillStyle = "#a4b2bf"; g.fillRect(x, y, w, Math.max(2, h * 0.3));
-  m.fillStyle = "#fff"; m.fillRect(x, y, w, h);
-}
-function sill(g, W, H) { g.fillStyle = "#d3cdc0"; g.fillRect(0, H - 6, W, 6); }
-
-function makeFacade(kind) {
-  const W = 128, H = 80;
-  let mctx;
-  const mask = canvas(W, H, (m) => { m.fillStyle = "#000"; m.fillRect(0, 0, W, H); mctx = m; });
-  const map = canvas(W, H, (g) => { g.fillStyle = "#ffffff"; g.fillRect(0, 0, W, H); FACADES[kind](g, mctx, W, H); });
-  return { map: tex(map), mask: tex(mask) };
-}
-
-// four shopfront designs stacked: glass, door, mullions, a kick plate
-function makeShop() {
-  const W = 128, H = 256, R = H / 4;
-  let mctx;
-  const mask = canvas(W, H, m => { m.fillStyle = "#000"; m.fillRect(0, 0, W, H); mctx = m; });
-  const map = canvas(W, H, g => {
-    const frames = ["#2d2f36", "#6b4a32", "#e8e4dc", "#38506a"];
-    for (let k = 0; k < 4; k++) {
-      const y = k * R;
-      g.fillStyle = frames[k]; g.fillRect(0, y, W, R);
-      g.fillStyle = "#34404f"; g.fillRect(6, y + 8, W - 12, R - 18);
-      g.fillStyle = "#4f6178"; g.fillRect(6, y + 8, W - 12, (R - 18) * 0.35);
-      mctx.fillStyle = k === 2 ? "#ffe9c8" : "#fff"; mctx.fillRect(6, y + 8, W - 12, R - 18);
-      g.fillStyle = frames[k];
-      const door = k % 2 ? 14 : W - 40;
-      g.fillRect(door, y + 8, 3, R - 10); g.fillRect(door + 22, y + 8, 3, R - 10);
-      g.fillRect(W / 2 - 1, y + 8, 2, R - 18);
-      g.fillStyle = "#1e2026"; g.fillRect(0, y + R - 10, W, 10);
-      mctx.fillStyle = "#000"; mctx.fillRect(W / 2 - 1, y + 8, 2, R - 18);
+// 5.4: Itaewon's painted window tile per class. 256 px is 13 u across and
+// 10.4 u up, on a uniform cell grid (cols × rows) so the night shader lights
+// whole windows: the map (the wall field, dark glass with a pale band), and
+// the mask (white where there's glass, a pixel larger: the light bleeds)
+export function facadeTile(cls) {
+  const W = 256, [cols, rows] = STYLE.cells[cls];
+  const cw = W / cols, rh = W / rows, R = Math.round;
+  const cells = [];
+  const map = canvas(W, W, g => {
+    g.fillStyle = STYLE.wallField; g.fillRect(0, 0, W, W);
+    const win = (x, y, w, h) => { g.fillStyle = STYLE.glass; g.fillRect(x, y, w, h); g.fillStyle = STYLE.glassBand; g.fillRect(x, R(y + h * 0.38), w, 4); cells.push([x, y, w, h]); };
+    if (cls === "shop") {           // two rows of windows over a sign band and a glass storefront
+      for (let r = 0; r < 2; r++) for (let c = 0; c < cols; c++) win(R(c * cw + 11), R(r * rh + 22), 42, 40);
+      const y2 = R(2 * rh);
+      g.fillStyle = STYLE.shop.signBand; g.fillRect(8, y2 + 2, W - 16, 18);
+      g.fillStyle = STYLE.shop.storefront; g.fillRect(8, y2 + 24, W - 16, W - y2 - 28); cells.push([8, y2 + 24, W - 16, W - y2 - 28]);
+    } else if (cls === "office") {
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) win(R(c * cw + 8), R(r * rh + 10), 36, 30);
+    } else if (cls === "res") {     // a balcony rail under each window
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { win(R(c * cw + 20), R(r * rh + 20), 46, 42); g.fillStyle = STYLE.res.rail; g.fillRect(R(c * cw + 12), R(r * rh + 68), 60, 4); }
+    } else {
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) win(R(c * cw + 11), R(r * rh + 9), 42, 34);
     }
   });
-  return { map: tex(map), mask: tex(mask) };
+  const mask = canvas(W, W, m => { m.fillStyle = "#000"; m.fillRect(0, 0, W, W); m.fillStyle = "#fff"; for (const [x, y, w, h] of cells) m.fillRect(x - 1, y - 1, w + 2, h + 2); });
+  return { map, mask, cols, rows, cells };
 }
+// pixel art stays crisp up close (nearest), mipmapped further away
+function pixelTex(c, srgb = true) { const t = tex(c, srgb); t.magFilter = THREE.NearestFilter; return t; }
 
-// eight abstract sign faces (no text): blocks, bars, rings, an arrow — the
-// colour comes from the vertex, the texture gives the shapes and a frame
-function makeSigns() {
-  const W = 96, H = 256, R = H / 8;
-  return tex(canvas(W, H, g => {
-    for (let k = 0; k < 8; k++) {
-      const y = k * R;
-      g.fillStyle = "#3a3a3a"; g.fillRect(0, y, W, R);
-      g.fillStyle = "#9a9a9a"; g.fillRect(2, y + 2, W - 4, R - 4);
-      g.fillStyle = "#ffffff";
-      const cy = y + R / 2;
-      if (k === 0) { for (let x = 10; x < W - 10; x += 18) g.fillRect(x, cy - 7, 12, 14); }
-      if (k === 1) { g.fillRect(10, cy - 3, W - 20, 6); g.fillRect(10, cy - 10, 30, 4); }
-      if (k === 2) { for (let x = 16; x < W; x += 28) { g.beginPath(); g.arc(x, cy, 8, 0, 7); g.lineWidth = 4; g.strokeStyle = "#fff"; g.stroke(); } }
-      if (k === 3) { g.beginPath(); g.moveTo(14, cy - 8); g.lineTo(W - 24, cy - 8); g.lineTo(W - 10, cy); g.lineTo(W - 24, cy + 8); g.lineTo(14, cy + 8); g.fill(); }
-      if (k === 4) { for (let x = 8; x < W - 8; x += 10) g.fillRect(x, cy - (x % 20 ? 9 : 4), 6, x % 20 ? 18 : 8); }
-      if (k === 5) { g.fillRect(8, y + 6, 24, R - 12); for (let x = 40; x < W - 8; x += 14) g.fillRect(x, cy - 5, 9, 10); }
-      if (k === 6) { g.fillRect(6, cy - 9, W - 12, 4); g.fillRect(6, cy + 5, W - 12, 4); g.fillRect(W / 2 - 14, cy - 4, 28, 8); }
-      if (k === 7) { for (let x = 12; x < W - 8; x += 22) { g.fillRect(x, cy - 9, 4, 18); g.fillRect(x, cy - 2, 14, 4); g.fillRect(x + 10, cy - 9, 4, 18); } }
-    }
-  }));
-}
-
-function lightPool() {
-  const t = tex(canvas(64, 64, g => {
-    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gr.addColorStop(0, "rgba(255,214,150,0.85)"); gr.addColorStop(0.45, "rgba(255,190,120,0.3)"); gr.addColorStop(1, "rgba(255,180,110,0)");
-    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
-  }));
-  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-  return t;
-}
+const lin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+const glslColor = hex => `vec3(${[16, 8, 0].map(sh => lin(((hex >> sh) & 255) / 255).toFixed(4)).join(", ")})`;
+// 5.5 the six lit-window variants as a nested ternary on the variant number
+const variantGlsl = key => STYLE.lit.map((v, i) => i < STYLE.lit.length - 1 ? `var < ${i}.5 ? ${v[key].toFixed(2)} : ` : v[key].toFixed(2)).join("");
+const pick3 = (name, hexes) => `vec3 ${name} = h3 < 0.3333 ? ${glslColor(hexes[0])} : h3 < 0.6667 ? ${glslColor(hexes[1])} : ${glslColor(hexes[2])};`;
 
 // the shared night uniform: every city material reads it, so a hero model,
 // a tower and a street lamp all light up together
 export const cityUniforms = {
   uNight: { value: 0 },
-  uLit: { value: 0.34 },
-  uNightWall: { value: new THREE.Color(0.42, 0.46, 0.62) },
+  uNightWall: { value: new THREE.Color(...STYLE.moon) },   // 2: the moonlight on everything lit
   uWet: { value: 0 },
   // the see-through cut: buildings between the camera and you dither away
   uCutA: { value: new THREE.Vector3(0, 1e6, 0) },
@@ -171,41 +107,83 @@ function cut(sh) {
       }`);
 }
 
-function patch(mat, { facade = false, sign = false, shop = false, darken = true } = {}) {
+function patch(mat, { facade = false, cells = null, panel = false, darken = true } = {}) {
   mat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, cityUniforms);
+    if (cells) sh.uniforms.uCells = { value: new THREE.Vector2(cells[0], cells[1]) };
     cut(sh);
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float seed;\nvarying float vSeed;\nvarying vec2 vCellUv;")
       .replace("#include <uv_vertex>", "#include <uv_vertex>\nvSeed = seed;\nvCellUv = uv;");
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform float uLit;\nuniform vec3 uNightWall;\nuniform float uWet;\nvarying float vSeed;\nvarying vec2 vCellUv;")
+      .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform vec3 uNightWall;\nuniform float uWet;\nuniform vec2 uCells;\nvarying float vSeed;\nvarying vec2 vCellUv;")
       .replace("#include <color_fragment>", "#include <color_fragment>\n" +
-        (darken ? "diffuseColor.rgb *= mix(vec3(1.0), uNightWall, uNight);\ndiffuseColor.rgb *= 1.0 - uWet * 0.12;\n" : ""))
+        (darken ? "diffuseColor.rgb *= mix(vec3(1.0), uNightWall, uNight);\ndiffuseColor.rgb *= 1.0 - uWet * 0.12;\n"
+          : panel ? `diffuseColor.rgb *= mix(1.0, ${STYLE.panel.nightMul.toFixed(2)}, uNight);\n` : ""))
       .replace("#include <emissivemap_fragment>", facade ? `
         #ifdef USE_EMISSIVEMAP
           vec4 emC = texture2D( emissiveMap, vEmissiveMapUv );
-          // one draw per window: integer cell + the building's seed rounded
-          // back to an integer (an interpolated float would flicker per pixel)
-          float sq = floor(vSeed * 997.0 + 0.5);
-          vec2 cell = mod(floor(vCellUv * vec2(2.0, 1.0)) + vec2(sq * 13.0, sq * 7.0), 289.0);
+          // the seed carries the building's lit variant (whole part) and its
+          // own hash (fraction, rounded back to an integer so nothing flickers)
+          float var = floor(vSeed + 0.0005);
+          float sq = floor(fract(vSeed) * 997.0 + 0.5);
+          vec2 cell = mod(floor(vCellUv * uCells) + vec2(sq * 13.0, sq * 7.0), 289.0);
           float hh = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-          float lit = step(hh, uLit);
-          vec3 wc = mix(vec3(1.0, 0.76, 0.46), vec3(0.78, 0.88, 1.0), step(0.8, fract(hh * 7.13)));
-          wc *= 0.6 + 0.4 * fract(hh * 3.7);
-          totalEmissiveRadiance *= emC.rgb * wc * lit * uNight;
-        #endif` : sign ? `
-        #ifdef USE_EMISSIVEMAP
-          vec4 emC = texture2D( emissiveMap, vEmissiveMapUv );
-          totalEmissiveRadiance = vColor * emC.rgb * (0.22 + uNight * 1.9);
-        #endif` : shop ? `
-        #ifdef USE_EMISSIVEMAP
-          vec4 emC = texture2D( emissiveMap, vEmissiveMapUv );
-          totalEmissiveRadiance *= emC.rgb * (0.05 + uNight * 1.15);
-        #endif` : "#include <emissivemap_fragment>");
+          float h2 = fract(hh * 7.13);
+          float h3 = fract(hh * 3.71);
+          float p = ${variantGlsl("p")};
+          float ws = ${variantGlsl("w")};
+          float e = ${variantGlsl("e")};
+          ${pick3("warm", STYLE.warm)}
+          ${pick3("cool", STYLE.cool)}
+          vec3 wc = h2 < ws ? warm : cool;
+          totalEmissiveRadiance = emC.rgb * wc * step(hh, p) * e * uNight;
+        #endif` : panel ? `
+          totalEmissiveRadiance = vColor * ${STYLE.panel.glow.toFixed(2)} * uNight;` : "#include <emissivemap_fragment>");
   };
-  mat.customProgramCacheKey = () => `city-${facade ? "f" : sign ? "s" : shop ? "p" : "n"}${darken ? "d" : ""}`;
+  mat.customProgramCacheKey = () => `city-${facade ? "f" + cells.join("x") : panel ? "p" : "n"}${darken ? "d" : ""}`;
   return mat;
+}
+
+// 5.9 the painted trees, loaded once: scaled to their height, feet at y 0,
+// texture desaturated to 80 %, the body dimmed at night
+let treeLib = null;
+function loadTreeLib(night) {
+  if (treeLib) return treeLib;
+  const loader = new GLTFLoader();
+  const one = async (url, h) => {
+    const g = await loader.loadAsync(new URL(url, import.meta.url).href);
+    g.scene.updateWorldMatrix(true, true);
+    let mesh = null;
+    g.scene.traverse(o => { if (o.isMesh && !mesh) mesh = o; });
+    const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+    geo.computeBoundingBox();
+    const size = geo.boundingBox.getSize(new THREE.Vector3());
+    const k = h / size.y;
+    geo.applyMatrix4(new THREE.Matrix4().makeScale(k, k, k));
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    geo.applyMatrix4(new THREE.Matrix4().makeTranslation(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2));
+    geo.computeBoundingSphere();
+    const mat = mesh.material.clone();
+    if (mat.map?.image) {
+      const im = mat.map.image;
+      const c = document.createElement("canvas");
+      c.width = c.height = Math.min(1024, im.width);
+      const cc = c.getContext("2d");
+      cc.filter = `saturate(${STYLE.tree.desaturate})`;
+      cc.drawImage(im, 0, 0, c.width, c.height);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace; t.flipY = false;
+      mat.map = t;
+    }
+    if (night) mat.color.set(STYLE.tree.night);
+    return { geo, mat };
+  };
+  treeLib = Promise.all([one(STYLE.tree.glb, STYLE.tree.h), one(STYLE.tree.palm, STYLE.tree.palmH)])
+    .then(([tree, palm]) => ({ tree, palm }))
+    .catch(e => { console.warn("city trees: the painted models didn't load, keeping the stand-ins", e); return null; });
+  return treeLib;
 }
 
 export class CityTiles {
@@ -237,19 +215,29 @@ export class CityTiles {
 
   makeMaterials(night) {
     const M = this.mats = {};
-    for (const k of ["h", "a", "c", "o", "v", "i", "s", "g"]) {
-      const f = makeFacade(k);
-      M["wall_" + k] = patch(new THREE.MeshLambertMaterial({ map: f.map, emissiveMap: f.mask, emissive: 0xffffff, vertexColors: true }), { facade: true });
+    // 5.3-5.5 the walls: one material per class, the cream from the vertex colour
+    for (const cls of STYLE.classes) {
+      const f = facadeTile(cls);
+      M["wall_" + cls] = patch(new THREE.MeshLambertMaterial({ map: pixelTex(f.map), emissiveMap: pixelTex(f.mask), emissive: 0xffffff, vertexColors: true }), { facade: true, cells: [f.cols, f.rows] });
     }
-    M.lines = new THREE.LineBasicMaterial({ color: night ? 0x0b0e18 : 0x3a332a, transparent: true, opacity: night ? 0.55 : 0.4 });
-    M.lines.onBeforeCompile = cut;
     M.roof = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
-    const shop = makeShop();
-    M.shop = patch(new THREE.MeshLambertMaterial({ map: shop.map, emissiveMap: shop.mask, emissive: 0xffd9a0 }), { shop: true });
-    const signs = makeSigns();
-    M.sign = patch(new THREE.MeshLambertMaterial({ map: signs, emissiveMap: signs, emissive: 0xffffff, vertexColors: true }), { sign: true, darken: false });
-    M.ground = patch(new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
-    // the map's asphalt: the same crop of the painted road texture, tinted
+    // 5.6 outlines and the shadow film
+    M.lines = new THREE.LineBasicMaterial({ color: night ? STYLE.outline.night : STYLE.outline.day, transparent: true, opacity: STYLE.outline.opacity });
+    M.lines.onBeforeCompile = cut;
+    M.shadow = new THREE.MeshBasicMaterial({ color: STYLE.shadow.color, transparent: true, opacity: STYLE.shadow.opacity, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    // 5.7 the street pass
+    M.ac = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    M.awn = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    M.clutter = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    M.panel = patch(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0xffffff }), { panel: true, darken: false });
+    // 3 the ground: the lawn tile on parks (the paving plane is the map's own)
+    M.grass = patch(new THREE.MeshLambertMaterial({ color: night ? THEME.world.grassNight : THEME.world.grassDay, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }), { darken: false });
+    this.world.loadImage?.("world2/road_grass.jpg").then(img => {
+      M.grass.map = this.world.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
+      M.grass.needsUpdate = true; this.world.needsRender = true;
+    }).catch(() => {});
+    // 4 the map's asphalt: the same crop of the painted road texture, tinted
     M.road = patch(new THREE.MeshLambertMaterial({ color: night ? THEME.world.roadNight : THEME.world.roadDay,
       emissive: night ? 0x272e48 : 0x000000, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), { darken: false });
     this.world.loadImage?.("world2/road_grass.jpg").then(img => {
@@ -265,23 +253,49 @@ export class CityTiles {
     };
     M.water = new THREE.MeshPhongMaterial({ color: night ? 0x2b4a77 : 0x86bcd9, specular: night ? 0x334466 : 0x9fb8c8, shininess: 70,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    // 5.8 the power poles' wires
+    M.wires = new THREE.LineBasicMaterial({ color: STYLE.pole.wire, transparent: true, opacity: STYLE.pole.wireOpacity });
     // instanced bits
-    this.treeGeo = new THREE.IcosahedronGeometry(2.6, 0);
+    const P = STYLE.pole, L = STYLE.lamp;
+    this.treeGeo = new THREE.IcosahedronGeometry(2.6, 0);     // a stand-in until the painted trees load
     this.treeGeo.translate(0, 5.2, 0);
     this.trunkGeo = new THREE.CylinderGeometry(0.28, 0.38, 3.2, 5);
     this.trunkGeo.translate(0, 1.6, 0);
-    M.tree = new THREE.MeshLambertMaterial({ flatShading: true });
+    M.tree = new THREE.MeshLambertMaterial({ color: night ? 0x3d5c40 : 0x6d9450, flatShading: true });
     M.trunk = new THREE.MeshLambertMaterial({ color: 0x7a5b43 });
-    this.poleGeo = new THREE.CylinderGeometry(0.11, 0.14, 6.2, 5);
-    this.poleGeo.translate(0, 3.1, 0);
-    this.headGeo = new THREE.BoxGeometry(0.5, 0.28, 1.1);
-    this.headGeo.translate(0, 6.15, 0.35);
-    M.pole = new THREE.MeshLambertMaterial({ color: 0x4d5560 });
-    M.head = new THREE.MeshLambertMaterial({ color: 0xe8e2d0, emissive: night ? 0xffd9a0 : 0x000000, emissiveIntensity: 1.2 });
-    this.poolGeo = new THREE.PlaneGeometry(10, 10);
+    this.postGeo = new THREE.BoxGeometry(...L.post);
+    this.postGeo.translate(0, L.post[1] / 2, 0);
+    this.headGeo = new THREE.BoxGeometry(...L.head);
+    this.headGeo.translate(0, L.headY, 0);
+    M.pole = new THREE.MeshLambertMaterial({ color: night ? L.postNight : L.postDay, flatShading: true });
+    M.head = new THREE.MeshLambertMaterial({ color: L.headColor, flatShading: true, emissive: night ? L.headGlow : 0x000000, emissiveIntensity: night ? L.headGlowK : 0 });
+    this.poleGeo = new THREE.CylinderGeometry(P.r[0], P.r[1], P.h, 6);
+    this.poleGeo.translate(0, P.h / 2, 0);
+    M.ppole = new THREE.MeshLambertMaterial({ color: night ? P.night : P.day });
+    this.plampGeo = new THREE.SphereGeometry(P.lampR, 8, 6);
+    this.plampGeo.translate(0, P.lampY, 0);
+    M.plamp = new THREE.MeshLambertMaterial({ color: night ? P.lampNight : P.lampDay, emissive: night ? P.lampGlow : 0x000000, emissiveIntensity: night ? P.lampGlowK : 0 });
+    this.lanternGeo = new THREE.SphereGeometry(P.lanternR, 8, 6);
+    this.lanternGeo.scale(1, P.lanternTall, 1);
+    M.lantern = new THREE.MeshLambertMaterial({ color: night ? P.lanternNight : P.lanternDay, emissive: night ? P.lanternGlow : 0x000000, emissiveIntensity: night ? P.lanternGlowK : 0 });
+    this.poolGeo = new THREE.CircleGeometry(P.poolR, 20);
     this.poolGeo.rotateX(-Math.PI / 2);
-    this.poolGeo.translate(0, 0.3, 0);
-    M.pool = new THREE.MeshBasicMaterial({ map: lightPool(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    this.poolGeo.translate(0, 0.62, 0);
+    M.pool = new THREE.MeshBasicMaterial({ color: P.pool, transparent: true, opacity: P.poolOpacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    this.shared = new Set([this.treeGeo, this.trunkGeo, this.postGeo, this.headGeo, this.poleGeo, this.plampGeo, this.lanternGeo, this.poolGeo]);
+    this.treeMeshes = new Set();
+    this.trees = null;
+    loadTreeLib(night).then(lib => {
+      if (!lib) return;
+      this.trees = lib;
+      this.shared.add(lib.tree.geo).add(lib.palm.geo);
+      for (const im of this.treeMeshes) {   // the stand-ins already on the map become the painted trees
+        const k = im.userData.treeKind;
+        if (!k) { im.visible = false; continue; }   // a stand-in's trunk
+        im.geometry = lib[k].geo; im.material = lib[k].mat;
+      }
+      this.world.needsRender = true;
+    });
   }
 
   startWorker() {
@@ -441,37 +455,77 @@ export class CityTiles {
 
   instanced(rec, m) {
     const gy = this.exclude && this.world.groundY ? (x, z) => this.world.groundY(x, z) : () => 0;
-    const t = m.trees, n = t ? t.length / 4 : 0;
     const dummy = new THREE.Object3D();
-    if (n) {
-      const crown = new THREE.InstancedMesh(this.treeGeo, this.mats.tree, n);
-      const trunk = new THREE.InstancedMesh(this.trunkGeo, this.mats.trunk, n);
-      const greens = [0x7fa35e, 0x6d9450, 0x93b56c].map(c => new THREE.Color(c));
-      for (let i = 0; i < n; i++) {
-        dummy.position.set(t[i * 4], gy(t[i * 4], t[i * 4 + 1]), t[i * 4 + 1]);
-        dummy.rotation.set(0, i * 1.7, 0);
-        dummy.scale.setScalar(t[i * 4 + 2]);
-        dummy.updateMatrix();
-        crown.setMatrixAt(i, dummy.matrix); trunk.setMatrixAt(i, dummy.matrix);
-        crown.setColorAt(i, greens[t[i * 4 + 3] | 0]);
+    const inst = (geo, mat, n) => { const im = new THREE.InstancedMesh(geo, mat, n); im.matrixAutoUpdate = false; return im; };
+    // 5.9 trees: the painted models (or their stand-ins until they load), palms 7 %
+    const t = m.trees, nt = t ? t.length / 4 : 0;
+    if (nt) {
+      const kinds = { tree: [], palm: [] };
+      for (let i = 0; i < nt; i++) kinds[t[i * 4 + 3] ? "palm" : "tree"].push(i);
+      for (const [kind, idx] of Object.entries(kinds)) {
+        if (!idx.length) continue;
+        const lib = this.trees?.[kind];
+        const im = inst(lib ? lib.geo : this.treeGeo, lib ? lib.mat : this.mats.tree, idx.length);
+        im.userData.treeKind = kind;
+        const trunk = lib ? null : inst(this.trunkGeo, this.mats.trunk, idx.length);
+        idx.forEach((i, k) => {
+          dummy.position.set(t[i * 4], gy(t[i * 4], t[i * 4 + 1]), t[i * 4 + 1]);
+          dummy.rotation.set(0, i * 1.7, 0);
+          dummy.scale.setScalar(t[i * 4 + 2]);
+          dummy.updateMatrix();
+          im.setMatrixAt(k, dummy.matrix);
+          trunk?.setMatrixAt(k, dummy.matrix);
+        });
+        rec.meshes.push(im); this.treeMeshes.add(im);
+        if (trunk) { rec.meshes.push(trunk); this.treeMeshes.add(trunk); }
       }
-      rec.meshes.push(crown, trunk);
     }
+    // 5.8 street lights: a post and a lit head, no pool
     const L = m.lamps, nl = L ? L.length / 3 : 0;
     if (nl) {
-      const pole = new THREE.InstancedMesh(this.poleGeo, this.mats.pole, nl);
-      const head = new THREE.InstancedMesh(this.headGeo, this.mats.head, nl);
-      const pool = cityUniforms.uNight.value > 0.5 ? new THREE.InstancedMesh(this.poolGeo, this.mats.pool, nl) : null;
+      const post = inst(this.postGeo, this.mats.pole, nl), head = inst(this.headGeo, this.mats.head, nl);
       for (let i = 0; i < nl; i++) {
         dummy.position.set(L[i * 3], gy(L[i * 3], L[i * 3 + 1]), L[i * 3 + 1]);
         dummy.rotation.set(0, L[i * 3 + 2] + Math.PI / 2, 0);
         dummy.scale.setScalar(1);
         dummy.updateMatrix();
-        pole.setMatrixAt(i, dummy.matrix); head.setMatrixAt(i, dummy.matrix);
-        if (pool) pool.setMatrixAt(i, dummy.matrix);
+        post.setMatrixAt(i, dummy.matrix); head.setMatrixAt(i, dummy.matrix);
       }
-      rec.meshes.push(pole, head);
+      rec.meshes.push(post, head);
+    }
+    // 5.8 power poles; a lamp on every third, with a warm pool at night
+    const Pp = m.poles, np = Pp ? Pp.length / 3 : 0;
+    if (np) {
+      const lit = []; for (let i = 0; i < np; i++) if (Pp[i * 3 + 2]) lit.push(i);
+      const pole = inst(this.poleGeo, this.mats.ppole, np);
+      const lamp = lit.length ? inst(this.plampGeo, this.mats.plamp, lit.length) : null;
+      const pool = lit.length && cityUniforms.uNight.value > 0.5 ? inst(this.poolGeo, this.mats.pool, lit.length) : null;
+      dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1);
+      for (let i = 0; i < np; i++) {
+        dummy.position.set(Pp[i * 3], gy(Pp[i * 3], Pp[i * 3 + 1]), Pp[i * 3 + 1]);
+        dummy.updateMatrix();
+        pole.setMatrixAt(i, dummy.matrix);
+      }
+      lit.forEach((i, k) => {
+        dummy.position.set(Pp[i * 3], gy(Pp[i * 3], Pp[i * 3 + 1]), Pp[i * 3 + 1]);
+        dummy.updateMatrix();
+        lamp.setMatrixAt(k, dummy.matrix); pool?.setMatrixAt(k, dummy.matrix);
+      });
+      rec.meshes.push(pole);
+      if (lamp) rec.meshes.push(lamp);
       if (pool) { pool.renderOrder = 2; rec.meshes.push(pool); }
+    }
+    // 5.8 paper lanterns under the wires
+    const La = m.lanterns, nn = La ? La.length / 3 : 0;
+    if (nn) {
+      const im = inst(this.lanternGeo, this.mats.lantern, nn);
+      dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1);
+      for (let i = 0; i < nn; i++) {
+        dummy.position.set(La[i * 3], La[i * 3 + 1] + gy(La[i * 3], La[i * 3 + 2]), La[i * 3 + 2]);
+        dummy.updateMatrix();
+        im.setMatrixAt(i, dummy.matrix);
+      }
+      rec.meshes.push(im);
     }
   }
 
@@ -491,8 +545,9 @@ export class CityTiles {
     if (!c) return;
     for (const mesh of c.meshes) {
       this.group.remove(mesh);
-      mesh.geometry !== this.treeGeo && mesh.geometry !== this.trunkGeo && mesh.geometry !== this.poleGeo &&
-        mesh.geometry !== this.headGeo && mesh.geometry !== this.poolGeo ? mesh.geometry.dispose() : mesh.dispose?.();
+      this.treeMeshes.delete(mesh);
+      if (!this.shared.has(mesh.geometry)) mesh.geometry.dispose();
+      if (mesh.isInstancedMesh) mesh.dispose();
     }
     for (const lr of c.labels) {
       this.world.removeLabel?.(lr);
