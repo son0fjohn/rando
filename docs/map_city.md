@@ -68,6 +68,29 @@ famous landmarks. Itaewon keeps its hand-made map.
   twice); worldwide-tile footprints are clipped to their z14 tile so two
   halves meet exactly.
 
+## Heights (Itaewon's hand-made map)
+
+Every building in `web/buildings.json` carries `h` (world units: metres ×
+0.55 × 2.4) and `hsrc`, one of `google` / `vworld` / `osm` / `estimated`,
+written by `scripts/merge_heights.py` from files already in the repo
+(`python3 scripts/merge_heights.py`, `--dry-run --report out.json` for the
+decisions; runs after `bake_registry.py`, which only shapes footprints). The
+sources, joined to the footprints by overlap: Google 3D Tiles measured
+offline (`web/data/itaewon_heights.json`, the "tiles" rows), the official
+registry's floor counts (`web/data/registry_buildings.json`, 3.3 m a
+floor), OpenStreetMap tags (`itaewon_layers.json`, then Overture's
+`scripts/overture_cache/itaewon.building.parquet`). Where Google and the
+registry both speak and roughly agree (a floor or 30 %), Google; where
+Google is below the registered floors it sampled a courtyard or the street
+and the registry wins; above them, the registry wins when a neighbour
+explains the number (a merged scan) or the lot is small (trees, the hill),
+Google when the excess is under two floors (rooftop floors). A registry
+row of 1–2 floors on a block OSM maps far taller is a podium record and
+OSM wins. Nothing at all: the sourced neighbours' median, capped by the
+lot's size, else a class default, with a fixed jitter. The script prints
+how often each source won and warns when the Google capture doesn't track
+the registry (the committed capture doesn't: its heights all sit at 2–9 m).
+
 ## Landmarks (`web/data/heroes.json`)
 
 A list of places with a lat/lng, a height and, once it exists, a `.glb`

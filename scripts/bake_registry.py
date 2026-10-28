@@ -6,15 +6,19 @@ Per registry building inside the city bbox:
   CENTER/SCALE/north=-z convention as every other bake).
 - Match against the existing field by centroid distance.
 - MATCH: replace the OSM footprint with the registry footprint
-  (simplified with the same RDP tolerance the OSM bake used) and set
-  height from, in order: measured 3D-Tiles height (kept — photogrammetry
-  beats registry paperwork), registry heightM, registry floors*3.2,
-  else leave as-is. hsrc records the winning source.
+  (simplified with the same RDP tolerance the OSM bake used) and set a
+  provisional height from, in order: measured 3D-Tiles height (kept),
+  registry floors*3.2, else leave as-is. hsrc records the source.
 - NO MATCH (registry building OSM never had): append it — this is where
   the twin gains real coverage.
 
 Heights convert with the world's vertical convention (SCALE * VEXAG),
-keeping RELATIVE truth inside the stylized scale.
+keeping RELATIVE truth inside the stylized scale. The heights written
+here are provisional: scripts/merge_heights.py runs after this bake and
+decides every building's height (Google vs registry vs OSM vs estimate),
+replacing the hsrc tags written here (tiles / registry / registry-default)
+with google / vworld / osm / estimated. So the pipeline is
+fetch_buildings.py -> bake_registry.py -> merge_heights.py.
 
     py -3 scripts/bake_registry.py [--dry-run]
 """
@@ -67,7 +71,8 @@ def main():
     # double-bake guard: reconciling registry onto an already-reconciled
     # field drifts counts (matched centroids move). Restore the
     # pre-registry buildings.json first, or pass --force knowingly.
-    if any((b.get("hsrc") or "").startswith("registry")
+    BAKED = ("registry", "vworld", "google", "osm", "estimated")
+    if any((b.get("hsrc") or "").startswith(BAKED)
            for b in bdata["buildings"]) and "--force" not in sys.argv:
         print("buildings.json already carries a registry bake — restore "
               "the pre-registry file first (git show main:web/buildings.json)"
