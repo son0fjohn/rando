@@ -23,7 +23,8 @@ import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea, R
 import { STYLE, styleClass, wallIndex } from "/web/style.js";
 import { decodeMVT, ringArea as mvtArea } from "/web/mvt.js";
 import { omtChunks } from "/web/cityomt.js";
-import { dayness, setDay, getDay } from "/web/daylight.js";
+import { setDay, getDay } from "/web/daylight.js";
+import { sunAltitude, lightAt, phaseOf } from "/web/sun.js";
 import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
 import { EVENTS, clean, track } from "/web/analytics.js";
 import { starterLook, e164, otpWait, otpError, OTP } from "/web/onbkit.js";
@@ -1740,15 +1741,20 @@ group("The map anywhere — vector tiles (MVT) and OpenMapTiles -> chunks");
   ok(built.stats.buildings === 2 && built.groups.road && built.labels.some(l => l.text === "Test-ro"), "…and build like a baked chunk");
 }
 }
-group("Day and night glass — one light for every panel, blending at sunrise and sunset");
+group("Day and night — the real sun over the place the map shows, one light for every panel");
 {
-  const at = h => dayness(h);
-  ok(at(2) === 0 && at(5.9) === 0 && at(12) === 1 && at(18.4) === 1 && at(20) === 0, "night until 6:00, day from 7:00 to 18:30, night from 19:30");
-  const up = [6, 6.25, 6.5, 6.75, 7].map(at), down = [18.5, 18.75, 19, 19.25, 19.5].map(at);
-  ok(up.every((v, i) => !i || v > up[i - 1]) && down.every((v, i) => !i || v < down[i - 1]), "sunrise and sunset blend in steps, never a jump");
-  ok(Math.abs(at(6.5) - .5) < 1e-9 && Math.abs(at(19) - .5) < 1e-9, "halfway at the map's own switch (6:30 and 19:00)");
-  let worst = 0; for (let m = 0; m < 24 * 60; m++) worst = Math.max(worst, Math.abs(at((m + 1) / 60) - at(m / 60)));
+  const SEOUL = [37.5346, 126.9946], CALGARY = [51.0447, -114.0719];
+  const at = (iso, [lat, lng]) => sunAltitude(lat, lng, new Date(iso));
+  ok(at("2026-06-21T03:30:00Z", SEOUL) > 70 && at("2026-06-21T15:30:00Z", SEOUL) < -25, `Seoul, midsummer: the sun high at 12:30 KST (${at("2026-06-21T03:30:00Z", SEOUL).toFixed(0)}°), deep under at half past midnight (${at("2026-06-21T15:30:00Z", SEOUL).toFixed(0)}°)`);
+  ok(at("2026-10-28T03:00:00Z", SEOUL) > 35 && at("2026-10-28T12:00:00Z", SEOUL) < -30, "Seoul, late October: day at noon KST, night at 9 pm");
+  ok(Math.abs(at("2026-06-21T03:45:00Z", CALGARY)) < 4 && at("2026-12-21T00:30:00Z", CALGARY) < -6, "Calgary: the sun on the horizon at 21:45 in June, gone by 17:30 in December (its own time, not the phone's)");
+  const seoulNoon = lightAt(...SEOUL, new Date("2026-10-28T03:00:00Z")), seoulNight = lightAt(...SEOUL, new Date("2026-10-28T13:00:00Z"));
+  ok(seoulNoon === 1 && seoulNight === 0, "the light is 1 by day and 0 at night");
+  const dusk = []; for (let m = 0; m <= 110; m += 5) dusk.push(lightAt(...SEOUL, new Date(Date.UTC(2026, 9, 28, 7, 50 + m))));   // 16:50 to 18:40 KST
+  ok(dusk[0] === 1 && dusk[dusk.length - 1] === 0 && dusk.every((v, i) => !i || v <= dusk[i - 1]) && dusk.some(v => v > 0.2 && v < 0.8), `Seoul's sunset blends down over the evening, never a jump (${dusk.map(v => v.toFixed(2)).join(" ")})`);
+  let worst = 0; for (let m = 0; m < 24 * 60; m++) worst = Math.max(worst, Math.abs(lightAt(...SEOUL, new Date(Date.UTC(2026, 9, 28, 0, m + 1))) - lightAt(...SEOUL, new Date(Date.UTC(2026, 9, 28, 0, m)))));
   ok(worst < .05, `no minute changes the light by more than 5% (${(worst * 100).toFixed(1)}%)`);
+  ok(phaseOf(1) === "day" && phaseOf(0) === "night" && phaseOf(0.7) === "golden" && phaseOf(0.3) === "dusk", "the phases: day, golden hour, dusk, night");
   setDay(.73); const v = getComputedStyle(document.documentElement).getPropertyValue("--day").trim();
   ok(getDay() === .73 && v === "0.73" && document.documentElement.classList.contains("is-day"), "the light goes on the page root as --day");
   setDay(0);

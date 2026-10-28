@@ -8,7 +8,7 @@
 // nav bar, no labels, no people in the world, nobody waits on the 3D.
 //   node test/start_rec.mjs <dir> [--quick] [--only=1,4,5]
 //   (the films: test/start_film.mjs, frame by frame)
-//   node test/start_rec.mjs --still              re-shoot web/start/night.jpg
+//   node test/start_rec.mjs --still              re-shoot web/start/night.jpg and day.jpg
 //                                               (the drift's first frame, 3:4)
 // Each phone is its own browser context; the stub's realtime rides on
 // BroadcastChannel, so this script relays it between them (as onboard_rec).
@@ -116,17 +116,20 @@ if (STILL) {
   // 3:4 at the live camera's vertical field of view: object-fit: cover on
   // any phone (all taller than 3:4) crops its sides only, so it matches the
   // live first frame wherever it's shown
-  const ctx = await phoneContext({ viewport: { width: 600, height: 800 }, scale: 1, init: { __sceneryHold: true } });
-  const pg = await page(ctx, "still");
-  await pg.goto(appUrl(who("jae")));
-  ok(await live(pg), "live");
-  await sleep(2500);
-  await pg.evaluate(() => { document.getElementById("onb").style.visibility = "hidden"; document.getElementById("start-still").style.display = "none"; });
-  await sleep(600);
   await mkdir(new URL("../web/start/", import.meta.url).pathname, { recursive: true });
-  const out = new URL("../web/start/night.jpg", import.meta.url).pathname;
-  await snap(pg, out, { format: "jpeg", quality: 80 });
-  console.log(`wrote ${out}`);
+  for (const light of ["night", "day"]) {   // the real sun over Itaewon picks one at boot (index.html)
+    const ctx = await phoneContext({ viewport: { width: 600, height: 800 }, scale: 1, init: { __sceneryHold: true } });
+    const pg = await page(ctx, "still-" + light);
+    await pg.goto(appUrl(who("jae")) + "&light=" + light);
+    ok(await live(pg), `live (${light})`);
+    await sleep(2500);
+    await pg.evaluate(() => { document.getElementById("onb").style.visibility = "hidden"; document.getElementById("start-still").style.display = "none"; });
+    await sleep(600);
+    const out = new URL(`../web/start/${light}.jpg`, import.meta.url).pathname;
+    await snap(pg, out, { format: "jpeg", quality: 80 });
+    console.log(`wrote ${out}`);
+    await ctx.close();
+  }
   await browser.close(); close(); process.exit(fails ? 1 : 0);
 }
 
@@ -142,7 +145,7 @@ const tOpen = Date.now();
 await H.goto(appUrl(who("jae")));
 // the still image is there from the first paint, before any module ran
 const boot = await H.evaluate(() => window.__boot ?? {});
-ok(boot.cls && boot.still === "block", `the still night view shows from the first paint (${JSON.stringify(boot)})`);
+ok(boot.cls && boot.still === "block", `the still view shows from the first paint (${JSON.stringify(boot)})`);
 ok(await screenIs(H, "start", 60000), `the start screen (${Date.now() - tOpen} ms)`);
 ok(await until(H, () => document.getElementById("start-still").complete && document.getElementById("start-still").naturalWidth > 0, null, 10000), "…web/start/night.jpg loaded");
 await sleep(400);

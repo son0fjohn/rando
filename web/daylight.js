@@ -7,23 +7,18 @@
 // Where it comes from:
 // - a dev override (?light=day|night|sunset|sunrise|0..1, or the dev chip,
 //   ?dev=1, which remembers it on this phone and reloads so the map follows);
-// - else a map that was told what to be (?mode=day|night, or the first
-//   open's night flyover): exactly that;
-// - else the clock: night until 6:00, brightening to day by 7:00, day until
-//   18:30, dimming to night by 19:30, re-read every minute. The map picks its
-//   palette from the same clock when it loads (night from 19:00 to 6:30).
+// - else a map that was told what to be (?mode=day|night, the tests): that;
+// - else the real sun over the place the map shows (sun.js: altitude from
+//   lat/lng and the moment, so Seoul is lit by Seoul's sun and Calgary by
+//   Calgary's whatever the phone's clock says): the map works it out as it
+//   draws (world3d.js applyLight) and hands it here, so sunrise and sunset
+//   blend live while the app is open.
 // No three.js here: tests read it.
 
 const DEV_KEY = "rando-light";
 const NAMED = { night: 0, day: 1, sunset: 0.5, sunrise: 0.5 };
 
-const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-
-// the clock's light for an hour of the day (0..24, fractional)
-export function dayness(h) {
-  return h < 12 ? smooth(6, 7, h) : 1 - smooth(18.5, 19.5, h);
-}
-const hourOf = d => d.getHours() + d.getMinutes() / 60;
+import { lightAt } from "./sun.js";
 
 const parse = v => {
   if (v == null || v === "" || v === "auto") return null;
@@ -41,7 +36,7 @@ export function lightOverride() {
   } catch { return null; }
 }
 
-let current = null, timer = null;
+let current = null, fixed = null;
 export function setDay(v) {
   v = Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
   if (v === current) return;
@@ -52,15 +47,20 @@ export function setDay(v) {
 }
 export const getDay = () => current ?? 0;
 
-// called once by the map with what it chose: { night, forced }
+// called once by the map with what it chose: { night, forced } — a dev
+// override or a forced mode pins the light; otherwise the map keeps calling
+// sunlight() as it draws
 export function startDaylight({ night, forced }) {
-  clearInterval(timer);
   const ov = lightOverride();
-  if (ov != null) return setDay(ov);
-  if (forced) return setDay(night ? 0 : 1);
-  const tick = () => setDay(dayness(hourOf(new Date())));
-  tick();
-  timer = setInterval(tick, 60000);
+  fixed = ov != null ? ov : forced ? (night ? 0 : 1) : null;
+  if (fixed != null) setDay(fixed);
+}
+// the light for the map right now: the pinned one, else the sun's over
+// lat/lng; the page's --day follows
+export function sunlight(lat, lng, date = new Date()) {
+  const t = fixed ?? lightAt(lat, lng, date);
+  setDay(t);
+  return t;
 }
 
 // the dev chip (?dev=1): Auto → Day → Sunset → Night, remembered on this

@@ -107,6 +107,32 @@ function obb(r) {
 }
 
 // the baker's classify(), for buildings with no type: size, shape, the road
+// a floor count with no data: the class's range, where the seed and the
+// footprint's size place it (a big footprint leans taller within its class)
+function guessFloors(kind, area, seed) {
+  const [lo, hi] = FLOORS[kind];
+  const rank = Math.min(1, Math.max(0, (Math.log(Math.max(area, 1)) - Math.log(60)) / (Math.log(2000) - Math.log(60))));
+  const u = 0.6 * ((seed % 1000) / 1000) + 0.4 * rank;
+  return lo + Math.min(hi - lo, Math.floor(u * (hi - lo + 1)));
+}
+// ... then its street: halfway to the median floors of the measured
+// buildings within 60 m, within its class's range (the bake does the same)
+export function settleGuesses(bs, mPerPx) {
+  const c = bs.map(b => { const p = b.p; let x = 0, y = 0; for (let k = 0; k < p.length; k += 2) { x += p[k]; y += p[k + 1]; } return [x / (p.length / 2), y / (p.length / 2)]; });
+  const r2 = (60 / mPerPx) ** 2;
+  bs.forEach((b, i) => {
+    if (!b._g) return;
+    delete b._g;
+    const near = [];
+    bs.forEach((o, j) => { if (o.m && (c[j][0] - c[i][0]) ** 2 + (c[j][1] - c[i][1]) ** 2 < r2) near.push(o.f); });
+    if (near.length < 2) return;
+    near.sort((a, b2) => a - b2);
+    const [lo, hi] = FLOORS[b.k];
+    const fl = Math.max(lo, Math.min(hi, Math.round(0.5 * b.f + 0.5 * near[near.length >> 1])));
+    if (fl !== b.f) { b.f = fl; b.h = Math.round((fl * LEVEL_M + 1) * 10) / 10; }
+  });
+}
+
 function guessKind(area, elong, fronts, korea) {
   if (area < 25) return "s";
   if (area < 150) return fronts ? "c" : "h";
@@ -215,12 +241,11 @@ export function omtChunks(bytes, x14, y14) {
     let h, fl, m = 0;
     if (rh > 5) { h = rh; fl = Math.max(1, Math.round(rh / LEVEL_M)); m = 1; stats.measured++; }
     else {
-      const [lo, hi] = FLOORS[kind];
-      fl = lo + seed % (hi - lo + 1);
+      fl = guessFloors(kind, area, seed);
       h = fl * LEVEL_M + (kind !== "s" ? 1 : 0.4);
     }
     const b = { p: flat(pts, i * EXT, j * EXT), h: Math.round(Math.max(2.6, Math.min(h, 600)) * 10) / 10, f: fl, k: kind, r: roofFor(kind, area, fill, korea, seed) };
-    if (m) b.m = 1;
+    if (m) b.m = 1; else if (kind !== "s") b._g = 1;
     if (f.props.colour) b.fc = f.props.colour;
     chunk(i, j).b.push(b);
     stats.buildings++;
@@ -243,6 +268,7 @@ export function omtChunks(bytes, x14, y14) {
   each("landcover", (f, S) => { const k = LANDCOVER[f.props.class] ?? LANDCOVER[f.props.subclass]; if (k) area(k, f, S); });
   each("landuse", (f, S) => { const k = LANDUSE[f.props.class]; if (k) area(k, f, S); });
 
+  for (const c of out.values()) settleGuesses(c.b, mPerU * BIG / (SUB * EXT));   // (chunk pixels: SUB×EXT across the tile's BIG units)
   out.stats = stats;
   return out;
 }

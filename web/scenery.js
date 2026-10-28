@@ -1,4 +1,5 @@
-// The start screen's city: our 3D Itaewon at night as pure scenery behind
+// The start screen's city: our 3D Itaewon, lit by the real sun over it
+// (world3d.js applyLight), as pure scenery behind
 // the glass panel (onboard.js "start"). No people, no labels, no pins, the
 // map full screen; the camera drifts slowly over the busiest blocks on a
 // loop, and on Start / Join it dives from the sky into the party's building.
@@ -11,9 +12,10 @@
 //                          everyone in a party dives into the same one
 //   scenery.slow           this phone struggled: the glass goes lite
 //
-// web/start/night.jpg is the drift's first frame (scenery.pose(0)), shown
-// at once and crossfaded to the live city; test/start_rec.mjs --still
-// re-shoots it when the city or the path changes.
+// web/start/night.jpg and day.jpg are the drift's first frame (scenery.pose(0))
+// by night and by day (index.html picks by the sun), shown at once and
+// crossfaded to the live city; test/start_rec.mjs --still re-shoots them
+// when the city or the path changes.
 import { world3d, CHAR_H, terrainY } from "./world3d.js";
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;

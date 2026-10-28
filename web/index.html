@@ -36,10 +36,25 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#0b0d24">
 <script>
-  // every open starts on the start screen, the city at night behind glass
+  // every open starts on the start screen, the city behind glass
   // (onboard.js); its still frame shows from the first paint, before any
-  // module or the 3D has loaded (?onb=0: no start screen, the map as it was)
-  if (!/[?&]onb=0/.test(location.search)) { window.__RANDO_FIRST_NIGHT = true; document.documentElement.classList.add("start-boot"); }
+  // module or the 3D has loaded (?onb=0: no start screen, the map as it was).
+  // Day or night still: the real sun over Itaewon right now (web/sun.js,
+  // inlined: a module would come too late for the first paint), unless
+  // ?light= / the dev chip pins it
+  if (!/[?&]onb=0/.test(location.search)) document.documentElement.classList.add("start-boot");
+  window.__RANDO_STILL = (function () {
+    var q = /[?&]light=([^&]*)/.exec(location.search), v = q ? decodeURIComponent(q[1]) : null;
+    try { if (v == null) v = localStorage.getItem("rando-light"); } catch (e) {}
+    var named = { night: 0, day: 1, sunset: 0.5, sunrise: 0.5 };
+    if (v != null && v !== "auto") { var n = v in named ? named[v] : Number(v); if (isFinite(n)) return n < 0.5 ? "night" : "day"; }
+    var r = Math.PI / 180, d = Date.now() / 86400000 - 10957.5, lat = 37.5346 * r, lw = -126.9946 * r;
+    var M = r * (357.5291 + 0.98560028 * d), L = M + r * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M)) + r * 102.9372 + Math.PI;
+    var e = r * 23.4397, dec = Math.asin(Math.sin(L) * Math.sin(e)), ra = Math.atan2(Math.sin(L) * Math.cos(e), Math.cos(L));
+    var H = r * (280.16 + 360.9856235 * d) - lw - ra;
+    var alt = Math.asin(Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(H)) / r;
+    return alt < 0 ? "night" : "day";
+  })();
 </script>
 <style>
   :root {
@@ -1865,7 +1880,8 @@
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
-  <img id="start-still" src="start/night.jpg" alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+  <img id="start-still" alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+  <script>document.getElementById("start-still").src = "start/" + (window.__RANDO_STILL === "day" ? "day" : "night") + ".jpg";</script>
   <div class="frame">
     <div id="bubble-layer"></div>
 

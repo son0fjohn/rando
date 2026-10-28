@@ -4,7 +4,7 @@
 // over bright sky by day, over the city lights at night. Checks the glass
 // really changed (its fill and text colour) and the text stays readable
 // (contrast of the panel's text against what's behind the panel).
-//   node test/light_shots.mjs <dir> [night,sunset,day]
+//   node test/light_shots.mjs <dir> [night,sunset,day,auto]   (auto: the real sun over Itaewon right now)
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright";
@@ -31,7 +31,7 @@ for (const light of LIGHTS) {
   await ctx.addInitScript(() => { globalThis.__sceneryNoSlow = true; try { localStorage.setItem("rando-lang", "en"); } catch {} });
   const pg = await ctx.newPage();
   pg.on("pageerror", e => errors.push(`${light}: ${e.message}`));
-  await pg.goto(`${base}/app.html?devlat=37.5347&devlng=126.9945&me=mina&av=${LOOK}&light=${light}`);
+  await pg.goto(`${base}/app.html?devlat=37.5347&devlng=126.9945&me=mina&av=${LOOK}` + (light === "auto" ? "" : `&light=${light}`));
   await pg.waitForFunction(() => document.body.classList.contains("scenery-live"), null, { timeout: 180000, polling: 300 }).catch(() => {});
   await sleep(4000);
   const st = await pg.evaluate(() => {
@@ -52,7 +52,7 @@ for (const light of LIGHTS) {
   await m.addInitScript(() => { try { localStorage.setItem("rando-lang", "en"); localStorage.setItem("rando-hint-v1", "1"); } catch {} });
   const mp = await m.newPage();
   mp.on("pageerror", e => errors.push(`${light} map: ${e.message}`));
-  await mp.goto(`${base}/app.html?onb=0&devlat=37.5347&devlng=126.9945&me=mina&av=${LOOK}&light=${light}`);
+  await mp.goto(`${base}/app.html?onb=0&devlat=37.5347&devlng=126.9945&me=mina&av=${LOOK}` + (light === "auto" ? "" : `&light=${light}`));
   await mp.waitForFunction(() => !!document.querySelector("#navbar:not([hidden])"), null, { timeout: 180000, polling: 300 }).catch(() => {});
   await sleep(9000);
   await snap(mp, join(OUT, `map-${light}.png`));

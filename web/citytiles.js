@@ -177,8 +177,7 @@ function loadTreeLib(night) {
       t.colorSpace = THREE.SRGBColorSpace; t.flipY = false;
       mat.map = t;
     }
-    if (night) mat.color.set(STYLE.tree.night);
-    return { geo, mat };
+    return { geo, mat };   // (its night tint: setLight)
   };
   treeLib = Promise.all([one(STYLE.tree.glb, STYLE.tree.h), one(STYLE.tree.palm, STYLE.tree.palmH)])
     .then(([tree, palm]) => ({ tree, palm }))
@@ -282,6 +281,21 @@ export class CityTiles {
     this.poolGeo.rotateX(-Math.PI / 2);
     this.poolGeo.translate(0, 0.62, 0);
     M.pool = new THREE.MeshBasicMaterial({ color: P.pool, transparent: true, opacity: P.poolOpacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    // every flat material's day and night, for setLight(t): a sunset while
+    // you watch (the walls, windows and panels follow uNight in the shader)
+    this.dn = [
+      [M.lines, { color: [STYLE.outline.day, STYLE.outline.night] }],
+      [M.grass, { color: [THEME.world.grassDay, THEME.world.grassNight] }],
+      [M.road, { color: [THEME.world.roadDay, THEME.world.roadNight], emissive: [0x000000, 0x272e48] }],
+      [M.water, { color: [0x86bcd9, 0x2b4a77], specular: [0x9fb8c8, 0x334466] }],
+      [M.tree, { color: [0x6d9450, 0x3d5c40] }],
+      [M.pole, { color: [L.postDay, L.postNight] }],
+      [M.head, { emissive: [0x000000, L.headGlow], emissiveIntensity: [0, L.headGlowK] }],
+      [M.ppole, { color: [P.day, P.night] }],
+      [M.plamp, { color: [P.lampDay, P.lampNight], emissive: [0x000000, P.lampGlow], emissiveIntensity: [0, P.lampGlowK] }],
+      [M.lantern, { color: [P.lanternDay, P.lanternNight], emissive: [0x000000, P.lanternGlow], emissiveIntensity: [0, P.lanternGlowK] }],
+    ].map(([mat, pairs]) => [mat, Object.fromEntries(Object.entries(pairs).map(([k, [d, n]]) => [k, k === "emissiveIntensity" ? [d, n] : [new THREE.Color(d), new THREE.Color(n)]]))]);
+    this.light = night ? 0 : 1;
     this.shared = new Set([this.treeGeo, this.trunkGeo, this.postGeo, this.headGeo, this.poleGeo, this.plampGeo, this.lanternGeo, this.poolGeo]);
     this.treeMeshes = new Set();
     this.trees = null;
@@ -289,6 +303,8 @@ export class CityTiles {
       if (!lib) return;
       this.trees = lib;
       this.shared.add(lib.tree.geo).add(lib.palm.geo);
+      for (const k of ["tree", "palm"]) this.dn.push([lib[k].mat, { color: [new THREE.Color(0xffffff), new THREE.Color(STYLE.tree.night)] }]);
+      this.setLight(this.light, true);
       for (const im of this.treeMeshes) {   // the stand-ins already on the map become the painted trees
         const k = im.userData.treeKind;
         if (!k) { im.visible = false; continue; }   // a stand-in's trunk
@@ -453,6 +469,20 @@ export class CityTiles {
     this.world.needsRender = true;
   }
 
+  // the light 0 (night) .. 1 (day): the flat materials lerp, the lamps'
+  // pools show once it's dark (world3d.js applyLight drives it)
+  setLight(t, force = false) {
+    if (t === this.light && !force) return;
+    this.light = t;
+    const n = 1 - t;
+    for (const [mat, pairs] of this.dn) for (const [k, [d, nv]] of Object.entries(pairs)) {
+      if (typeof d === "number") mat[k] = d + (nv - d) * n;
+      else mat[k].copy(d).lerp(nv, n);
+    }
+    for (const rec of this.chunks.values()) for (const mesh of rec.meshes) if (mesh.userData.pool) mesh.visible = t < 0.5;
+    this.world.needsRender = true;
+  }
+
   instanced(rec, m) {
     const gy = this.exclude && this.world.groundY ? (x, z) => this.world.groundY(x, z) : () => 0;
     const dummy = new THREE.Object3D();
@@ -499,7 +529,7 @@ export class CityTiles {
       const lit = []; for (let i = 0; i < np; i++) if (Pp[i * 3 + 2]) lit.push(i);
       const pole = inst(this.poleGeo, this.mats.ppole, np);
       const lamp = lit.length ? inst(this.plampGeo, this.mats.plamp, lit.length) : null;
-      const pool = lit.length && cityUniforms.uNight.value > 0.5 ? inst(this.poolGeo, this.mats.pool, lit.length) : null;
+      const pool = lit.length ? inst(this.poolGeo, this.mats.pool, lit.length) : null;
       dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1);
       for (let i = 0; i < np; i++) {
         dummy.position.set(Pp[i * 3], gy(Pp[i * 3], Pp[i * 3 + 1]), Pp[i * 3 + 1]);
@@ -513,7 +543,7 @@ export class CityTiles {
       });
       rec.meshes.push(pole);
       if (lamp) rec.meshes.push(lamp);
-      if (pool) { pool.renderOrder = 2; rec.meshes.push(pool); }
+      if (pool) { pool.renderOrder = 2; pool.userData.pool = true; pool.visible = this.light < 0.5; rec.meshes.push(pool); }
     }
     // 5.8 paper lanterns under the wires
     const La = m.lanterns, nn = La ? La.length / 3 : 0;
