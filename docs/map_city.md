@@ -9,11 +9,24 @@ famous landmarks. Itaewon keeps its hand-made map.
 
 - **Near Itaewon** (within 3 km of the station): the hand-made map, with the
   procedural city filling in round its edges. The procedural chunks share
-  its origin and leave its middle alone: no procedural building within
-  820 world units (≈1.5 km, where the hand-made buildings end) and no road
-  within 1420 (where the hand-made roads end). The hand-made hills flatten
-  out toward the edge so the two meet on flat ground; the procedural ground
-  sits just under the hand-made one.
+  its origin and leave its middle alone, by the hand-made map's own shape
+  (`world3d.js` `handmadeSrc`, worked out in the chunk worker by
+  `citygen.js` `handmadeMask` and `handmade`): how far its
+  buildings reach in each of 64 directions (450–790 world units: it isn't a
+  circle), and a 4 u grid of what its buildings and roads cover. Inside
+  that reach nothing procedural; outside it the procedural city fills in
+  right up to the hand-made buildings, leaving out a building the
+  hand-made map already has (its middle, or most of its corners, on a
+  hand-made footprint) and a street it already draws (most of its length on
+  a hand-made road). (It used to be one circle each: no building within
+  820, no road within 1420, which left an empty ring of up to 370 u between
+  the two in most directions and the streets missing out to 1420.) The
+  hand-made hills flatten out toward the edge so the two meet on flat
+  ground. The procedural ground follows the same hills, just under the
+  hand-made one (flat, it used to cover the hand-made map's south side,
+  roads and all, where the hills fall toward the river) (`world3d.js`
+  `blendGround`). The hand-made grass stays grass: repaving it turned
+  Namsan into paving, since the baked data has no park outline there.
 - **Anywhere else**: the procedural city, centred where you are. It
   re-centres when you go more than 2.5 km from its origin.
 - The spot is the player's (presence) or Explore's (read on the phone, only
@@ -109,8 +122,35 @@ Place. To add a model: put the glb under `web/` and set `glb` (and `status:
 
 - Chunks stream round the camera target: full detail within one chunk
   (≈0.5 km), walls and roofs only out to two, dropped past three; fog hides
-  the edge. Built in a worker, at most two mounted per frame, nearest first;
-  a new chunk rises out of the ground (half a second) instead of popping.
+  the edge. Built in a worker, at most two mounted per frame, nearest first
+  (the near ring before the far one); a new chunk rises out of the ground
+  (half a second) instead of popping.
+- **Draw calls.** A chunk is a handful of meshes: the worker
+  (`citygen.js` `packChunk`) merges what shares a material, so the four
+  facade classes are one wall mesh (one texture array, a class byte per
+  vertex) and roofs, AC boxes, awnings and kerb clutter one roof mesh; the
+  walls, roofs, shadow, roads, parks and water, plus the sign panels,
+  outlines and wires up close. The instanced props (trees, street lights,
+  power poles, their lamps and pools, lanterns) aren't per chunk at all:
+  one InstancedMesh a kind for the whole map (`Pool`), refilled when a
+  chunk comes or goes or the camera moves, with what's outside the view
+  left out.
+- **Triangles.** The painted trees are 5,000 triangles each: beyond 300 u
+  from the camera a tree is its light version (`lodTree`: the model
+  clustered on a 20-cell grid, its painting baked into vertex colours, a
+  fifth of the triangles), on the hand-made map too. The baked shadow
+  sweeps only the walls that face the sun's way (the rest is covered
+  anyway). Budget at the map's own zoom: 150 draw calls and 300k
+  triangles; `test/city_shots.mjs` checks it.
+- **Never blank.** The paving, the sky and the fog are up before any chunk.
+  The city for a spot can be built ahead, out of sight (`world3d.js`
+  `warmCity`): while the start screen or the hand-made map is still up,
+  the spot's chunks stream in a hidden city, and it goes on the map whole.
+  The start screen's way out waits for that city's near ring (2.5 s at
+  most, under its navy veil) before it swaps in; a city the start screen
+  covers stays built out of sight and comes back at once; and a re-centre
+  (you've gone more than 2.5 km) keeps the old city on screen until the new
+  one's near ring is in. `?warm=0` turns it off.
 - The device cache (Cache API) keeps chunks and worldwide tiles you've seen.
 - `?fps=1` shows frames per second, draws, triangles and chunk timings in a
   corner: the way to check it on a phone.
@@ -128,4 +168,6 @@ Place. To add a model: put the glb under `web/` and set `glb` (and `status:
   Calgary from the worldwide tiles alone (`scripts/omt_fixture.py calgary`
   writes OpenMapTiles-style tiles from Overture for that, since a sandbox may
   not reach OpenFreeMap).
-- `node test/city_shots.mjs <dir>`: the city-only mode per baked area.
+- `node test/city_shots.mjs <dir> [--phone]`: the city-only mode per baked
+  area, and what a frame at the map's zoom draws against the budget
+  (`--phone`: the main thread slowed 4×).

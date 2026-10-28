@@ -261,6 +261,107 @@ export function earcut(ring) {
   return out;
 }
 
+// ---- round Itaewon: what the hand-made map already has (opts.exclude)
+//   { b, r }: the plain circles: a building (its centroid) within b world
+//     units of the origin, a road (its middle) within r, is the hand-made map's.
+//   + { env, grid } (handmadeMask, from the hand-made map's own buildings
+//     and roads, world3d.js handmadeSrc): env, how far its buildings reach in each of
+//     env.length directions (from +x toward +z); grid, the cells its
+//     buildings (bit 1) and roads (bit 2) cover. Inside the reach everything
+//     is the hand-made map's; outside it the procedural city fills in, except
+//     what the hand-made map already has there (the same building, a street
+//     it carries on further out), so the two meet with no ring of nothing
+//     between them and nothing twice.
+export function handmade(ex) {
+  if (!ex) return null;
+  if (!ex.env) {
+    const d = (x, z) => Math.hypot(x, z);
+    return {
+      building: (ring, cx, cz) => d(cx, cz) < ex.b,
+      road: pts => d(...pts[pts.length >> 1]) < ex.r,
+      area: ring => d(...ring[0]) < ex.b && d(...ring[ring.length >> 1]) < ex.b,
+      label: (x, z) => d(x, z) < ex.r,
+      inside: () => false,
+    };
+  }
+  const env = ex.env, n = env.length, g = ex.grid;
+  const reach = (x, z) => {
+    const a = ((Math.atan2(z, x) / (2 * Math.PI)) + 1) % 1 * n, i = Math.floor(a) % n, f = a - Math.floor(a);
+    return env[i] * (1 - f) + env[(i + 1) % n] * f;
+  };
+  const inside = (x, z) => Math.hypot(x, z) < reach(x, z);
+  const cell = (x, z, bit) => {
+    const i = Math.floor((x - g.x0) / g.cell), j = Math.floor((z - g.z0) / g.cell);
+    return i >= 0 && j >= 0 && i < g.w && j < g.h && (g.bits[j * g.w + i] & bit) !== 0;
+  };
+  return {
+    // the same building already there: its middle, or most of its corners
+    // (pulled a metre in, so a neighbour sharing a wall doesn't count)
+    building: (ring, cx, cz) => {
+      if (inside(cx, cz) || cell(cx, cz, 1)) return true;
+      let k = 0;
+      for (const [x, z] of ring) { const dx = cx - x, dz = cz - z, l = Math.hypot(dx, dz) || 1, t = Math.min(1, 0.55 / l); if (cell(x + dx * t, z + dz * t, 1)) k++; }
+      return k * 2 > ring.length;
+    },
+    // inside its reach, or a street the hand-made map has drawn: most of
+    // its length in there or on its roads
+    road: pts => {
+      if (inside(...pts[pts.length >> 1])) return true;
+      let on = 0, all = 0;
+      for (let q = 0; q < pts.length - 1; q++) {
+        const [ax, az] = pts[q], [bx, bz] = pts[q + 1], m = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 3));
+        for (let s = 0; s < m; s++) { const t = (s + 0.5) / m, x = ax + (bx - ax) * t, z = az + (bz - az) * t; all++; if (inside(x, z) || cell(x, z, 2)) on++; }
+      }
+      return all > 0 && on * 2 > all;
+    },
+    area: ring => inside(...ring[0]) && inside(...ring[ring.length >> 1]),
+    label: (x, z) => inside(x, z),
+    inside,   // (a park's trees: none on the hand-made map, it has its own)
+  };
+}
+
+// the mask from the hand-made map's footprints and roads, flat ({ bxy, bat,
+// rxy, rat, rhw }: points, where each one starts, roads' half widths): the
+// reach per direction (64 sectors, the furthest footprint corner, widened a
+// sector each way, + 6 u), and a 4 u grid of the cells its buildings (bit 1)
+// and roads (bit 2) cover. Built in the chunk worker, once per city.
+export function handmadeMask({ b, r, src }) {
+  const { bxy, bat, rxy, rat, rhw } = src, N = 64, env = new Float32Array(N);
+  const sector = (x, z) => Math.floor(((Math.atan2(z, x) / (2 * Math.PI)) + 1) % 1 * N) % N;
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (let k = 0; k < bxy.length; k += 2) {
+    const x = bxy[k], z = bxy[k + 1], s = sector(x, z), d = Math.hypot(x, z);
+    if (d > env[s]) env[s] = d;
+    x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z);
+  }
+  for (let k = 0; k < rxy.length; k += 2) { x0 = Math.min(x0, rxy[k]); z0 = Math.min(z0, rxy[k + 1]); x1 = Math.max(x1, rxy[k]); z1 = Math.max(z1, rxy[k + 1]); }
+  const reach = env.map((_, i) => Math.max(env[(i + N - 1) % N], env[i], env[(i + 1) % N]) + 6);
+  const cell = 4; x0 -= 20; z0 -= 20; x1 += 20; z1 += 20;
+  const w = Math.ceil((x1 - x0) / cell), h = Math.ceil((z1 - z0) / cell), bits = new Uint8Array(w * h);
+  const set = (i, j, bit) => { if (i >= 0 && j >= 0 && i < w && j < h) bits[j * w + i] |= bit; };
+  for (let p = 0; p < bat.length - 1; p++) {
+    const ring = [];
+    for (let k = bat[p]; k < bat[p + 1]; k++) ring.push([bxy[k * 2], bxy[k * 2 + 1]]);
+    let a = Infinity, c = Infinity, e = -Infinity, f = -Infinity;
+    for (const [x, z] of ring) { a = Math.min(a, x); c = Math.min(c, z); e = Math.max(e, x); f = Math.max(f, z); set(Math.floor((x - x0) / cell), Math.floor((z - z0) / cell), 1); }
+    for (let i = Math.floor((a - x0) / cell); i <= Math.floor((e - x0) / cell); i++)
+      for (let j = Math.floor((c - z0) / cell); j <= Math.floor((f - z0) / cell); j++)
+        if (pointInRing(x0 + (i + 0.5) * cell, z0 + (j + 0.5) * cell, ring)) set(i, j, 1);
+  }
+  for (let p = 0; p < rat.length - 1; p++) {
+    const hw = rhw[p], k = Math.ceil(hw / cell);
+    for (let q = rat[p]; q < rat[p + 1] - 1; q++) {
+      const ax = rxy[q * 2], az = rxy[q * 2 + 1], bx = rxy[q * 2 + 2], bz = rxy[q * 2 + 3], m = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 2));
+      for (let s = 0; s <= m; s++) {
+        const x = ax + (bx - ax) * s / m, z = az + (bz - az) * s / m, ci = Math.floor((x - x0) / cell), cj = Math.floor((z - z0) / cell);
+        for (let i = ci - k; i <= ci + k; i++) for (let j = cj - k; j <= cj + k; j++)
+          if (Math.hypot(x0 + (i + 0.5) * cell - x, z0 + (j + 0.5) * cell - z) <= hw) set(i, j, 2);
+      }
+    }
+  }
+  return { b, r, env: reach, grid: { cell, x0, z0, w, h, bits } };
+}
+
 // ---- the chunk
 // payload: the parsed tile JSON. opts: { z, x, y, origin:[lat,lng], lod: 0|1,
 // heroes: [{ lat, lng, clear (m), fp: [[lng,lat]...], osm, glb, shape, h, glow }]:
@@ -286,7 +387,7 @@ export function buildChunk(payload, opts) {
       here: Math.floor(fx) === tx && Math.floor(fy) === ty };
   });
   const hides = h => h.glb || (h.landmark && h.shape === "tower");
-  const ex = opts.exclude;
+  const ex = opts.exclude, hm = handmade(ex);
   // a placeholder landmark's own building: the one under its pin (or the nearest within 25 m)
   const boosted = new Map(); // building index -> hero
   for (const h of heroes) {
@@ -308,7 +409,7 @@ export function buildChunk(payload, opts) {
     const pts = [];
     for (let k = 0; k < r.p.length; k += 2) pts.push(toW(r.p[k], r.p[k + 1]));
     if (pts.length < 2) continue;
-    if (ex) { const [mx, mz] = pts[pts.length >> 1]; if (Math.hypot(mx, mz) < ex.r) continue; }
+    if (hm?.road(pts)) continue;
     if (!near && MINOR.has(r.c)) continue; // far away: streets only, no paths
     roads.push({ c: r.c, n: r.n, pts, w: ROAD_W[r.c] ?? 11 });
   }
@@ -334,7 +435,7 @@ export function buildChunk(payload, opts) {
     if (ring.length < 3) continue;
     if (ringArea(ring) < 0) ring = ring.reverse(); // CCW in (x,z): outward normal is (dz,-dx)
     const [cx, cz] = centroid(ring);
-    if (ex && Math.hypot(cx, cz) < ex.b) continue;
+    if (hm?.building(ring, cx, cz)) continue;
     if (heroes.some(h => hides(h) && ((h.osm && b.o === h.osm) || (h.fpW && pointInRing(cx, cz, h.fpW)) || (h.r && Math.hypot(cx - h.x, cz - h.z) < h.r))) ||
         (opts.clearAt && (pointInRing(0, 0, ring) || Math.hypot(cx, cz) < opts.clearAt * SCALE))) {
       stats.hidden++;
@@ -404,12 +505,17 @@ export function buildChunk(payload, opts) {
     const ring = [];
     for (let k = 0; k < a.p.length; k += 2) ring.push(toW(a.p[k], a.p[k + 1]));
     if (ring.length < 3) continue;
-    if (ex && Math.hypot(...ring[0]) < ex.b && Math.hypot(...ring[ring.length >> 1]) < ex.b) continue;
+    if (hm?.area(ring)) continue;
     // (water above parks: a lake often sits inside its park's outline)
     if (a.k === "water" || a.k === "ocean") { Wt.flat(ring, a.k === "ocean" ? 0.085 : 0.09, [1, 1, 1], 0, 0.02); wet.push(ring); continue; }
     if (a.k !== "park" && a.k !== "forest") continue;
     Gr.flat(ring, a.k === "forest" ? 0.05 : 0.06, [1, 1, 1], 0, 1 / STYLE.grassRepeat);
     scatterTrees(trees, ring, a.k === "forest" ? STYLE.tree.forestStep : STYLE.tree.step, 1, key ^ a.p.length);
+  }
+  if (hm) {                   // (nor on the hand-made map)
+    let n = 0;
+    for (let k = 0; k < trees.length; k += 4) if (!hm.inside(trees[k], trees[k + 1])) { trees[n++] = trees[k]; trees[n++] = trees[k + 1]; trees[n++] = trees[k + 2]; trees[n++] = trees[k + 3]; }
+    trees.length = n;
   }
   if (wet.length) {           // no trees on the water
     let n = 0;
@@ -461,7 +567,7 @@ export function buildChunk(payload, opts) {
   for (const l of payload.l || []) {
     if (best.has(l.t) || labels.some(o => o.text === l.t)) continue;
     const [x, z] = toW(l.x, l.y);
-    if (ex && Math.hypot(x, z) < ex.r) continue;
+    if (hm?.label(x, z)) continue;
     labels.push({ text: l.t, x, z, poi: !!l.poi });
   }
 
@@ -470,6 +576,39 @@ export function buildChunk(payload, opts) {
   // round Itaewon the procedural city stands on the hand-made map's hills
   if (ex) for (const g of Object.values(groups)) for (let k = 0; k < g.pos.length; k += 3) g.pos[k + 1] += itaewonHill(g.pos[k], g.pos[k + 2]);
   return { groups, trees: new Float32Array(trees), lamps: new Float32Array(lamps), poles: new Float32Array(poles), lanterns: new Float32Array(lanterns), labels, stats, nightWin };
+}
+
+// What the page draws (citytiles.js): the groups that share a material
+// merged into one geometry, so a chunk costs a handful of draw calls. The
+// four facade classes become one "wall" mesh (one texture array, the class
+// in a byte per vertex, "cls"), and roofs, AC boxes, awnings
+// and kerb clutter (the same plain vertex-coloured material) one "roof".
+// buildChunk's own groups stay as they are: the specs read them.
+const ROOFISH = ["roof", "ac", "awn", "clutter"];
+export function packChunk(out) {
+  const g = out.groups, groups = {};
+  const walls = STYLE.classes.map((c, i) => [g["wall_" + c], i]).filter(([x]) => x);
+  if (walls.length) groups.wall = mergeGroups(walls, true);
+  const roofs = ROOFISH.map(k => [g[k], 0]).filter(([x]) => x);
+  if (roofs.length) groups.roof = mergeGroups(roofs);
+  for (const [k, v] of Object.entries(g)) if (!k.startsWith("wall_") && !ROOFISH.includes(k)) groups[k] = v;
+  return { ...out, groups };
+}
+function mergeGroups(parts, cls = false) {
+  if (parts.length === 1 && !cls) return parts[0][0];
+  let nv = 0, ni = 0;
+  for (const [p] of parts) { nv += p.pos.length / 3; ni += p.idx.length; }
+  const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), col = new Float32Array(nv * 3), seed = new Float32Array(nv);
+  const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni), c = cls ? new Uint8Array(nv) : null;
+  let v = 0, i = 0;
+  for (const [p, k] of parts) {
+    const n = p.pos.length / 3;
+    pos.set(p.pos, v * 3); nrm.set(p.nrm, v * 3); uv.set(p.uv, v * 2); col.set(p.col, v * 3); seed.set(p.seed, v);
+    if (c) c.fill(k, v, v + n);
+    for (let q = 0; q < p.idx.length; q++) idx[i + q] = p.idx[q] + v;
+    v += n; i += p.idx.length;
+  }
+  return c ? { pos, nrm, uv, col, seed, idx, cls: c } : { pos, nrm, uv, col, seed, idx };
 }
 
 // the map's dark outlines: the roof edge and the corners that turn
@@ -485,13 +624,19 @@ function outline(Lb, ring, y0, top) {
 }
 
 // the baked shadow (5.6): the footprint swept along the sun, capped, a dark
-// film just above the ground that everything else draws over
+// film just above the ground that everything else draws over. Only the walls
+// facing the sun's way are swept: whatever another wall's sweep covers lies
+// under the building, or under the cap, or under a sunward sweep (follow a
+// shadow point back toward the sun: it leaves the footprint through a
+// sunward wall), so the film looks the same with a third fewer triangles.
+// (ring: counter-clockwise in x,z, the outward normal (dz, -dx))
 function shadow(S, ring, top) {
   const { dir, kMax, k0, kPerU, y } = STYLE.shadow;
   const k = Math.min(kMax, k0 + top * kPerU), ox = dir[0] * k, oz = dir[1] * k;
   const n = ring.length, c = [1, 1, 1];
   for (let e = 0; e < n; e++) {
     const [ax, az] = ring[e], [bx, bz] = ring[(e + 1) % n];
+    if ((bz - az) * ox - (bx - ax) * oz <= 0) continue;
     S.face([[ax, y, az], [bx, y, bz], [bx + ox, y, bz + oz], [ax + ox, y, az + oz]], null, c, 0, [0, 1, 0]);
   }
   S.flat(ring.map(([x, z]) => [x + ox, z + oz]), y, c, 0);

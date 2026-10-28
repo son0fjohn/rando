@@ -11,7 +11,7 @@ import { makeHumanCharacter, makeHumanCharacterSync, loadHumanTemplate,
          makeAnimatedCharacter } from "./avatar4.js";
 import { staticize, matteify } from "./avatar3.js";
 import { THEME } from "./theme.js";
-import { CityTiles, cityUniforms } from "./citytiles.js";
+import { CityTiles, cityUniforms, lodTree, treePools, fillPools } from "./citytiles.js";
 import { worldHeight, itaewonHill } from "./citygen.js";
 import { startDaylight, lightOverride, sunlight } from "./daylight.js";
 import { lightAt } from "./sun.js";
@@ -402,6 +402,7 @@ export const world3d = {
     gg.computeVertexNormals();
     const ground = new THREE.Mesh(gg, groundMat);
     this.worldRoot.add(ground);
+    this.handGround = ground;
     this.loadImage("world2/road_grass.jpg").then(img => {
       const tex = this.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
       tex.repeat.set(38, 38); // block ≈ 80u of ground per repeat
@@ -463,6 +464,29 @@ export const world3d = {
     }).catch(() => {});
   },
 
+  // The blend's ground. The city's paving follows Itaewon's hills (0.6 under
+  // the hand-made ground: flat, it buried the hand-made map's south side,
+  // where the hills fall below it toward the river, roads and all), and the
+  // hand-made map's grass outside its paved disc is paved with the city's
+  // own paving, lined up with it, so the procedural city round it stands on
+  // the same ground as everywhere else and the two meet with no edge. The
+  // hand-made map on its own (the start screen) keeps its grass.
+  blendGround(on) {
+    const g = this.ground;
+    if (on && g && !this._hillGeo) {
+      const S = 6000, N = 150;   // 40 u: the hills' curve within 0.2 u
+      this._flatGeo = g.geometry;
+      this._hillGeo = new THREE.PlaneGeometry(S, S, N, N);
+      this._hillGeo.rotateX(-Math.PI / 2);
+      this._hillAt = null;
+    }
+    if (g && this._hillGeo) { g.geometry = on ? this._hillGeo : this._flatGeo; this._hillAt = null; }
+    this._hillOn = !!on && !!this._hillGeo;
+    // (the hand-made grass stays grass round the edges: repaving it turned
+    // Namsan, which the baked data has no park outline for, into paving)
+    this.needsRender = true;
+  },
+
   // city mode: pin the map's origin and start streaming chunks around it.
   // Everything already placed against the old origin is placed again. A
   // game can call it mid-session (Manhunt plays on the real streets of its
@@ -476,7 +500,10 @@ export const world3d = {
     if (this._cityStarting) return this._cityStarting;
     let done;
     this._cityStarting = new Promise(r => { done = r; });
-    cityOn = true; WORLD_EDGE = 12000; this.groundLevel = 0;
+    // built ahead out of sight (warmCity)? then it's on the map at once, at its own origin
+    const warm = this.takeWarm(false, lat, lng);
+    if (warm) [lat, lng] = warm.origin;
+    cityOn = true; WORLD_EDGE = 12000; this.groundLevel = 0; this.blendGround(false);
     GEO_CENTER[0] = lat; GEO_CENTER[1] = lng;
     TERRAIN_ANCHORS = null;
     if (this.worldRoot) this.worldRoot.visible = false;
@@ -485,10 +512,10 @@ export const world3d = {
     this.scene.fog = new THREE.Fog(M.fog, 300, 980);
     this.target.set(0, 0, 0); this.applyCamera();
     this.replaceAll();
-    this.heroes ??= (async () => { try { return (await (await fetch("data/heroes.json")).json()).heroes; } catch { return []; } })();
-    const heroes = await this.heroes;
-    const near = heroes.filter(h => metresFrom(h.lat, h.lng, [lat, lng]) < 15000);
-    this.city = new CityTiles(this, { url: CITY_URL, origin: [lat, lng], night: NIGHT, heroes: near, omt: OMT_URL });
+    const near = warm ? warm.heroes : await this.heroesFor(false, [lat, lng]);
+    if (warm) { this.city = warm.city; this.city.show(); }
+    else { this.dropWarm(); this.city = new CityTiles(this, { url: CITY_URL, origin: [lat, lng], night: NIGHT, heroes: near, omt: OMT_URL }); }
+    this.city.heroList = near;
     this.applyLight(this.light ?? light0, true);
     this.cityHeroes(near);
     this._cityStarting = null;
@@ -498,10 +525,11 @@ export const world3d = {
     return this.city;
   },
   startCity(lat, lng) { return this.enterCity(lat, lng); },
-  // back to the hand-baked Itaewon (only when the session didn't start in city mode)
-  exitCity() {
+  // back to the hand-baked Itaewon (only when the session didn't start in city
+  // mode); keep: the city stays built out of sight, to come back at once
+  exitCity(keep = false) {
     if (!this.city || CITY_MODE) return;
-    this.city.dispose(); this.city = null;
+    if (keep) this.stashCity(); else { this.city.dispose(); this.city = null; }
     this.cityHeroes([]);
     this.blending = false;
     cityOn = false; WORLD_EDGE = 1050;
@@ -510,6 +538,7 @@ export const world3d = {
     if (this.worldRoot) this.worldRoot.visible = true;
     for (const L of this.labels) if (L.old) L.hidden = false;
     if (this.ground) this.ground.visible = false;
+    this.blendGround(false);
     this.scene.fog = new THREE.Fog(M.fog, 340, 1250);
     this.applyLight(this.light ?? light0, true);
     this.target.set(0, 0, 0); this.applyCamera();
@@ -530,15 +559,106 @@ export const world3d = {
     if (lat == null || lng == null) return Promise.resolve(null);
     this._spot = [lat, lng];
     if (CITY_MODE) return this.city || this._cityStarting ? Promise.resolve(this.city) : this.enterCity(lat, lng);
-    if (this.holdWorld) { this._wantWorld = [lat, lng]; return Promise.resolve(null); }
-    if (this.itaewonLoading) return this.itaewonLoading.then(() => { const w = this._spot; return w ? this.worldAt(...w) : null; });
+    // (the world can't move yet: the spot's city starts building out of sight meanwhile)
+    if (this.holdWorld) { this._wantWorld = [lat, lng]; this.warmCity(lat, lng); return Promise.resolve(null); }
+    if (this.itaewonLoading) { this.warmCity(lat, lng); return this.itaewonLoading.then(() => { const w = this._spot; return w ? this.worldAt(...w) : null; }); }
     if (metresFrom(lat, lng, ITAEWON) < ITAEWON_KEEP_M) {
       if (cityOn) this.exitCity();
       return this.blendCity();
     }
     if (cityOn && this.city && metresFrom(lat, lng, this.city.origin) < 2500) return Promise.resolve(this.city);
-    if (this.blending) { this.city?.dispose(); this.city = null; this.blending = false; }
+    // a new spot far from the city on screen: that one stays until the new one's near ring is in
+    if (this.city) return this.recentre(lat, lng);
     return this.enterCity(lat, lng);
+  },
+  // A city built ahead, out of sight (citytiles.js hidden): its chunks stream
+  // round the spot while the start screen or the Itaewon map is still up, or
+  // while the old city stays on screen during a re-centre, and enterCity /
+  // blendCity put it on the map at once instead of starting from bare
+  // paving. One at a time; ?warm=0 turns it off.
+  _warm: null,
+  warmCity(lat, lng) {
+    if (CITY_MODE || CITY_Q.get("warm") === "0") return null;
+    const blend = metresFrom(lat, lng, ITAEWON) < ITAEWON_KEEP_M;
+    if (blend && (CITY_Q.get("blend") === "0" || !this.handmadeSrc())) return null;   // (the blend waits for the hand-made map)
+    const w = this._warm;
+    if (w && w.blend === blend && (blend || metresFrom(lat, lng, w.origin) < 2500)) { w.spot = [lat, lng]; return w; }
+    this.dropWarm();
+    const origin = blend ? [...ITAEWON] : [lat, lng];
+    const warm = this._warm = { blend, origin, spot: [lat, lng], city: null };
+    warm.ready = this.heroesFor(blend, origin).then(heroes => {
+      if (this._warm !== warm) return null;
+      warm.heroes = heroes;
+      warm.city = new CityTiles(this, { url: CITY_URL, origin, night: NIGHT, heroes, omt: OMT_URL, exclude: blend ? this.handmadeSrc() : null, hidden: true });
+      return warm;
+    });
+    return warm;
+  },
+  dropWarm() { this._warm?.city?.dispose(); this._warm = null; },
+  // the warm city, if it's the one for this world (and built)
+  takeWarm(blend, lat, lng) {
+    const w = this._warm;
+    if (!w?.city || w.blend !== blend || (!blend && metresFrom(lat, lng, w.origin) >= 2500)) return null;
+    this._warm = null;
+    return w;
+  },
+  // the city on screen goes out of sight, kept as the warm one
+  stashCity() {
+    const c = this.city;
+    if (!c) return;
+    this.dropWarm();
+    c.hide();
+    this._warm = { blend: !!this.blending, origin: c.origin, spot: this._spot ?? c.origin, city: c, heroes: c.heroList ?? [] };
+    this._warm.ready = Promise.resolve(this._warm);
+    this.city = null;
+  },
+  // resolves once the warm city's near ring is in (or after ms)
+  whenWarm(w, ms) {
+    return (w?.ready ?? Promise.resolve(null)).then(() => new Promise(res => {
+      const t0 = performance.now();
+      const iv = setInterval(() => {
+        if (this._warm !== w || !w.city || w.city.nearDone || performance.now() - t0 > ms) { clearInterval(iv); res(this._warm === w && !!w.city?.nearDone); }
+      }, 60);
+    }));
+  },
+  recentre(lat, lng) {
+    const w = this.warmCity(lat, lng);
+    const swap = () => {
+      if (this.blending) { this.city?.dispose(); this.city = null; this.blending = false; }
+      const s = this._spot ?? [lat, lng];
+      return this.enterCity(...s);
+    };
+    if (!w) return swap();
+    return (w.swap ??= this.whenWarm(w, 8000).then(() => this._warm === w ? swap() : this.city));
+  },
+  // what the hand-made map covers, for the blend: its buildings' footprints
+  // and its roads, flat (cheap to hand to the chunk worker, which works out
+  // the mask from them off this thread: citygen.js handmadeMask / handmade).
+  // The procedural city fills in from where the hand-made buildings stop
+  // (not from one circle for all directions), and leaves out what the
+  // hand-made map already has further out.
+  handmadeSrc() {
+    const H = this._handmade;
+    if (!H?.buildings?.length) return null;
+    if (H.src) return H.src;
+    const flat = (list, pts) => {
+      let n = 0; for (const p of list) n += pts(p).length;
+      const xy = new Float32Array(n * 2), at = new Uint32Array(list.length + 1);
+      let k = 0;
+      list.forEach((p, i) => { at[i] = k; for (const [x, z] of pts(p)) { xy[k * 2] = x; xy[k * 2 + 1] = z; k++; } });
+      at[list.length] = k;
+      return { xy, at };
+    };
+    const b = flat(H.buildings, x => x.p), r = flat(H.roads, x => x.p);
+    return (H.src = { b: BLEND.b, r: BLEND.r, src: { bxy: b.xy, bat: b.at, rxy: r.xy, rat: r.at, rhw: Float32Array.from(H.roads, x => (H.wid[x.t] ?? 11) / 2 + 2) } });
+  },
+  // the landmarks for a world (data/heroes.json): round its origin, and for
+  // the blend only those outside the hand-made map (it has its own)
+  heroesFor(blend, origin) {
+    this.heroes ??= (async () => { try { return (await (await fetch("data/heroes.json")).json()).heroes; } catch { return []; } })();
+    return this.heroes.then(hs => hs.filter(h => blend
+      ? metresFrom(h.lat, h.lng, ITAEWON) < 15000 && Math.hypot(...Object.values(geoPosRaw(h.lat, h.lng))) > BLEND.b
+      : metresFrom(h.lat, h.lng, origin) < 15000));
   },
   holdWorld: false,
   // the start screen shows Itaewon (its still image is Itaewon): hand-made
@@ -546,14 +666,20 @@ export const world3d = {
   hold() {
     if (CITY_MODE) return;
     this.holdWorld = true;
-    if (cityOn) this.exitCity();
-    else if (this.blending) { this.city?.dispose(); this.city = null; this.blending = false; this.cityHeroes([]); WORLD_EDGE = 1050; if (this.ground) this.ground.visible = false; this.credit(); }
+    // (the city goes out of sight but stays built: back at once when it lets go)
+    if (cityOn) this.exitCity(true);
+    else if (this.blending) { this.stashCity(); this.blending = false; this.cityHeroes([]); WORLD_EDGE = 1050; if (this.ground) this.ground.visible = false; this.blendGround(false); this.credit(); }
   },
+  // somewhere away from Itaewon the spot's city is given a moment (2.5 s at
+  // most) to get its near ring in before it swaps in, so it arrives built
+  // (the start screen's navy veil covers the wait), not as bare paving
   releaseWorld(spot = null) {
     if (!this.holdWorld) return Promise.resolve(null);
     this.holdWorld = false;
     const w = spot ?? this._wantWorld ?? this._spot; this._wantWorld = null;
-    return w ? this.worldAt(...w) : Promise.resolve(null);
+    if (!w) return Promise.resolve(null);
+    const warm = this.isAway(...w) ? this.warmCity(...w) : null;
+    return warm ? this.whenWarm(warm, 2500).then(() => this.holdWorld ? null : this.worldAt(...(this._spot ?? w))) : this.worldAt(...w);
   },
   // is a spot far enough from Itaewon to get the procedural city of its own?
   isAway(lat, lng) { return !CITY_MODE && metresFrom(lat, lng, ITAEWON) >= ITAEWON_KEEP_M; },
@@ -562,17 +688,17 @@ export const world3d = {
     if (this.blending || this._blendStarting || cityOn || CITY_Q.get("blend") === "0") return this.city;
     this._blendStarting = true;
     try {
-      this.heroes ??= (async () => { try { return (await (await fetch("data/heroes.json")).json()).heroes; } catch { return []; } })();
-      const heroes = (await this.heroes).filter(h => {
-        const d = metresFrom(h.lat, h.lng, ITAEWON);
-        return d < 15000 && Math.hypot(...Object.values(geoPosRaw(h.lat, h.lng))) > BLEND.b;   // (the hand-made map has its own)
-      });
-      if (cityOn || this.blending) return this.city;
+      const warm = this.takeWarm(true);
+      const heroes = warm ? warm.heroes : await this.heroesFor(true);   // (the hand-made map has its own)
+      if (cityOn || this.blending) { if (warm) { this._warm = warm; } return this.city; }
       WORLD_EDGE = ITAEWON_KEEP_M * GEO_SCALE * 1.25;
       if (!this.ground) this.buildCityGround();
       this.ground.visible = true;
       this.groundLevel = -0.6;           // under the hand-made ground where they overlap
-      this.city = new CityTiles(this, { url: CITY_URL, origin: [...ITAEWON], night: NIGHT, heroes, omt: OMT_URL, exclude: BLEND });
+      this.blendGround(true);
+      if (warm) { this.city = warm.city; this.city.show(); }
+      else { this.dropWarm(); this.city = new CityTiles(this, { url: CITY_URL, origin: [...ITAEWON], night: NIGHT, heroes, omt: OMT_URL, exclude: this.handmadeSrc() ?? BLEND }); }
+      this.city.heroList = heroes;
       this.applyLight(this.light ?? light0, true);
       this.blending = true;
       this.cityHeroes(heroes);
@@ -744,6 +870,7 @@ export const world3d = {
     } catch { return; }
     const rand = mulberry32(4207);
     const WID = { primary: 24, secondary: 19, tertiary: 15, residential: 11, pedestrian: 8, unclassified: 11 };
+    this._handmade = { roads: data.roads, wid: WID, buildings: null };   // (the blend's mask: handmadeSrc)
 
     const roadGeos = [];
     const jointGeos = [];
@@ -967,6 +1094,7 @@ export const world3d = {
     try {
       const bdata = await (await fetch("buildings.json")).json();
       fpList = bdata.buildings;
+      this._handmade.buildings = bdata.buildings;
       const wallCols = THEME.walls; // warm desaturated family (style lock)
       // facade family: class comes from the registry bake (b.cls —
       // shop/office/res/mixed from real floors+area+road); buckets are
@@ -1949,12 +2077,18 @@ export const world3d = {
         m.setPosition(x, terrainY(x, z) - 0.3, z);
         tinst[t].push(m);
       }
+      // near the camera the painted models, further out their light
+      // versions (citytiles.js lodTree, as in the city round it): 150
+      // painted trees were most of this map's triangles
+      const rec = { inst: {} }, kinds = [];
       for (const [t, list] of Object.entries(tinst)) {
         if (!list.length) continue;
-        const im = new THREE.InstancedMesh(lib[t].geo, lib[t].mat, list.length);
-        list.forEach((mm, i) => im.setMatrixAt(i, mm));
-        this.worldRoot.add(im);
+        kinds.push(t);
+        const a = rec.inst[t] = new Float32Array(list.length * 16);
+        list.forEach((mm, i) => mm.toArray(a, i * 16));
+        if (!lib[t].lo) { lib[t].lo = lodTree(lib[t].geo, lib[t].mat.map?.image); lib[t].loMat = lib[t].mat.clone(); lib[t].loMat.map = null; lib[t].loMat.emissiveMap = null; lib[t].loMat.vertexColors = true; }
       }
+      this.handTrees = { pools: treePools(this.worldRoot, lib, kinds), recs: [rec], state: {} };
     }
 
     this.needsRender = true;
@@ -2658,14 +2792,28 @@ export const world3d = {
       this.applyCamera();
     }
     for (const fn of this.tickHooks) { try { fn(t, dt); } catch (e) { console.warn("[rando] tick hook", e); } }
+    // the warm city (built ahead, out of sight) streams round its own spot
+    const W = this._warm;
+    if (W?.city) { const [x, z] = W.city.P.fwd(W.spot[1], W.spot[0]); (W.at ??= new THREE.Vector3()).set(x, 0, z); W.city.update(W.at); }
     if (this.city) {
       this.city.update(this.target);
       // the ground and the sky go where you go (snapped: the paving stays put)
       const P = this.groundPeriod || 80;
       this.ground?.position.set(Math.round(this.target.x / P) * P, this.groundLevel ?? 0, Math.round(this.target.z / P) * P);
+      // (round Itaewon the paving follows the hills: heights again when it moves)
+      if (this._hillOn && this.ground && this._hillAt !== `${this.ground.position.x},${this.ground.position.z}`) {
+        const gp = this.ground.position, pos = this._hillGeo.attributes.position;
+        this._hillAt = `${gp.x},${gp.z}`;
+        for (let i = 0; i < pos.count; i++) pos.setY(i, itaewonHill(gp.x + pos.getX(i), gp.z + pos.getZ(i)));
+        pos.needsUpdate = true;
+        this._hillGeo.computeVertexNormals();
+        this._hillGeo.computeBoundingSphere();
+      }
       this.sky?.position.set(this.target.x, 430, this.target.z);
       this.skyCap?.position.set(this.target.x, 1725, this.target.z);
     }
+    // the hand-made map's trees: painted near the camera, light further out
+    if (this.handTrees && this.worldRoot?.visible && fillPools(this.handTrees.pools, this.handTrees.recs, this.camera, this.handTrees.state)) this.needsRender = true;
     this.anchors = this.anchors.filter(a => this.placeAnchor(a));
     this.placeLabels();
     if (this.needsRender && !(this.maxFps && t - this._lastDraw < 1 / this.maxFps - 0.004)) {

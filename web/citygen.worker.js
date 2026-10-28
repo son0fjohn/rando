@@ -5,7 +5,7 @@
 // OpenMapTiles tiles instead (cityomt.js: one z14 tile -> 16 chunks), and a
 // chunk at the edge of a baked area gets the rest of itself from there too.
 import { PMTiles, gunzip } from "./pmtiles.js";
-import { buildChunk, tileToLngLat } from "./citygen.js";
+import { buildChunk, packChunk, handmadeMask, tileToLngLat } from "./citygen.js";
 import { tileStore } from "./citycache.js";
 import { omtChunks, OMT_Z } from "./cityomt.js";
 
@@ -90,6 +90,7 @@ self.onmessage = async e => {
   const m = e.data;
   if (m.type === "init") {
     cfg = m;
+    if (cfg.exclude?.src) cfg.exclude = handmadeMask(cfg.exclude);   // (round Itaewon: the hand-made map's own shape)
     src = new PMTiles(new URL(m.url, m.base).href);
     store = tileStore(m.url);
     try {
@@ -106,11 +107,11 @@ self.onmessage = async e => {
       const { p, cached } = await payload(m.z, m.x, m.y);
       const t1 = performance.now();
       if (!p) { self.postMessage({ type: "chunk", id: m.id, empty: true, t: { fetch: t1 - t0, build: 0 } }); return; }
-      const out = buildChunk(p, { z: m.z, x: m.x, y: m.y, origin: cfg.origin, lod: m.lod, heroes: cfg.heroes, clearAt: cfg.clearAt, exclude: cfg.exclude });
+      const out = packChunk(buildChunk(p, { z: m.z, x: m.x, y: m.y, origin: cfg.origin, lod: m.lod, heroes: cfg.heroes, clearAt: cfg.clearAt, exclude: cfg.exclude }));
       out.stats.src = p.src ?? (p.cut ? "baked+omt" : "baked");
       const t2 = performance.now();
       const xfer = [out.trees.buffer, out.lamps.buffer, out.poles.buffer, out.lanterns.buffer];
-      for (const g of Object.values(out.groups)) xfer.push(...[g.pos, g.nrm, g.uv, g.col, g.seed, g.idx].filter(Boolean).map(a => a.buffer));
+      for (const g of Object.values(out.groups)) xfer.push(...[g.pos, g.nrm, g.uv, g.col, g.seed, g.idx, g.cls].filter(Boolean).map(a => a.buffer));
       self.postMessage({ type: "chunk", id: m.id, ...out, cached, t: { fetch: t1 - t0, build: t2 - t1 } }, xfer);
     } catch (err) {
       self.postMessage({ type: "chunk", id: m.id, error: String(err?.message || err) });

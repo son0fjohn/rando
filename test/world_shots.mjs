@@ -91,6 +91,9 @@ for (const p of PLACES) {
   const S = await open(`${base}/test/city.html?at=${p.lat},${p.lng}&mode=night`, { width: 390, height: 844 });
   await settled(S.pg);
   await sleep(2500);
+  // what one frame at the map's own zoom draws (the phone budget: 150 calls, 300k triangles)
+  row.frame = await S.pg.evaluate(() => { const w = window.__w; w.renderer.render(w.scene, w.camera); const i = w.renderer.info.render; return { calls: i.calls, tris: i.triangles }; });
+  console.log(`    a frame at the map's zoom: ${row.frame.calls} draw calls, ${(row.frame.tris / 1000).toFixed(0)}k triangles`);
   await snap(S.pg, join(OUT, `${p.id}-street.png`));
   await S.pg.evaluate(() => { const w = window.__w; w.observing = true; w.cam.dist = 420; w.cam.elev = 0.62; w.cam.theta = 2.4; w.applyCamera(); });
   await settled(S.pg); await sleep(1800);

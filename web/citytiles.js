@@ -15,7 +15,7 @@
 // chunk, so a chunk you left looks the same when you come back.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
-import { buildChunk, projector, lngLatToTile, FLOOR_U } from "./citygen.js";
+import { buildChunk, packChunk, handmadeMask, projector, lngLatToTile, FLOOR_U } from "./citygen.js";
 import { STYLE } from "./style.js";
 import { PMTiles } from "./pmtiles.js";
 import { THEME } from "./theme.js";
@@ -68,6 +68,23 @@ export function facadeTile(cls) {
 }
 // pixel art stays crisp up close (nearest), mipmapped further away
 function pixelTex(c, srgb = true) { const t = tex(c, srgb); t.magFilter = THREE.NearestFilter; return t; }
+// the four facade tiles as one texture array (one wall material, one draw a
+// chunk), each layer exactly the canvas a pixelTex would upload (flipped as
+// a CanvasTexture is, sRGB, nearest up close, mipmapped further away)
+function pixelArray(canvases) {
+  const W = canvases[0].width, H = canvases[0].height, data = new Uint8Array(W * H * 4 * canvases.length);
+  canvases.forEach((c, l) => {
+    const px = c.getContext("2d").getImageData(0, 0, W, H).data;
+    for (let y = 0; y < H; y++) data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), (l * H + y) * W * 4);
+  });
+  const t = new THREE.DataArrayTexture(data, W, H, canvases.length);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+  t.anisotropy = 4; t.unpackAlignment = 4;
+  t.needsUpdate = true;
+  return t;
+}
 
 const lin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 const glslColor = hex => `vec3(${[16, 8, 0].map(sh => lin(((hex >> sh) & 255) / 255).toFixed(4)).join(", ")})`;
@@ -107,22 +124,29 @@ function cut(sh) {
       }`);
 }
 
-function patch(mat, { facade = false, cells = null, panel = false, darken = true } = {}) {
+// facade: { map, mask } texture arrays (pixelArray) with a layer per class
+// in STYLE.classes order, picked by the vertex's "cls" byte (citygen.js packChunk)
+function patch(mat, { facade = null, panel = false, darken = true } = {}) {
   mat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, cityUniforms);
-    if (cells) sh.uniforms.uCells = { value: new THREE.Vector2(cells[0], cells[1]) };
+    if (facade) Object.assign(sh.uniforms, { uFacade: { value: facade.map }, uFacadeMask: { value: facade.mask } });
     cut(sh);
     sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float seed;\nvarying float vSeed;\nvarying vec2 vCellUv;")
-      .replace("#include <uv_vertex>", "#include <uv_vertex>\nvSeed = seed;\nvCellUv = uv;");
+      .replace("#include <common>", "#include <common>\nattribute float seed;\nvarying float vSeed;\nvarying vec2 vCellUv;" + (facade ? "\nattribute float cls;\nvarying float vCls;" : ""))
+      .replace("#include <uv_vertex>", "#include <uv_vertex>\nvSeed = seed;\nvCellUv = uv;" + (facade ? "\nvCls = cls;" : ""));
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform vec3 uNightWall;\nuniform float uWet;\nuniform vec2 uCells;\nvarying float vSeed;\nvarying vec2 vCellUv;")
+      .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform vec3 uNightWall;\nuniform float uWet;\nvarying float vSeed;\nvarying vec2 vCellUv;" +
+        (facade ? "\nuniform sampler2DArray uFacade;\nuniform sampler2DArray uFacadeMask;\nvarying float vCls;" : ""))
+      .replace("#include <map_fragment>", facade ? `#include <map_fragment>
+        float layer = floor(vCls + 0.5);
+        diffuseColor *= texture(uFacade, vec3(vCellUv, layer));
+        vec2 uCells = ${STYLE.classes.map((c, i) => i < STYLE.classes.length - 1 ? `layer < ${i}.5 ? vec2(${STYLE.cells[c][0]}.0, ${STYLE.cells[c][1]}.0) : ` : `vec2(${STYLE.cells[c][0]}.0, ${STYLE.cells[c][1]}.0)`).join("")};` : "#include <map_fragment>")
       .replace("#include <color_fragment>", "#include <color_fragment>\n" +
         (darken ? "diffuseColor.rgb *= mix(vec3(1.0), uNightWall, uNight);\ndiffuseColor.rgb *= 1.0 - uWet * 0.12;\n"
           : panel ? `diffuseColor.rgb *= mix(1.0, ${STYLE.panel.nightMul.toFixed(2)}, uNight);\n` : ""))
       .replace("#include <emissivemap_fragment>", facade ? `
-        #ifdef USE_EMISSIVEMAP
-          vec4 emC = texture2D( emissiveMap, vEmissiveMapUv );
+        {
+          vec4 emC = texture(uFacadeMask, vec3(vCellUv, layer));
           // the seed carries the building's lit variant (whole part) and its
           // own hash (fraction, rounded back to an integer so nothing flickers)
           float var = floor(vSeed + 0.0005);
@@ -138,10 +162,10 @@ function patch(mat, { facade = false, cells = null, panel = false, darken = true
           ${pick3("cool", STYLE.cool)}
           vec3 wc = h2 < ws ? warm : cool;
           totalEmissiveRadiance = emC.rgb * wc * step(hh, p) * e * uNight;
-        #endif` : panel ? `
+        }` : panel ? `
           totalEmissiveRadiance = vColor * ${STYLE.panel.glow.toFixed(2)} * uNight;` : "#include <emissivemap_fragment>");
   };
-  mat.customProgramCacheKey = () => `city-${facade ? "f" + cells.join("x") : panel ? "p" : "n"}${darken ? "d" : ""}`;
+  mat.customProgramCacheKey = () => `city-${facade ? "fa" : panel ? "p" : "n"}${darken ? "d" : ""}`;
   return mat;
 }
 
@@ -177,7 +201,10 @@ function loadTreeLib(night) {
       t.colorSpace = THREE.SRGBColorSpace; t.flipY = false;
       mat.map = t;
     }
-    return { geo, mat };   // (its night tint: setLight)
+    // and its far version: a fifth of the triangles, the painting baked into vertex colours
+    const lo = lodTree(geo, mat.map?.image);
+    const loMat = mat.clone(); loMat.map = null; loMat.vertexColors = true;
+    return { geo, mat, lo, loMat };   // (their night tint: setLight)
   };
   treeLib = Promise.all([one(STYLE.tree.glb, STYLE.tree.h), one(STYLE.tree.palm, STYLE.tree.palmH)])
     .then(([tree, palm]) => ({ tree, palm }))
@@ -185,9 +212,159 @@ function loadTreeLib(night) {
   return treeLib;
 }
 
+// a tree far from the camera, where the painting is a few pixels: the model
+// clustered on a coarse grid (vertices in a cell merge, triangles that
+// collapse go), each cell's colour the mean of the texture under its
+// vertices. The same silhouette, trunk and all, at a fifth of the triangles.
+export function lodTree(geo, img, N = 20) {
+  const pos = geo.attributes.position, uv = geo.attributes.uv, nrm = geo.attributes.normal;
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox, size = bb.getSize(new THREE.Vector3()), cell = Math.max(size.x, size.y, size.z) / N;
+  let px = null, W = 0, H = 0;
+  try {
+    if (img && uv) {   // (read at 128 px: a cell's colour is a mean anyway, and a 1024 px read is slow on a phone)
+      const c = document.createElement("canvas");
+      c.width = c.height = W = H = 128;
+      c.getContext("2d").drawImage(img, 0, 0, W, H);
+      px = c.getContext("2d").getImageData(0, 0, W, H).data;
+    }
+  } catch { px = null; }
+  const cells = new Map(), acc = [], id = new Int32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const key = Math.floor((x - bb.min.x) / cell) + Math.floor((y - bb.min.y) / cell) * 64 + Math.floor((z - bb.min.z) / cell) * 4096;
+    let k = cells.get(key);
+    if (k === undefined) { k = acc.length / 10; cells.set(key, k); acc.push(0, 0, 0, 0, 0, 0, 0, 0, 0, 0); }
+    id[i] = k;
+    const a = k * 10;
+    acc[a] += x; acc[a + 1] += y; acc[a + 2] += z;
+    if (nrm) { acc[a + 3] += nrm.getX(i); acc[a + 4] += nrm.getY(i); acc[a + 5] += nrm.getZ(i); }
+    if (px) {
+      const u = uv.getX(i) - Math.floor(uv.getX(i)), v = uv.getY(i) - Math.floor(uv.getY(i));
+      const o = ((Math.min(H - 1, v * H | 0)) * W + Math.min(W - 1, u * W | 0)) * 4;
+      acc[a + 6] += px[o] / 255; acc[a + 7] += px[o + 1] / 255; acc[a + 8] += px[o + 2] / 255;
+    } else { acc[a + 6] += 0.42; acc[a + 7] += 0.58; acc[a + 8] += 0.31; }
+    acc[a + 9]++;
+  }
+  const n = acc.length / 10, P = new Float32Array(n * 3), Nn = new Float32Array(n * 3), C = new Float32Array(n * 3);
+  const lin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  for (let k = 0; k < n; k++) {
+    const a = k * 10, m = acc[a + 9];
+    P[k * 3] = acc[a] / m; P[k * 3 + 1] = acc[a + 1] / m; P[k * 3 + 2] = acc[a + 2] / m;
+    const l = Math.hypot(acc[a + 3], acc[a + 4], acc[a + 5]) || 1;
+    Nn[k * 3] = acc[a + 3] / l; Nn[k * 3 + 1] = acc[a + 4] / l; Nn[k * 3 + 2] = acc[a + 5] / l;
+    C[k * 3] = lin(acc[a + 6] / m); C[k * 3 + 1] = lin(acc[a + 7] / m); C[k * 3 + 2] = lin(acc[a + 8] / m);
+  }
+  const src = geo.index ? geo.index.array : null, nt = (src ? src.length : pos.count) / 3, seen = new Set(), I = [];
+  for (let t = 0; t < nt; t++) {
+    const a = id[src ? src[t * 3] : t * 3], b = id[src ? src[t * 3 + 1] : t * 3 + 1], c = id[src ? src[t * 3 + 2] : t * 3 + 2];
+    if (a === b || b === c || a === c) continue;
+    const s = [a, b, c].sort((p, q) => p - q), key = (s[0] * n + s[1]) * n + s[2];
+    if (seen.has(key)) continue;
+    seen.add(key); I.push(a, b, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(P, 3));
+  g.setAttribute("normal", new THREE.BufferAttribute(Nn, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(C, 3));
+  g.setIndex(I);
+  g.computeBoundingSphere();
+  return g;
+}
+
+// The instanced props (trees, street lights, power poles and their lamps,
+// pools and lanterns) pooled across chunks: one InstancedMesh a kind for the
+// whole map instead of one a chunk, refilled when a chunk comes or goes,
+// while one rises, or when the camera moves. Instances outside the view are
+// left out (the pool has no chunk to cull by), and trees far from the camera
+// take the light version (lodTree).
+export const TREE_LOD_U = +(new URLSearchParams(globalThis.location?.search ?? "").get("treelod") || 300);   // world units from the camera (?treelod= to compare)
+export class Pool {
+  constructor(group, geo, mat, { order = 0, src, far = null } = {}) {
+    Object.assign(this, { group, geo, mat, order, src, far, cap: 0, mesh: null, hidden: false });
+    this.setGeo(geo);
+  }
+  setGeo(geo) {
+    this.geo = geo;
+    geo.computeBoundingSphere();
+    this.cy = geo.boundingSphere.center.y; this.r = geo.boundingSphere.radius;
+    if (this.mesh) this.mesh.geometry = geo;
+  }
+  fill(recs, frustum, cam, sphere) {
+    let n = 0;
+    for (const rec of recs) for (const k of this.src) n += rec.inst?.[k] ? rec.inst[k].length / 16 : 0;
+    if (n > this.cap) {
+      const cap = Math.max(64, 2 ** Math.ceil(Math.log2(n)));
+      if (this.mesh) { this.group.remove(this.mesh); this.mesh.dispose(); }
+      this.mesh = new THREE.InstancedMesh(this.geo, this.mat, cap);
+      this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.mesh.matrixAutoUpdate = false; this.mesh.renderOrder = this.order;
+      this.mesh.frustumCulled = false;   // (culled per instance here)
+      this.group.add(this.mesh);
+      this.cap = cap;
+    }
+    if (!this.mesh) return;
+    const out = this.mesh.instanceMatrix.array;
+    let c = 0;
+    for (const rec of recs) {
+      const e = rec.riseE ?? 1;
+      for (const k of this.src) {
+        const a = rec.inst?.[k];
+        if (!a) continue;
+        for (let i = 0; i < a.length; i += 16) {
+          const s = Math.hypot(a[i], a[i + 1], a[i + 2]);
+          sphere.center.set(a[i + 12], a[i + 13] + this.cy * s * e, a[i + 14]);
+          sphere.radius = this.r * s;
+          if (!frustum.intersectsSphere(sphere)) continue;
+          if (this.far !== null) {
+            const d = Math.hypot(a[i + 12] - cam.x, a[i + 14] - cam.z);
+            if (this.far ? d < TREE_LOD_U : d >= TREE_LOD_U) continue;
+          }
+          const o = c * 16;
+          for (let q = 0; q < 16; q++) out[o + q] = a[i + q];
+          if (e < 1) { out[o + 1] *= e; out[o + 5] *= e; out[o + 9] *= e; out[o + 13] *= e; }
+          c++;
+        }
+      }
+    }
+    this.mesh.count = c;
+    this.mesh.visible = c > 0 && !this.hidden;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+  stats() { return this.mesh?.visible ? { draws: 1, tris: (this.geo.index ? this.geo.index.count : this.geo.attributes.position.count) / 3 * this.mesh.count } : { draws: 0, tris: 0 }; }
+  dispose() { if (this.mesh) { this.group.remove(this.mesh); this.mesh.dispose(); } }
+}
+// refill pools from recs ({ inst: { kind: Float32Array of matrices }, riseE })
+// if the camera moved since the last call on this state, or force; true if it did
+export function fillPools(pools, recs, cam, state, force = false) {
+  cam.updateMatrixWorld();
+  const e = state.cam ??= new Float32Array(32);
+  let moved = force;
+  for (let i = 0; i < 16; i++) {
+    if (e[i] !== cam.matrixWorld.elements[i]) { moved = true; e[i] = cam.matrixWorld.elements[i]; }
+    if (e[16 + i] !== cam.projectionMatrix.elements[i]) { moved = true; e[16 + i] = cam.projectionMatrix.elements[i]; }
+  }
+  if (!moved) return false;
+  state.frustum ??= new THREE.Frustum(); state.sphere ??= new THREE.Sphere(); state.m4 ??= new THREE.Matrix4();
+  state.frustum.setFromProjectionMatrix(state.m4.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+  for (const p of Object.values(pools)) p.fill(recs, state.frustum, cam.position, state.sphere);
+  return true;
+}
+// painted trees ({ tree: { geo, mat, lo, loMat }, palm }) near the camera,
+// their light versions further out: two pools a kind
+export function treePools(group, lib, kinds = ["tree", "palm"]) {
+  const out = {};
+  for (const k of kinds) {
+    out[k] = new Pool(group, lib[k].geo, lib[k].mat, { src: [k], far: false });
+    out[k + "Far"] = new Pool(group, lib[k].lo, lib[k].loMat, { src: [k], far: true });
+  }
+  return out;
+}
+
 export class CityTiles {
   // world: world3d (scene, labels, needsRender, loadImage, mirrorBlockTex)
-  constructor(world, { url, origin, night = false, heroes = [], exclude = null, omt = null }) {
+  // hidden: built ahead out of sight (world3d.js warmCity), show() puts it on the map
+  constructor(world, { url, origin, night = false, heroes = [], exclude = null, omt = null, hidden = false }) {
     this.world = world;
     this.url = url;
     this.exclude = exclude;    // round the origin: the hand-made Itaewon map's own (citygen.js)
@@ -197,6 +374,8 @@ export class CityTiles {
     this.heroes = heroes;
     this.group = new THREE.Group();
     this.group.name = "city";
+    this.hidden = hidden;
+    this.group.visible = !hidden;
     world.scene.add(this.group);
     this.chunks = new Map();   // "x,y" -> { lod, meshes, labels, want }
     this.queue = [];           // requests not yet sent
@@ -206,6 +385,8 @@ export class CityTiles {
     this.center = null;
     this.log = [];             // per-chunk timings (tests, the report)
     this.firstRing = null;     // { t0, done }
+    this.t0 = performance.now();
+    this.shownAt = hidden ? null : this.t0;   // when it went on the map
     this.labelNames = new Map();
     cityUniforms.uNight.value = night ? 1 : 0;
     this.makeMaterials(night);
@@ -214,11 +395,12 @@ export class CityTiles {
 
   makeMaterials(night) {
     const M = this.mats = {};
-    // 5.3-5.5 the walls: one material per class, the cream from the vertex colour
-    for (const cls of STYLE.classes) {
-      const f = facadeTile(cls);
-      M["wall_" + cls] = patch(new THREE.MeshLambertMaterial({ map: pixelTex(f.map), emissiveMap: pixelTex(f.mask), emissive: 0xffffff, vertexColors: true }), { facade: true, cells: [f.cols, f.rows] });
-    }
+    // 5.3-5.5 the walls: one material for the four classes (a texture array,
+    // the class per vertex), the cream from the vertex colour
+    const tiles = STYLE.classes.map(facadeTile);
+    M.wall = patch(new THREE.MeshLambertMaterial({ vertexColors: true }), { facade: { map: pixelArray(tiles.map(f => f.map)), mask: pixelArray(tiles.map(f => f.mask)) } });
+    // the roofs, and on them and round them the AC boxes, awnings and kerb
+    // clutter (5.7): one plain vertex-coloured material, one mesh a chunk
     M.roof = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
     // 5.6 outlines and the shadow film
     M.lines = new THREE.LineBasicMaterial({ color: night ? STYLE.outline.night : STYLE.outline.day, transparent: true, opacity: STYLE.outline.opacity });
@@ -228,10 +410,7 @@ export class CityTiles {
     M.shadow = new THREE.MeshBasicMaterial({ color: STYLE.shadow.color, transparent: true, opacity: STYLE.shadow.opacity, depthWrite: false,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
       stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc, stencilZPass: THREE.ReplaceStencilOp });
-    // 5.7 the street pass
-    M.ac = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
-    M.awn = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
-    M.clutter = patch(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    // 5.7 the street pass's sign panels (they glow at night)
     M.panel = patch(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0xffffff }), { panel: true, darken: false });
     // 3 the ground: the lawn tile on parks (the paving plane is the map's own)
     M.grass = patch(new THREE.MeshLambertMaterial({ color: night ? THEME.world.grassNight : THEME.world.grassDay, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }), { darken: false });
@@ -300,19 +479,31 @@ export class CityTiles {
     ].map(([mat, pairs]) => [mat, Object.fromEntries(Object.entries(pairs).map(([k, [d, n]]) => [k, k === "emissiveIntensity" ? [d, n] : [new THREE.Color(d), new THREE.Color(n)]]))]);
     this.light = night ? 0 : 1;
     this.shared = new Set([this.treeGeo, this.trunkGeo, this.postGeo, this.headGeo, this.poleGeo, this.plampGeo, this.lanternGeo, this.poolGeo]);
-    this.treeMeshes = new Set();
+    // the pools (one draw a kind for the whole map; the trees' stand-ins until the painted ones load)
+    const G = this.group;
+    this.pools = {
+      tree: new Pool(G, this.treeGeo, M.tree, { src: ["tree", "palm"] }),
+      trunk: new Pool(G, this.trunkGeo, M.trunk, { src: ["tree", "palm"] }),
+      post: new Pool(G, this.postGeo, M.pole, { src: ["lamp"] }),
+      head: new Pool(G, this.headGeo, M.head, { src: ["lamp"] }),
+      pole: new Pool(G, this.poleGeo, M.ppole, { src: ["pole"] }),
+      plamp: new Pool(G, this.plampGeo, M.plamp, { src: ["plit"] }),
+      pool: new Pool(G, this.poolGeo, M.pool, { src: ["plit"], order: 2 }),
+      lantern: new Pool(G, this.lanternGeo, M.lantern, { src: ["lantern"] }),
+    };
+    this.pools.pool.hidden = this.light >= 0.5;
+    this.poolsDirty = true;
     this.trees = null;
     loadTreeLib(night).then(lib => {
-      if (!lib) return;
+      if (!lib || this.disposed) return;
       this.trees = lib;
-      this.shared.add(lib.tree.geo).add(lib.palm.geo);
-      for (const k of ["tree", "palm"]) this.dn.push([lib[k].mat, { color: [new THREE.Color(0xffffff), new THREE.Color(STYLE.tree.night)] }]);
+      this.shared.add(lib.tree.geo).add(lib.palm.geo).add(lib.tree.lo).add(lib.palm.lo);
+      for (const k of ["tree", "palm"]) for (const m of [lib[k].mat, lib[k].loMat]) this.dn.push([m, { color: [new THREE.Color(0xffffff), new THREE.Color(STYLE.tree.night)] }]);
       this.setLight(this.light, true);
-      for (const im of this.treeMeshes) {   // the stand-ins already on the map become the painted trees
-        const k = im.userData.treeKind;
-        if (!k) { im.visible = false; continue; }   // a stand-in's trunk
-        im.geometry = lib[k].geo; im.material = lib[k].mat;
-      }
+      // the stand-ins become the painted trees: near the camera the models, further out their light versions
+      for (const k of ["tree", "trunk"]) { this.pools[k].dispose(); delete this.pools[k]; }
+      Object.assign(this.pools, treePools(G, lib));
+      this.poolsDirty = true;
       this.world.needsRender = true;
     });
   }
@@ -339,6 +530,7 @@ export class CityTiles {
 
   // no worker (or it failed): the same pipeline on the page
   inline(init, onMsg) {
+    if (init.exclude?.src) init = { ...init, exclude: handmadeMask(init.exclude) };
     const src = new PMTiles(new URL(init.url, init.base).href);
     src.header().then(h => onMsg({ type: "meta", bounds: h.bounds }), err => onMsg({ type: "error", error: String(err) }));
     this.post = async m => {
@@ -347,7 +539,7 @@ export class CityTiles {
         const bytes = await src.tile(m.z, m.x, m.y);
         const t1 = performance.now();
         if (!bytes) return onMsg({ type: "chunk", id: m.id, empty: true, t: { fetch: t1 - t0, build: 0 } });
-        const out = buildChunk(JSON.parse(new TextDecoder().decode(bytes)), { z: m.z, x: m.x, y: m.y, origin: init.origin, lod: m.lod, heroes: init.heroes, clearAt: init.clearAt });
+        const out = packChunk(buildChunk(JSON.parse(new TextDecoder().decode(bytes)), { z: m.z, x: m.x, y: m.y, origin: init.origin, lod: m.lod, heroes: init.heroes, clearAt: init.clearAt, exclude: init.exclude }));
         onMsg({ type: "chunk", id: m.id, ...out, t: { fetch: t1 - t0, build: performance.now() - t1 } });
       } catch (err) { onMsg({ type: "chunk", id: m.id, error: String(err) }); }
     };
@@ -366,7 +558,7 @@ export class CityTiles {
   // call every tick with the camera target
   update(target) {
     const cam = this.world.camera;
-    if (cam) { cityUniforms.uCutA.value.copy(cam.position); cityUniforms.uCutB.value.copy(target); }
+    if (cam && !this.hidden) { cityUniforms.uCutA.value.copy(cam.position); cityUniforms.uCutB.value.copy(target); }
     const [cx, cy, fx, fy] = this.tileAt(target);
     if (!this.center || this.center[0] !== cx || this.center[1] !== cy) {
       this.center = [cx, cy];
@@ -380,9 +572,12 @@ export class CityTiles {
       if (!c.rise) continue;
       const k = Math.min(1, (now - c.rise) / 520), e = 1 - (1 - k) ** 3;
       for (const mesh of c.meshes) { mesh.scale.y = Math.max(0.02, e); mesh.updateMatrix(); }
+      c.riseE = k >= 1 ? 1 : Math.max(0.02, e);
+      if (c.inst) this.poolsDirty = true;
       if (k >= 1) c.rise = 0;
       this.world.needsRender = true;
     }
+    this.fillPools();
   }
 
   retarget(cx, cy, fx, fy) {
@@ -393,7 +588,7 @@ export class CityTiles {
         want.set(`${cx + dx},${cy + dy}`, { x: cx + dx, y: cy + dy, lod: d <= NEAR ? 0 : 1, dist: Math.hypot(cx + dx + 0.5 - fx, cy + dy + 0.5 - fy) });
       }
     }
-    if (!this.firstRing) this.firstRing = { t0: performance.now(), need: new Set([...want.keys()]), done: null };
+    if (!this.firstRing) this.firstRing = { t0: performance.now(), need: new Set([...want.keys()]), near: new Set([...want].filter(([, w]) => !w.lod).map(([k]) => k)), done: null, nearDone: null };
     // drop what's well out of range
     for (const [k, c] of this.chunks) {
       const [x, y] = k.split(",").map(Number);
@@ -448,6 +643,7 @@ export class CityTiles {
         geo.setAttribute("uv", new THREE.BufferAttribute(g.uv, 2));
         geo.setAttribute("color", new THREE.BufferAttribute(g.col, 3));
         geo.setAttribute("seed", new THREE.BufferAttribute(g.seed, 1));
+        if (g.cls) geo.setAttribute("cls", new THREE.BufferAttribute(g.cls, 1));
         geo.setIndex(new THREE.BufferAttribute(g.idx, 1));
         geo.computeBoundingSphere();
         const mesh = new THREE.Mesh(geo, mat);
@@ -460,13 +656,14 @@ export class CityTiles {
     if (m.error) console.warn("city chunk", r.key, m.error);
     if (old) this.drop(r.key);
     // a chunk seen for the first time rises out of the ground (a LOD swap doesn't)
-    else if (!m.empty && !REDUCED) { rec.rise = performance.now(); for (const mesh of rec.meshes) { mesh.scale.y = 0.02; mesh.updateMatrix(); } }
+    else if (!m.empty && !REDUCED) { rec.rise = performance.now(); rec.riseE = 0.02; for (const mesh of rec.meshes) { mesh.scale.y = 0.02; mesh.updateMatrix(); } }
     for (const mesh of rec.meshes) this.group.add(mesh);
     this.chunks.set(r.key, rec);
-    this.log.push({ key: r.key, lod: r.lod, ms: t1 - r.t0, fetch: m.t?.fetch ?? 0, build: m.t?.build ?? 0,
+    this.log.push({ key: r.key, lod: r.lod, at: t1, ms: t1 - r.t0, fetch: m.t?.fetch ?? 0, build: m.t?.build ?? 0,
       mount: performance.now() - t1, cached: m.cached ?? null, buildings: m.stats?.buildings ?? 0, empty: rec.empty });
     if (this.firstRing && !this.firstRing.done) {
-      this.firstRing.need.delete(r.key);
+      this.firstRing.need.delete(r.key); this.firstRing.near.delete(r.key);
+      if (!this.firstRing.near.size && !this.firstRing.nearDone) this.firstRing.nearDone = performance.now() - this.firstRing.t0;
       if (!this.firstRing.need.size) this.firstRing.done = performance.now() - this.firstRing.t0;
     }
     this.world.needsRender = true;
@@ -482,88 +679,63 @@ export class CityTiles {
       if (typeof d === "number") mat[k] = d + (nv - d) * n;
       else mat[k].copy(d).lerp(nv, n);
     }
-    for (const rec of this.chunks.values()) for (const mesh of rec.meshes) if (mesh.userData.pool) mesh.visible = t < 0.5;
+    this.pools.pool.hidden = t >= 0.5;
+    this.poolsDirty = true;
     this.world.needsRender = true;
   }
 
+  // the chunk's props as instance matrices per kind (the pools draw them)
   instanced(rec, m) {
     const gy = this.exclude && this.world.groundY ? (x, z) => this.world.groundY(x, z) : () => 0;
-    const dummy = new THREE.Object3D();
-    const inst = (geo, mat, n) => { const im = new THREE.InstancedMesh(geo, mat, n); im.matrixAutoUpdate = false; return im; };
+    const dummy = new THREE.Object3D(), inst = rec.inst = {};
+    const put = (kind, n, set) => {
+      if (!n) return;
+      const a = inst[kind] = new Float32Array(n * 16);
+      for (let i = 0; i < n; i++) { set(i); dummy.updateMatrix(); dummy.matrix.toArray(a, i * 16); }
+    };
     // 5.9 trees: the painted models (or their stand-ins until they load), palms 7 %
     const t = m.trees, nt = t ? t.length / 4 : 0;
-    if (nt) {
-      const kinds = { tree: [], palm: [] };
-      for (let i = 0; i < nt; i++) kinds[t[i * 4 + 3] ? "palm" : "tree"].push(i);
-      for (const [kind, idx] of Object.entries(kinds)) {
-        if (!idx.length) continue;
-        const lib = this.trees?.[kind];
-        const im = inst(lib ? lib.geo : this.treeGeo, lib ? lib.mat : this.mats.tree, idx.length);
-        im.userData.treeKind = kind;
-        const trunk = lib ? null : inst(this.trunkGeo, this.mats.trunk, idx.length);
-        idx.forEach((i, k) => {
-          dummy.position.set(t[i * 4], gy(t[i * 4], t[i * 4 + 1]), t[i * 4 + 1]);
-          dummy.rotation.set(0, i * 1.7, 0);
-          dummy.scale.setScalar(t[i * 4 + 2]);
-          dummy.updateMatrix();
-          im.setMatrixAt(k, dummy.matrix);
-          trunk?.setMatrixAt(k, dummy.matrix);
-        });
-        rec.meshes.push(im); this.treeMeshes.add(im);
-        if (trunk) { rec.meshes.push(trunk); this.treeMeshes.add(trunk); }
-      }
+    for (const [kind, palm] of [["tree", 0], ["palm", 1]]) {
+      const idx = [];
+      for (let i = 0; i < nt; i++) if (!!t[i * 4 + 3] === !!palm) idx.push(i);
+      put(kind, idx.length, k => {
+        const i = idx[k];
+        dummy.position.set(t[i * 4], gy(t[i * 4], t[i * 4 + 1]), t[i * 4 + 1]);
+        dummy.rotation.set(0, i * 1.7, 0);
+        dummy.scale.setScalar(t[i * 4 + 2]);
+      });
     }
     // 5.8 street lights: a post and a lit head, no pool
-    const L = m.lamps, nl = L ? L.length / 3 : 0;
-    if (nl) {
-      const post = inst(this.postGeo, this.mats.pole, nl), head = inst(this.headGeo, this.mats.head, nl);
-      for (let i = 0; i < nl; i++) {
-        dummy.position.set(L[i * 3], gy(L[i * 3], L[i * 3 + 1]), L[i * 3 + 1]);
-        dummy.rotation.set(0, L[i * 3 + 2] + Math.PI / 2, 0);
-        dummy.scale.setScalar(1);
-        dummy.updateMatrix();
-        post.setMatrixAt(i, dummy.matrix); head.setMatrixAt(i, dummy.matrix);
-      }
-      rec.meshes.push(post, head);
-    }
+    const L = m.lamps;
+    put("lamp", L ? L.length / 3 : 0, i => {
+      dummy.position.set(L[i * 3], gy(L[i * 3], L[i * 3 + 1]), L[i * 3 + 1]);
+      dummy.rotation.set(0, L[i * 3 + 2] + Math.PI / 2, 0);
+      dummy.scale.setScalar(1);
+    });
     // 5.8 power poles; a lamp on every third, with a warm pool at night
     const Pp = m.poles, np = Pp ? Pp.length / 3 : 0;
-    if (np) {
-      const lit = []; for (let i = 0; i < np; i++) if (Pp[i * 3 + 2]) lit.push(i);
-      const pole = inst(this.poleGeo, this.mats.ppole, np);
-      const lamp = lit.length ? inst(this.plampGeo, this.mats.plamp, lit.length) : null;
-      const pool = lit.length ? inst(this.poolGeo, this.mats.pool, lit.length) : null;
-      dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1);
-      for (let i = 0; i < np; i++) {
-        dummy.position.set(Pp[i * 3], gy(Pp[i * 3], Pp[i * 3 + 1]), Pp[i * 3 + 1]);
-        dummy.updateMatrix();
-        pole.setMatrixAt(i, dummy.matrix);
-      }
-      lit.forEach((i, k) => {
-        dummy.position.set(Pp[i * 3], gy(Pp[i * 3], Pp[i * 3 + 1]), Pp[i * 3 + 1]);
-        dummy.updateMatrix();
-        lamp.setMatrixAt(k, dummy.matrix); pool?.setMatrixAt(k, dummy.matrix);
-      });
-      rec.meshes.push(pole);
-      if (lamp) rec.meshes.push(lamp);
-      if (pool) { pool.renderOrder = 2; pool.userData.pool = true; pool.visible = this.light < 0.5; rec.meshes.push(pool); }
-    }
+    const at = (x, z) => { dummy.position.set(x, gy(x, z), z); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1); };
+    put("pole", np, i => at(Pp[i * 3], Pp[i * 3 + 1]));
+    const lit = []; for (let i = 0; i < np; i++) if (Pp[i * 3 + 2]) lit.push(i);
+    put("plit", lit.length, k => at(Pp[lit[k] * 3], Pp[lit[k] * 3 + 1]));
     // 5.8 paper lanterns under the wires
-    const La = m.lanterns, nn = La ? La.length / 3 : 0;
-    if (nn) {
-      const im = inst(this.lanternGeo, this.mats.lantern, nn);
-      dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1);
-      for (let i = 0; i < nn; i++) {
-        dummy.position.set(La[i * 3], La[i * 3 + 1] + gy(La[i * 3], La[i * 3 + 2]), La[i * 3 + 2]);
-        dummy.updateMatrix();
-        im.setMatrixAt(i, dummy.matrix);
-      }
-      rec.meshes.push(im);
-    }
+    const La = m.lanterns;
+    put("lantern", La ? La.length / 3 : 0, i => { at(La[i * 3], La[i * 3 + 2]); dummy.position.y += La[i * 3 + 1]; });
+    if (Object.keys(inst).length) this.poolsDirty = true;
+  }
+
+  // refill the pools: a chunk came or went or is rising, or the camera moved
+  fillPools() {
+    const cam = this.world.camera;
+    if (!cam || this.hidden) return;
+    this._fill ??= {};
+    if (fillPools(this.pools, [...this.chunks.values()], cam, this._fill, this.poolsDirty)) this.world.needsRender = true;
+    this.poolsDirty = false;
   }
 
   label(rec, l) {
     if (!this.world.addLabel) return;
+    if (this.hidden) { (rec.later ??= []).push(l); return; }
     const prev = this.labelNames.get(l.text);
     if (prev && prev.some(p => Math.hypot(p.x - l.x, p.z - l.z) < 260)) return;
     const pos = new THREE.Vector3(l.x, FLOOR_U * 0.8, l.z);
@@ -578,10 +750,9 @@ export class CityTiles {
     if (!c) return;
     for (const mesh of c.meshes) {
       this.group.remove(mesh);
-      this.treeMeshes.delete(mesh);
       if (!this.shared.has(mesh.geometry)) mesh.geometry.dispose();
-      if (mesh.isInstancedMesh) mesh.dispose();
     }
+    if (c.inst) this.poolsDirty = true;
     for (const lr of c.labels) {
       this.world.removeLabel?.(lr);
       const arr = (this.labelNames.get(lr.at.text) || []).filter(p => p !== lr.at);
@@ -591,24 +762,50 @@ export class CityTiles {
     this.world.needsRender = true;
   }
 
+  // out of sight (kept, still streaming round its own spot) and back
+  hide() {
+    if (this.hidden) return;
+    this.hidden = true;
+    this.group.visible = false;
+    for (const rec of this.chunks.values()) {
+      for (const lr of rec.labels) { this.world.removeLabel?.(lr); (rec.later ??= []).push(lr.at); }
+      rec.labels = [];
+    }
+    this.labelNames.clear();
+    this.world.needsRender = true;
+  }
+  show() {
+    if (!this.hidden) return;
+    this.hidden = false;
+    this.shownAt = performance.now();
+    this.group.visible = true;
+    for (const rec of this.chunks.values()) { const later = rec.later ?? []; rec.later = null; for (const l of later) this.label(rec, l); }
+    this.poolsDirty = true;
+    this.world.needsRender = true;
+  }
+  // the chunks round the spot (the near ring) are in: enough to show
+  get nearDone() { return !!this.firstRing?.nearDone; }
+
   stats() {
     const live = [...this.chunks.values()];
     let tris = 0, draws = 0;
     for (const c of live) for (const m of c.meshes) {
       draws++;
       const g = m.geometry;
-      const t = g.index ? g.index.count / 3 : g.attributes.position.count / 3;
-      tris += m.isInstancedMesh ? t * m.count : t;
+      tris += g.index ? g.index.count / 3 : g.attributes.position.count / 3;
     }
+    for (const p of Object.values(this.pools)) { const s = p.stats(); draws += s.draws; tris += s.tris; }
     return {
       chunks: live.length, near: live.filter(c => c.lod === 0).length, draws, tris: Math.round(tris),
-      inflight: this.inflight.size, queued: this.queue.length, firstRingMs: this.firstRing?.done ?? null,
+      inflight: this.inflight.size, queued: this.queue.length, firstRingMs: this.firstRing?.done ?? null, nearRingMs: this.firstRing?.nearDone ?? null, t0: this.t0, shownAt: this.shownAt,
       log: this.log.slice(), error: this.error ?? null, bounds: this.bounds ?? null,
     };
   }
 
   dispose() {
+    this.disposed = true;
     for (const k of [...this.chunks.keys()]) this.drop(k);
+    for (const p of Object.values(this.pools)) p.dispose();
     this.worker?.terminate();
     this.world.scene.remove(this.group);
   }
