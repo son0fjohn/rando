@@ -35,7 +35,8 @@
 //
 // backend.js hands in what needs the server (onboard.start(env)):
 //   env.profile() -> { handle, avatar | null } · env.saveName(name) ·
-//   env.saveAvatar(look) · env.openMap() · env.openStyle() · env.account
+//   env.saveAvatar(look) · env.openMap() · env.toMap() (back from a
+//   party) · env.openStyle() · env.account
 //   ({ providers, user, linked, isGuest, link, signIn }) · env.verify
 //   ({ available, sms, isVerified, phone, send, confirm, signInSend, signInConfirm })
 //   · env.friendParties() -> [{ id, name, hostName, count }]
@@ -296,6 +297,33 @@ export const onboard = {
       document.body.classList.add("world-arrive");
       setTimeout(() => document.body.classList.remove("world-arrive"), 2200);
     } finally { this._going = false; document.getElementById("dive-veil")?.classList.remove("on"); }
+  },
+
+  // Out of a party, every way (party.js exit: Leave, the host ending the
+  // party after the set, the host turning you away): straight onto the
+  // explore map, on you. The room fades to navy and goes (drop), then the
+  // camera pulls out of the party's building onto you (scenery.pullOut, the
+  // dive backwards) as the navy lifts, and the bar slides in. Nothing of
+  // ours over it: no start screen, no Home, no sheet left open (a recap,
+  // the invite), no hint, no toast. Works with the onboarding off too.
+  async toWorld({ code = "", drop = null } = {}) {
+    const veil = $("dive-veil") ?? document.body.appendChild(Object.assign(document.createElement("div"), { id: "dive-veil" }));
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    veil.classList.add("on");
+    await scenery.wait(calm ? 60 : 380);
+    try { await drop?.(); }
+    finally {
+      if (root) { closeSheet(true); hide(); }
+      document.querySelectorAll(".onb-hint, .onb-toast, .onb-in").forEach(el => el.remove());
+      scenery.off();
+      env?.toMap?.();
+      world3d.setPaused?.(false);
+      const fly = scenery.pullOut(code);
+      veil.classList.remove("on");
+      document.body.classList.add("world-arrive");
+      setTimeout(() => document.body.classList.remove("world-arrive"), 2200);
+      await fly;
+    }
   },
 
   // the panel fades and scales away while the camera dives (~1.5 s) from the
@@ -738,7 +766,7 @@ export const onboard = {
     if (!results?.completed || OFF) return;
     if (trackOnce("first_game_finished", { game: g?.id })) {
       // right after the first finished game: party alerts (once)
-      setTimeout(() => { if (!st.notifAsked && !party.current?.launched) { st.notifAsked = true; save(); askPermission("notifications"); } }, 2600);
+      setTimeout(() => { if (!st.notifAsked && party.current === c && !c.launched) { st.notifAsked = true; save(); askPermission("notifications"); } }, 2600);
     }
   },
   setEnded(c) {

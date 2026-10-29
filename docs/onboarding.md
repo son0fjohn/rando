@@ -60,8 +60,14 @@ always opens at night now (`index.html` sets `__RANDO_FIRST_NIGHT` unless
   swaps in under a quick navy blink first (`docs/map_city.md`).
 - Corners: EN / 한 (left), You (Home) and Settings (right).
 - **The lobby** has one way out: back (top left) → "Leave the party?" →
-  the start screen. The host also has the host menu (top right: the game
+  the explore map. The host also has the host menu (top right: the game
   votes sheet with the party settings). No nav bar.
+- **Out of a party**, every way (Leave, the host ending the party after the
+  set's podium, the host turning you away past the cap) lands the same
+  (`party.exit` → `onboard.toWorld`): the room fades to navy, the camera
+  pulls out of the party's building onto you (`scenery.pullOut`, the dive
+  backwards), the bar slides in. Nothing over the map: no host menu, no
+  start screen, no Home, no sheet or toast (`test/leave_rec.mjs`).
 
 ## Path A: an invite link (the main path)
 
