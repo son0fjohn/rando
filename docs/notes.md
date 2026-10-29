@@ -19,8 +19,8 @@ the end of `web/backend.js`; strings in their own block at the end of
 
 ## Leaving a note
 
-- **Leave a note** (glass, right side of the world screen over "Back to me", day / night like
-  the rest) → the verification gate (a stranger-facing feature: a verified
+- **Leave a note** (a round glass 📝 button bottom-right of the world screen, the size of
+  the map's other round buttons, level with the plaza chat's button; day / night like the rest) → the verification gate (a stranger-facing feature: a verified
   number or a Kakao-linked account, `onboard.requireVerified("notes")`; the
   SQL refuses unverified accounts too) → your location (a pre-prompt the
   first time) → the spot check → the composer.

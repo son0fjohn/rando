@@ -145,7 +145,7 @@ casts.push(await cast(P2));
 console.log("\nalice: a text note, a photo, a meme (and a picture the moderator rejects)");
 await use(P1);
 await look(P1, A, 150); await sleep(2500);
-await shot(P1, "01-alice-map", "alice on the street by Itaewon station: the glass Leave a note button");
+await shot(P1, "01-alice-map", "alice on the street by Itaewon station: the round 📝 note button");
 ok(await compose(P1), "Leave a note opens the composer (verified, a public street)");
 await P1.locator(".note-compose .ns-text").fill("call me 010-1234-5678"); await sleep(400);
 ok(await P1.evaluate(() => document.querySelector(".ns-err").textContent.length > 0 && document.querySelector(".ns-post").disabled), "the filter stops a phone number as you type");

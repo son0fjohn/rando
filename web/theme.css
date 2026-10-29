@@ -224,9 +224,11 @@
 
 /* ===================================================================== */
 /* the map: bottom bar, explore, style, NPC dialog, party beacons          */
-/* The bottom bar (map only): full-width deep navy, through the home-indicator
-   area. The map meets it with a straight edge. */
-:root { --nav-h: 58px; --nav-bg: #0F1A3A; --nav-off: #3D4E7A; --nav-on: #ffffff; --nav-gold: var(--color-accent); }
+/* The bottom bar (map only): full-width, through the home-indicator area.
+   The map meets it with a straight edge. Deep navy at night, by day a muted
+   green taken from the day map's grass, blended by --day at sunrise and
+   sunset ("day and night" below); white labels, the active tab gold. */
+:root { --nav-h: 58px; --nav-bg: #0F1A3A; --nav-off: #7A8AB6; --nav-on: #ffffff; --nav-gold: var(--color-accent); }
 #navbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 130; display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch;
   height: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding: 0 8px env(safe-area-inset-bottom); box-sizing: border-box; background: var(--nav-bg);
   touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -234,7 +236,7 @@
 .nav-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 0 4px; margin: 0; border: none; background: none;
   color: var(--nav-off); cursor: pointer; -webkit-tap-highlight-color: transparent; font: 600 11px/13px var(--f-sys); transition: color var(--y-fast); }
 .nav-tab svg { width: 26px; height: 26px; display: block; fill: currentColor; }
-.nav-tab.on { color: var(--nav-on); }
+.nav-tab.on { color: var(--nav-gold); }
 .nav-tab:active svg { transform: scale(.92); }
 /* Host: the beacon's house in a thin gold ring with a soft breathing glow and
    three tiny roof lights. It takes the other icons' 26px of layout (negative
@@ -267,22 +269,27 @@
 @keyframes nav-spin { to { transform: rotate(360deg); } }
 #nav-backtome { position: absolute; right: 12px; bottom: calc(var(--nav-h) + 84px + env(safe-area-inset-bottom)); z-index: 125; }
 #nav-backtome[hidden] { display: none; }
-/* chat sits just above the bar, translucent */
+/* chat sits just above the bar: clear text straight on the map, no box
+   behind a line; light text with a soft dark shadow keeps it readable on the
+   map by day and by night (names in cyan) */
 #pubchat { bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom)); }
-.pub-line { font: 500 var(--fs-small)/19px var(--f-sys); background: var(--g-bg); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur);
-  border-radius: 14px; border: 1px solid var(--g-line); color: var(--g-ink); }
-.pub-line b { color: var(--g-name); }
+.pub-line { font: 600 var(--fs-small)/18px var(--f-sys); padding: 1px 2px; background: none; border: 0; border-radius: 0; -webkit-backdrop-filter: none; backdrop-filter: none;
+  color: #f2f4ff; text-shadow: 0 1px 2px rgba(3, 6, 20, .9), 0 0 5px rgba(3, 6, 20, .7), 0 0 12px rgba(3, 6, 20, .45); }
+.pub-line b { color: #9fe8ff; }
 #pubchat-open, #pubchat-send { border-radius: 50%; background: var(--g-bg); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); border: 1px solid var(--g-line); color: var(--g-ink); }
 #pubchat-input { border-radius: 999px; font: 16px/20px var(--f-sys); background: var(--g-bg-strong); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur);
   border: 1px solid var(--g-line); color: var(--g-ink); }
-/* friends / match chat: small, top right */
-#side-actions { top: calc(12px + env(safe-area-inset-top)); right: 12px; bottom: auto; }
-#side-actions .icon-btn { border-radius: 50%; background: var(--g-bg); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); border: 1px solid var(--g-line); }
+/* friends / match chat: top right, round glass, level with Home on the left
+   (#nav-home, the same size, top and edge distance; test/mapchrome_shots.mjs) */
+#side-actions { top: calc(env(safe-area-inset-top) + 12px); right: 12px; bottom: auto; }
+#side-actions .glass-icon, #nav-home, #notes-leave { width: 42px; height: 42px; }
+#side-actions .glass-icon, #notes-leave { font: 20px/1 var(--f-sys); text-shadow: none; }
 /* the old status box (top left) is gone; its fields stay in the DOM for the
    code that updates them. The map data's license still needs its credit. */
 #zone-chip { display: none !important; }
-#osm-credit { position: absolute; left: 10px; top: calc(6px + env(safe-area-inset-top)); z-index: 100; font: 500 9px/12px var(--f-sys); color: var(--g-ink-faint);
-  text-shadow: var(--g-text-shadow); pointer-events: none; }
+/* (between the round buttons at the top corners) */
+#osm-credit { position: absolute; left: 62px; right: 62px; top: calc(6px + env(safe-area-inset-top)); z-index: 100; font: 500 9px/12px var(--f-sys); color: var(--g-ink-faint);
+  text-align: center; text-shadow: var(--g-text-shadow); pointer-events: none; }
 .tag.ghost { background: var(--g-bg); color: var(--g-name); border: 1px dashed currentColor; font: 600 var(--fs-tag)/14px var(--f-sys); border-radius: 999px;
   -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); }
 /* no bar in the party room */
@@ -684,7 +691,7 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 /* Pixel art stays in the party room's drawing and sprites only.           */
 .y-panel, .y-dlg, .pp-coins, .pt-chan-info, #party-panel:not(.pt-lobby) {
   background: var(--glass-noise), var(--glass-sheen), var(--glass-tint-deep) !important; -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
-  border: 1px solid rgba(255, 255, 255, .28) !important; border-radius: var(--glass-radius) !important; clip-path: none !important; box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, .4); color: var(--g-ink) !important; }
+  border: 1px solid rgba(255, 255, 255, .3) !important; border-radius: var(--glass-radius) !important; clip-path: none !important; box-shadow: var(--glass-shadow); color: var(--g-ink) !important; }
 #party-panel:not(.pt-lobby) { overflow: hidden; }
 /* dialog boxes: glass, white text, the speaker as a small pill */
 .y-dlg { font: 500 var(--fs-body)/23px var(--f-sys); padding: 12px 16px 14px; }
@@ -739,20 +746,21 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .pt-sep::before, .pt-sep::after { height: 1px; background: var(--g-line); }
 .pt-codein { font: 700 20px/28px var(--f-sys); letter-spacing: .4em; }
 .pt-menu .rl-row { border-top: 1px solid var(--g-line); }
-.pt-menu .rl-row button { border-radius: 999px; clip-path: none; font: 600 13px/16px var(--f-sys); background: var(--nav-gold); color: var(--nav-bg); }
+.pt-menu .rl-row button { border-radius: 999px; clip-path: none; font: 600 13px/16px var(--f-sys); background: var(--nav-gold); color: var(--color-on-accent); }
 .pt-mhead .glass-icon, .pt-step .glass-btn, .pt-codeform .glass-btn { width: auto; }
 .pt-step .glass-btn { min-width: 44px; padding: 0 12px; }
 /* the party room screen */
 #party-panel.pt-lobby { background: #0b1022; }
 .pt-top, .pt-bottom { background: var(--glass-noise), var(--glass-sheen), var(--glass-tint-deep); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border: none; }
-.pt-top { border-bottom: 1px solid rgba(255, 255, 255, .22); padding-top: calc(10px + env(safe-area-inset-top)); box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .06); }
+.pt-top { border-bottom: 1px solid rgba(255, 255, 255, .2); padding-top: calc(10px + env(safe-area-inset-top)); }
 .pt-bottom { border-top: 1px solid rgba(255, 255, 255, .22); }
 .pt-top-row > b { font: 700 20px/26px var(--f-sys); }
 .pt-invite { color: rgba(var(--g-ink-rgb), .6); font: 600 12px/16px var(--f-sys); }
 .pt-code-chip span { width: auto; height: auto; padding: 2px 6px; margin-left: 2px; border: none; border-radius: 6px; clip-path: none; background: rgba(var(--g-ink-rgb), .16); color: var(--g-ink); font: 700 15px/20px var(--f-sys); }
-#party-panel.pt-lobby #pt-chat-form input { border-radius: var(--glass-btn-radius); clip-path: none; border: 1px solid rgba(255, 255, 255, .3); background: var(--g-field); color: var(--g-ink); font: 16px/20px var(--f-sys); padding: 9px 14px; box-shadow: inset 0 2px 6px rgba(0, 0, 0, .25); }
-#party-panel.pt-lobby #pt-chat-form button[type=submit] { width: 40px; height: 40px; clip-path: none; font-size: 18px; color: var(--g-ink);
-  background: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05)), var(--glass-tint); border: 1px solid rgba(255, 255, 255, .32); }
+#party-panel.pt-lobby #pt-chat-form input { border-radius: var(--glass-btn-radius); clip-path: none; border: 1px solid rgba(255, 255, 255, .26); background: var(--g-field); color: var(--g-ink); font: 16px/20px var(--f-sys); padding: 9px 14px; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .16); }
+/* the send button is the shared round .glass-icon (the old pixel rule above squared every button in the row) */
+#party-panel.pt-lobby #pt-chat-form button[type=submit] { flex: none; width: 40px; height: 40px; border-radius: 50%; clip-path: none; font-size: 18px; color: var(--g-ink);
+  background: var(--glass-tint); border: 1px solid rgba(255, 255, 255, .3); }
 #pt-chat-feed.pt-chat-float .lc-msg { border: 1px solid var(--g-line); border-radius: 14px; background: var(--g-bg); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); font: 500 14px/18px var(--f-sys); }
 #pt-chat-feed.pt-chat-float .lc-msg b { color: #ffd66b; }
 .pt-board { display: none !important; }            /* the room's high-score board is gone */
@@ -810,9 +818,9 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .pt-next { display: block; font: 500 13px/18px var(--f-sys); color: rgba(var(--g-ink-rgb), .65); padding: 0 4px 6px; min-height: 0; }
 #party-panel.pt-lobby #pt-chat-form { align-items: center; }
 #party-panel.pt-lobby #pt-chat-form .pt-vote { flex: none; width: auto; height: 40px; min-height: 40px; padding: 0 14px; white-space: nowrap; font-size: 14px; clip-path: none; border: 0;
-  background: linear-gradient(180deg, var(--color-accent) 0%, var(--color-accent-deep) 100%); color: var(--color-on-accent); }
+  border-radius: var(--glass-btn-radius); background: linear-gradient(180deg, var(--color-accent) 20%, var(--color-accent-deep) 190%); color: var(--color-on-accent); }
 #party-panel.pt-lobby #pt-chat-form .pt-vote:disabled { opacity: 1; background: rgba(var(--g-ink-rgb), .14); color: rgba(var(--g-ink-rgb), .6); box-shadow: none; text-shadow: none; }
-#party-panel.pt-lobby #pt-chat-form .pt-vote:disabled::before, #party-panel.pt-lobby #pt-chat-form .pt-vote:disabled::after { display: none; }
+#party-panel.pt-lobby #pt-chat-form .pt-vote:disabled::after { display: none; }
 /* the game list sheet: vote (players) / live votes + start (host) */
 .pv-sheet { max-height: 82%; display: flex; flex-direction: column; }
 .pt-picker-head { font: 700 19px/26px var(--f-sys); }
@@ -1039,8 +1047,8 @@ button.dlg-choice.armed { background: rgba(120, 26, 40, .9); color: #fff; }
 /* ---------------------------------------------------------- host controls in a game */
 /* Back (setup screens) top-left, End game top-right; the HUD makes room */
 .hp-ctl { position: absolute; top: calc(8px + env(safe-area-inset-top)); z-index: 30; height: 34px; padding: 0 12px; border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, .3); background: linear-gradient(180deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .03)), var(--glass-tint-deep); color: var(--g-ink); font: 600 13px/1 var(--f-sys); text-shadow: var(--glass-text-shadow);
-  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4), 0 4px 12px rgba(3, 6, 20, .3); cursor: pointer; pointer-events: auto; }
+  border: 1px solid rgba(255, 255, 255, .3); background: var(--glass-tint-deep); color: var(--g-ink); font: 600 13px/1 var(--f-sys); text-shadow: var(--glass-text-shadow);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow-sm); cursor: pointer; pointer-events: auto; }
 .hp-ctl:active { transform: scale(.96); }
 #hp-back { left: 10px; }
 #hp-end { right: 10px; color: #ff8a8a; }
@@ -1108,7 +1116,7 @@ body.hp-setup-wait #game-layer { display: none !important; }
 .ss-preview > button { padding: 0 14px; min-height: 28px; }
 #style-view .cv-mode { top: auto; right: 12px; bottom: 28px; }
 #style-screen .ss-panel { position: relative; z-index: 2; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: -14px; border-radius: 22px 22px 0 0;
-  background: var(--glass-noise), var(--glass-sheen), var(--glass-tint-deep); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-top: 1px solid rgba(255, 255, 255, .28); box-shadow: 0 -10px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255, 255, 255, .3); }
+  background: var(--glass-noise), var(--glass-sheen), var(--glass-tint-deep); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-top: 1px solid rgba(255, 255, 255, .28); box-shadow: 0 -8px 24px rgba(0,0,0,.2); }
 #style-screen #outfit-tabs { display: flex; flex-wrap: nowrap; gap: 2px; padding: 8px 8px 2px; overflow-x: auto; scrollbar-width: none; flex: none; }
 #style-screen #outfit-tabs::-webkit-scrollbar { display: none; }
 #style-screen .look-tab { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 52px; padding: 6px 6px 5px; margin: 0; border: 0; border-radius: 14px; clip-path: none;
@@ -1680,14 +1688,14 @@ body:has(#onb .onb-sheet:not(.out)) .onb-hint { display: none; }
 .pt-floor-wrap .pt-empty-card { position: absolute; left: 50%; top: 50%; z-index: 30; transform: translate(-50%, -50%); width: min(86%, 320px); align-items: center; gap: 8px;
   padding: 18px 16px 14px; font-family: var(--f-sys); animation: none; }
 .pt-empty-card[hidden] { display: none; }
-.pt-empty-card b { font-size: 17px; line-height: 1.3; }
+.pt-empty-card b { font-size: 17px; line-height: 1.3; padding: 0 30px; }
 .pt-empty-card > p { margin: 0; color: var(--g-ink-soft); font-size: 13px; }
 .pt-empty-qr .qr { width: min(52vw, 190px); height: auto; aspect-ratio: 1; border-radius: 12px; display: block; }
 .pt-empty-inv { width: 100%; }
 .pt-empty-card .pt-empty-x { position: absolute; right: 8px; top: 8px; width: 32px; height: 32px; z-index: 1; }
 .pv-t .pv-first { display: inline-block; align-self: flex-start; width: auto; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--color-accent); color: var(--color-on-accent); font: 800 11px var(--f-sys); font-style: normal; vertical-align: 2px; }
 /* the map's way back Home */
-#nav-home { position: absolute; left: 12px; top: calc(env(safe-area-inset-top) + 28px); z-index: 126; width: 42px; height: 42px; }
+#nav-home { position: absolute; left: 12px; top: calc(env(safe-area-inset-top) + 12px); z-index: 126; }
 #nav-home svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
 #nav-home[hidden], body.in-lobby #nav-home, body.onb-on #nav-home { display: none; }
 @media (max-height: 640px) { .onb-stage { height: 38vh; } .onb-stage.home { height: 26vh; } .onb-land-name { font-size: 24px; } .onb-intro-t b { font-size: 26px; } }
@@ -1788,14 +1796,15 @@ body.onb-on #nav-backtome, body.onb-on #npc-dlg, body.onb-on #match-card { visib
 
 /* ================================================================ glass
    Liquid glass: the one surface for every panel, dialog, sheet and button
-   (the start screen's look, shared). Clear, barely tinted glass so what's
-   behind glows through; the blur saturates and lifts it (vivid, never
-   grey); no gloss band but a thin specular rim that catches the light,
-   bright at the top-left and bottom-right and fading along the sides; a
-   faint inner glow, a soft sheen at the very top; a glow under it so it
-   floats. Night: navy glass, white text; day: white frost, navy text ("day
-   and night" below).
-     .glass          a panel (22px corners)
+   (the look of the map's round buttons and the start screen's panel,
+   shared). Very clear frosted glass: a strong blur that keeps what's behind
+   vivid, a barely-there tint, one thin bright 1px rim (a little brighter at
+   the top-left, where the light catches it) and a soft shadow so it floats.
+   No gloss: no shine band across the top, no inner glow, no outer halo.
+   Rounded, not blobby: 18px panels, 12px buttons (10px small ones).
+   Night: navy glass, white text; day: white frost, navy text ("day and
+   night" below).
+     .glass          a panel (18px corners)
      .glass-dialog   a centred card: one question, its buttons
      .glass-sheet    a bottom sheet (rounded on top, scrolls)
      .glass-scrim    the dim layer a dialog or sheet sits on
@@ -1806,6 +1815,8 @@ body.onb-on #nav-backtome, body.onb-on #npc-dlg, body.onb-on #match-card { visib
      .glass-seg      a segmented control (EN / 한, 3D / 2D, Idle / Walk)
      .glass-field    a text field on glass
      .glass-toast    a passing line
+   Screens only place and size these: don't add a gradient, an inset glow or
+   a different rim to one screen's copy.
    On a phone that can't keep up (scenery.js measures, or no backdrop-filter,
    or reduced transparency) it turns "lite": the same look without the live
    blur, a deeper tint instead.
@@ -1814,34 +1825,36 @@ body.onb-on #nav-backtome, body.onb-on #npc-dlg, body.onb-on #match-card { visib
    (fill-mode both/forwards): a glass inside one blurs nothing. Fade the
    glass itself in, with fill-mode backwards. */
 :root {
-  --glass-tint: rgba(15, 26, 58, .45);          /* #0F1A3A at 45% */
-  --glass-tint-deep: rgba(15, 26, 58, .62);     /* dialogs and sheets over a busy room */
+  --glass-tint: rgba(15, 26, 58, .22);          /* (by --day: "day and night" below) */
+  --glass-tint-deep: rgba(15, 26, 58, .42);     /* dialogs and sheets over a busy room */
   --glass-tint-lite: rgba(15, 26, 58, .86);
-  --glass-blur: blur(14px) saturate(190%) brightness(1.15);
-  --glass-radius: 22px;
+  --glass-blur: blur(24px) saturate(180%) brightness(1.04);
+  --glass-radius: 18px;
   --glass-btn-radius: 12px;
-  --glass-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, calc(.1 + .1 * var(--day))) 0%, rgba(255, 255, 255, .03) 26%, rgba(255, 255, 255, .02) 100%);
-  --glass-rim: linear-gradient(140deg, rgba(255, 255, 255, .85) 0%, rgba(255, 255, 255, .28) 18%, rgba(255, 255, 255, .08) 45%, rgba(255, 255, 255, .1) 70%, rgba(255, 255, 255, .45) 100%);
-  --glass-btn-rim: linear-gradient(140deg, rgba(255, 255, 255, .9) 0%, rgba(255, 255, 255, .3) 22%, rgba(255, 255, 255, .1) 55%, rgba(255, 255, 255, .5) 100%);
-  --glass-shadow: 0 28px 70px rgba(3, 6, 20, .55), 0 3px 10px rgba(3, 6, 20, .35);
+  --glass-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .03 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* an even frost (no band at the top): the same faint lift top to bottom */
+  --glass-sheen: linear-gradient(rgba(255, 255, 255, calc(.03 + .03 * var(--day))), rgba(255, 255, 255, calc(.03 + .03 * var(--day))));
+  /* the rim: 1px, bright all round, a touch brighter at the top-left and bottom-right */
+  --glass-rim: linear-gradient(150deg, rgba(255, 255, 255, .62) 0%, rgba(255, 255, 255, .3) 28%, rgba(255, 255, 255, .2) 60%, rgba(255, 255, 255, .38) 100%);
+  --glass-btn-rim: linear-gradient(150deg, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, .24) 35%, rgba(255, 255, 255, .16) 65%, rgba(255, 255, 255, .3) 100%);
+  --glass-shadow: 0 12px 32px rgba(2, 5, 18, .32), 0 1px 3px rgba(2, 5, 18, .2);
+  --glass-shadow-sm: 0 4px 14px rgba(2, 5, 18, .26);
   --glass-text-shadow: 0 1px 2px rgba(3, 6, 20, .55), 0 0 14px rgba(3, 6, 20, .35);
   --glass-lite-fill: linear-gradient(rgba(255, 255, 255, .05), rgba(255, 255, 255, .05)), var(--glass-tint-lite);
 }
 .glass { position: relative; isolation: isolate; overflow: hidden; box-sizing: border-box; border-radius: var(--glass-radius); border: 0; clip-path: none;
   background: var(--glass-noise), var(--glass-sheen), var(--glass-tint);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
-  box-shadow: var(--glass-shadow), 0 0 50px rgba(110, 160, 255, calc(.16 - .08 * var(--day))),
-    inset 0 0 22px rgba(255, 255, 255, calc(.07 + .1 * var(--day))), inset 0 1px 1px rgba(255, 255, 255, .22);
+  box-shadow: var(--glass-shadow);
   color: var(--g-ink); text-shadow: var(--glass-text-shadow); }
-/* the specular rim: a 1px gradient border, light caught on the edges */
+/* the rim: a 1px gradient border, light caught on the edge */
 .glass::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; border-radius: inherit; padding: 1px; background: var(--glass-rim);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 /* slow phones, no backdrop-filter, reduced transparency: the same glass with no live blur, a deeper tint */
 .glass.lite, body.glass-lite .glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-lite-fill); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass, .glass-seg, .glass-toast, .glass-icon { background: var(--glass-lite-fill); } }
 @media (prefers-reduced-transparency: reduce) { .glass, .glass-seg, .glass-toast, .glass-icon { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-lite-fill); } }
-/* a dialog in the middle, a sheet from the bottom: a deeper tint, for text over a busy room or game */
+/* a dialog in the middle, a sheet from the bottom: a little more tint, for text over a busy room or game */
 .glass-dialog, .glass-sheet { background: var(--glass-noise), var(--glass-sheen), var(--glass-tint-deep); }
 :where(.glass-dialog) { width: min(100%, 340px); padding: 22px 18px 18px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
 .glass-dialog { animation: glass-in .26s cubic-bezier(.2, .8, .2, 1) backwards; }
@@ -1850,69 +1863,70 @@ body.onb-on #nav-backtome, body.onb-on #npc-dlg, body.onb-on #match-card { visib
 .glass-dialog .glass-row { display: flex; gap: 10px; }
 .glass-dialog .glass-row > .glass-btn { flex: 1; min-width: 0; }
 :where(.glass-sheet) { width: min(100%, 460px); max-height: 92%; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; padding: 20px 16px calc(env(safe-area-inset-bottom) + 14px); }
-.glass-sheet { box-sizing: border-box; border-radius: 24px 24px 0 0; animation: glass-up .3s cubic-bezier(.2, .8, .2, 1) backwards;
+.glass-sheet { box-sizing: border-box; border-radius: var(--glass-radius) var(--glass-radius) 0 0; animation: glass-up .3s cubic-bezier(.2, .8, .2, 1) backwards;
   /* (it scrolls, so the rim is an inset line here) */
-  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, .5), inset 1px 0 0 rgba(255, 255, 255, .16), inset -1px 0 0 rgba(255, 255, 255, .16), inset 0 0 22px rgba(255, 255, 255, calc(.07 + .1 * var(--day))); }
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, .42), inset 1px 0 0 rgba(255, 255, 255, .2), inset -1px 0 0 rgba(255, 255, 255, .2); }
 .glass-sheet::before { display: none; }
-.glass-scrim { background: rgba(6, 10, 30, calc(.5 - .2 * var(--day))); animation: glass-fade .18s ease backwards; }
+.glass-scrim { background: rgba(6, 10, 30, calc(.42 - .2 * var(--day))); animation: glass-fade .18s ease backwards; }
 @keyframes glass-in { from { opacity: 0; transform: translateY(10px) scale(.97); } }
 @keyframes glass-up { from { opacity: 0; transform: translateY(24px); } }
 @keyframes glass-fade { from { opacity: 0; } }
 
-/* buttons: rounded rectangles, a soft light across the top, the same bright rim; gold is the one primary action */
+/* buttons: rounded rectangles with the same thin rim; gold is the one primary action */
 :where(.glass-btn) { width: 100%; min-height: 56px; padding: 0 22px; font: 700 18px/1.2 var(--f-sys); gap: 8px; }
 .glass-btn { position: relative; isolation: isolate; overflow: hidden; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
   border: 0; border-radius: var(--glass-btn-radius); letter-spacing: -.01em; cursor: pointer; -webkit-tap-highlight-color: transparent; text-decoration: none;
   transition: transform .1s ease, box-shadow .1s ease, filter .1s ease; }
-.glass-btn::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 0; height: 60%; pointer-events: none; border-radius: var(--glass-btn-radius) var(--glass-btn-radius) 0 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .3) 0%, rgba(255, 255, 255, 0) 100%); }
 .glass-btn::after { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; border-radius: inherit; padding: 1px; background: var(--glass-btn-rim);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
-.glass-btn:active:not(:disabled), .glass-btn.pressed { transform: translateY(1px); filter: brightness(.9); }
+.glass-btn:active:not(:disabled), .glass-btn.pressed { transform: translateY(1px); filter: brightness(.92); }
 .glass-btn:disabled { opacity: .55; cursor: default; }
-.glass-btn.gold { color: var(--color-on-accent); text-shadow: 0 1px 0 rgba(255, 255, 255, .35);
-  background: linear-gradient(180deg, var(--color-accent) 0%, var(--color-accent-deep) 100%);
-  box-shadow: var(--gold-shadow), inset 0 -6px 14px rgba(255, 236, 160, .35); }
-.glass-btn.gold:active:not(:disabled), .glass-btn.gold.pressed { box-shadow: 0 3px 10px rgba(245, 163, 0, .28), 0 1px 2px rgba(2, 5, 18, .35), inset 0 -4px 10px rgba(255, 236, 160, .3); }
+/* gold: the accent, a very subtle highlight on its top edge, nothing more */
+.glass-btn.gold { color: var(--color-on-accent); text-shadow: none;
+  background: linear-gradient(180deg, var(--color-accent) 20%, var(--color-accent-deep) 190%);
+  box-shadow: var(--gold-shadow), inset 0 1px 0 rgba(255, 246, 214, .55); }
+.glass-btn.gold::after { background: linear-gradient(150deg, rgba(255, 246, 214, .55), rgba(255, 246, 214, .12) 50%, rgba(255, 246, 214, .3)); }
+.glass-btn.gold:active:not(:disabled), .glass-btn.gold.pressed { box-shadow: 0 2px 8px rgba(245, 163, 0, .22), 0 1px 2px rgba(2, 5, 18, .3), inset 0 1px 0 rgba(255, 246, 214, .4); }
 .glass-btn.clear { color: var(--g-ink); text-shadow: var(--glass-text-shadow);
-  background: linear-gradient(rgba(255, 255, 255, calc(.1 + .14 * var(--day))), rgba(255, 255, 255, calc(.06 + .1 * var(--day)))), var(--glass-tint);
-  box-shadow: 0 6px 16px rgba(2, 5, 18, calc(.3 - .15 * var(--day))), inset 0 0 14px rgba(255, 255, 255, .06); }
-.glass-btn.clear::before { background: linear-gradient(180deg, rgba(255, 255, 255, .14) 0%, rgba(255, 255, 255, 0) 100%); }
-.glass-btn.clear:active:not(:disabled), .glass-btn.clear.pressed { box-shadow: 0 2px 6px rgba(2, 5, 18, .3), inset 0 0 14px rgba(255, 255, 255, .06); }
+  background: linear-gradient(rgba(255, 255, 255, calc(.08 + .12 * var(--day))), rgba(255, 255, 255, calc(.08 + .12 * var(--day)))), var(--glass-tint);
+  box-shadow: 0 2px 10px rgba(2, 5, 18, calc(.18 - .1 * var(--day))); }
+.glass-btn.clear:active:not(:disabled), .glass-btn.clear.pressed { box-shadow: 0 1px 4px rgba(2, 5, 18, .2); }
+.glass-btn:focus { outline: none; }
+.glass-btn:focus-visible, .glass-icon:focus-visible { outline: 2px solid rgba(var(--color-accent-rgb), .75); outline-offset: 2px; }
 .glass-btn.sm { min-height: 44px; font-size: 16px; padding: 0 16px; }
 .glass-btn.xs { min-height: 36px; font-size: 14px; padding: 0 12px; border-radius: 10px; }
-.glass-btn.xs::before { border-radius: 10px 10px 0 0; }
 .glass-btn.fit { width: auto; }
 .glass-btn.col { flex-direction: column; gap: 2px; }
 .glass-btn.col small { font-size: 12.5px; font-weight: 600; opacity: .75; }
 .glass-btn > svg { width: 20px; height: 20px; flex: none; }
-/* a round glass button (the start screen's corners, the lobby's back and host menu, close) */
+/* a round glass button (the map's Home, Friends and note buttons, the start screen's corners, the lobby's back and host menu, close) */
 :where(.glass-icon) { width: 44px; height: 44px; }
-.glass-icon { position: relative; overflow: hidden; display: grid; place-items: center; padding: 0; border-radius: 50%; color: var(--g-ink); cursor: pointer; -webkit-tap-highlight-color: transparent;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05)), var(--glass-tint); border: 1px solid rgba(255, 255, 255, .32);
-  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: 0 6px 18px rgba(3, 6, 20, calc(.35 - .15 * var(--day))), inset 0 1px 0 rgba(255, 255, 255, .5); font: 700 15px/1 var(--f-sys); }
+.glass-icon { position: relative; overflow: hidden; box-sizing: border-box; display: grid; place-items: center; padding: 0; border-radius: 50%; color: var(--g-ink); cursor: pointer; -webkit-tap-highlight-color: transparent;
+  background: var(--glass-tint); border: 1px solid rgba(255, 255, 255, calc(.3 + .2 * var(--day)));
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow-sm); font: 700 15px/1 var(--f-sys); text-shadow: var(--glass-text-shadow); }
+.glass-icon:focus:not(:focus-visible) { outline: none; }
 .glass-icon:active { transform: translateY(1px) scale(.96); }
 .glass-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .glass-icon.sm { width: 36px; height: 36px; } .glass-icon.sm svg { width: 18px; height: 18px; }
 body.glass-lite .glass-icon { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-tint-lite); }
 /* a segmented control: the chosen segment is a solid pill in the text colour */
 .glass-seg { display: inline-flex; align-items: center; padding: 3px; box-sizing: border-box; border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .04)), var(--glass-tint); border: 1px solid rgba(255, 255, 255, .28);
-  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: 0 4px 14px rgba(3, 6, 20, calc(.3 - .15 * var(--day))), inset 0 1px 0 rgba(255, 255, 255, .4); }
+  background: var(--glass-tint); border: 1px solid rgba(255, 255, 255, calc(.28 + .2 * var(--day)));
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow-sm); }
 .glass-seg > button { min-width: 40px; min-height: 30px; margin: 0; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--g-ink-soft);
   font: 700 13px/1 var(--f-sys); text-shadow: var(--glass-text-shadow); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background .2s, color .2s; }
 .glass-seg > button.on { background: var(--g-ink); color: rgb(var(--g-shade-rgb)); text-shadow: none; }
 body.glass-lite .glass-seg { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-tint-lite); }
 /* a text field on glass */
 :where(.glass-field) { width: 100%; min-height: 50px; padding: 0 14px; font: 600 17px var(--f-sys); }
-.glass-field { box-sizing: border-box; border-radius: var(--glass-btn-radius); border: 1px solid rgba(255, 255, 255, .3);
-  background: var(--g-field); color: var(--g-ink); outline: none; box-shadow: inset 0 2px 6px rgba(0, 0, 0, calc(.3 - .2 * var(--day))); }
+.glass-field { box-sizing: border-box; border-radius: var(--glass-btn-radius); border: 1px solid rgba(255, 255, 255, calc(.26 + .2 * var(--day)));
+  background: var(--g-field); color: var(--g-ink); outline: none; box-shadow: inset 0 1px 2px rgba(0, 0, 0, calc(.16 - .1 * var(--day))); }
 .glass-field::placeholder { color: var(--g-ink-faint); }
-.glass-field:focus { border-color: rgba(var(--color-accent-rgb), .8); box-shadow: inset 0 2px 6px rgba(0, 0, 0, .2), 0 0 0 3px rgba(var(--color-accent-rgb), .25); }
-/* a passing line */
-.glass-toast { box-sizing: border-box; padding: 10px 16px; border-radius: 999px; color: var(--g-ink); text-shadow: var(--glass-text-shadow); font: 600 14px/18px var(--f-sys);
-  background: linear-gradient(180deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .03)), var(--glass-tint-deep); border: 1px solid rgba(255, 255, 255, .3);
-  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, .4); }
+.glass-field:focus { border-color: rgba(var(--color-accent-rgb), .8); box-shadow: 0 0 0 3px rgba(var(--color-accent-rgb), .22); }
+/* a passing line (rounded like a panel when it wraps) */
+.glass-toast { box-sizing: border-box; padding: 10px 16px; border-radius: 16px; color: var(--g-ink); text-shadow: var(--glass-text-shadow); font: 600 14px/18px var(--f-sys);
+  background: var(--glass-tint-deep); border: 1px solid rgba(255, 255, 255, calc(.3 + .2 * var(--day)));
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow); }
 body.glass-lite .glass-toast { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-tint-lite); }
 
 /* ================================================================ the start screen
@@ -2088,18 +2102,23 @@ body.world-arrive #label-layer, body.world-arrive #beacon-layer, body.world-arri
   /* glass fills: navy at night, white frost with a faint blue by day */
   --glass-tint: rgba(calc(15 + 221 * var(--day)), calc(26 + 217 * var(--day)), calc(58 + 197 * var(--day)), calc(.22 + .1 * var(--day)));
   --glass-tint-lite: rgba(calc(15 + 217 * var(--day)), calc(26 + 214 * var(--day)), calc(58 + 194 * var(--day)), calc(.86 + .04 * var(--day)));
-  --glass-tint-deep: rgba(calc(15 + 221 * var(--day)), calc(26 + 217 * var(--day)), calc(58 + 197 * var(--day)), calc(.62 + .18 * var(--day)));
+  --glass-tint-deep: rgba(calc(15 + 221 * var(--day)), calc(26 + 217 * var(--day)), calc(58 + 197 * var(--day)), calc(.42 + .2 * var(--day)));
   --g-bg: rgba(calc(18 + 218 * var(--day)), calc(24 + 219 * var(--day)), calc(52 + 203 * var(--day)), calc(.56 + .08 * var(--day)));
   --g-bg-strong: rgba(calc(14 + 226 * var(--day)), calc(20 + 225 * var(--day)), calc(46 + 209 * var(--day)), calc(.8 + .06 * var(--day)));
   --g-line: rgba(255, 255, 255, calc(.16 + .44 * var(--day)));
   --g-shadow: 0 10px 32px rgba(4, 8, 24, calc(.35 - .17 * var(--day)));
-  --glass-shadow: 0 22px 60px rgba(2, 5, 18, calc(.5 - .3 * var(--day))), 0 2px 8px rgba(2, 5, 18, calc(.3 - .18 * var(--day)));
+  --glass-shadow: 0 12px 32px rgba(2, 5, 18, calc(.32 - .18 * var(--day))), 0 1px 3px rgba(2, 5, 18, calc(.2 - .1 * var(--day)));
+  --glass-shadow-sm: 0 4px 14px rgba(2, 5, 18, calc(.26 - .14 * var(--day)));
   /* the gold button pops on both: an amber glow at night, a crisp darker edge and drop by day */
-  --gold-shadow: 0 8px 22px rgba(245, 163, 0, calc(.32 - .08 * var(--day))), 0 2px 5px rgba(70, 35, 0, calc(.3 + .1 * var(--day))), 0 0 0 1px rgba(170, 100, 0, calc(.1 + .35 * var(--day)));
-  /* the nav bar: solid navy at night, a light bar by day */
-  --nav-bg: rgb(calc(15 + 229 * var(--day)), calc(26 + 221 * var(--day)), calc(58 + 197 * var(--day)));
-  --nav-on: var(--g-ink);
-  --nav-off: rgb(calc(61 + 61 * var(--ink-t)), calc(78 + 57 * var(--ink-t)), calc(122 + 46 * var(--ink-t)));
+  --gold-shadow: 0 4px 14px rgba(245, 163, 0, calc(.22 - .06 * var(--day))), 0 1px 3px rgba(70, 35, 0, calc(.28 + .1 * var(--day))), 0 0 0 1px rgba(170, 100, 0, calc(.1 + .35 * var(--day)));
+  /* the nav bar: solid navy (#0F1A3A) at night; by day a muted green, the
+     day map's dominant green (its trees and park grass, ~#40785A) taken
+     darker and a little greyer (#304F3D) so the labels hold >= 4.5:1; the
+     two blend with --day. White icons and labels (the idle ones a soft
+     blue-grey at night, a pale green by day), the active tab gold. */
+  --nav-bg: rgb(calc(15 + 33 * var(--day)), calc(26 + 53 * var(--day)), calc(58 + 3 * var(--day)));
+  --nav-on: #ffffff;
+  --nav-off: rgb(calc(122 + 78 * var(--day)), calc(138 + 80 * var(--day)), calc(182 + 24 * var(--day)));
   /* the NPC dialog box: navy paper at night, light glass by day */
   --dlg-navy: rgba(calc(14 + 226 * var(--ink-t)), calc(30 + 215 * var(--ink-t)), calc(74 + 181 * var(--ink-t)), calc(.86 + .06 * var(--ink-t)));
   --dlg-ink: var(--g-ink);
@@ -2110,16 +2129,20 @@ body.world-arrive #label-layer, body.world-arrive #beacon-layer, body.world-arri
 }
 
 /* ================================================================ Notes (web/notes.js, docs/notes.md)
-   Short notes on the map: the markers, the "Leave a note" button, the
+   Short notes on the map: the markers, the round 📝 button, the
    composer sheet, an opened note, the two confirms. Every surface is the
    shared glass (.glass, .glass-sheet, .glass-dialog, .glass-btn, .glass-icon,
    .glass-seg, .glass-field, .glass-toast) and follows --day like the rest of
    the map's chrome; these rules only place and size things. */
 #notes-layer { position: absolute; inset: 0; z-index: 88; pointer-events: none; overflow: hidden; }
 body:not(.notes-on) #notes-layer, body:not(.notes-on) #notes-leave { display: none; }
-/* right, over "Back to me" (the plaza chat has the bottom left) */
-#notes-leave { position: absolute; right: 12px; bottom: calc(var(--nav-h) + 132px + env(safe-area-inset-bottom)); z-index: 125; gap: 6px; }
-#notes-leave svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linejoin: round; stroke-linecap: round; }
+/* leave a note: a round glass 📝 bottom-right, the size of the map's other
+   round buttons, level with the plaza chat's button bottom-left (the chat's
+   lines sit above that row, "Back to me" above it on the right). With the
+   chat's field open, the row stops short of it. */
+#notes-leave { position: absolute; right: 12px; bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom)); z-index: 125; }
+body.notes-on #pubchat-row { padding-right: 50px; }
+#pubchat-form, #pubchat-input { min-width: 0; }
 /* a marker: a small glass disc with the kind's icon, a stem to the street */
 .note-pin { position: absolute; left: 0; top: 0; width: 34px; height: 34px; margin: -34px 0 0 -17px; padding: 0; border: 0; background: none;
   pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; transform-origin: 50% 100%; }
