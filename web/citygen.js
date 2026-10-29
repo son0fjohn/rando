@@ -428,6 +428,7 @@ export function buildChunk(payload, opts) {
     return best;
   };
   const acC = linRGB(rgb(STYLE.ac.day));
+  const centres = [];   // (where each building stands: tests and ?fps=1 count what's round you)
   for (let i = 0; i < (payload.b || []).length; i++) {
     const b = payload.b[i];
     let ring = [];
@@ -443,6 +444,7 @@ export function buildChunk(payload, opts) {
     }
     if (!near && b.k === "s") continue;
     stats.buildings++;
+    centres.push(cx, cz);
     const s = seedOf(b, i, key);
     const area = Math.abs(ringArea(ring));
     const road = nearestRoad(cx, cz, STYLE.awning.roadWithin);
@@ -575,7 +577,7 @@ export function buildChunk(payload, opts) {
   for (const [k, b] of Object.entries(B)) { const o = b.out(); if (o) groups[k] = o; }
   // round Itaewon the procedural city stands on the hand-made map's hills
   if (ex) for (const g of Object.values(groups)) for (let k = 0; k < g.pos.length; k += 3) g.pos[k + 1] += itaewonHill(g.pos[k], g.pos[k + 2]);
-  return { groups, trees: new Float32Array(trees), lamps: new Float32Array(lamps), poles: new Float32Array(poles), lanterns: new Float32Array(lanterns), labels, stats, nightWin };
+  return { groups, trees: new Float32Array(trees), lamps: new Float32Array(lamps), poles: new Float32Array(poles), lanterns: new Float32Array(lanterns), centres: new Float32Array(centres), labels, stats, nightWin };
 }
 
 // What the page draws (citytiles.js): the groups that share a material

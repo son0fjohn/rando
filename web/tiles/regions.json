@@ -1,0 +1,11 @@
+{
+ "comment": "Region archives (scripts/bake_city_tiles.py): where web/tiles/cities.pmtiles has no chunk (or only part of one), the chunk worker reads the first region whose box holds the chunk and has it.",
+ "regions": [
+  {"id": "kr-seoul", "label": "Seoul", "file": "kr-seoul.pmtiles", "bbox": [126.76, 37.41, 127.19, 37.72], "bytes": 19818004},
+  {"id": "kr-capital-w", "label": "Incheon, Bucheon, Gimpo", "file": "kr-capital-w.pmtiles", "bbox": [126.55, 37.2, 126.77, 37.8], "bytes": 8596161},
+  {"id": "kr-capital-s", "label": "Gwangmyeong, Anyang, Gwacheon, Seongnam, Bundang, Suwon", "file": "kr-capital-s.pmtiles", "bbox": [126.75, 37.2, 127.35, 37.42], "bytes": 9935940},
+  {"id": "kr-capital-e", "label": "Hanam, Guri, Namyangju", "file": "kr-capital-e.pmtiles", "bbox": [127.18, 37.41, 127.35, 37.8], "bytes": 2865729},
+  {"id": "kr-capital-n", "label": "Goyang, Uijeongbu", "file": "kr-capital-n.pmtiles", "bbox": [126.75, 37.71, 127.19, 37.8], "bytes": 2081644},
+  {"id": "kr-busan", "label": "Busan", "file": "kr-busan.pmtiles", "bbox": [128.9, 35.04, 129.23, 35.3], "bytes": 5206498}
+ ]
+}

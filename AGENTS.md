@@ -48,12 +48,15 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   procedural city centred where you are (`world3d.worldAt`; `?city=tiles`
   the city only, what Manhunt plays on): `web/citytiles.js`
   (chunks of buildings, roads, parks and water streamed round the camera
-  from `web/tiles/cities.pmtiles`, built in `web/citygen.worker.js` off
+  from `web/tiles/cities.pmtiles`, then the whole-city region archives
+  in `web/tiles/regions.json` (Seoul and the capital area, central Busan: Overture's
+  ML footprints, which OpenStreetMap lacks for most Korean houses), built
+  in `web/citygen.worker.js` off
   `web/citygen.js`, cached on the device by `web/citycache.js`; LOD rings,
   lit windows at night, the see-through cut), `web/pmtiles.js` (the archive
   reader), `web/data/heroes.json` (hand-made landmark glbs and where they
   stand); baked by `scripts/fetch_overture.py` + `scripts/bake_city_tiles.py`
-  for the areas in `scripts/city_areas.json`; anywhere else the worldwide
+  for the areas and regions in `scripts/city_areas.json`; anywhere else the worldwide
   OpenFreeMap tiles, `web/cityomt.js` + `web/mvt.js` (OpenMapTiles -> our
   chunks, in the worker); landmarks and their placeholders in
   `web/data/heroes.json`; `?fps=1` for a phone's numbers,

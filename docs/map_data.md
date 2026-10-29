@@ -8,10 +8,11 @@ The engine side is in `docs/map_city.md`; the look is `assets/world/STYLE.md`.
 | What | Where | Source | Licence | In the app |
 |---|---|---|---|---|
 | Buildings, roads, parks, water | the baked areas (`scripts/city_areas.json`) | **Overture Maps** buildings + transportation (release 2026-10-21.0, from S3, no key) — OpenStreetMap plus, in Korea, the East-Asia footprints dataset (Zenodo 8174931, CC BY 4.0); in Canada Microsoft ML footprints | ODbL 1.0 | `web/tiles/cities.pmtiles` (`scripts/fetch_overture.py` → `scripts/bake_city_tiles.py`) |
+| Buildings, roads, parks, water | whole cities: Seoul and the capital area round it (Incheon, Bucheon, Seongnam, Goyang…), central Busan (`city_areas.json` "regions") | **Overture Maps**, the same release and themes: in Korea most houses come from the East-Asia footprints dataset, not OpenStreetMap | ODbL 1.0 (+ CC BY 4.0 for the East-Asia footprints) | `web/tiles/kr-*.pmtiles`, listed in `web/tiles/regions.json` |
 | Buildings, roads, parks, water | anywhere else | **OpenFreeMap** (OpenMapTiles schema, OpenStreetMap data), z14 tiles read in the browser | ODbL (data), OpenMapTiles credit (CC BY 4.0 design) | `web/cityomt.js` + `web/mvt.js`, in the chunk worker |
 | Heights / floors, Korea | Itaewon (baked), the other Korean areas (to do, see below) | **VWorld** (국토교통부): `LT_C_SPBD` (도로명주소 건물: floors) today, `LT_C_BLDGINFO` (GIS건물통합정보: height, floors, use) next | 공공누리 제1유형 (attribution) | `scripts/fetch_bldg_registry.py`, `scripts/merge_heights.py` → `web/buildings.json` |
 | Heights, Itaewon | the hand-made map | **Google Photorealistic 3D Tiles**, measured (`scripts/capture_heights_reference.py`, `web/data/itaewon_heights.json`) | Google Maps Platform terms — see "Google, Naver, Kakao" | `scripts/merge_heights.py` picks per building |
-| Heights, elsewhere | everywhere | Overture/OSM `height` or `building:levels` where present, else **estimated** from the building's class, footprint area and its neighbours (`scripts/bake_city_tiles.py`, `web/cityomt.js`) | — | every building carries its source |
+| Heights, elsewhere | everywhere | Overture/OSM `height` or `building:levels` where present (in Seoul 13 % of buildings), else **estimated** from the building's class, footprint area and its neighbours (`scripts/bake_city_tiles.py`, `web/cityomt.js`) | — | every building carries its source |
 | Landmarks | `web/data/heroes.json` | hand-placed (lat/lng from OSM), models ours | — | `web/world3d.js` `cityHeroes` |
 
 Every building in `web/buildings.json` and in the baked chunks carries a
@@ -41,6 +42,30 @@ What the licences ask, and where we show it:
   OpenStreetMap`; the OpenFreeMap part is optional and we show OpenMapTiles
   and OpenStreetMap. It is free, no key, commercial use allowed, no SLA: the
   baked archive is the safety net for the key areas.
+
+## How much each source has (Seoul, 2026-10-21 release)
+
+Within 500 m of a spot, Overture's buildings by where the footprint came
+from, and what OpenStreetMap alone (all the worldwide tiles carry) leaves:
+
+| Spot | Overture | from OSM | ML (East-Asia) | in the chunk round the spot: all / OSM |
+|---|---|---|---|---|
+| Gangnam Station | 646 | 580 | 66 | 229 / 223 |
+| Hongdae | 1759 | 1721 | 38 | 410 / 407 |
+| Mangwon-dong | 939 | 276 | 663 | 287 / 22 |
+| Seongsu-dong | 795 | 539 | 256 | 296 / 179 |
+| Sinchon | 776 | 701 | 75 | 183 / 150 |
+| Jongno 3-ga | 1347 | 1221 | 126 | 321 / 249 |
+| Mullae-dong | 412 | 237 | 175 | 116 / 60 |
+| South of Itaewon (Ichon) | 414 | 85 | 329 | 158 / 22 |
+| Huam-dong | 1274 | 886 | 388 | 351 / 270 |
+
+Commercial centres are well mapped in OpenStreetMap; residential blocks
+often aren't (a chunk of houses can have one or two OSM buildings). Hence
+the region archives for Korean cities, and the Overture building tiles
+(`docs/map_city.md` "Worldwide Overture buildings") for everywhere else.
+VWorld's building register would add floors for nearly every building in
+Korea (below); Google 3D Tiles are only used for Itaewon's measured heights.
 
 ## Google, Naver, Kakao
 

@@ -1,6 +1,8 @@
-Rando city tiles (cities.pmtiles) — data credits and licence
+Rando city tiles (cities.pmtiles, and the region archives listed in
+regions.json: kr-seoul, kr-capital-w/-s/-e/-n, kr-busan .pmtiles) — data
+credits and licence
 
-This archive is a derivative database of:
+These archives are derivative databases of:
 
 - OpenStreetMap: © OpenStreetMap contributors, Open Database License 1.0
   (ODbL). https://www.openstreetmap.org/copyright
@@ -23,8 +25,10 @@ This archive is a derivative database of:
 Modifications: footprints simplified, heights estimated where the sources
 have none (type, area, neighbours), roads clipped into 1/4-tile chunks.
 
-The archive is published under ODbL 1.0 and is downloadable as is from
-https://randoirl.vercel.app/tiles/cities.pmtiles. Anywhere the archive
-doesn't cover, the app reads OpenFreeMap's worldwide tiles
+The archives are published under ODbL 1.0 and are downloadable as they are
+from https://randoirl.vercel.app/tiles/cities.pmtiles and
+https://randoirl.vercel.app/tiles/<file> for each file named in
+https://randoirl.vercel.app/tiles/regions.json. Anywhere they don't
+cover, the app reads OpenFreeMap's worldwide tiles
 (https://openfreemap.org, © OpenMapTiles https://openmaptiles.org/, data
 from OpenStreetMap).
