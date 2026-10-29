@@ -37,8 +37,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   every system permission dialog), `web/analytics.js` (privacy-safe events
   -> `017_events.sql`), `web/qr.js` + `web/vendor/qrcode.js`, `web/stats.html`
   (the admin-only dashboard). `?onb=0` turns it off.
-- **Map chrome:** `web/backend.js` (auth, presence, the navy bottom bar on
-  the world screen only: Explore / Host / Style, flat against the map; Host
+- **Map chrome:** `web/backend.js` (auth, presence, the bottom bar on
+  the world screen only (navy at night, a muted green by day, by `--day`):
+  Explore / Host / Style, flat against the map; Host
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
   the style screen, NPC dialog),
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
@@ -217,6 +218,7 @@ node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV ->
 node test/maskoff_shots.mjs <dir> [--bots=4]   # Mask Off round the table with real characters: first person from two seats, a pick by tapping someone, a raised card, the card on the table, looking round / glide back, the end; a 10-player party seats 8 + the seat bar
 node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (round the table, real characters: a pick, a card, an answer, Same, Go deeper, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
+node test/mapchrome_shots.mjs <dir> [--prefix=after] [--lights=night,sunset,day] [--widths=320,375,390,430]   # the map's round buttons (Home / Friends aligned, measured; the 📝 note button clear of the chat, the bar and Back to me), the plaza chat (no boxes), the bar's colour + label contrast, by night / sunset / day
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/layout_shots.mjs <dir> [games] [--secs=40]   # every game's screens, and where the header / pill / action area / dialog box sit on each (layout.json)
 node test/howto_rec.mjs <dir> [games] [--ko]   # each host explaining their game: in full the first time, one line + How to play the next (FFMPEG=... for mp4s)

@@ -91,6 +91,7 @@ function system(kind) {
 
 export function toast(text, ms = 2600) {
   const root = document.getElementById("onb") ?? document.body;
+  document.querySelectorAll(".onb-toast").forEach(o => o.remove());   // one at a time: a new line replaces the last
   const el = document.createElement("div");
   el.className = "onb-toast glass-toast";
   el.textContent = text;

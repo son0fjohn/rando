@@ -46,7 +46,6 @@ const ICON = {
   photo: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3.2L9 5h6l1.8 2.5H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5a1 1 0 0 1 1-1z"/><circle class="ln" cx="12" cy="13" r="3.4"/></svg>`,
   meme: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path class="ln" d="M7 8h10M7 16h10"/><circle class="ln" cx="9.5" cy="12" r=".9"/><circle class="ln" cx="14.5" cy="12" r=".9"/></svg>`,
   star: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>`,
-  pen: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4.2L15.6 5.2a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.2 19z"/><path d="M13.5 7.3l3.2 3.2"/></svg>`,
   up: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5l7 8h-4.5v6h-5v-6H5z"/></svg>`,
   down: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19l-7-8h4.5V5h5v6H19z"/></svg>`,
   x: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
@@ -105,14 +104,14 @@ function ensureLayer() {
   leaveBtn = document.createElement("button");
   leaveBtn.type = "button";
   leaveBtn.id = "notes-leave";
-  leaveBtn.className = "glass-btn clear sm fit";
-  leaveBtn.innerHTML = `${ICON.pen}<span></span>`;
+  leaveBtn.className = "glass-icon";             // round, bottom-right of the map (theme.css "Notes")
+  leaveBtn.innerHTML = `<span aria-hidden="true">📝</span>`;
   leaveBtn.addEventListener("click", e => { e.stopPropagation(); leave(); });
   world3d.frame.appendChild(leaveBtn);
   label();
   world3d.tickHooks.push(place);
 }
-function label() { if (leaveBtn) leaveBtn.querySelector("span").textContent = t("notes.leave"); }
+function label() { if (leaveBtn) { leaveBtn.setAttribute("aria-label", t("notes.leave")); leaveBtn.title = t("notes.leave"); } }
 
 // the map's visible ground, as a lat/lng box: the screen's corners cast onto the street
 function viewBox() {
