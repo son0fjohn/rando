@@ -64,6 +64,7 @@ export const scenery = {
     if (on || !world3d.camera) return;
     on = true;
     world3d.hold?.();          // Itaewon's own map while the start screen is up
+    world3d.mapView = false;   // the drift's own wide view (no haze round a player, looking straight at the target)
     document.body.classList.add("scenery");
     // full screen, not the map's phone-shaped frame
     world3d.resize();
@@ -101,6 +102,7 @@ export const scenery = {
     this.live = false;
     document.body.classList.remove("scenery-live");
     world3d.camera.fov = 50; world3d.camera.updateProjectionMatrix();
+    world3d.mapView = true;    // the map's own view again (the haze closes in round you)
     document.body.classList.remove("scenery");
     world3d.resize();
     world3d.recenter();
@@ -179,8 +181,8 @@ export const scenery = {
     const T = { x: to.x, y: to.y ?? terrainY(to.x, to.z), z: to.z };
     const P0 = cam.position.clone();
     const L0 = w.target.clone(); L0.y += CHAR_H + 4;
-    const P1 = { x: T.x + d.dist * Math.sin(d.theta) * Math.cos(d.elev), y: T.y + d.dist * Math.sin(d.elev), z: T.z + d.dist * Math.cos(d.theta) * Math.cos(d.elev) };
-    const L1 = { x: T.x, y: T.y + CHAR_H + 4, z: T.z };
+    // (onto the map's own view: looking a little ahead of the spot)
+    const { pos: P1, look: L1 } = w.camPose ? w.camPose(T, d, true) : { pos: { x: T.x + d.dist * Math.sin(d.theta) * Math.cos(d.elev), y: T.y + d.dist * Math.sin(d.elev), z: T.z + d.dist * Math.cos(d.theta) * Math.cos(d.elev) }, look: { x: T.x, y: T.y + CHAR_H + 4, z: T.z } };
     w.target.set(T.x, T.y, T.z);       // (the city streams round where we're going)
     return new Promise(res => {
       let s0 = 0;
@@ -194,6 +196,7 @@ export const scenery = {
         w.needsRender = true;
         if (k >= 1) {
           Object.assign(w.cam, d);
+          w.mapView = true;    // (landed: the map's view, so the next frame doesn't jump)
           w.applyCamera();
           diving = () => {};
           res(true);

@@ -9,3 +9,4 @@ export const normalizeAvatar3 = a => a;
 export const avatarThumb3 = () => "";
 export const SKIN_RGB = {}; export const HAIR_RGB = {}; export const IRIS3_HEX = {};
 export const loadFaceDecals = async () => {};
+export const staticize = x => x, matteify = x => x;   // (web/world3d.js imports them)

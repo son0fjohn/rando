@@ -88,7 +88,9 @@ function place() {
     const dist = cam.position.distanceTo(b.pos);
     const k = Math.max(0.55, Math.min(1.3, 260 / dist));
     let x = (v.x * 0.5 + 0.5) * W, y = (-v.y * 0.5 + 0.5) * H;
-    const on = v.z < 1 && x > 10 && x < W - 10 && y > 10 && y < H - 120;
+    // past the map's haze it isn't on the map: pinned to the edge, pointing the way
+    const inRange = (world3d.rangeFade?.(b.ground) ?? 1) > 0.02;
+    const on = inRange && v.z < 1 && x > 10 && x < W - 10 && y > 10 && y < H - 120;
     if (!on) {
       // off screen: clamp to the edge, small, pointing the way
       let dx = v.x, dy = -v.y;

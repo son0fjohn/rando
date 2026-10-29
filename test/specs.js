@@ -24,7 +24,7 @@ import { STYLE, styleClass, wallIndex } from "/web/style.js";
 import { decodeMVT, ringArea as mvtArea } from "/web/mvt.js";
 import { omtChunks } from "/web/cityomt.js";
 import { setDay, getDay } from "/web/daylight.js";
-import { sunAltitude, lightAt, phaseOf } from "/web/sun.js";
+import { sunAltitude, sunPosition, sunVector, lightAt, phaseOf, localClock, zoneAt, shadowSweep, SHADOW_CLASSIC } from "/web/sun.js";
 import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
 import { EVENTS, clean, track } from "/web/analytics.js";
 import { starterLook, e164, otpWait, otpError, OTP, needsSetup, ESSENTIALS, cycleLook } from "/web/onbkit.js";
@@ -1786,6 +1786,72 @@ group("Day and night — the real sun over the place the map shows, one light fo
   setDay(.73); const v = getComputedStyle(document.documentElement).getPropertyValue("--day").trim();
   ok(getDay() === .73 && v === "0.73" && document.documentElement.classList.contains("is-day"), "the light goes on the page root as --day");
   setDay(0);
+}
+group("Day and night by place — the sun's height and direction, the place's own clock, the light from the place on screen");
+{
+  const SEOUL = [37.5346, 126.9946], CALGARY = [51.0447, -114.0631], r = Math.PI / 180;
+  // suncalc's own test vector (its test.js): 2013-03-05 00:00 UTC at 50.5° N 30.5° E
+  const sc = sunPosition(50.5, 30.5, new Date("2013-03-05T00:00:00Z"));
+  ok(Math.abs(sc.azimuth * r - -2.5003175907168385) < 1e-9 && Math.abs(sc.altitude * r - -0.7000406838781611) < 1e-9, `the same numbers as suncalc (azimuth ${(sc.azimuth * r).toFixed(6)} rad, altitude ${(sc.altitude * r).toFixed(6)} rad)`);
+  // against NOAA's general solar position formulas (fractional year, equation of time,
+  // declination; the sun's direction from the hour angle as an east/north/up vector)
+  const noaa = (lat, lng, d) => {
+    const y0 = Date.UTC(d.getUTCFullYear(), 0, 1), doy = Math.floor((d - y0) / 864e5) + 1, hr = (d - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())) / 36e5;
+    const g = 2 * Math.PI / (d.getUTCFullYear() % 4 ? 365 : 366) * (doy - 1 + (hr - 12) / 24);
+    const eqt = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    const dec = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+    const ha = ((hr * 60 + eqt + 4 * lng) / 4 - 180) * r, phi = lat * r;
+    const E = -Math.cos(dec) * Math.sin(ha), N = Math.cos(phi) * Math.sin(dec) - Math.sin(phi) * Math.cos(dec) * Math.cos(ha), U = Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(ha);
+    return { alt: Math.asin(U) / r, bearing: (Math.atan2(E, N) / r + 360) % 360 };
+  };
+  let wa = 0, wb = 0, n = 0;
+  for (const [lat, lng] of [SEOUL, CALGARY, [35.66, 139.7], [-33.87, 151.21], [64.15, -21.94], [1.29, 103.85]]) {
+    for (let h = 0; h < 24 * 365; h += 29) {
+      const d = new Date(Date.UTC(2026, 0, 1) + h * 36e5), a = sunPosition(lat, lng, d), b = noaa(lat, lng, d);
+      if (b.alt < 1) continue;
+      n++; wa = Math.max(wa, Math.abs(a.altitude - b.alt));
+      if (b.alt < 70) { const db = Math.abs(a.bearing - b.bearing); wb = Math.max(wb, Math.min(db, 360 - db)); }
+    }
+  }
+  ok(n > 600 && wa < 0.5 && wb < 1.5, `altitude and direction agree with NOAA's formulas over a year in six cities (${n} daytime moments: worst ${wa.toFixed(2)}° high, ${wb.toFixed(2)}° round)`);
+  // known moments: noon sun due south at Seoul, sunrise in the east and sunset in the west at the equinox
+  const noon = sunPosition(...SEOUL, new Date("2026-06-21T03:30:00Z"));
+  ok(Math.abs(noon.bearing - 180) < 8 && Math.abs(noon.altitude - (90 - 37.53 + 23.44)) < 1.5, `Seoul, 12:30 KST at midsummer: the sun due south (${noon.bearing.toFixed(0)}°) at ${noon.altitude.toFixed(1)}° (90 − 37.5 + 23.4)`);
+  const rise = sunPosition(...SEOUL, new Date("2026-03-20T21:35:00Z")), set = sunPosition(...SEOUL, new Date("2026-03-21T09:45:00Z"));
+  ok(Math.abs(rise.altitude) < 3 && Math.abs(rise.bearing - 90) < 4 && Math.abs(set.altitude) < 3 && Math.abs(set.bearing - 270) < 4, `the equinox: up in the east (${rise.bearing.toFixed(0)}°) and down in the west (${set.bearing.toFixed(0)}°)`);
+  const sv = sunVector(...SEOUL, new Date("2026-06-21T03:30:00Z"));
+  ok(Math.abs(Math.hypot(...sv) - 1) < 1e-9 && sv[2] > 0.1 && sv[1] > 0.9, "…as a direction on the map: up and to the south (+z)");
+  // the place's own clock: zones by lookup (summer time from the browser's own data), else the longitude
+  const at = new Date("2026-10-29T03:00:00Z");
+  ok(localClock(...SEOUL, at).text === "12:00" && localClock(...CALGARY, at).text === "21:00" && localClock(...CALGARY, new Date("2026-12-29T03:00:00Z")).text === "20:00",
+    "noon in Seoul is 21:00 the evening before in Calgary (20:00 in winter): each place's own clock, never the phone's");
+  ok(zoneAt(35.1, 129.06) === "Asia/Seoul" && zoneAt(35.66, 139.7) === "Asia/Tokyo" && zoneAt(53.54, -113.49) === "America/Edmonton" && localClock(48.85, 2.35, at).zone === "UTC+0",
+    "Busan, Tokyo, Edmonton by the lookup; anywhere else the longitude's zone (Paris: UTC+0)");
+  // the baked shadows: away from the sun, longer as it sinks, the classic sweep with no sun
+  const s59 = shadowSweep({ altitude: 59, bearing: 180 }), s20 = shadowSweep({ altitude: 20, bearing: 270 });
+  ok(Math.abs(s59[0]) < 1e-9 && s59[1] < 0 && Math.abs(Math.hypot(...s59) - Math.hypot(...SHADOW_CLASSIC)) < 1e-9 && s20[0] > 0 && Math.abs(s20[1]) < 1e-9 && Math.hypot(...s20) > 2 * Math.hypot(...s59) && shadowSweep(null) === SHADOW_CLASSIC,
+    "shadows fall away from the sun (noon sun in the south: north; evening sun in the west: east, longer), the classic sweep at night");
+  // the map reads the light from the place on screen, not from the phone (its clock or its zone)
+  const { world3d, geoInv } = await import("/web/world3d.js");
+  const saved = { hours: Date.prototype.getHours, tz: Date.prototype.getTimezoneOffset };
+  let phoneAsked = 0;
+  Date.prototype.getHours = function () { phoneAsked++; return saved.hours.call(this); };
+  Date.prototype.getTimezoneOffset = function () { phoneAsked++; return saved.tz.call(this); };
+  globalThis.__sunClock = () => Date.parse("2026-10-29T03:00:00Z");     // 12:00 in Seoul
+  world3d.target.set(0, 0, 0); world3d.sunTick(true);
+  const i0 = world3d.sunInfo();
+  ok(world3d.light === 1 && i0.clock === "12:00" && Math.abs(i0.lat - 37.5346) < 1e-6, `at 12:00 KST the map over Itaewon is in daylight (${i0.alt.toFixed(0)}° up, bearing ${i0.bearing.toFixed(0)}°)`);
+  ok(i0.key[2] > 0.5 && i0.shadow === shadowSweep({ altitude: i0.alt, bearing: i0.bearing }).map(v => v.toFixed(3)).join(","), "…the key light comes from the south, where the sun is, and the shadows are swept from it");
+  world3d.target.set(900, 0, -600); world3d.sunTick(true);
+  const i1 = world3d.sunInfo(), [la, ln] = geoInv(900, -600);
+  ok(Math.abs(i1.lat - la) < 1e-9 && Math.abs(i1.lng - ln) < 1e-9 && i1.lat > i0.lat && i1.lng > i0.lng, "the sun is read over the spot on screen (panned north-east: that spot's lat/lng)");
+  globalThis.__sunClock = () => Date.parse("2026-10-29T13:00:00Z");     // 22:00 in Seoul
+  world3d.sunTick(true);
+  ok(world3d.light === 0 && getDay() === 0 && world3d.sunInfo().shadow === SHADOW_CLASSIC.map(v => v.toFixed(3)).join(","), "at 22:00 KST it's night, the glass goes dark (--day 0), shadows back to the classic moonlight sweep");
+  ok(lightAt(...CALGARY, new Date("2026-10-29T03:00:00Z")) === 0 && lightAt(...CALGARY, new Date("2026-10-29T18:00:00Z")) === 1, "…and the same moments over Calgary are the other way round (21:00 and 12:00 there)");
+  ok(phoneAsked === 0, "the phone's clock and time zone were never asked");
+  Date.prototype.getHours = saved.hours; Date.prototype.getTimezoneOffset = saved.tz;
+  delete globalThis.__sunClock; world3d.target.set(0, 0, 0);
 }
 
 group("Onboarding — English and Korean, guest setup, invite links, analytics");

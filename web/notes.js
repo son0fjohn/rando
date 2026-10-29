@@ -37,7 +37,7 @@ import { lngLatToTile, tileToLngLat } from "./citygen.js";
 import { omtChunks, OMT_Z } from "./cityomt.js";
 
 const Q = () => new URLSearchParams(location.search);    // read fresh: the tests move ?devlat with history.replaceState
-const HUB_DIST = 270;           // camera distance (world units) past which a spot's notes fold into one hub
+const HUB_DIST = 200;           // camera distance (world units) past which a spot's notes fold into one hub (the zoom goes to 230)
 const LIFT = 7;                 // a marker floats this far over the street (world units)
 const REFRESH_MS = 1200;
 
@@ -113,16 +113,20 @@ function ensureLayer() {
 }
 function label() { if (leaveBtn) { leaveBtn.setAttribute("aria-label", t("notes.leave")); leaveBtn.title = t("notes.leave"); } }
 
-// the map's visible ground, as a lat/lng box: the screen's corners cast onto the street
+// the map's visible ground, as a lat/lng box: the screen's corners cast onto
+// the street, cut where the map's haze is total (nothing past it shows)
 function viewBox() {
   const cam = world3d.camera, V = cam.position.constructor;
-  const y0 = world3d.target.y;
+  const T = world3d.target, y0 = T.y;
+  const R = world3d.rangeOn ? world3d.fogR : Infinity;
   const pts = [];
   for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0], [0, 1], [-1, 0.6], [1, 0.6]]) {
     const d = new V(sx, sy, 0.5).unproject(cam).sub(cam.position).normalize();
     let k = d.y < -0.02 ? (y0 - cam.position.y) / d.y : 1800;
     k = Math.min(k, 1800);
     const p = cam.position.clone().add(d.multiplyScalar(k));
+    const r = Math.hypot(p.x - T.x, p.z - T.z);
+    if (r > R) { p.x = T.x + (p.x - T.x) * R / r; p.z = T.z + (p.z - T.z) * R / r; }
     pts.push(world3d.ungeo(p.x, p.z));
   }
   let s = Math.min(...pts.map(p => p[0])), n = Math.max(...pts.map(p => p[0]));
@@ -238,10 +242,12 @@ const lift = p => { p.y += LIFT; return p; };
 function put(el, pos, cam, W, H, kMin = 0.62) {
   const v = pos.clone().project(cam);
   const x = (v.x * 0.5 + 0.5) * W, y = (-v.y * 0.5 + 0.5) * H;
-  if (v.z > 1 || x < -30 || x > W + 30 || y < -30 || y > H + 30) { el.style.display = "none"; return; }
+  const fade = world3d.rangeFade?.(pos) ?? 1;    // past the map's haze: gone with the rest
+  if (v.z > 1 || fade <= 0.02 || x < -30 || x > W + 30 || y < -30 || y > H + 30) { el.style.display = "none"; return; }
   const dist = cam.position.distanceTo(pos);
   const k = Math.max(kMin, Math.min(1.15, 210 / dist));
   el.style.display = "";
+  el.style.opacity = fade >= 0.99 ? "" : fade.toFixed(2);
   el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${k.toFixed(3)})`;
   el.style.zIndex = String(Math.round(4000 - dist));
 }
