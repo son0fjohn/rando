@@ -8,8 +8,8 @@
 //     bottom-right, clear of the nav bar, the chat lines, the chat row (open
 //     or closed) and "Back to me";
 //   - the plaza chat: no box behind a line, a text shadow instead;
-//   - the bar's labels: contrast >= 4.5:1 on the bar (day and sunset; night
-//     is reported).
+//   - the bar: navy (#0F1A3A) at every light (it never follows --day), its
+//     labels light (the active one gold), each >= 4.5:1 on it.
 // Screenshots in <dir>/<prefix>-<light>-<width>-*.png, the numbers in
 // <dir>/<prefix>-mapchrome.json.
 //
@@ -130,7 +130,9 @@ for (const light of LIGHTS) {
   const cr = g.lbl.map(l => ({ ...l, cr: +contrast(l.color, g.barBg).toFixed(2) }));
   report[light].bar = { bg: g.barBg, labels: cr, day: g.day };
   console.log(`    bar ${g.barBg} (--day ${g.day}): ` + cr.map(l => `${l.id}${l.on ? " (on)" : ""} ${l.color} ${l.cr}:1`).join(" · "));
-  if (light !== "night") ok(cr.every(l => l.cr >= 4.5), `${light}: every bar label ≥ 4.5:1 on the bar`);
+  ok(g.barBg === "rgb(15, 26, 58)", `${light}: the bar is navy #0F1A3A, whatever the light (${g.barBg}, --day ${g.day})`);
+  ok(cr.every(l => l.color === (l.on ? "rgb(255, 200, 61)" : "rgb(122, 138, 182)")), `${light}: light labels, the active one gold (${cr.map(l => l.color).join(" · ")})`);
+  ok(cr.every(l => l.cr >= 4.5), `${light}: every bar label ≥ 4.5:1 on the bar`);
   const nav = await pg.evaluate(() => { const r = document.getElementById("navbar").getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; });
   const cdp = await pg.context().newCDPSession(pg);
   const clip = async (name, c) => { const r = await cdp.send("Page.captureScreenshot", { format: "png", clip: { ...c, scale: 2 } }); await writeFile(join(OUT, `${PREFIX}-${name}.png`), Buffer.from(r.data, "base64")); };
