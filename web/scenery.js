@@ -272,9 +272,10 @@ export const scenery = {
         settle();
         res(true);
       };
-      // (a map that isn't drawing still lands: no frame for a while, it's done)
+      // (a map that isn't drawing still lands: no frame for a while, it's
+      // done; not while a test steps the clock frame by frame)
       let guard = 0;
-      const watch = () => { clearTimeout(guard); guard = setTimeout(finish, Math.max(ms, 2500)); };
+      const watch = () => { clearTimeout(guard); if (typeof globalThis.__sceneryClock !== "function") guard = setTimeout(finish, Math.max(ms, 2500)); };
       const hook = t => {
         t = clock(t);
         if (!s0) s0 = t;
