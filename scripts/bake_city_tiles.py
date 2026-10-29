@@ -41,6 +41,7 @@ import math
 import os
 
 import mercantile
+import numpy as np
 import pyarrow.parquet as pq
 import shapely
 from pmtiles.tile import Compression, TileType, zxy_to_tileid
@@ -164,24 +165,27 @@ def guess_floors(kind, area_m2, seed):
 # floors of the measured buildings within 60 m, staying in its class's range
 def settle_guesses(tile, m_per_px):
     bs = tile["b"]
-    pts = []
-    for b in bs:
-        p = b["p"]
-        n = len(p) // 2
-        pts.append((sum(p[0::2]) / n, sum(p[1::2]) / n))
+    if not bs:
+        return
+    pts = np.array([(sum(b["p"][0::2]) / (len(b["p"]) // 2), sum(b["p"][1::2]) / (len(b["p"]) // 2)) for b in bs])
+    known = np.array([bool(b.get("m")) for b in bs])
+    kf = np.array([b["f"] for b in bs])[known]
+    kp = pts[known]
     r2 = (60.0 / m_per_px) ** 2
     for i, b in enumerate(bs):
-        if not b.pop("_g", False):
+        if not b.pop("_g", False) or len(kp) < 2:
             continue
-        near = sorted(o["f"] for j, o in enumerate(bs) if o.get("m") and (pts[j][0] - pts[i][0]) ** 2 + (pts[j][1] - pts[i][1]) ** 2 < r2)
+        near = np.sort(kf[((kp - pts[i]) ** 2).sum(1) < r2])
         if len(near) < 2:
             continue
         lo, hi = FLOORS[b["k"]]
-        med = near[len(near) // 2]
+        med = int(near[len(near) // 2])
         fl = max(lo, min(hi, int(round(0.5 * b["f"] + 0.5 * med))))
         if fl != b["f"]:
             b["f"] = fl
             b["h"] = round(fl * LEVEL_M + 1.0, 1)
+    for b in bs:
+        b.pop("_g", None)
 
 
 def roof_for(kind, shape, area, fill, korea, seed):
@@ -275,19 +279,44 @@ def read(aid, theme):
     return rows
 
 
+def region_tiles(a):
+    """A region ("bbox" in city_areas.json): the z16 tiles wholly inside its
+    box. The fetch took everything touching the box, so each of these
+    chunks is complete and needs no fill from the worldwide tiles."""
+    w, s_, e, n = a["bbox"]
+    out = []
+    for t in mercantile.tiles(w, s_, e, n, Z):
+        b = mercantile.bounds(t)
+        if b.west >= w and b.east <= e and b.south >= s_ and b.north <= n:
+            out.append(t)
+    return out
+
+
 def bake_area(a, tiles):
-    lat0, lng0 = a["lat"], a["lng"]
+    region = "bbox" in a
+    if region:
+        w, s_, e, n = a["bbox"]
+        lat0, lng0 = (s_ + n) / 2, (w + e) / 2
+        shape = box(w, s_, e, n)
+        area_tiles = region_tiles(a)
+    else:
+        lat0, lng0 = a["lat"], a["lng"]
     fwd, inv = local_proj(lat0, lng0)
     korea = in_korea(lat0, lng0)
-    circle = transform(inv, shapely.Point(0, 0).buffer(a["r"], 64))
-    area_tiles = list(mercantile.tiles(*circle.bounds, Z))
+    if not region:
+        shape = transform(inv, shapely.Point(0, 0).buffer(a["r"], 64))
+        area_tiles = list(mercantile.tiles(*shape.bounds, Z))
+    circle = shape
+    tile_set = {(t.z, t.x, t.y) for t in area_tiles}
     for t in area_tiles:
         tl = tiles.setdefault((t.z, t.x, t.y), {"b": [], "r": [], "a": [], "_seen": set()})
         # a chunk the circle only partly covers says so: the client fills the
         # rest from the worldwide tiles (web/cityomt.js), so areas fade into
         # the world around them instead of stopping at a ring
         bb = mercantile.bounds(t)
-        if not circle.contains(box(bb.west, bb.south, bb.east, bb.north)):
+        if region or circle.contains(box(bb.west, bb.south, bb.east, bb.north)):
+            tl["_whole"] = True   # (one area covers it all: no fill, whatever other circles cross it)
+        else:
             tl.setdefault("cut", []).append([lat0, lng0, a["r"]])
 
     # roads first: buildings ask which of them front a main road
@@ -374,7 +403,7 @@ def bake_area(a, tiles):
             continue
         t = mercantile.tile(c.x, c.y, Z)
         key = (t.z, t.x, t.y)
-        if key not in tiles:
+        if key not in tile_set:
             continue
         rid = str(r.get("id"))
         if rid in tiles[key]["_seen"]:
@@ -418,8 +447,12 @@ def bake_area(a, tiles):
         stats["buildings"] += 1
 
     def clip_into(geom, make, kind_lines=False):
-        for t in area_tiles:
+        if geom.is_empty:
+            return
+        for t in mercantile.tiles(*geom.bounds, Z):
             key = (t.z, t.x, t.y)
+            if key not in tile_set:
+                continue
             bb = mercantile.bounds(t)
             tb = box(bb.west, bb.south, bb.east, bb.north)
             if not geom.intersects(tb):
@@ -433,7 +466,8 @@ def bake_area(a, tiles):
 
     for r in road_rows:
         g = transform(inv, transform(fwd, r["geometry"]).simplify(0.8))
-        g = g.intersection(circle.buffer(0.004))
+        if not region:
+            g = g.intersection(circle.buffer(0.004))
         nm = name_of(r.get("names")) if r["class"] in MAIN else None
         def mk(fc, c=r["class"], nm=nm):
             o = {"c": c, "p": fc}
@@ -462,62 +496,98 @@ def bake_area(a, tiles):
         if g is None or g.is_empty or not polys(g):
             continue
         g = transform(inv, transform(fwd, g).simplify(1.2))
-        g = g.intersection(circle.buffer(0.004))
+        if not region:
+            g = g.intersection(circle.buffer(0.004))
         clip_into(g, lambda fc, k=k: {"k": k, "p": fc})
         stats["areas"] += 1
     return stats
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default=os.path.join(ROOT, "web", "tiles", "cities.pmtiles"))
-    ap.add_argument("--only", default="")
-    args = ap.parse_args()
-    areas = json.load(open(os.path.join(ROOT, "scripts", "city_areas.json")))["areas"]
-    if args.only:
-        keep = set(args.only.split(","))
-        areas = [a for a in areas if a["id"] in keep]
-    tiles = {}
-    report = {}
-    for a in areas:
-        report[a["id"]] = bake_area(a, tiles)
-        print(a["id"], report[a["id"]])
+ATTRIBUTION = ('<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, '
+               '<a href="https://overturemaps.org">Overture Maps Foundation</a> (ODbL 1.0); '
+               'building heights and floors in Korea: <a href="https://www.vworld.kr">국토교통부 브이월드</a> (공공누리 제1유형)')
+
+
+def write_archive(path, tiles, areas, bounds):
+    """One PMTiles archive of chunks (gzipped JSON, z16 only)."""
     for k, t in tiles.items():
         # metres per tile pixel at this latitude (a z16 tile is 611 m at the equator)
         lat = mercantile.ul(k[1], k[2], k[0]).lat
         settle_guesses(t, 40075016.686 * math.cos(math.radians(lat)) / (2 ** k[0]) / EXTENT)
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     order = sorted(tiles, key=lambda k: zxy_to_tileid(*k))
     sizes = []
-    with open(args.out, "wb") as f:
+    with open(path, "wb") as f:
         w = Writer(f)
         for k in order:
             t = tiles[k]
             t.pop("_seen", None)
+            if t.pop("_whole", False):
+                # a chunk one circle covers whole and another only crosses
+                # (Hongdae and Yeonhui, Itaewon and Namsan) is complete: with
+                # the other's cut alone the worldwide tiles' copies of the
+                # first circle's buildings went in on top of them
+                t.pop("cut", None)
             if not (t["b"] or t["r"] or t["a"]):
                 continue
             body = gzip.compress(json.dumps({"v": 1, **t}, separators=(",", ":"), ensure_ascii=False).encode(), 9)
             sizes.append(len(body))
             w.write_tile(zxy_to_tileid(*k), body)
-        lons = [a["lng"] for a in areas]
-        lats = [a["lat"] for a in areas]
+        x0, y0, x1, y1 = bounds
         w.finalize({
             "tile_type": TileType.UNKNOWN, "tile_compression": Compression.GZIP,
             "min_zoom": Z, "max_zoom": Z,
-            "min_lon_e7": int((min(lons) - 0.05) * 1e7), "min_lat_e7": int((min(lats) - 0.05) * 1e7),
-            "max_lon_e7": int((max(lons) + 0.05) * 1e7), "max_lat_e7": int((max(lats) + 0.05) * 1e7),
-            "center_zoom": Z, "center_lon_e7": int(areas[0]["lng"] * 1e7), "center_lat_e7": int(areas[0]["lat"] * 1e7),
+            "min_lon_e7": int(x0 * 1e7), "min_lat_e7": int(y0 * 1e7),
+            "max_lon_e7": int(x1 * 1e7), "max_lat_e7": int(y1 * 1e7),
+            "center_zoom": Z, "center_lon_e7": int((x0 + x1) / 2 * 1e7), "center_lat_e7": int((y0 + y1) / 2 * 1e7),
         }, {"name": "rando-city", "format": "rando-chunk-v1", "extent": EXTENT,
             # what the archive must carry (docs/map_data.md): the produced-work
             # notice with links, the licence, and where the archive itself is
-            "attribution": '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, '
-                           '<a href="https://overturemaps.org">Overture Maps Foundation</a> (ODbL 1.0); '
-                           'building heights and floors in Korea: <a href="https://www.vworld.kr">국토교통부 브이월드</a> (공공누리 제1유형)',
-            "license": "ODbL-1.0", "notice": "web/tiles/NOTICE.txt",
-            "areas": [{k: a[k] for k in ("id", "label", "lat", "lng", "r")} for a in areas]})
+            "attribution": ATTRIBUTION, "license": "ODbL-1.0", "notice": "web/tiles/NOTICE.txt",
+            "areas": [{k: a[k] for k in ("id", "label", "lat", "lng", "r", "bbox") if k in a} for a in areas]})
     sizes.sort()
-    print(f"{len(sizes)} tiles, {sum(sizes) / 1024:.0f} KB total, median {sizes[len(sizes) // 2] / 1024:.1f} KB, "
-          f"max {sizes[-1] / 1024:.1f} KB -> {os.path.relpath(args.out, ROOT)}")
+    if sizes:
+        print(f"{len(sizes)} tiles, {sum(sizes) / 1024:.0f} KB total, median {sizes[len(sizes) // 2] / 1024:.1f} KB, "
+              f"max {sizes[-1] / 1024:.1f} KB -> {os.path.relpath(path, ROOT)}")
+    return sum(sizes)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=os.path.join(ROOT, "web", "tiles", "cities.pmtiles"))
+    ap.add_argument("--only", default="", help="area / region ids (default: every area into --out, every region into its own archive)")
+    args = ap.parse_args()
+    cfg = json.load(open(os.path.join(ROOT, "scripts", "city_areas.json")))
+    areas, regions = cfg["areas"], cfg.get("regions", [])
+    keep = set(args.only.split(",")) if args.only else None
+    if keep:
+        areas = [a for a in areas if a["id"] in keep] if keep & {a["id"] for a in areas} else []
+        regions = [a for a in regions if a["id"] in keep]
+    if areas:
+        tiles = {}
+        for a in areas:
+            print(a["id"], bake_area(a, tiles))
+        lons = [a["lng"] for a in areas]
+        lats = [a["lat"] for a in areas]
+        write_archive(args.out, tiles, areas, (min(lons) - 0.05, min(lats) - 0.05, max(lons) + 0.05, max(lats) + 0.05))
+    # regions: one archive each (web/tiles/<id>.pmtiles), listed in
+    # web/tiles/regions.json, which the chunk worker reads to know which
+    # archive holds a chunk the areas' archive doesn't (citygen.worker.js)
+    for a in regions:
+        tiles = {}
+        print(a["id"], bake_area(a, tiles))
+        write_archive(os.path.join(ROOT, a["archive"]), tiles, [a], a["bbox"])
+    if regions:
+        idx = os.path.join(ROOT, "web", "tiles", "regions.json")
+        listed = {r["id"]: r for r in (json.load(open(idx))["regions"] if os.path.exists(idx) else [])}
+        for a in regions:
+            listed[a["id"]] = {"id": a["id"], "label": a["label"], "file": os.path.relpath(os.path.join(ROOT, a["archive"]), os.path.dirname(idx)),
+                               "bbox": a["bbox"], "bytes": os.path.getsize(os.path.join(ROOT, a["archive"]))}
+        order = [r["id"] for r in cfg.get("regions", [])]   # (city_areas.json's order: the worker tries them in it)
+        with open(idx, "w") as f:
+            f.write('{\n "comment": "Region archives (scripts/bake_city_tiles.py): where web/tiles/cities.pmtiles has no chunk (or only part of one), the chunk worker reads the first region whose box holds the chunk and has it.",\n "regions": [\n')
+            f.write(",\n".join("  " + json.dumps(listed[k], ensure_ascii=False) for k in order if k in listed))
+            f.write("\n ]\n}\n")
 
 
 if __name__ == "__main__":

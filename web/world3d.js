@@ -691,7 +691,15 @@ export const world3d = {
       const warm = this.takeWarm(true);
       const heroes = warm ? warm.heroes : await this.heroesFor(true);   // (the hand-made map has its own)
       if (cityOn || this.blending) { if (warm) { this._warm = warm; } return this.city; }
+      const edge0 = WORLD_EDGE;
       WORLD_EDGE = ITAEWON_KEEP_M * GEO_SCALE * 1.25;
+      // you (and the others) were placed against the hand-made map's edge: a
+      // spot in the blend ring stood at that edge, up to 800 m from where it
+      // is, with the city streaming round the wrong place. Placed again now
+      // the world reaches that far.
+      const far = o => o?.lat != null && Math.hypot(...Object.values(geoPosRaw(o.lat, o.lng))) > edge0;
+      if (far(this._lastPlayerOpts) || (this._lastExplore && far({ lat: this._lastExplore[0], lng: this._lastExplore[1] }))) this.replaceAll();
+      else if (this._lastRemotes) this.setRemotes(this._lastRemotes);
       if (!this.ground) this.buildCityGround();
       this.ground.visible = true;
       this.groundLevel = -0.6;           // under the hand-made ground where they overlap
@@ -724,7 +732,14 @@ export const world3d = {
         el.textContent = `${Math.round(n * 1000 / (t - t0))} fps · ${info.calls} draws · ${(info.triangles / 1000).toFixed(0)}k tris` +
           (st ? `\ncity: ${st.chunks} chunks (${st.inflight + st.queued} loading) · ring ${st.firstRingMs ? (st.firstRingMs / 1000).toFixed(1) + " s" : "…"}` +
             (last ? `\nlast chunk ${last.ms.toFixed(0)} ms (fetch ${last.fetch.toFixed(0)}, build ${last.build.toFixed(0)})${last.cached ? " · " + last.cached : ""}` : "") +
-            `\n${this.blending ? "Itaewon + city" : cityOn ? "city" : "Itaewon"}` : "");
+            `\n${this.blending ? "Itaewon + city" : cityOn ? "city" : "Itaewon"}` : "") +
+          // where the chunks round you came from, and how many buildings stand
+          // within 300 m (the phone's own answer to "why is it empty here")
+          (st ? (() => {
+            const by = {}; let retry = 0;
+            for (const l of st.log.slice(-25)) { if (!l.empty) by[l.src ?? "?"] = (by[l.src ?? "?"] ?? 0) + 1; if (l.retry) retry++; }
+            return `\n${this.city.countNear(this.target.x, this.target.z, 300 * GEO_SCALE)} buildings within 300 m · ${Object.entries(by).map(([k, v]) => `${k} ${v}`).join(", ")}${retry ? ` · ${retry} retrying` : ""}`;
+          })() : "");
         n = 0; t0 = t;
       }
       requestAnimationFrame(loop);

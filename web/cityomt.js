@@ -4,7 +4,14 @@
 // key, no per-user cost) and turns each one into the same chunk payloads the
 // archive holds. One z14 tile covers 4 x 4 of our z16 chunks.
 //
-//   omtChunks(bytes, x14, y14) -> Map("x16,y16" -> payload)
+//   omtChunks(bytes, x14, y14, { buildings }) -> Map("x16,y16" -> payload)
+//
+// buildings: the same z14 tile out of Overture Maps' building tiles (the
+// "building" layer of an Overture buildings PMTiles: OpenStreetMap plus the
+// machine-learned footprints OpenStreetMap lacks, with height, num_floors,
+// class, roof_shape). Given, the buildings come from it instead of
+// OpenMapTiles' layer (which is OpenStreetMap only: in Korea a fraction of
+// the houses); bytes may then be null (only the buildings, no roads).
 //
 // Buildings: the footprint (clipped to the z14 tile so neighbours meet
 // exactly), render_height when the map has one. OpenMapTiles fills a missing
@@ -133,6 +140,29 @@ export function settleGuesses(bs, mPerPx) {
   });
 }
 
+// Overture's (OpenStreetMap's) building class -> our type (the baker's
+// classify(), scripts/bake_city_tiles.py); null: not a building we draw
+const KIND = {};
+for (const [k, list] of Object.entries({
+  h: "house detached semidetached_house terrace bungalow hut cabin farm static_caravan villa",
+  a: "apartments dormitory",
+  c: "commercial retail kiosk supermarket mall shop",
+  o: "office hotel government",
+  v: "school university college kindergarten hospital church temple shrine civic public train_station transportation religious cathedral mosque chapel fire_station library museum stadium sports_hall sports_centre",
+  i: "industrial warehouse factory manufacture service",
+  s: "garage garages shed carport toilets storage_tank outbuilding",
+  x: "roof shelter construction ruins bridge",
+})) for (const c of list.split(" ")) KIND[c] = k;
+const SUBKIND = { education: "v", religious: "v", civic: "v", medical: "v", transportation: "v", industrial: "i", outbuilding: "s" };
+function classKind(cls, sub, area) {
+  const c = (cls || "").toLowerCase(), k = KIND[c];
+  if (k) return k === "x" ? null : k;
+  if (c === "residential" || sub === "residential") return area > 700 ? "a" : "h";
+  if (sub === "commercial") return area > 1500 ? "o" : "c";
+  return SUBKIND[sub] ?? "";   // "": nothing known, guessed from size and shape
+}
+const ROOF = { gabled: "g", saltbox: "g", gambrel: "g", mansard: "g", hipped: "h", "half-hipped": "h", pyramidal: "p" };
+
 function guessKind(area, elong, fronts, korea) {
   if (area < 25) return "s";
   if (area < 150) return fronts ? "c" : "h";
@@ -154,8 +184,9 @@ function segDist(px, py, ax, ay, bx, by) {
 }
 const flat = (pts, ox, oy) => { const o = []; for (const [x, y] of pts) o.push(Math.round((x - ox) * 10) / 10, Math.round((y - oy) * 10) / 10); return o; };
 
-export function omtChunks(bytes, x14, y14) {
-  const L = decodeMVT(bytes);
+export function omtChunks(bytes, x14, y14, { buildings = null } = {}) {
+  const L = bytes ? decodeMVT(bytes) : {};
+  const OV = buildings ? decodeMVT(buildings) : null;
   const out = new Map();
   const chunk = (i, j) => {
     const k = `${x14 * SUB + i},${y14 * SUB + j}`;
@@ -169,7 +200,8 @@ export function omtChunks(bytes, x14, y14) {
   const mPerU = 40075016.686 * Math.cos(lat * Math.PI / 180) / n / BIG;
   const korea = lat > 33 && lat < 39 && lng > 124 && lng < 131;
   const sc = l => BIG / (l?.extent || 4096);
-  const each = (name, fn) => { const l = L[name]; if (l) { const k = sc(l); for (const f of l.features) fn(f, g => g.map(([x, y]) => [x * k, y * k])); } };
+  const eachIn = (LL, name, fn) => { const l = LL[name]; if (l) { const k = sc(l); for (const f of l.features) fn(f, g => g.map(([x, y]) => [x * k, y * k])); } };
+  const each = (name, fn) => eachIn(L, name, fn);
 
   // roads (and the main ones, which buildings ask about)
   const mains = [];
@@ -219,8 +251,9 @@ export function omtChunks(bytes, x14, y14) {
 
   // buildings: each one to the chunk holding its centroid
   const stats = { buildings: 0, measured: 0 };
-  each("building", (f, S) => {
-    if (f.type !== 3 || f.props.hide_3d || (f.props.render_min_height ?? 0) > 0) return;
+  // one footprint: hm, the height the data has (m, else 0); fl its floors;
+  // kind its type ("" unknown); roof its shape ("" unknown)
+  const building = (f, S, { hm = 0, fl: fl0 = 0, kind: k0 = "", roof: r0 = "", fc = null }) => {
     // the largest outer ring (holes and building parts' extra rings dropped)
     let ring = null, best = 0;
     for (const r of f.geom) { const a = ringArea(r); if (a > best) { best = a; ring = r; } }
@@ -236,20 +269,39 @@ export function omtChunks(bytes, x14, y14) {
     const box = obb(pts);
     const elong = box.L / Math.max(box.S, 1e-6), fill = Math.abs(ringArea(pts)) / Math.max(box.A, 1e-6);
     const fronts = nearMain(pts, 22 / mPerU);
-    const kind = guessKind(area, elong, fronts, korea);
-    const rh = +f.props.render_height || 0;
+    const kind = k0 || guessKind(area, elong, fronts, korea);
     let h, fl, m = 0;
-    if (rh > 5) { h = rh; fl = Math.max(1, Math.round(rh / LEVEL_M)); m = 1; stats.measured++; }
+    if (hm > 2) { h = hm; fl = fl0 || Math.max(1, Math.round(hm / LEVEL_M)); m = 1; }
+    else if (fl0 > 0) { fl = fl0; h = fl * LEVEL_M + 1; m = 1; }
     else {
       fl = guessFloors(kind, area, seed);
       h = fl * LEVEL_M + (kind !== "s" ? 1 : 0.4);
     }
-    const b = { p: flat(pts, i * EXT, j * EXT), h: Math.round(Math.max(2.6, Math.min(h, 600)) * 10) / 10, f: fl, k: kind, r: roofFor(kind, area, fill, korea, seed) };
+    if (m) stats.measured++;
+    const b = { p: flat(pts, i * EXT, j * EXT), h: Math.round(Math.max(2.6, Math.min(h, 600)) * 10) / 10, f: fl, k: kind, r: r0 || roofFor(kind, area, fill, korea, seed) };
     if (m) b.m = 1; else if (kind !== "s") b._g = 1;
-    if (f.props.colour) b.fc = f.props.colour;
+    if (fc) b.fc = fc;
     chunk(i, j).b.push(b);
     stats.buildings++;
-  });
+  };
+  if (OV) {
+    // Overture's buildings (OpenStreetMap + the machine-learned footprints)
+    eachIn(OV, "building", (f, S) => {
+      const q = f.props;
+      if (f.type !== 3 || q.is_underground === true || q.is_underground === "true" || (+q.min_height || 0) > 0) return;
+      let area = 0; for (const r of f.geom) area = Math.max(area, ringArea(r));
+      const kind = classKind(q.class, q.subtype, area * (BIG / (OV.building.extent || 4096)) ** 2 * mPerU * mPerU);
+      if (kind === null) return;
+      building(f, S, { hm: +q.height || 0, fl: Math.round(+q.num_floors || 0), kind, roof: ROOF[(q.roof_shape || "").toLowerCase()] ?? (q.roof_shape ? "f" : ""), fc: q.facade_color || null });
+    });
+  } else {
+    each("building", (f, S) => {
+      if (f.type !== 3 || f.props.hide_3d || (f.props.render_min_height ?? 0) > 0) return;
+      // OpenMapTiles fills a missing height with 5 m: 5 or less counts as unknown
+      const rh = +f.props.render_height || 0;
+      building(f, S, { hm: rh > 5 ? rh : 0, fc: f.props.colour || null });
+    });
+  }
 
   // water, parks, woods, grass
   const area = (k, f, S) => {

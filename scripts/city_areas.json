@@ -1,5 +1,5 @@
 {
-  "comment": "Areas baked into city tiles for tests and previews (scripts/fetch_overture.py, scripts/bake_city_tiles.py). r is the radius in metres.",
+  "comment": "Areas baked into web/tiles/cities.pmtiles (circles, r in metres; tests and previews) and regions baked into their own archives (boxes [west, south, east, north]; whole cities): scripts/fetch_overture.py, scripts/bake_city_tiles.py.",
   "areas": [
     {"id": "itaewon", "label": "Itaewon", "lat": 37.5346, "lng": 126.9946, "r": 1300, "registry": "web/data/registry_buildings.json"},
     {"id": "hongdae", "label": "Hongdae", "lat": 37.5563, "lng": 126.9236, "r": 1000},
@@ -12,5 +12,13 @@
     {"id": "namsan", "label": "Namsan (N Seoul Tower)", "lat": 37.5512, "lng": 126.9882, "r": 600},
     {"id": "calgary", "label": "Downtown Calgary", "lat": 51.0447, "lng": -114.0631, "r": 1200},
     {"id": "edmonton", "label": "Downtown Edmonton", "lat": 53.543, "lng": -113.49, "r": 1500}
+  ],
+  "regions": [
+    {"id": "kr-seoul", "label": "Seoul", "bbox": [126.76, 37.41, 127.19, 37.72], "archive": "web/tiles/kr-seoul.pmtiles"},
+    {"id": "kr-capital-w", "label": "Incheon, Bucheon, Gimpo", "bbox": [126.55, 37.2, 126.77, 37.8], "archive": "web/tiles/kr-capital-w.pmtiles"},
+    {"id": "kr-capital-s", "label": "Gwangmyeong, Anyang, Gwacheon, Seongnam, Bundang, Suwon", "bbox": [126.75, 37.2, 127.35, 37.42], "archive": "web/tiles/kr-capital-s.pmtiles"},
+    {"id": "kr-capital-e", "label": "Hanam, Guri, Namyangju", "bbox": [127.18, 37.41, 127.35, 37.8], "archive": "web/tiles/kr-capital-e.pmtiles"},
+    {"id": "kr-capital-n", "label": "Goyang, Uijeongbu", "bbox": [126.75, 37.71, 127.19, 37.8], "archive": "web/tiles/kr-capital-n.pmtiles"},
+    {"id": "kr-busan", "label": "Busan", "bbox": [128.9, 35.04, 129.23, 35.3], "archive": "web/tiles/kr-busan.pmtiles"}
   ]
 }

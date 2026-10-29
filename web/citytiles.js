@@ -23,6 +23,12 @@ import { THEME } from "./theme.js";
 const Z = 16;
 const REDUCED = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const NEAR = 1, FAR = 2, DROP = 3;
+// Overture's worldwide building tiles (a buildings PMTiles, z14 MVT, its
+// "building" layer): where set, the worldwide fallback's buildings come
+// from it instead of OpenMapTiles' (OpenStreetMap only). Off until a copy
+// we can rely on is hosted (docs/map_city.md "Worldwide Overture
+// buildings"); ?ovt=<url> tries one.
+const OVT_URL = new URLSearchParams(globalThis.location?.search ?? "").get("ovt") || null;
 const MAX_INFLIGHT = 3;
 
 function canvas(w, h, draw) {
@@ -511,7 +517,9 @@ export class CityTiles {
   startWorker() {
     const heroes = this.heroes.map(({ id, lat, lng, clear, fp, osm, glb, shape, h, glow, radius, landmark }) => ({ id, lat, lng, clear, fp, osm, glb: !!glb, shape, h, glow, radius, landmark: !!landmark }));
     const init = { type: "init", url: this.url, base: document.baseURI, origin: this.origin, heroes, clearAt: this.exclude ? 0 : 14,
-      exclude: this.exclude, omt: this.omt ? new URL(this.omt, document.baseURI).href : null };
+      exclude: this.exclude, omt: this.omt ? new URL(this.omt, document.baseURI).href : null,
+      regions: new URLSearchParams(location.search).get("regions") !== "0",   // (?regions=0: the areas' archive and the worldwide tiles only)
+      ovt: OVT_URL ? new URL(OVT_URL, document.baseURI).href : null };
     const onMsg = m => {
       if (m.type === "meta") { this.bounds = m.bounds; return; }
       if (m.type === "error") { this.error = m.error; console.warn("city tiles:", m.error); return; }
@@ -563,6 +571,10 @@ export class CityTiles {
     if (!this.center || this.center[0] !== cx || this.center[1] !== cy) {
       this.center = [cx, cy];
       this.retarget(cx, cy, fx, fy);
+    } else if (this.retryDue && performance.now() > this.retryDue) {
+      // chunks whose data couldn't be reached: asked for again
+      this.retryDue = 0;
+      this.retarget(cx, cy, fx, fy);
     }
     this.pump();
     // mount at most two finished chunks per tick so a frame never stalls
@@ -597,7 +609,8 @@ export class CityTiles {
     this.queue = [];
     for (const [k, w] of want) {
       const c = this.chunks.get(k);
-      if (c && (c.lod === w.lod || c.pending === w.lod)) continue;
+      if (c && !c.retry && (c.lod === w.lod || c.pending === w.lod)) continue;
+      if (c?.retry && c.pending === w.lod) continue;
       if ([...this.inflight.values()].some(r => r.key === k && r.lod === w.lod)) continue;
       this.queue.push({ key: k, ...w });
     }
@@ -624,6 +637,13 @@ export class CityTiles {
     // a stale answer (we moved on and it's out of range now): drop it
     if (this.center && Math.max(Math.abs(r.x - this.center[0]), Math.abs(r.y - this.center[1])) >= DROP) return;
     const rec = { lod: r.lod, meshes: [], labels: [], empty: !!m.empty };
+    // part of its data couldn't be reached (offline, a server error): ask again,
+    // 15 s, then longer each time (citygen.worker.js marks it)
+    if (m.retry) {
+      rec.retry = (old?.retry ?? 0) + 1;
+      const due = performance.now() + Math.min(120e3, 15e3 * 2 ** (rec.retry - 1));
+      this.retryDue = this.retryDue ? Math.min(this.retryDue, due) : due;
+    }
     if (!m.empty && !m.error) {
       for (const [k, g] of Object.entries(m.groups)) {
         const mat = this.mats[k];
@@ -651,16 +671,17 @@ export class CityTiles {
         rec.meshes.push(mesh);
       }
       this.instanced(rec, m);
+      rec.centres = m.centres ?? null;
       for (const l of m.labels || []) this.label(rec, l);
     }
     if (m.error) console.warn("city chunk", r.key, m.error);
     if (old) this.drop(r.key);
     // a chunk seen for the first time rises out of the ground (a LOD swap doesn't)
-    else if (!m.empty && !REDUCED) { rec.rise = performance.now(); rec.riseE = 0.02; for (const mesh of rec.meshes) { mesh.scale.y = 0.02; mesh.updateMatrix(); } }
+    if ((!old || old.empty) && !m.empty && !REDUCED) { rec.rise = performance.now(); rec.riseE = 0.02; for (const mesh of rec.meshes) { mesh.scale.y = 0.02; mesh.updateMatrix(); } }
     for (const mesh of rec.meshes) this.group.add(mesh);
     this.chunks.set(r.key, rec);
     this.log.push({ key: r.key, lod: r.lod, at: t1, ms: t1 - r.t0, fetch: m.t?.fetch ?? 0, build: m.t?.build ?? 0,
-      mount: performance.now() - t1, cached: m.cached ?? null, buildings: m.stats?.buildings ?? 0, empty: rec.empty });
+      mount: performance.now() - t1, cached: m.cached ?? null, buildings: m.stats?.buildings ?? 0, empty: rec.empty, src: m.stats?.src ?? null, retry: !!m.retry });
     if (this.firstRing && !this.firstRing.done) {
       this.firstRing.need.delete(r.key); this.firstRing.near.delete(r.key);
       if (!this.firstRing.near.size && !this.firstRing.nearDone) this.firstRing.nearDone = performance.now() - this.firstRing.t0;
@@ -782,6 +803,15 @@ export class CityTiles {
     for (const rec of this.chunks.values()) { const later = rec.later ?? []; rec.later = null; for (const l of later) this.label(rec, l); }
     this.poolsDirty = true;
     this.world.needsRender = true;
+  }
+  // how many buildings stand within r world units of (x, z) (tests, ?fps=1)
+  countNear(x, z, r) {
+    let n = 0;
+    for (const c of this.chunks.values()) {
+      const a = c.centres;
+      if (a) for (let i = 0; i < a.length; i += 2) if ((a[i] - x) ** 2 + (a[i + 1] - z) ** 2 < r * r) n++;
+    }
+    return n;
   }
   // the chunks round the spot (the near ring) are in: enough to show
   get nearDone() { return !!this.firstRing?.nearDone; }

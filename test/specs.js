@@ -1742,6 +1742,31 @@ group("The map anywhere — vector tiles (MVT) and OpenMapTiles -> chunks");
   ok(all.some(c => c.l.some(l => l.t === "Test-ro")) && all.flatMap(c => c.a).filter(a => a.k === "park").length === 4, "main road names and parks come along");
   const ch = m.get(`${13976 * 4},${6346 * 4}`), built = buildChunk(ch, { z: 16, x: 13976 * 4, y: 6346 * 4, origin: [37.5, 127], lod: 0 });
   ok(built.stats.buildings === 2 && built.groups.road && built.labels.some(l => l.text === "Test-ro"), "…and build like a baked chunk");
+  // Overture's building tiles in place of OpenMapTiles' buildings (OpenStreetMap
+  // + the machine-learned footprints OpenStreetMap lacks: most Korean houses)
+  const ovt = enc({ building: [
+    { type: 3, props: { height: 60, class: "office" }, geom: [sq(100, 100, 60, 40)] },
+    { type: 3, props: { num_floors: 4, roof_shape: "gabled" }, geom: [sq(300, 100, 20, 16)] },
+    { type: 3, props: {}, geom: [sq(500, 100, 14, 12)] },                       // a footprint and nothing else (the ML ones)
+    { type: 3, props: { class: "apartments" }, geom: [sq(2100, 2100, 40, 30)] },
+    { type: 3, props: { class: "roof" }, geom: [sq(700, 700, 20, 20)] },      // a canopy: not a building we draw
+    { type: 3, props: { min_height: 12 }, geom: [sq(900, 900, 20, 20)] },     // an upper part
+  ] });
+  const om = omtChunks(bytes, 13976, 6346, { buildings: ovt }), ob = [...om.values()].flatMap(c => c.b);
+  ok(ob.length === 4 && ob.some(b => b.m && b.h === 60 && b.k === "o") && ob.some(b => b.m && b.f === 4 && b.r === "g") && ob.some(b => b.k === "a" && !b.m && b.f >= 10 && b.f <= 20),
+    `with Overture's building tiles the buildings come from them: heights, floors, classes and roofs kept, an apartment with no height estimated as one (${ob.length})`);
+  ok(ob.filter(b => !b.m).every(b => b.h > 2) && [...om.values()].flatMap(c => c.r).length === rd.length, "…every footprint with no height gets an estimate; the roads still come from OpenMapTiles");
+  const onlyB = omtChunks(null, 13976, 6346, { buildings: ovt });
+  ok([...onlyB.values()].flatMap(c => c.b).length === 4 && ![...onlyB.values()].some(c => c.r.length), "…and with OpenMapTiles unreachable the buildings still come");
+  // the region archives: whole cities, read where the areas' archive has nothing
+  const regs = (await (await fetch("/web/tiles/regions.json")).json()).regions;
+  ok(regs.some(r => r.id === "kr-seoul") && regs.every(r => r.file && r.bbox?.length === 4 && r.bytes > 0), `region archives: ${regs.map(r => `${r.id} ${(r.bytes / 1e6).toFixed(1)} MB`).join(", ")}`);
+  const seoul = new PMTiles("/web/tiles/" + regs.find(r => r.id === "kr-seoul").file);
+  const chunkAt = async (pm, lat, lng) => { const [x, y] = lngLatToTile(lng, lat, 16).map(Math.floor); const t = await pm.tile(16, x, y); return t && JSON.parse(new TextDecoder().decode(t)); };
+  const mw = await chunkAt(seoul, 37.5560, 126.9010), ss = await chunkAt(seoul, 37.5445, 127.0560);
+  ok(mw?.b.length > 200 && ss?.b.length > 200 && !mw.cut, `Seoul outside the baked areas, whole: Mangwon-dong's chunk ${mw?.b.length} buildings (OpenStreetMap alone: ~22), Seongsu-dong's ${ss?.b.length}`);
+  ok(mw.b.every(b => b.h > 2 && b.f >= 1 && "hacovis".includes(b.k)), "…every one with a height (measured, or estimated by type)");
+  ok(await seoul.tile(16, ...lngLatToTile(126.5, 37.3, 16).map(Math.floor)) === null, "…and nothing outside the region's box");
 }
 }
 group("Day and night — the real sun over the place the map shows, one light for every panel");

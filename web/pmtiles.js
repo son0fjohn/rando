@@ -96,7 +96,8 @@ export class PMTiles {
   }
 
   header() {
-    this.ready ??= (async () => {
+    if (this.ready) return this.ready;
+    this.ready = (async () => {
       const b = await this.range(0, HEADER_BYTES);
       const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
       if (String.fromCharCode(...b.subarray(0, 7)) !== "PMTiles" || b[7] !== 3) throw new Error("not a PMTiles v3 archive");
@@ -112,6 +113,7 @@ export class PMTiles {
       this.h = h;
       return h;
     })();
+    this.ready.catch(() => { this.ready = null; });   // (unreachable: the next call tries again)
     return this.ready;
   }
 

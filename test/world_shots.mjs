@@ -28,6 +28,13 @@ const PLACES = [
   { id: "calgary", label: "Downtown Calgary", area: "calgary", lat: 51.0447, lng: -114.0631, half: 500 },
   { id: "edmonton", label: "Downtown Edmonton", area: "edmonton", lat: 53.5430, lng: -113.4900, half: 650 },
   { id: "jamsil", label: "Lotte World Tower", area: "jamsil", lat: 37.5126, lng: 127.1025, half: 450 },
+  // Seoul outside the baked areas: the Seoul region archive (OpenStreetMap +
+  // the East-Asia ML footprints; OpenStreetMap alone has a fraction of these
+  // houses). min: buildings that must stand within 500 m
+  { id: "mangwon", label: "Mangwon-dong (Seoul region)", area: "kr-seoul", lat: 37.5560, lng: 126.9010, half: 500, min: 800 },
+  { id: "seongsu", label: "Seongsu-dong (Seoul region)", area: "kr-seoul", lat: 37.5445, lng: 127.0560, half: 500, min: 700 },
+  { id: "jongno3", label: "Jongno 3-ga (Seoul region)", area: "kr-seoul", lat: 37.5704, lng: 126.9921, half: 500, min: 1100 },
+  { id: "huam", label: "Huam-dong: the Itaewon blend ring, 2 km out (Seoul region)", area: "kr-seoul", lat: 37.5487, lng: 126.9785, half: 500, min: 1000 },
 ].filter(p => !ONLY || ONLY.includes(p.id));
 const { base, close } = await serve();
 const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
@@ -66,8 +73,18 @@ for (const p of PLACES) {
     Object.assign(w.cam, { theta: 0, elev: 1.47, dist: (half * 0.55 * 2) / (2 * Math.tan(25 * Math.PI / 180)) });
     w.camera.far = 6000; w.camera.updateProjectionMatrix(); w.applyCamera();
   }, p);
+  await sleep(1200);   // (the chunks round the new target are asked for on the next frames)
   ok(await settled(A.pg), "every chunk round the square is in");
   await sleep(1800);
+  // what stands within 500 m (the procedural city, and the hand-made map's own round Itaewon)
+  row.within500 = await A.pg.evaluate(({ lat, lng }) => {
+    const w = window.__w, c = w.geo(lat, lng), r = 500 * 0.55;
+    let hand = 0;
+    if (w.blending) for (const b of w._handmade?.buildings ?? []) { let x = 0, z = 0; for (const [px, pz] of b.p) { x += px; z += pz; } if ((x / b.p.length - c.x) ** 2 + (z / b.p.length - c.z) ** 2 < r * r) hand++; }
+    return { city: w.city.countNear(c.x, c.z, r), hand };
+  }, p);
+  console.log(`    within 500 m: ${row.within500.city} buildings${row.within500.hand ? ` + ${row.within500.hand} hand-made` : ""}`);
+  if (p.min) ok(row.within500.city + row.within500.hand >= p.min, `at least ${p.min} buildings within 500 m (the data has them)`);
   await snap(A.pg, join(OUT, `${p.id}-top.png`));
   const dup = await A.pg.evaluate(() => { const n = {}; for (const L of window.__w.labels) if (!L.hidden) n[L.el.textContent] = (n[L.el.textContent] ?? 0) + 1; return Object.entries(n).filter(([, v]) => v > 1 && v < 99).map(([k, v]) => `${k} ×${v}`); });
   if (dup.length) console.log(`    (labels more than once: ${dup.slice(0, 6).join(", ")})`);
@@ -91,6 +108,10 @@ for (const p of PLACES) {
   const S = await open(`${base}/test/city.html?at=${p.lat},${p.lng}&mode=night`, { width: 390, height: 844 });
   await settled(S.pg);
   await sleep(2500);
+  // you stand where you are: in the blend ring (2–3 km from Itaewon) the
+  // player used to be placed at the hand-made map's edge, up to 800 m off
+  const off = await S.pg.evaluate(({ lat, lng }) => { const w = window.__w, p = w.player?.api.group.position; if (!p || !w.city) return null; const [x, z] = w.city.P.fwd(lng, lat); return Math.hypot(p.x - x, p.z - z) / 0.55; }, p);
+  if (off != null) ok(off < 10, `you stand at your spot (${off.toFixed(0)} m from it)`);
   // what one frame at the map's own zoom draws (the phone budget: 150 calls, 300k triangles)
   row.frame = await S.pg.evaluate(() => { const w = window.__w; w.renderer.render(w.scene, w.camera); const i = w.renderer.info.render; return { calls: i.calls, tris: i.triangles }; });
   console.log(`    a frame at the map's zoom: ${row.frame.calls} draw calls, ${(row.frame.tris / 1000).toFixed(0)}k triangles`);
@@ -115,6 +136,20 @@ if (!ONLY || ONLY.includes("omt")) {
   ok(fs.buildings > 500, `${fs.buildings} buildings in ${fs.chunks} chunks, all from the fallback`);
   rows.push({ id: "calgary-fallback", firstRingMs: Math.round(F.ring ?? -1), ...fs });
   await F.ctx.close();
+  // the worldwide tiles failing (503) for the first 12 s: the chunks come back
+  // marked retry, then fill in once the tiles answer again (they used to stay empty)
+  const ctx = await browser.newContext({ viewport: { width: 400, height: 400 } });
+  let down = true;
+  await ctx.route(/\/test\/\.omt\/14\//, r => down ? r.fulfill({ status: 503, body: "" }) : r.continue());
+  const R = await ctx.newPage();
+  await R.goto(`${base}/test/city.html?at=51.0447,-114.0631&mode=day&me=0&tiles=/none.pmtiles&omt=/test/.omt/tiles.json`);
+  await R.waitForFunction(() => window.__w?.city?.stats().firstRingMs, null, { timeout: 120000 }).catch(() => {});
+  await sleep(2000);
+  const during = await R.evaluate(() => window.__w.city.countNear(0, 0, 275));
+  setTimeout(() => { down = false; }, 10000);
+  const back = await R.waitForFunction(() => window.__w.city.countNear(0, 0, 275) > 100, null, { timeout: 120000, polling: 1000 }).then(() => R.evaluate(() => window.__w.city.countNear(0, 0, 275)), () => 0);
+  ok(during === 0 && back > 100, `tiles unreachable at first: ${during} buildings, then ${back} once they answer again`);
+  await ctx.close();
 }
 
 await writeFile(join(OUT, "world_stats.json"), JSON.stringify(rows, null, 1));

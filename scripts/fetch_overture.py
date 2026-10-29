@@ -10,7 +10,10 @@ per area and theme in scripts/overture_cache/ (git-ignored), which
 scripts/bake_city_tiles.py turns into tiles.
 
     pip install pyarrow
-    python scripts/fetch_overture.py [--release 2026-10-21.0] [--only itaewon,busan]
+    python scripts/fetch_overture.py [--release 2026-10-21.0] [--only itaewon,kr-seoul]
+
+Regions (city_areas.json "regions": whole cities as boxes) are fetched the
+same way; Seoul's box is ~500k buildings, ~85 MB of parquet, a minute a theme.
 
 Behind an HTTPS proxy (HTTPS_PROXY set) the S3 client is pointed at it.
 """
@@ -43,6 +46,8 @@ THEMES = {
 
 
 def bbox_of(a, pad=1.15):
+    if "bbox" in a:        # a region: its box as it is (bake_city_tiles.py keeps the chunks wholly inside it)
+        return tuple(a["bbox"])
     r = a["r"] * pad
     dlat = r / 110540.0
     dlng = r / (111320.0 * math.cos(math.radians(a["lat"])))
@@ -70,7 +75,8 @@ def main():
     ap.add_argument("--only", default="")
     ap.add_argument("--themes", default=",".join(THEMES))
     args = ap.parse_args()
-    areas = json.load(open(os.path.join(ROOT, "scripts", "city_areas.json")))["areas"]
+    cfg = json.load(open(os.path.join(ROOT, "scripts", "city_areas.json")))
+    areas = cfg["areas"] + cfg.get("regions", [])
     if args.only:
         keep = set(args.only.split(","))
         areas = [a for a in areas if a["id"] in keep]
