@@ -8,11 +8,14 @@
 //   3. the party ends after the last game: the set's podium (and the first
 //      party's recap) -> the host ends the party -> every guest
 //   4. the host closes it: the host's own phone, End the party on the podium
+//   5. the phone's / browser's Back in the lobby (history popstate: Android
+//      back, iOS swipe-back): the lobby's own back, "Leave the party?", then
+//      the same landing; still on the page, the party's history entry gone
 // The phone under test is the real app; the other players are light pages
 // (test/hpparty.html), relayed between browser contexts like onboard_rec.
 // The set's three games are filled in on the host (the podium is what's
 // tested here, not the games: test/party_e2e.mjs plays whole sets).
-//   node test/leave_rec.mjs <dir> [--only=1,2,3,4] [--video]
+//   node test/leave_rec.mjs <dir> [--only=1,2,3,4,5] [--video]
 //   (--video: paths 1 and 3 filmed frame by frame, the transition's clock
 //   stepped (this sandbox has no GPU): <dir>/leave-button/, <dir>/leave-party-ended/,
 //   and .mp4s of them with FFMPEG=/path/to/ffmpeg)
@@ -24,8 +27,8 @@ import { serve } from "./appserve.mjs";
 
 const args = process.argv.slice(2);
 const OUT = args.find(a => !a.startsWith("--"));
-if (!OUT) { console.error("usage: node test/leave_rec.mjs <dir> [--only=1,2,3,4] [--video]"); process.exit(2); }
-const ONLY = args.find(a => a.startsWith("--only="))?.slice(7).split(",") ?? ["1", "2", "3", "4"];
+if (!OUT) { console.error("usage: node test/leave_rec.mjs <dir> [--only=1,2,3,4,5] [--video]"); process.exit(2); }
+const ONLY = args.find(a => a.startsWith("--only="))?.slice(7).split(",") ?? ["1", "2", "3", "4", "5"];
 const VIDEO = args.includes("--video");
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve({ realAvatars: true });
@@ -301,6 +304,34 @@ if (ONLY.includes("4")) {
   ok(gOut, "the guest is out too (light page)");
   if (!gOut) console.log("    (guest:", await G.evaluate(() => JSON.stringify({ in: !!party.current, host: party.current?.room.isHost, members: party.current?.room.members.length, panel: !document.getElementById("party-panel").hidden })), ")");
   await gctx.close(); await sctx.close();
+  contexts.splice(0);
+}
+
+// ================================================================ 5. the phone's Back
+if (ONLY.includes("5")) {
+  console.log("\n5. The phone's / browser's Back in the lobby");
+  const hctx = await phoneContext();
+  const { H, code } = await lightHost(hctx, "jae");
+  const sctx = await phoneContext();
+  const S = await joinFromStart(sctx, "sol", code);
+  ok(await until(H, () => party.current.room.members.length >= 2, null, 20000), "…the host sees sol arrive");
+  await sleep(2000);
+  const url0 = S.url();
+  ok(await S.evaluate(() => !!history.state?.randoParty), "the party keeps a history entry of its own");
+  await S.evaluate(() => history.back());
+  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 8000), "Back -> Leave the party? (the lobby's own back)");
+  await sleep(900);
+  await shot(S, "leave-5-back-confirm");
+  ok(S.url() === url0 && await S.evaluate(() => !!document.querySelector("#party-panel:not([hidden]) #pt-floor") && !!history.state?.randoParty), "…still on the page, in the lobby, the entry back on (Stay is one tap)");
+  await tap(S, ".pt-confirm [data-no]");
+  await sleep(600);
+  await S.evaluate(() => history.back());
+  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 8000), "Stay, then Back again -> asks again");
+  await stepLeave(S, () => tap(S, ".pt-confirm [data-yes]"));
+  await landed(S, "Back");
+  ok(await until(S, () => !history.state?.randoParty, null, 5000) && S.url() === url0, "…the party's history entry gone, the same page");
+  await shot(S, "leave-5-back-explore");
+  await sctx.close(); await hctx.close();
   contexts.splice(0);
 }
 
