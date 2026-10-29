@@ -22,26 +22,33 @@ roads and the ground are given in world units as drawn. The character is
 - **Lambert only** on the world (no PBR, no specular, no tone mapping).
   Flat shading on props and landmarks; building walls are flat per face.
 - No shadow maps. Shadows are **baked** (section 5.6).
-- Camera: fov 50, near 1, far 2500. Home view: elevation 0.58 rad, 175 u
-  from the target.
+- Camera: fov 50, near 1, far 2500. Home view: 175 u from the target at
+  elevation 0.72 rad, looking 0.2 × the ground distance ahead of it (you
+  in the lower middle of the screen). Zoom 70–230 u, the elevation
+  following it (0.50 rad close in, 1.0 rad out; `world3d.js` `ZOOM`).
 - Text is never in the canvas (labels are DOM on top).
 
 ## 2. Lighting, sky and fog (`web/theme.js` lighting)
 
-One rig for day, one for night; nothing else lights the world. The sun
-sits at (120, 200, 80) relative to the scene.
+One rig for day, one for night; nothing else lights the world. By day
+the sun comes from where the real sun is over the place on screen
+(`web/sun.js`: its bearing, and its height, at least 12°); at night, and
+when the light is forced, from (120, 200, 80) relative to the scene (the
+moonlight), blended through dusk.
 
 | | Day | Night |
 |---|---|---|
 | Hemisphere sky / ground / intensity | `#fff0d6` / `#9b8f7a` / 0.95 | `#5b6fa0` / `#2e3048` / 0.9 |
 | Sun colour / intensity | `#ffdfae` / 1.45 | `#aec6ee` / 0.65 |
 | Fog colour | `#e9dcc3` (cream haze) | `#2a3452` (navy) |
-| Fog near / far | 340 / 1250 u in Itaewon and its blend; 300 / 980 u in the far city (hides the streaming edge) | same |
+| Fog | on the map: by ground distance from you, clear to 75 u, total at 150 u (≈ 270 m); on the start screen 340 / 1250 u from the camera | same |
 | Sky | painted cylinder `world2/sky_day.jpg`, cap `#3072c7` | `world2/sky_night.jpg`, cap `#030b25` |
 | Everything lit at night | walls multiplied by **(0.36, 0.42, 0.60)** blue moonlight; props use their own night colours below | |
 
-Day and night are chosen once at load (`NIGHT`), the glass UI follows
-(`web/daylight.js`); the world itself does not blend between them.
+Day and night follow the real sun over the place on screen (`web/sun.js`,
+whatever the phone's clock or time zone), blended live through golden hour
+and dusk: every material with a day and a night value lerps between them
+(`world3d.js` `dn()`), and the glass UI follows (`web/daylight.js`).
 
 ## 3. Ground
 
@@ -159,7 +166,12 @@ Warm `#ffd98f #ffc76a #ffe7b0`; cool `#c8ddff #aecbf2 #dfe9ff`.
   colour `#6b675e` day / `#39435c` night at 50 % opacity.
 - **Baked shadow**: the footprint swept by (−0.52 k, −0.34 k) with
   k = min(52, 6 + 0.95 h), filled `#241c12` at 32 % opacity, 0.5 u above
-  the ground, drawn under everything (no depth write).
+  the ground, drawn under everything (no depth write). On the hand-made
+  map, by day, the sweep falls away from the real sun instead, 0.6–2.2×
+  as long as it sinks (`sun.js` `shadowSweep`, in 10° steps, re-swept a
+  slice a frame), fading out and back through dusk; at night the classic
+  sweep. (The procedural city's chunks are swept in the worker,
+  `citygen.js`, still the classic way.)
 
 ### 5.7 On and around each building (the "street density pass")
 Deterministic from the lot's position; `road-facing edge` = the footprint

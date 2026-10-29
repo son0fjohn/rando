@@ -92,7 +92,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   sprites, never in text, buttons or panels; day and night: every glass surface over the map
   follows `--day` (0 night, 1 day, blended at sunrise/sunset) through the
   tokens in theme.css "day and night", set by `web/daylight.js` from the map's
-  light; indoor scenes pin it to night; `?light=day|sunset|night` or the
+  light (`web/sun.js`: the real sun over the place on screen, its height
+  and direction, never the phone's clock or zone; `?sunat=` / `?sunspeed=`
+  move its clock for tests); indoor scenes pin it to night; `?light=day|sunset|night` or the
   `?dev=1` chip force it).
 - **House party:** `web/party.js` (party + lobby: chat, players vote for the
   next game, the host's "Game votes" sheet starts one; the TV opens the same
@@ -237,6 +239,7 @@ node test/auth_rec.mjs <dir> [en|ko|both]   # accounts: a guest from an invite (
 node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
 node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps
 node test/world_shots.mjs <dir> [places]  # the map anywhere: Gangnam, Itaewon (+ its edge), Hongdae, Calgary, Edmonton, Lotte World Tower: top-down next to a plan from the raw data (scripts/plan_map.py), street + wide at night, load times cold / cached; Calgary from the worldwide tiles alone (scripts/omt_fixture.py)
+node test/view_shots.mjs <dir> [range,sun,sunset] [--prefix=before]   # the map's Pokémon GO view (Itaewon + a city spot, day / night, closest / furthest zoom: how far you see, where you stand, draws, triangles, chunks, fps) and its light from the place on screen: Seoul and Calgary at the same UTC moment (?sunat=), a sunset sped up as frames
 node test/light_shots.mjs <dir> [night,sunset,day]   # day and night glass: the start screen and the map's chrome at night, sunset and day (?light=), the panel over what's behind it, the text colours
 test/hunter.html                       # Manhunt's Hunter on his own: poses, doors, counter, orbit (open it on npm run serve:test)
 ```
