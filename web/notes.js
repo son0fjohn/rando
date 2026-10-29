@@ -468,9 +468,6 @@ async function leave() {
   busy = true;
   sfx.confirm?.();
   try {
-    step = "verify";
-    // (no onboarding UI, ?onb=0: the gate can't ask; the server still refuses unverified accounts)
-    if (!(await onboard.requireVerified("notes").catch(() => true))) return;
     step = "locate";
     const here = await hereCell({ ask: true });
     if (!here) { toast(t("notes.needLoc")); return; }
@@ -591,6 +588,7 @@ function composer(cell, leftToday) {
       const r = await rpc("leave_note", args);
       if (!r?.ok) {
         post.textContent = t("notes.post");
+        // only a server still without 020_notes_no_verify.sql says this
         if (r?.why === "verify") { err.textContent = t("notes.why.verify"); err.classList.add("on"); post.disabled = true; onboard.requireVerified("notes").catch(() => {}); return; }
         err.textContent = t(r?.why === "limit" ? "notes.limit" : `notes.why.${r?.why ?? "other"}`); err.classList.add("on");
         check();

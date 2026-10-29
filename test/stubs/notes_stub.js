@@ -65,7 +65,6 @@ export function notesStub({ me, verified, cstate, save, withState }) {
     leave_note: ({ p_lat, p_lng, p_kind, p_body = null, p_top = null, p_bottom = null, p_image = null }) => {
       const st = cstate(), N = S(st), u = me();
       if (N.bans.includes(u)) return { ok: false, why: "banned" };
-      if (!verified()) return { ok: false, why: "verify" };
       if (!["text", "photo", "meme"].includes(p_kind)) throw new Error("bad kind");
       const clean = s => (s ?? "").trim() || null;
       p_body = clean(p_body); p_top = clean(p_top); p_bottom = clean(p_bottom);
