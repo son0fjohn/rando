@@ -225,10 +225,11 @@
 /* ===================================================================== */
 /* the map: bottom bar, explore, style, NPC dialog, party beacons          */
 /* The bottom bar (map only): full-width, through the home-indicator area.
-   The map meets it with a straight edge. Deep navy at night, by day a muted
-   green taken from the day map's grass, blended by --day at sunrise and
-   sunset ("day and night" below); white labels, the active tab gold. */
-:root { --nav-h: 58px; --nav-bg: #0F1A3A; --nav-off: #7A8AB6; --nav-on: #ffffff; --nav-gold: var(--color-accent); }
+   The map meets it with a straight edge. Deep navy at night, by day the day
+   map's sand (a touch deeper), blended by --day at sunrise and sunset ("day
+   and night" below); light labels at night, navy by day; the active tab
+   gold (by day a gold pill behind a navy icon). */
+:root { --nav-h: 58px; --nav-bg: #0F1A3A; --nav-off: #7A8AB6; --nav-on: #ffffff; --nav-gold: var(--color-accent); --nav-act: var(--color-accent); --nav-pill: transparent; }
 #navbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 130; display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch;
   height: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding: 0 8px env(safe-area-inset-bottom); box-sizing: border-box; background: var(--nav-bg);
   touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -236,7 +237,11 @@
 .nav-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 0 4px; margin: 0; border: none; background: none;
   color: var(--nav-off); cursor: pointer; -webkit-tap-highlight-color: transparent; font: 600 11px/13px var(--f-sys); transition: color var(--y-fast); }
 .nav-tab svg { width: 26px; height: 26px; display: block; fill: currentColor; }
-.nav-tab.on { color: var(--nav-gold); }
+.nav-tab.on { color: var(--nav-act); }
+/* the active tab's pill: none at night (the icon is gold), solid gold by day behind the navy icon (the same layout box) */
+.nav-tab > svg { border-radius: 999px; box-sizing: content-box; padding: 3px 14px; margin: -3px -14px; transition: background-color var(--y-fast); }
+.nav-tab.on > svg { background: var(--nav-pill); }
+.nav-tab.on .nav-lbl { font-weight: 700; }
 .nav-tab:active svg { transform: scale(.92); }
 /* Host: the beacon's house in a thin gold ring with a soft breathing glow and
    three tiny roof lights. It takes the other icons' 26px of layout (negative
@@ -252,7 +257,10 @@
 .nav-ring i:nth-of-type(3) { left: 19.5px; animation-delay: 1.6s; }
 @keyframes nav-glow { 0%, 100% { box-shadow: 0 0 3px rgba(var(--color-accent-rgb), .18); } 50% { box-shadow: 0 0 11px 1px rgba(var(--color-accent-rgb), .5); } }
 @keyframes nav-blink { 0%, 60% { opacity: .2; } 61%, 100% { opacity: .95; } }
-#nav-host.tap .nav-ring, #nav-host.hosting .nav-ring { background: var(--nav-gold); color: var(--nav-bg); }
+/* (by day the ring holds a soft gold disc, so the gold reads on the sand; the house goes navy) */
+.nav-ring { background: rgba(var(--color-accent-rgb), calc(.3 * var(--nav-t))); }
+#nav-host.on .nav-ring { background: var(--nav-pill); }
+#nav-host.tap .nav-ring, #nav-host.hosting .nav-ring { background: var(--nav-gold); color: var(--color-on-accent); }
 #nav-host.tap .nav-ring .nh-win, #nav-host.hosting .nav-ring .nh-win { fill: #fff3b0; }
 #nav-host.tap .nav-ring .nh-door, #nav-host.hosting .nav-ring .nh-door { fill: var(--nav-gold); }
 #nav-host.hosting { color: var(--nav-on); }
@@ -2111,14 +2119,24 @@ body.world-arrive #label-layer, body.world-arrive #beacon-layer, body.world-arri
   --glass-shadow-sm: 0 4px 14px rgba(2, 5, 18, calc(.26 - .14 * var(--day)));
   /* the gold button pops on both: an amber glow at night, a crisp darker edge and drop by day */
   --gold-shadow: 0 4px 14px rgba(245, 163, 0, calc(.22 - .06 * var(--day))), 0 1px 3px rgba(70, 35, 0, calc(.28 + .1 * var(--day))), 0 0 0 1px rgba(170, 100, 0, calc(.1 + .35 * var(--day)));
-  /* the nav bar: solid navy (#0F1A3A) at night; by day a muted green, the
-     day map's dominant green (its trees and park grass, ~#40785A) taken
-     darker and a little greyer (#304F3D) so the labels hold >= 4.5:1; the
-     two blend with --day. White icons and labels (the idle ones a soft
-     blue-grey at night, a pale green by day), the active tab gold. */
-  --nav-bg: rgb(calc(15 + 33 * var(--day)), calc(26 + 53 * var(--day)), calc(58 + 3 * var(--day)));
-  --nav-on: #ffffff;
-  --nav-off: rgb(calc(122 + 78 * var(--day)), calc(138 + 80 * var(--day)), calc(182 + 24 * var(--day)));
+  /* the nav bar: solid navy (#0F1A3A) at night; by day the day map's own
+     sand, the beige its ground and buildings show by day (sampled off the
+     day map: ~#A69473 lit, test/mapchrome_shots.mjs), taken a touch deeper
+     and greyer (#9E9075) so it sits in the map yet reads as the bar; the
+     two blend with --day. Icons and labels: light at night (idle a soft
+     blue-grey that brightens toward dusk so it holds on the lighter bar),
+     navy (#0F1A3A) by day; they turn over in a narrow band near full day
+     (--nav-t, --day 0.76 to 0.84: a few minutes of a real sunrise), as the
+     glass text does. The active tab: gold at night; by day a gold pill
+     behind a navy icon (11:1), its label navy (5.2:1 on the sand). */
+  --nav-t: clamp(0, calc((var(--day) - .76) * 12.5), 1);
+  --nav-u: clamp(0, calc(var(--day) * 2), 1);
+  --nav-bg: rgb(calc(15 + 143 * var(--day)), calc(26 + 118 * var(--day)), calc(58 + 59 * var(--day)));
+  --nav-on: rgb(calc(255 - 240 * var(--nav-t)), calc(255 - 229 * var(--nav-t)), calc(255 - 197 * var(--nav-t)));
+  --nav-off: rgb(calc((122 + 120 * var(--nav-u)) * (1 - var(--nav-t)) + 15 * var(--nav-t)), calc((138 + 106 * var(--nav-u)) * (1 - var(--nav-t)) + 26 * var(--nav-t)),
+    calc((182 + 73 * var(--nav-u)) * (1 - var(--nav-t)) + 58 * var(--nav-t)));
+  --nav-act: color-mix(in srgb, var(--color-accent), var(--color-on-accent) calc(var(--nav-t) * 100%));
+  --nav-pill: rgba(var(--color-accent-rgb), var(--nav-t));
   /* the NPC dialog box: navy paper at night, light glass by day */
   --dlg-navy: rgba(calc(14 + 226 * var(--ink-t)), calc(30 + 215 * var(--ink-t)), calc(74 + 181 * var(--ink-t)), calc(.86 + .06 * var(--ink-t)));
   --dlg-ink: var(--g-ink);

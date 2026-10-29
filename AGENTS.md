@@ -38,7 +38,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   -> `017_events.sql`), `web/qr.js` + `web/vendor/qrcode.js`, `web/stats.html`
   (the admin-only dashboard). `?onb=0` turns it off.
 - **Map chrome:** `web/backend.js` (auth, presence, the bottom bar on
-  the world screen only (navy at night, a muted green by day, by `--day`):
+  the world screen only (navy at night with light icons, by day the day
+  map's sand a touch deeper with navy icons and a gold pill on the active
+  tab, blended by `--day`):
   Explore / Host / Style, flat against the map; Host
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
   the style screen, NPC dialog),
