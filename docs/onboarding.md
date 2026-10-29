@@ -28,12 +28,28 @@ always opens at night now (`index.html` sets `__RANDO_FIRST_NIGHT` unless
   and drop the city to 20 fps. No `backdrop-filter`, or reduced
   transparency: lite too. Reduced motion: the city holds still and there's
   no dive.
-- **Start a party** → (a first open: name → character) → the party opens
-  with its room still hidden → the panel fades and scales away while the
-  camera dives (~1.5 s) from the sky into the party's building (picked by
-  the party code: everyone in a party dives into the same one) → navy for a
-  beat → the lobby and the invite sheet. If the 3D isn't drawing yet, no
-  dive: straight in.
+- **Start a party** → (a first open: the setup card, below) → the party
+  opens with its room still hidden → the panel fades and scales away while
+  the camera dives (~1.5 s) from the sky into the party's building (picked
+  by the party code: everyone in a party dives into the same one) → navy
+  for a beat → the lobby and the invite sheet. If the 3D isn't drawing yet,
+  no dive: straight in.
+- **The setup card** (first-timers only: a guest still on its placeholder
+  handle, or with no character; `onbkit.js` `needsSetup`). Start, Join, an
+  invite link and Explore all show it first, as the same glass panel with
+  its insides swapped, over the same drifting city: the character on a
+  small stage, **3D / 2D** in its corner (the live 3D model, or exactly the
+  party room's own pixel sprite, big and crisp: `charview.js`
+  `mountLookView`, the choice kept in `localStorage` `rando-look-mode`),
+  **Randomize** over it, one tap per essential (Skin, Hair, Color, Eyes,
+  Outfit, Hat: `onbkit.js` `cycleLook`, free things only), the name field
+  focused with a random name already in it and selected (keep it with one
+  tap, or just type), **Let's go**. No title, nothing to read: ~10
+  seconds, then straight on into whatever they tapped. A taken default
+  name is swapped for another one. The full wardrobe stays in Style.
+- **Returning players** skip it. The panel shows their chip on top (their
+  room sprite and name); tapping it opens the same card to edit (Save /
+  Back).
 - **Join a party** flips the panel to the code, friends' public parties and
   "See what's happening nearby" (the map); joining dives the same way.
 - **Explore the world** (a quiet text button with a map icon under the
@@ -59,10 +75,10 @@ always opens at night now (`index.html` sets `__RANDO_FIRST_NIGHT` unless
    "Joining…" on the glass. It peeks into the party without joining it
    (`net.js` `peekRoom`: the host answers with the name, the members and
    their looks); their characters warm up meanwhile.
-3. A first open: the name (one field, a 🎲 suggestion) → the character (a
-   random starter outfit, spinning on a platform; Shuffle / This is me) →
-   back on the glass → the same dive straight into the room: "You're in!",
-   everyone already there waves.
+3. A first open: the setup card on the same glass (a random name to keep
+   or replace, the character in 3D or as the room's 2D sprite, Randomize,
+   the essentials, Let's go) → the same dive straight into the room:
+   "You're in!", everyone already there waves.
 4. An ended or full party says so on the glass and offers Start / Join.
 5. The code is kept on the phone (12 h) until they're in, so a reload, a
    sign-in or an interrupted install that reopens the app comes back to the
@@ -200,7 +216,8 @@ install (not the account), the event, a few whitelisted labels / numbers, the
 language. Never a location, a name, a party code or anything typed. Events:
 
 `app_open` (source: invite_link / organic, returning), `party_link_opened`,
-`joined_party`, `name_set`, `character_shuffled` (count), `character_confirmed`,
+`joined_party`, `name_set`, `character_shuffled` (count: Randomize taps and
+essential taps on the setup card), `character_confirmed`,
 `first_game_started` (ms since first open, game), `first_game_finished`,
 `recap_shown`, `recap_shared`, `own_party_created`, `invite_sent` (channel:
 share / sms / copy / qr / contacts), `verification_prompted` /
@@ -245,12 +262,21 @@ read it (`onboarding_stats()`): insert your account's id by hand.
   page, the analytics whitelist) and the `events` migration in
   `test/coins_sql.mjs`.
 - `node test/onboard_rec.mjs <dir> [en|ko|both] [--quick]`: the real app
-  page (Supabase faked), fresh phones in their own browser contexts: Path A
-  and Path B recorded, every screen shot in both languages, a declined
-  location, an interrupted install, a guest verifying mid-party, and tap →
-  first game for 5 fresh phones (sizes, languages; human-paced unless
-  `--quick`). The stub's `?verify=1` / `stub-verify` turns phone auth on; the
-  code is always 123456.
+  page (Supabase faked), fresh phones in their own browser contexts: a
+  returning player (the chip, the edit card, straight into the dive), Path
+  A and Path B recorded (the setup card, its 3D / 2D toggle), every screen
+  shot in both languages, a declined location, an interrupted install, a
+  guest verifying mid-party, and tap → first game for 5 fresh phones
+  (sizes, languages; human-paced unless `--quick`). The stub's `?verify=1`
+  / `stub-verify` turns phone auth on; the code is always 123456.
+- `node test/glass_shots.mjs <dir> [--prefix=before] [--only=a,b,c,d]`:
+  every dialog, sheet, popup and button surface in the app, shot on the
+  real page offline (the setup card, the invite sheet, Leave the party?,
+  Settings, a pre-prompt, the safety card, a toast, Home, the recap,
+  verification, Save your account, the game votes, the lobby, a profile
+  card, End this game?, the party results, the host menu, Style, the shop,
+  a beacon's card): run it before and after a change to the shared glass
+  (theme.css `.glass`, `.glass-btn`, `.glass-dialog`, `.glass-sheet`…).
 - `node test/auth_rec.mjs <dir> [en|ko|both]`: accounts on the real app page:
   a guest from an invite (no phone anywhere), saving with Kakao from the
   recap (same account, back in the party), a Kakao account that's taken, the

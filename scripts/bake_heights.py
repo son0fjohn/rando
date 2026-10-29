@@ -1,6 +1,12 @@
 """Bake the resolved zone heights (itaewon_heights.json) into the static
 buildings.json the generic field extrudes from.
 
+SUPERSEDED by scripts/merge_heights.py, which joins the same file (by
+footprint overlap, so it survives the registry bake's footprints) against
+the registry and OSM and decides per building. Kept for the record of how
+the "tiles" / "osm-*" / "default" tags were first written; running it on a
+merged buildings.json would put those old tags back.
+
 Scale note: the world runs 0.55 units/meter horizontally with a
 deliberate ~2.4x vertical exaggeration (tuned against the oversized
 player character — see fetch_buildings.py's 5 + 2.6/level formula vs

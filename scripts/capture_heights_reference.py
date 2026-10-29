@@ -15,6 +15,18 @@ Outputs:
   web/data/itaewon_heights_sources.json  { "<buildingId>": "tiles" |
                      "osm-height" | "osm-levels" | "default" }
 
+buildingId is the OSM way id in web/data/itaewon_layers.json; its footprint
+there is how scripts/merge_heights.py joins these heights to
+web/buildings.json (only the "tiles" rows count as a Google measurement
+there; "default" is a placeholder). Known issue with the capture as
+committed: its 163 measured heights sit between 2 and 9 m whatever the
+building (the Hamilton Hotel, 35 m, reads 4.5 m; an 8-floor block 2.2 m)
+and don't track the registry's floor counts at all (Spearman -0.09 over
+124 buildings), so the roof/ground percentiles below are reading the
+wrong points at this LOD: re-capture (a tighter STOP_GEOM_ERR, a roof
+disc that follows the footprint instead of a 6 m circle) before trusting
+a new run.
+
     py -3 scripts/capture_heights_reference.py            # fallback only
     py -3 scripts/capture_heights_reference.py --tiles    # real capture
 """

@@ -30,7 +30,7 @@ export const THEME = {
   // warm, slightly desaturated (grocery-street reference) — greys lean
   // cream/tan rather than blue.
   world: {
-    grassDay:   0xe6e6d4, grassNight:  0x49536b,
+    grassDay:   0xe6e6d4, grassNight:  0x6b7c9c,   // (night: lifted so a park doesn't read as a hole)
     pavingDay:  0xefeae0, pavingNight: 0x6a7390,
     roadDay:    0xd8d3c8, roadNight:   0xbcc3dc,
     curbDay:    0xe7e2d8, curbNight:   0xaab0c6,

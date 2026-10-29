@@ -1,12 +1,14 @@
 // The onboarding on the REAL app page (Supabase faked offline), recorded:
-//   Path A  a host (a returning player) starts a party from the start screen
-//           and shares the invite; two friends are in; a FRESH phone (its
-//           own storage, no account) opens the invite link /p/CODE: the
-//           start screen with the party's name, name, character, the room
-//           ("you're in!"), the host starts the suggested first game: the
-//           safety card, the game's host lines.
+//   Path A  a host (a returning player: their chip on the start screen, no
+//           setup card) starts a party from the start screen and shares the
+//           invite; two friends are in; a FRESH phone (its own storage, no
+//           account) opens the invite link /p/CODE: the start screen with
+//           the party's name, the setup card (a random name to keep, the
+//           character in 3D or as the room's 2D sprite, Randomize, the
+//           essentials), the room ("you're in!"), the host starts the
+//           suggested first game: the safety card, the game's host lines.
 //   Path B  a fresh phone opens the app on its own: the start screen, Start
-//           a party, name, character, the invite sheet, the empty room with
+//           a party, the setup card, the invite sheet, the empty room with
 //           its QR. (test/start_rec.mjs: the glass, the drift, the dive.)
 //   checks  a declined location pre-prompt (the map still works), an
 //           interrupted install (the invite survives a cold reopen), a guest
@@ -104,30 +106,78 @@ async function writeVideo(name, casts) {
   const inputs = dirs.flatMap(d => ["-f", "concat", "-i", join(d, "frames.ffconcat")]);
   const scale = dirs.map((_, i) => `[${i}:v]fps=24,scale=390:844,setsar=1[v${i}]`).join(";");
   const stack = dirs.length > 1 ? `${dirs.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${dirs.length}[out]` : "[v0]null[out]";
-  execFileSync(process.env.FFMPEG, ["-y", "-loglevel", "error", ...inputs, "-filter_complex", `${scale};${stack}`, "-map", "[out]", "-pix_fmt", "yuv420p", "-crf", "26", join(OUT, `${name}.mp4`)]);
-  console.log(`  wrote ${name}.mp4 (${Math.round(t1 - t0)} s)`);
+  // (a cut-down ffmpeg, like Playwright's own, has no scale filter: the frames stay, the run goes on)
+  try {
+    execFileSync(process.env.FFMPEG, ["-y", "-loglevel", "error", ...inputs, "-filter_complex", `${scale};${stack}`, "-map", "[out]", "-pix_fmt", "yuv420p", "-crf", "26", join(OUT, `${name}.mp4`)], { stdio: ["ignore", "ignore", "pipe"] });
+    console.log(`  wrote ${name}.mp4 (${Math.round(t1 - t0)} s)`);
+  } catch (e) { console.log(`  (no ${name}.mp4: ${String(e.stderr ?? e.message).trim().split("\n").pop()}; the frames are in ${name}/)`); }
 }
-const shot = async (pg, lang, n, what) => { await pg.screenshot({ path: join(OUT, `${lang}-${n}.png`), timeout: 120000 }).catch(e => console.log("  (shot failed)", n, e.message)); console.log(`  shot ${lang}-${n}${what ? ` · ${what}` : ""}`); };
-// a person's pace: read a screen, type like a thumb
+// (straight from CDP: page.screenshot waits on fonts and a stable frame, which a page drawing
+// the city and a character in software GL here can hold up for minutes)
+const shot = async (pg, lang, n, what) => {
+  try {
+    const cdp = await pg.context().newCDPSession(pg);
+    const r = await cdp.send("Page.captureScreenshot", { format: "png" });
+    await cdp.detach().catch(() => {});
+    await writeFile(join(OUT, `${lang}-${n}.png`), Buffer.from(r.data, "base64"));
+  } catch (e) { console.log("  (shot failed)", n, e.message); }
+  console.log(`  shot ${lang}-${n}${what ? ` · ${what}` : ""}`);
+};
+// a person's pace: read a screen, type like a thumb (the field is focused from the page: a
+// click here would wait for a "stable" element, which the live city behind the glass never is on software GL)
 const human = !QUICK;
 const read = (ms = 1400) => sleep(human ? ms : 250);
-async function typeName(pg, sel, text) { await pg.click(sel); await pg.keyboard.type(text, { delay: human ? 140 : 10 }); }
+const focusField = (pg, sel) => pg.evaluate(sel => { const i = document.querySelector(sel); if (!i) return false; i.focus(); i.select?.(); return true; }, sel);
+const clearField = (pg, sel) => pg.evaluate(sel => { const i = document.querySelector(sel); if (!i) return; i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true })); }, sel);
+async function typeName(pg, sel, text) { await focusField(pg, sel); await pg.keyboard.type(text, { delay: human ? 140 : 10 }); }
+// the setup card on the start panel (a first open): the name field holds a
+// random name, selected, so typing replaces it; Randomize; Let's go
+// until a page draws 8 frames in a row under 120 ms each (or a minute passes)
+const settle = pg => pg.evaluate(() => new Promise(res => {
+  let n = 0, last = performance.now(); const t0 = last;
+  const f = now => { n = now - last < 120 ? n + 1 : 0; last = now; if (n >= 8 || now - t0 > 60000) res(); else requestAnimationFrame(f); };
+  requestAnimationFrame(f);
+})).catch(() => {});
+const cardIs = (pg, ms = 30000) => until(pg, () => !!document.querySelector(".st-panel [data-setup] #su-name"), null, ms);
+async function throughCard(pg, name, { random = 1, lang = "en", tag = "" } = {}) {
+  const def = await pg.evaluate(() => ({ v: document.querySelector("#su-name")?.value ?? "", sel: document.activeElement?.id === "su-name" }));
+  ok(def.v.length >= 2 && def.v.length <= 20, `${lang}${tag}: the card holds a random name to keep ("${def.v}"), the field focused (${def.sel})`);
+  await clearField(pg, "#su-name"); await typeName(pg, "#su-name", name);
+  for (let i = 0; i < random; i++) { await tap(pg, "[data-random]"); await read(900); }
+  await tap(pg, "[data-go]");
+}
 
 // ---- a host with a party (Home -> Throw a party -> the invite sheet) and two friends in it
-async function hostParty(lang, { shots = true } = {}) {
+async function hostParty(lang, { shots = true, record = false } = {}) {
   const ctx = await phoneContext({ lang });
-  const H = await page(ctx, appUrl(`&me=jae&av=${encodeURIComponent(JSON.stringify(LOOKS.jae))}`), "jae");
+  const H = await page(ctx, null, "jae");
+  const casts = record ? [await cast(H)] : [];     // (a returning player: the chip, Start, straight into the dive)
+  await H.goto(appUrl(`&me=jae&av=${encodeURIComponent(JSON.stringify(LOOKS.jae))}`));
   ok(await screenIs(H, "start", 90000), `${lang}: a returning player lands on the start screen`);
   await sleep(4000);
-  if (shots) await shot(H, lang, "B5-start", "the start screen: Start a party, Join a party");
+  if (shots) await shot(H, lang, "B5-start", "the start screen: the player's chip, Start a party, Join a party");
+  ok(await H.evaluate(() => document.querySelector(".st-panel [data-me-chip] b")?.textContent === "jae"), `${lang}: …with their character and name on a chip, top of the panel`);
+  if (shots) {
+    // the chip opens the same card to edit; Back leaves everything as it was
+    await tap(H, ".st-panel [data-me-chip]");
+    ok(await cardIs(H) && await H.evaluate(() => document.querySelector("#su-name")?.value === "jae" && !!document.querySelector(".st-panel [data-back]")), `${lang}: tap the chip -> the setup card, to edit (their name in it, a Back)`);
+    await until(H, () => !!document.querySelector("#su-stage canvas"), null, 30000); await sleep(1500);
+    await shot(H, lang, "B6-edit-card", "a returning player's chip: the same card, to edit");
+    await tap(H, ".st-panel [data-back]"); await sleep(600);
+    ok(await H.evaluate(() => !document.querySelector(".st-panel [data-setup]") && !!document.querySelector(".st-panel [data-start]")), `${lang}: Back -> the start screen again`);
+  }
   await tap(H, ".st-panel [data-start]");
-  ok(await sheetIs(H, "invite"), `${lang}: Start a party -> a party, and the invite sheet`);
+  // (the dive is ~1.5 s on a phone; software GL with several pages being screencast here can take a minute)
+  ok(await sheetIs(H, "invite", 120000), `${lang}: Start a party -> straight to a party (no setup card for a returning player), and the invite sheet`);
+  ok(await H.evaluate(() => !(window.__events ?? []).some(e => e.name === "name_set" || e.name === "character_confirmed")), `${lang}: …no name or character asked of a returning player`);
   await sleep(1200);
   if (shots) await shot(H, lang, "B7-invite", "the invite sheet: share, messages, copy, QR");
+  if (record) await writeVideo(`returning-${lang}`, casts);
   const link = await H.evaluate(() => document.querySelector("[data-share]")?.dataset.link);
   const code = link?.match(/\/p\/([A-Z0-9]{4})/)?.[1];
   ok(!!code && /\?n=/.test(link), `${lang}: the invite link is /p/${code} with the party's name (${link?.replace(base, "")})`);
   await tap(H, "[data-close]");
+  await until(H, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor") && !document.querySelector("#dive-veil.on"), null, 60000);
   const fctx = await phoneContext({ lang });
   const F = [await page(fctx, lightUrl("mina", code), "mina"), await page(fctx, lightUrl("sol", code), "sol")];
   ok(await until(H, () => document.querySelectorAll(".lr-av").length >= 3, null, 60000), `${lang}: two friends are in`);
@@ -139,25 +189,35 @@ async function pathA(lang, party, { record = false, shots = true, viewport, name
   const ctx = await phoneContext({ lang, viewport });
   const N = await page(ctx, null, `new${tag}`);
   const casts = record ? [await cast(N), await cast(party.H)] : [];
+  // the host's phone answers the invite's peek (net.js peekRoom, 7 s): on this sandbox's software GL
+  // a host still building everyone's room sprites can miss it, so let it settle first (a real phone doesn't need this)
+  await settle(party.H);
   const t0 = Date.now();
   await N.goto(party.link.replace(/^https?:\/\/[^/]+/, base));
   ok(await screenIs(N, "start", 60000), `${lang}${tag}: the invite opens the start screen, the party's name on it`);
   const steps = { start: Date.now() - t0 };
   if (shots) { await until(N, () => !!document.querySelector(".st-invite b") && document.querySelector(".st-invite b").textContent !== "…", null, 20000); await shot(N, lang, "A1-invite", "an invite: the party's name on the glass, no buttons"); }
-  ok(await screenIs(N, "name"), `${lang}${tag}: straight on -> what should people call you`);
-  steps.name = Date.now() - t0;
-  if (shots) { await tap(N, "[data-suggest]"); await sleep(400); await shot(N, lang, "A2-name", "the name, with a suggestion"); await N.fill("#onb-name", ""); }
-  await typeName(N, "#onb-name", name);
-  await read(500);
-  await tap(N, "[data-next]");
-  ok(await screenIs(N, "char"), `${lang}${tag}: -> the character`);
-  steps.character = Date.now() - t0;
-  await sleep(shots ? 4000 : 800);
-  if (shots) await shot(N, lang, "A3-character", "a random starter look on the platform");
-  await tap(N, "[data-shuffle]"); await read(1200); await tap(N, "[data-shuffle]"); await read(1600);
-  if (shots) await shot(N, lang, "A3b-shuffled", "after Shuffle");
-  await tap(N, "[data-ok]");
-  ok(await until(N, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor"), null, 30000), `${lang}${tag}: -> straight into the party room`);
+  const cardOk = await cardIs(N, 90000);
+  ok(cardOk, `${lang}${tag}: straight on -> the setup card on the same glass (a name, the character, Let's go)`);
+  if (!await N.evaluate(() => !!document.querySelector(".st-panel [data-setup] #su-name"))) console.log("    (debug)", await N.evaluate(() => JSON.stringify({ view: document.querySelector(".st-panel")?.dataset.view, text: document.querySelector(".st-panel")?.textContent.replace(/\s+/g, " ").trim().slice(0, 120), going: window.__onb._going, su: !!window.__onb._su, screen: document.querySelector(".onb-screen")?.dataset.screen })));
+  steps.card = Date.now() - t0;
+  if (shots && cardOk) {
+    await until(N, () => !!document.querySelector("#su-stage canvas"), null, 30000); await sleep(1500);
+    await shot(N, lang, "A2-card", "the setup card: a random name to keep, the character in 3D, the essentials");
+    // the 3D / 2D toggle: the room's own sprite, big and crisp; the choice is kept on the phone
+    await tap(N, "[data-mode='2d']"); await sleep(2500);
+    await until(N, () => !!document.querySelector("#su-stage .cv-2d"), null, 10000);
+    const twoD = await N.evaluate(() => { const s = document.querySelector("#su-stage .cv-2d-spr"), box = document.querySelector("#su-stage .cv-2d"); const px = box ? parseInt(getComputedStyle(box).getPropertyValue("--px")) : 0; return { on: document.querySelector("#su-stage").dataset.look === "2d" && !!s && getComputedStyle(s).backgroundImage.startsWith("url(") && !document.querySelector("#su-stage canvas"), px, kept: localStorage.getItem("rando-look-mode") }; });
+    ok(twoD.on && twoD.px >= 2 && twoD.kept === "2d", `${lang}${tag}: 2D: the party room's own sprite at ${twoD.px}x, no 3D canvas, the choice kept (${twoD.kept})`);
+    await shot(N, lang, "A2b-card-2d", "the same card in 2D: the room's sprite, big");
+    await tap(N, "[data-cycle='hair']"); await read(900);
+    await shot(N, lang, "A2c-card-2d-hair", "an essential tapped (Hair): the sprite updates live");
+    await tap(N, "[data-mode='3d']"); await until(N, () => !!document.querySelector("#su-stage canvas"), null, 30000); await sleep(800);
+    ok(await N.evaluate(() => localStorage.getItem("rando-look-mode") === "3d"), `${lang}${tag}: back to 3D (kept)`);
+  }
+  await throughCard(N, name, { random: shots ? 2 : 1, lang, tag });
+  if (shots) { await sleep(200); }
+  ok(await until(N, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor"), null, 90000), `${lang}${tag}: Let's go -> the dive, straight into the party room`);
   if (shots) { await until(N, () => !!document.querySelector(".onb-in"), null, 8000); await shot(N, lang, "A4-youre-in", "you're in! everyone already here waves"); }
   const tIn = Date.now() - t0;
   steps.room = tIn;
@@ -216,16 +276,12 @@ async function pathB(lang, { record = false, shots = true } = {}) {
   await sleep(5000);
   if (shots) await shot(P, lang, "B1-start", "the start screen");
   await read(); await tap(P, ".st-panel [data-start]");
-  ok(await screenIs(P, "name"), `${lang}: Start a party -> name`);
-  await sleep(500);
-  if (shots) await shot(P, lang, "B3-name", "the name");
-  await typeName(P, "#onb-name", lang === "ko" ? "새벽 여우" : "Midnight Fox"); await read(500);
-  await tap(P, "[data-next]");
-  ok(await screenIs(P, "char"), `${lang}: -> character`);
-  await sleep(4000);
-  if (shots) await shot(P, lang, "B4-character", "the character");
-  await tap(P, "[data-shuffle]"); await read(1400);
-  await tap(P, "[data-ok]");
+  ok(await cardIs(P), `${lang}: Start a party -> the setup card, on the same glass`);
+  await until(P, () => !!document.querySelector("#su-stage canvas"), null, 30000); await sleep(1500);
+  if (shots) await shot(P, lang, "B3-card", "the setup card: a random name, the character, Randomize, Let's go");
+  await tap(P, "[data-random]"); await read(1400);
+  if (shots) await shot(P, lang, "B4-card-random", "after Randomize");
+  await throughCard(P, lang === "ko" ? "새벽 여우" : "Midnight Fox", { random: 0, lang });
   // a private party with friends never asks for a number (test/auth_rec.mjs covers the stranger features)
   ok(await sheetIs(P, "invite", 45000), `${lang}: -> straight to the party and its invite sheet (no phone)`);
   ok(await P.evaluate(() => !document.querySelector('.onb-sheet[data-sheet="verify"]')), `${lang}: …no verification asked for a private party`);
@@ -271,11 +327,11 @@ async function interrupted(lang, party) {
   const ctx = await phoneContext({ lang });
   const N = await page(ctx, party.link.replace(/^https?:\/\/[^/]+/, base), "interrupted");
   ok(await screenIs(N, "start", 60000), `${lang}: the invite's start screen`);
-  await screenIs(N, "name", 60000);
+  await cardIs(N, 60000);
   await N.goto(appUrl());     // the app closed and opened again, with no link
   ok(await until(N, () => !!document.querySelector(".st-panel .st-invite"), null, 60000), `${lang}: reopened cold: the same party's invite is back (kept on the phone)`);
-  await screenIs(N, "name", 60000); await typeName(N, "#onb-name", "Reo"); await tap(N, "[data-next]");
-  await screenIs(N, "char"); await sleep(800); await tap(N, "[data-ok]");
+  await cardIs(N, 60000); await sleep(600);
+  await throughCard(N, "Reo", { random: 0, lang });
   ok(await until(N, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor"), null, 30000), `${lang}: -> in that party`);
   ok(await N.evaluate(() => !JSON.parse(localStorage.getItem("rando-onb-v1") ?? "{}").pending), `${lang}: the kept invite is cleared once they're in`);
   await N.evaluate(() => window.__onb.party.leave());
@@ -286,8 +342,8 @@ async function interrupted(lang, party) {
 async function upgradeMidParty(lang, party) {
   const ctx = await phoneContext({ lang, verify: true });
   const N = await page(ctx, party.link.replace(/^https?:\/\/[^/]+/, base), "upgrader");
-  await screenIs(N, "name", 60000); await typeName(N, "#onb-name", "Kit"); await tap(N, "[data-next]");
-  await screenIs(N, "char"); await sleep(800); await tap(N, "[data-ok]");
+  await cardIs(N, 60000); await sleep(600);
+  await throughCard(N, "Kit", { random: 0, lang });
   await until(N, () => !!document.querySelector("#party-panel:not([hidden]) #pt-floor"), null, 30000);
   const id0 = await N.evaluate(async () => (await import("/web/backend.js")).sb.auth.getSession().then(r => r.data.session.user.id));
   await N.evaluate(() => { window.__onb.verifySheet("save"); });
@@ -320,10 +376,10 @@ for (const [li, lang] of LANGS.entries()) {
   const b = await pathB(lang, { record: li === 0 });
   await b.ctx.close(); contexts.splice(contexts.indexOf(b.ctx), 1);
   console.log("\nPath A (an invite link)");
-  const party = await hostParty(lang);
+  const party = await hostParty(lang, { record: li === 0 });
   const a = await pathA(lang, party, { record: li === 0 });
   timings.push({ lang, phone: "390x844", tIn: a.tIn, tGame: a.tGame });
-  await tap(a.N, "#pt-leave"); await a.ctx.close(); contexts.splice(contexts.indexOf(a.ctx), 1);
+  await a.N.evaluate(() => window.__onb.party.leave()).catch(() => {}); await sleep(800); await a.ctx.close(); contexts.splice(contexts.indexOf(a.ctx), 1);
   if (li === 0) {
     console.log("\nA declined location");
     await declinedLocation(lang);
@@ -336,7 +392,7 @@ for (const [li, lang] of LANGS.entries()) {
     for (const [i, [label, viewport, l]] of PHONES.entries()) {
       const r = await pathA(l, party, { shots: false, viewport, tag: ` #${i + 1} ${label}`, name: l === "ko" ? `민지${i}` : `Sam${i}` });
       timings.push({ lang: l, phone: label, tIn: r.tIn, tGame: r.tGame, run: i + 1, steps: r.steps });
-      await tap(r.N, "#pt-leave"); await r.ctx.close(); contexts.splice(contexts.indexOf(r.ctx), 1);
+      await r.N.evaluate(() => window.__onb.party.leave()).catch(() => {}); await sleep(800); await r.ctx.close(); contexts.splice(contexts.indexOf(r.ctx), 1);
     }
   }
   for (const c of [party.ctx, party.fctx]) { await c.close(); contexts.splice(contexts.indexOf(c), 1); }

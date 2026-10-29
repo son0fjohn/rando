@@ -64,11 +64,11 @@ export function renderBoard(el, set, rows, { me, avatars = {} } = {}) {
 export function showPodium(host, set, rows, { me, avatars = {}, isHost = false, onNewSet = null, onEnd = null } = {}) {
   closePodium(host);
   const wrap = document.createElement("div");
-  wrap.className = "pp-wrap";
+  wrap.className = "pp-wrap glass-scrim";
   wrap.id = "pp";
   const top = rows.slice(0, 3);
   const order = [top[1], top[0], top[2]];                       // 2 · 1 · 3
-  wrap.innerHTML = `<div class="pp-card">
+  wrap.innerHTML = `<div class="pp-card glass glass-dialog">
       <div class="pp-title">party results</div>
       <div class="pp-sub">${set.games.length} games · set ${set.no}</div>
       <div class="pp-podium">${order.map((r, i) => r ? `<div class="pp-step s${[2, 1, 3][i]}" data-id="${esc(r.id)}">
@@ -79,7 +79,7 @@ export function showPodium(host, set, rows, { me, avatars = {}, isHost = false, 
     </div>
     <div class="pp-coins" id="pp-coins" hidden></div>
     <div class="pp-btns">${isHost
-      ? `<button type="button" class="y-btn dim" id="pp-end">end the party</button><button type="button" class="y-btn host" id="pp-again">new set of ${PARTY.GAMES_PER_SET} ▶</button>`
+      ? `<button type="button" class="glass-btn clear sm" id="pp-end">end the party</button><button type="button" class="glass-btn gold sm" id="pp-again">new set of ${PARTY.GAMES_PER_SET} ▶</button>`
       : `<p class="pp-wait">the host picks: another set, or the end of the party</p>`}</div>`;
   host.appendChild(wrap);
   wrap.querySelectorAll("[data-id]").forEach(el => {

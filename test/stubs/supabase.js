@@ -34,6 +34,7 @@
 //             server's "only request this after 53 seconds"
 import { StubChannel } from "./bcchannel.js";
 import { ITEMS4, HAIRCOLOR_SHOP, STARTER_OUTFITS4 } from "/web/items4.js";
+import { notesStub } from "./notes_stub.js";   // notes on the map (migrations/019): RPCs, buckets, a fake moderator
 
 const q = new URLSearchParams(location.search);
 const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
@@ -85,7 +86,9 @@ const db = {
 // updates), one call at a time across tabs (a Web Lock), like the real one's
 // transactions. window.__coins() reads it, for tests.
 let CUR = null, dirty = false;
-const idb = () => new Promise((res, rej) => { const r = indexedDB.open("stub-coins", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+// (one connection per page, kept: a new one per call piled up hundreds on a long recording)
+let idbConn = null;
+const idb = () => (idbConn ??= new Promise((res, rej) => { const r = indexedDB.open("stub-coins", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => { idbConn = null; rej(r.error); }; }));
 const idbGet = async () => { const d = await idb(); return new Promise(res => { const g = d.transaction("kv").objectStore("kv").get("state"); g.onsuccess = () => res(g.result ?? null); g.onerror = () => res(null); }); };
 const idbPut = async v => { const d = await idb(); return new Promise(res => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, "state"); t.oncomplete = res; t.onerror = res; }); };
 const load = () => CUR;
@@ -254,6 +257,10 @@ const goBack = (to, hash = "") => setTimeout(() => { history.replaceState(null, 
 const authListeners = new Set();
 let pendingPhone = null;
 const phoneAuth = (q.get("verify") ?? ls.get("stub-verify")) === "1";
+// ---- notes (notes_stub.js): their state rides in the coin "server" above
+const NOTES = notesStub({ me: () => myId, cstate, save, withState: withCoins,
+  verified: () => !phoneAuth || !!session.user.phone_confirmed_at || (session.user.identities ?? []).some(i => i.provider === "kakao") });
+Object.assign(RPC, NOTES.rpc);
 export function createClient() {
   return {
     auth: {
@@ -298,6 +305,8 @@ export function createClient() {
       },
     },
     from: t => new Query(t),
+    storage: NOTES.storage,
+    functions: NOTES.functions,
     rpc: async (name, args) => {
       if (!RPC[name]) return { data: null, error: { message: `rpc ${name} not stubbed` } };
       return withCoins(() => { try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; } });

@@ -19,13 +19,15 @@ import { HOWTO, HOWTO_MS } from "/web/howto.js";
 import { findPath, walkable } from "/web/hplobby.js";
 import { ROOMS } from "/web/roomdefs.js";
 import { PMTiles, zxyToTileId } from "/web/pmtiles.js";
-import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea } from "/web/citygen.js";
+import { buildChunk, lngLatToTile, worldHeight, earcut, orientedBox, ringArea, ROAD_W } from "/web/citygen.js";
+import { STYLE, styleClass, wallIndex } from "/web/style.js";
 import { decodeMVT, ringArea as mvtArea } from "/web/mvt.js";
 import { omtChunks } from "/web/cityomt.js";
-import { dayness, setDay, getDay } from "/web/daylight.js";
+import { setDay, getDay } from "/web/daylight.js";
+import { sunAltitude, lightAt, phaseOf } from "/web/sun.js";
 import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
 import { EVENTS, clean, track } from "/web/analytics.js";
-import { starterLook, e164, otpWait, otpError, OTP } from "/web/onbkit.js";
+import { starterLook, e164, otpWait, otpError, OTP, needsSetup, ESSENTIALS, cycleLook } from "/web/onbkit.js";
 import { invitePage } from "/api/invite.mjs";
 import { STARTER_OUTFITS4, normalizeAvatar4 } from "/web/items4.js";
 
@@ -789,7 +791,10 @@ group("Side Quest — the quest pool");
 {
   const ids = new Set(SQ.quests.map(q => q.id));
   const by = (c, l) => SQ.quests.filter(q => q.category === c && q.level === l).length;
-  ok(SQ.quests.length === 47 && by("anywhere", "mild") === 7 && by("strangers", "mild") === 22 && by("strangers", "spicy") === 15 && by("unhinged", "unhinged") === 3, `47 quests: 7 anywhere, 22 + 15 strangers (mild/spicy), 3 unhinged (got ${SQ.quests.length})`);
+  ok(SQ.quests.length === 49 && by("anywhere", "mild") === 7 && by("strangers", "mild") === 24 && by("strangers", "spicy") === 15 && by("unhinged", "unhinged") === 3, `49 quests: 7 anywhere, 24 + 15 strangers (mild/spicy), 3 unhinged (got ${SQ.quests.length})`);
+  ok(SQ.quests.some(q => q.id === "sq-strangers-mild-23" && q.text === "Talk to a stranger, but sing everything you say like a song the entire time") &&
+    SQ.quests.some(q => q.id === "sq-strangers-mild-24" && q.text === "Talk to a stranger, but rap everything you say the entire time") &&
+    ["sq-strangers-mild-23", "sq-strangers-mild-24"].every(id => questsFor(SQ.quests, { settings: { adult: false } }).some(q => q.id === id)), "the sing and rap quests are in every party's pool");
   ok(ids.size === SQ.quests.length && SQ.quests.every(q => q.id.startsWith(`sq-${q.category}-${q.level}-`)), "unique ids that name category and level");
   ok(SQ.quests.some(q => q.text === "Crash out and throw a tantrum in COMPLETE SILENCE") && SQ.quests.some(q => q.text === "Take a selfie with a stranger and caption it \"hard launch 😝\""), "texts are exactly as supplied");
   ok(!questsFor(SQ.quests, { settings: { adult: false } }).some(q => q.level === "unhinged"), "no unhinged quests without 18+");
@@ -1562,7 +1567,7 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   ok(all.some(b => b.m) && all.every(b => b.h > 2 && b.h < 650), "measured and registry heights are kept as they are");
   const kinds = new Set(all.map(b => b.k)), roofs = new Set(all.map(b => b.r));
   ok(["h", "a", "c", "o"].every(k => kinds.has(k)) && roofs.has("f") && (roofs.has("g") || roofs.has("h")), `types ${[...kinds].join("")} and roofs ${[...roofs].join("")} (flat, gabled, hipped)`);
-  ok(worldHeight(25) === 25 * 0.55 * 2.4 && worldHeight(200) < 200 * 0.55 * 2.4 && worldHeight(200) > worldHeight(100), "the map's 2.4x vertical up to 25 m, gentler above, never shrinking");
+  ok(worldHeight(25) === 25 * 0.55 * 2.4 && worldHeight(50) === 50 * 0.55 * 2.4 && worldHeight(200) < 200 * 0.55 * 2.4 && worldHeight(200) > worldHeight(100), "the map's 2.4x vertical up to 50 m, gentler above, never shrinking");
   // geometry
   const tri = earcut([[0, 0], [10, 0], [10, 10], [5, 4], [0, 10]]);
   ok(tri.length === 9, "a concave footprint triangulates into n-2 triangles");
@@ -1572,8 +1577,10 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   const near = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 0 });
   const far = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1 });
   const tris = o => Object.values(o.groups).reduce((n, g) => n + (g.idx ? g.idx.length / 3 : 0), 0);
-  ok(near.groups.shop && near.groups.sign && near.lamps.length > 0 && near.groups.lines, `up close: shopfronts (${near.stats.shops}), lit signs (${near.stats.signs}), lamps (${near.stats.lamps}), outlines`);
-  ok(!far.groups.shop && !far.groups.sign && !far.lamps.length && far.groups.wall_g && tris(far) < tris(near) * 0.7, `further out: walls and roofs only, ${tris(far)} triangles vs ${tris(near)}`);
+  ok(near.groups.ac && (near.groups.awn || near.groups.panel) && near.lamps.length > 0 && near.poles.length > 0 && near.groups.wires && near.groups.lines,
+    `up close: AC boxes, awnings (${near.stats.awnings}) and sign panels, lamps (${near.stats.lamps}), poles (${near.stats.poles}) with wires, outlines`);
+  ok(!far.groups.ac && !far.groups.awn && !far.groups.panel && !far.lamps.length && !far.poles.length && !far.groups.lines && far.groups.roof && far.groups.shadow && tris(far) < tris(near) * 0.8,
+    `further out: walls, roofs and shadows only, ${tris(far)} triangles vs ${tris(near)}`);
   const again = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 0 });
   ok(again.groups.roof.pos.length === near.groups.roof.pos.length && again.groups.roof.pos.every((v, i) => v === near.groups.roof.pos[i]), "a chunk builds the same every time (you come back to the same street)");
   const floats = Object.values(near.groups).flatMap(g => [g.pos]).every(p => p.every(Number.isFinite));
@@ -1608,7 +1615,7 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
     const xs = [...r].filter((_, i) => i % 3 === 0), zs = [...r].filter((_, i) => i % 3 === 2);
     return (x, z) => x > Math.min(...xs) && x < Math.max(...xs) && z > Math.min(...zs) && z < Math.max(...zs); })();
   let wetTrees = 0; for (let k = 0; k < lake.trees.length; k += 4) if (inLake(lake.trees[k], lake.trees[k + 1])) wetTrees++;
-  ok(Math.min(...ys(lake.groups.water)) > Math.max(...ys(lake.groups.ground)) && lake.trees.length > 0 && lake.trees.length % 4 === 0 && !wetTrees,
+  ok(Math.min(...ys(lake.groups.water)) > Math.max(...ys(lake.groups.grass)) && lake.trees.length > 0 && lake.trees.length % 4 === 0 && !wetTrees,
     `a lake inside its park: the water drawn above the park, ${lake.trees.length / 4} trees round it and none on it`);
   // near Itaewon the hand-made map keeps its own middle
   const ex = buildChunk(chunk, { z: 16, x: ix, y: iy, origin, lod: 1, exclude: { b: 820, r: 1420 } });
@@ -1617,6 +1624,51 @@ group("The map — city chunks: the archive, heights, roofs, heroes, detail ring
   const [ex1, ey1] = lngLatToTile(126.9946 + 0.0145, 37.5346, 16).map(Math.floor);
   const edge = JSON.parse(new TextDecoder().decode(await ranged.tile(16, ex1, ey1) ?? new Uint8Array([123, 125])));
   ok(Array.isArray(edge.cut) && edge.cut[0].length === 3, "a chunk at an area's edge carries the circle it was cut by");
+}
+
+group("The Itaewon style — the procedural city follows STYLE.md (web/style.js)");
+{
+  const buf = new Uint8Array(await (await fetch("/web/tiles/cities.pmtiles")).arrayBuffer());
+  const pm = new PMTiles("x", { fetch: async (u, o) => { const [, a, b] = /bytes=(\d+)-(\d+)/.exec(o.headers.Range); return new Response(buf.slice(+a, +b + 1), { status: 206 }); } });
+  const at = (lat, lng) => lngLatToTile(lng, lat, 16).map(Math.floor);
+  const spots = { gangnam: [37.4979, 127.0276], hongdae: [37.5563, 126.9236], calgary: [51.0447, -114.0719] };
+  const built = {};
+  for (const [id, [lat, lng]] of Object.entries(spots)) {
+    const [x, y] = at(lat, lng), t = await pm.tile(16, x, y);
+    built[id] = buildChunk(JSON.parse(new TextDecoder().decode(t)), { z: 16, x, y, origin: [lat, lng], lod: 0 });
+  }
+  const chunks = Object.values(built);
+  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const creams = STYLE.walls.map(h => [16, 8, 0].map(sh => lin((h >> sh) & 255)));
+  const near = (a, b) => Math.abs(a - b) < 1e-3;
+  const colours = g => { const out = []; for (let i = 0; i < g.col.length; i += 3) out.push([g.col[i], g.col[i + 1], g.col[i + 2]]); return out; };
+  const wallGroups = chunks.flatMap(c => Object.entries(c.groups).filter(([k]) => k.startsWith("wall_")));
+  ok(wallGroups.length && wallGroups.every(([k]) => STYLE.classes.includes(k.slice(5))) && new Set(wallGroups.map(([k]) => k)).size >= 3,
+    `walls come in the four classes only (${[...new Set(wallGroups.map(([k]) => k.slice(5)))].join(", ")})`);
+  const wallCols = wallGroups.flatMap(([, g]) => colours(g));
+  ok(wallCols.every(c => creams.some(w => near(w[0], c[0]) && near(w[1], c[1]) && near(w[2], c[2]))) && new Set(wallCols.map(c => c.join())).size === 6,
+    `every wall is one of the six creams, and all six are used (${wallCols.length} vertices)`);
+  const roofs = chunks.map(c => c.groups.roof);
+  ok(roofs.every(g => { for (let i = 1; i < g.nrm.length; i += 3) if (g.nrm[i] < 0.999) return false; return true; }), "every roof is flat (no gabled or hipped roofs anywhere)");
+  const dark = creams.map(w => w.map(v => v * STYLE.roofMul));
+  ok(roofs.flatMap(colours).every(c => dark.some(w => near(w[0], c[0]) && near(w[1], c[1]) && near(w[2], c[2]))), "every roof is its wall's cream × 0.8");
+  ok(chunks.every(c => c.groups.shadow && [...c.groups.shadow.pos].filter((_, i) => i % 3 === 1).every(v => v === STYLE.shadow.y)), `the baked shadow film lies at y ${STYLE.shadow.y} under every building`);
+  ok(ROAD_W === STYLE.roads && ROAD_W.primary === 24 && ROAD_W.secondary === 19 && ROAD_W.tertiary === 15 && ROAD_W.residential === 11 && ROAD_W.footway === 4, "road widths are Itaewon's table (24 / 19 / 15 / 11 / 4)");
+  ok(!chunks.some(c => c.groups.ground || c.groups.shop || c.groups.sign || c.groups.wall_g), "no sidewalk slabs, shopfronts or abstract signs are built any more");
+  ok(chunks.every(c => c.trees.length % 4 === 0 && [...c.trees].filter((_, i) => i % 4 === 3).every(v => v === 0 || v === 1)) &&
+    chunks.every(c => { let p = 0, n = c.trees.length / 4; for (let i = 3; i < c.trees.length; i += 4) p += c.trees[i]; return !n || p / n <= 0.3; }),
+    "trees carry a palm flag, palms a small minority");
+  ok(chunks.every(c => c.trees.length / 4 <= STYLE.tree.maxNear), `at most ${STYLE.tree.maxNear} trees a chunk up close`);
+  ok(chunks.every(c => c.lamps.length % 3 === 0 && c.lamps.length / 3 <= STYLE.lamp.maxPerChunk && c.poles.length % 3 === 0 && c.poles.length / 3 <= STYLE.pole.maxPerChunk && c.lanterns.length % 3 === 0),
+    "street lights and power poles stay under their per-chunk caps");
+  const lit = chunks.flatMap(c => [...c.poles].filter((_, i) => i % 3 === 2));
+  ok(lit.every(v => v === 0 || v === 1) && lit.some(v => v === 1) && lit.filter(v => v).length <= Math.ceil(lit.length / STYLE.pole.lampEvery) + chunks.length, "a lamp on every third pole");
+  ok(chunks.some(c => c.groups.wires) && chunks.every(c => !c.groups.wires || (c.groups.wires.lines && c.groups.wires.pos.length % 6 === 0)), "wires hang between the poles as line segments");
+  ok(styleClass({ floors: 6, area: 400, main: false }) === "office" && styleClass({ floors: 3, area: 200, main: true }) === "shop" && styleClass({ floors: 2, area: 40, main: false }) === "res" && styleClass({ floors: 3, area: 200, main: false }) === "mixed" && styleClass({ floors: 5, area: 40, main: true }) === "mixed",
+    "the class rule: 6+ floors office; main road and ≤4 floors shop; ≤2 floors and small res; else mixed");
+  ok([0, 1, 2, 3, 4, 5].every(i => wallIndex(i, 0) >= 0 && wallIndex(i, 0) < 6) && new Set(Array.from({ length: 60 }, (_, i) => wallIndex(i * 7.3, i * 2.1))).size === 6, "the cream is picked by position, all six in play");
+  const seeds = wallGroups.flatMap(([, g]) => [...g.seed]);
+  ok(seeds.every(v => v >= 0 && v < 6) && new Set(seeds.map(Math.floor)).size === 6, "each wall's seed carries its lit-window variant (0-5) and its own hash");
 }
 
 group("The map anywhere — vector tiles (MVT) and OpenMapTiles -> chunks");
@@ -1692,15 +1744,20 @@ group("The map anywhere — vector tiles (MVT) and OpenMapTiles -> chunks");
   ok(built.stats.buildings === 2 && built.groups.road && built.labels.some(l => l.text === "Test-ro"), "…and build like a baked chunk");
 }
 }
-group("Day and night glass — one light for every panel, blending at sunrise and sunset");
+group("Day and night — the real sun over the place the map shows, one light for every panel");
 {
-  const at = h => dayness(h);
-  ok(at(2) === 0 && at(5.9) === 0 && at(12) === 1 && at(18.4) === 1 && at(20) === 0, "night until 6:00, day from 7:00 to 18:30, night from 19:30");
-  const up = [6, 6.25, 6.5, 6.75, 7].map(at), down = [18.5, 18.75, 19, 19.25, 19.5].map(at);
-  ok(up.every((v, i) => !i || v > up[i - 1]) && down.every((v, i) => !i || v < down[i - 1]), "sunrise and sunset blend in steps, never a jump");
-  ok(Math.abs(at(6.5) - .5) < 1e-9 && Math.abs(at(19) - .5) < 1e-9, "halfway at the map's own switch (6:30 and 19:00)");
-  let worst = 0; for (let m = 0; m < 24 * 60; m++) worst = Math.max(worst, Math.abs(at((m + 1) / 60) - at(m / 60)));
+  const SEOUL = [37.5346, 126.9946], CALGARY = [51.0447, -114.0719];
+  const at = (iso, [lat, lng]) => sunAltitude(lat, lng, new Date(iso));
+  ok(at("2026-06-21T03:30:00Z", SEOUL) > 70 && at("2026-06-21T15:30:00Z", SEOUL) < -25, `Seoul, midsummer: the sun high at 12:30 KST (${at("2026-06-21T03:30:00Z", SEOUL).toFixed(0)}°), deep under at half past midnight (${at("2026-06-21T15:30:00Z", SEOUL).toFixed(0)}°)`);
+  ok(at("2026-10-28T03:00:00Z", SEOUL) > 35 && at("2026-10-28T12:00:00Z", SEOUL) < -30, "Seoul, late October: day at noon KST, night at 9 pm");
+  ok(Math.abs(at("2026-06-21T03:45:00Z", CALGARY)) < 4 && at("2026-12-21T00:30:00Z", CALGARY) < -6, "Calgary: the sun on the horizon at 21:45 in June, gone by 17:30 in December (its own time, not the phone's)");
+  const seoulNoon = lightAt(...SEOUL, new Date("2026-10-28T03:00:00Z")), seoulNight = lightAt(...SEOUL, new Date("2026-10-28T13:00:00Z"));
+  ok(seoulNoon === 1 && seoulNight === 0, "the light is 1 by day and 0 at night");
+  const dusk = []; for (let m = 0; m <= 110; m += 5) dusk.push(lightAt(...SEOUL, new Date(Date.UTC(2026, 9, 28, 7, 50 + m))));   // 16:50 to 18:40 KST
+  ok(dusk[0] === 1 && dusk[dusk.length - 1] === 0 && dusk.every((v, i) => !i || v <= dusk[i - 1]) && dusk.some(v => v > 0.2 && v < 0.8), `Seoul's sunset blends down over the evening, never a jump (${dusk.map(v => v.toFixed(2)).join(" ")})`);
+  let worst = 0; for (let m = 0; m < 24 * 60; m++) worst = Math.max(worst, Math.abs(lightAt(...SEOUL, new Date(Date.UTC(2026, 9, 28, 0, m + 1))) - lightAt(...SEOUL, new Date(Date.UTC(2026, 9, 28, 0, m)))));
   ok(worst < .05, `no minute changes the light by more than 5% (${(worst * 100).toFixed(1)}%)`);
+  ok(phaseOf(1) === "day" && phaseOf(0) === "night" && phaseOf(0.7) === "golden" && phaseOf(0.3) === "dusk", "the phases: day, golden hour, dusk, night");
   setDay(.73); const v = getComputedStyle(document.documentElement).getPropertyValue("--day").trim();
   ok(getDay() === .73 && v === "0.73" && document.documentElement.classList.contains("is-day"), "the light goes on the page root as --day");
   setDay(0);
@@ -1724,6 +1781,24 @@ group("Onboarding — English and Korean, guest setup, invite links, analytics")
   const looks = Array.from({ length: 60 }, () => starterLook(rng));
   ok(looks.every(l => STARTER_OUTFITS4.some(o => o.top === l.top && o.bottom === l.bottom && o.shoes === l.shoes)), "a new character always wears one of the six starter outfits");
   ok(looks.every(l => JSON.stringify(normalizeAvatar4(l)) === JSON.stringify(l)) && new Set(looks.map(l => l.skin)).size > 3 && new Set(looks.map(l => l.eyes)).size > 3, "…with a random skin, hair and eyes, and nothing that clashes");
+  // the setup card: who sees it (a placeholder handle or no character), and never a returning player
+  const look0 = looks[0];
+  ok(needsSetup(null) && needsSetup({ handle: "rando-1a2b3c", avatar: look0 }) && needsSetup({ handle: "Alex", avatar: null }) && needsSetup({ handle: "", avatar: look0 }),
+    "the setup card: a guest with the placeholder handle, or no character yet");
+  ok(!needsSetup({ handle: "Alex", avatar: look0 }) && !needsSetup({ handle: "rando-fan", avatar: look0 }), "…never a returning player (a real name and a character): they go straight in");
+  // its essentials: one tap each moves exactly that one thing to the next option, always a valid free look, and wraps round
+  const changed = (a, b) => Object.keys(a).filter(k => a[k] !== b[k]);
+  const KEY = { skin: ["skin"], hair: ["hair"], color: ["hairColor"], eyes: ["eyes"], hat: ["head"] };
+  ok(ESSENTIALS.length === 6 && ESSENTIALS.every(k => k === "outfit" || changed(look0, cycleLook(look0, k)).every(c => KEY[k].includes(c))),
+    `the card's ${ESSENTIALS.length} essentials each change one thing (${ESSENTIALS.join(", ")})`);
+  const allValid = ESSENTIALS.every(k => { let l = look0; for (let i = 0; i < 25; i++) { l = cycleLook(l, k); if (JSON.stringify(normalizeAvatar4(l)) !== JSON.stringify(l)) return false; } return true; });
+  ok(allValid, "…every result is a normalized look (nothing that clashes)");
+  ok(ESSENTIALS.filter(k => k !== "outfit").every(k => { let l = look0; for (let i = 0; i < 40; i++) { l = cycleLook(l, k); if (JSON.stringify(l) === JSON.stringify(cycleLook(look0, k, 0))) return true; } return false; }), "…and each one wraps back round to where it started, nothing else knocked off on the way");
+  ok(["hair", "hat"].every(k => { let l = look0; for (let i = 0; i < 30; i++) { const n = cycleLook(l, k); if (n.hair === "none" && l.hair !== "none" || (k === "hair" && n.head !== l.head) || (k === "hat" && n.hair !== l.hair)) return false; l = n; } return true; }), "a Hair tap never takes the hat off, a Hat tap never takes the hair off (only what fits is offered)");
+  const outfits = new Set(); { let l = look0; for (let i = 0; i < 6; i++) { l = cycleLook(l, "outfit"); outfits.add(`${l.top}|${l.bottom}|${l.shoes}`); } }
+  ok(outfits.size === 6 && [...outfits].every(o => STARTER_OUTFITS4.some(s => `${s.top}|${s.bottom}|${s.shoes}` === o)), "Outfit cycles through the six starter outfits");
+  const hats = new Set(); { let l = look0; for (let i = 0; i < 20; i++) { l = cycleLook(l, "hat"); hats.add(l.head); } }
+  ok(hats.has("none") && hats.size > 3 && cycleLook(look0, "nothing") && changed(look0, cycleLook(look0, "nothing")).length === 0, "Hat includes none; an unknown key changes nothing");
   ok(e164("010-1234-5678", "en") === "+821012345678" && e164("01012345678", "ko") === "+821012345678" && e164("+1 (555) 123-4567") === "+15551234567" && e164("5551234567", "en") === "+15551234567" && e164("12", "en") === null,
     "phone numbers: Korean local -> +82, international kept, junk refused");
   ok(["+82 010-1234-5678", "+82 10 1234 5678", "0082 10 1234 5678", "82 10-1234-5678", "8210 1234 5678"].every(n => e164(n, "en") === "+821012345678"),

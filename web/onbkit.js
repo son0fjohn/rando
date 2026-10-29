@@ -1,5 +1,5 @@
 // The onboarding's pure parts (no DOM, no three.js), for onboard.js and the tests.
-import { STARTER_OUTFITS4, randomAvatar4, normalizeAvatar4 } from "./items4.js";
+import { STARTER_OUTFITS4, randomAvatar4, normalizeAvatar4, PART_OPTIONS4, isFree4, clash4 } from "./items4.js";
 import { lang } from "./i18n.js";
 
 // a random cool starter look: one of the six starter outfits, with a random skin tone, hair and eyes
@@ -7,6 +7,40 @@ export function starterLook(rng = Math.random) {
   const base = randomAvatar4(rng);
   const { id, name, ...outfit } = STARTER_OUTFITS4[Math.floor(rng() * STARTER_OUTFITS4.length)];
   return normalizeAvatar4({ skin: base.skin, eyes: base.eyes, iris: base.iris, hairColor: base.hairColor, hair: base.hair === "none" ? "middle-part" : base.hair, ...outfit });
+}
+
+// Who gets the setup card: a guest account starts with a placeholder handle
+// (rando-xxxxxx, backend.js) and no character. A player with a real name AND
+// a character is a returning player: Start, Join, an invite and Explore all
+// go straight in; the start screen shows their chip instead.
+export const AUTO_HANDLE = /^rando-[0-9a-f]{6}$/;
+export function needsSetup(p) { return !p || !p.handle || AUTO_HANDLE.test(p.handle) || !p.avatar; }
+
+// The setup card's essentials, one tap each: the next skin tone, hairstyle,
+// hair colour, eye shape, starter outfit or hat (free things only; the whole
+// wardrobe is the Style screen's). Every result is a valid look
+// (normalizeAvatar4 settles what can't be worn together).
+export const ESSENTIALS = ["skin", "hair", "color", "eyes", "outfit", "hat"];
+const freeOf = k => PART_OPTIONS4[k].filter(v => v !== "none" && isFree4(k, v));
+// (only what fits with the rest of the look: a tap never knocks something else off)
+const fitsOf = (cur, slot, list) => list.filter(v => v === "none" || !clash4(cur, slot, v));
+const after = (list, cur, dir) => list[(((list.indexOf(cur) + dir) % list.length) + list.length) % list.length];
+export function cycleLook(look, key, dir = 1) {
+  const cur = normalizeAvatar4(look);
+  switch (key) {
+    case "skin": return normalizeAvatar4({ ...cur, skin: after(PART_OPTIONS4.skin, cur.skin, dir) });
+    case "hair": return normalizeAvatar4({ ...cur, hair: after(fitsOf(cur, "hair", freeOf("hair")), cur.hair, dir) });
+    case "color": return normalizeAvatar4({ ...cur, hairColor: after(freeOf("hairColor"), cur.hairColor, dir) });
+    case "eyes": return normalizeAvatar4({ ...cur, eyes: after(PART_OPTIONS4.eyes, cur.eyes, dir) });
+    case "hat": return normalizeAvatar4({ ...cur, head: after(fitsOf(cur, "head", ["none", ...freeOf("head")]), cur.head, dir) });
+    case "outfit": {
+      const n = STARTER_OUTFITS4.length;
+      const i = STARTER_OUTFITS4.findIndex(o => o.top === cur.top && o.bottom === cur.bottom && o.shoes === cur.shoes);
+      const { id, name, ...outfit } = STARTER_OUTFITS4[(((i + dir) % n) + n) % n];
+      return normalizeAvatar4({ ...cur, ...outfit });
+    }
+    default: return cur;
+  }
 }
 // a phone number as the server wants it (+country...). Korean numbers typed
 // the local way (010-1234-5678) become +82; so do the half-international

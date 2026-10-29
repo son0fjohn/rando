@@ -50,12 +50,12 @@ export function prePrompt(kind, { title, body, onYes } = {}) {
   track("permission_prompted", { permission: kind });
   return new Promise(res => {
     const el = document.createElement("div");
-    el.className = "onb-perm";
-    el.innerHTML = `<div class="onb-perm-card" role="dialog" aria-labelledby="onb-perm-t">
+    el.className = "onb-perm glass-scrim";
+    el.innerHTML = `<div class="onb-perm-card glass glass-dialog" role="dialog" aria-labelledby="onb-perm-t">
         <span class="onb-perm-ico">${ICON[kind] ?? ""}</span>
         <b id="onb-perm-t">${esc(title ?? t(`${k}.title`))}</b>
         <p>${esc(body ?? t(`${k}.body`))}</p>
-        <button type="button" class="onb-btn gold" data-yes>${esc(t(`${k}.ok`))}</button>
+        <button type="button" class="glass-btn gold" data-yes>${esc(t(`${k}.ok`))}</button>
         <button type="button" class="onb-btn text" data-no>${esc(t("perm.later"))}</button>
       </div>`;
     document.body.appendChild(el);
@@ -92,7 +92,7 @@ function system(kind) {
 export function toast(text, ms = 2600) {
   const root = document.getElementById("onb") ?? document.body;
   const el = document.createElement("div");
-  el.className = "onb-toast";
+  el.className = "onb-toast glass-toast";
   el.textContent = text;
   (root.id === "onb" ? document.body : root).appendChild(el);
   setTimeout(() => el.classList.add("out"), ms);

@@ -8,7 +8,7 @@
 // nav bar, no labels, no people in the world, nobody waits on the 3D.
 //   node test/start_rec.mjs <dir> [--quick] [--only=1,4,5]
 //   (the films: test/start_film.mjs, frame by frame)
-//   node test/start_rec.mjs --still              re-shoot web/start/night.jpg
+//   node test/start_rec.mjs --still              re-shoot web/start/night.jpg and day.jpg
 //                                               (the drift's first frame, 3:4)
 // Each phone is its own browser context; the stub's realtime rides on
 // BroadcastChannel, so this script relays it between them (as onboard_rec).
@@ -116,17 +116,20 @@ if (STILL) {
   // 3:4 at the live camera's vertical field of view: object-fit: cover on
   // any phone (all taller than 3:4) crops its sides only, so it matches the
   // live first frame wherever it's shown
-  const ctx = await phoneContext({ viewport: { width: 600, height: 800 }, scale: 1, init: { __sceneryHold: true } });
-  const pg = await page(ctx, "still");
-  await pg.goto(appUrl(who("jae")));
-  ok(await live(pg), "live");
-  await sleep(2500);
-  await pg.evaluate(() => { document.getElementById("onb").style.visibility = "hidden"; document.getElementById("start-still").style.display = "none"; });
-  await sleep(600);
   await mkdir(new URL("../web/start/", import.meta.url).pathname, { recursive: true });
-  const out = new URL("../web/start/night.jpg", import.meta.url).pathname;
-  await snap(pg, out, { format: "jpeg", quality: 80 });
-  console.log(`wrote ${out}`);
+  for (const light of ["night", "day"]) {   // the real sun over Itaewon picks one at boot (index.html)
+    const ctx = await phoneContext({ viewport: { width: 600, height: 800 }, scale: 1, init: { __sceneryHold: true } });
+    const pg = await page(ctx, "still-" + light);
+    await pg.goto(appUrl(who("jae")) + "&light=" + light);
+    ok(await live(pg), `live (${light})`);
+    await sleep(2500);
+    await pg.evaluate(() => { document.getElementById("onb").style.visibility = "hidden"; document.getElementById("start-still").style.display = "none"; });
+    await sleep(600);
+    const out = new URL(`../web/start/${light}.jpg`, import.meta.url).pathname;
+    await snap(pg, out, { format: "jpeg", quality: 80 });
+    console.log(`wrote ${out}`);
+    await ctx.close();
+  }
   await browser.close(); close(); process.exit(fails ? 1 : 0);
 }
 
@@ -142,7 +145,7 @@ const tOpen = Date.now();
 await H.goto(appUrl(who("jae")));
 // the still image is there from the first paint, before any module ran
 const boot = await H.evaluate(() => window.__boot ?? {});
-ok(boot.cls && boot.still === "block", `the still night view shows from the first paint (${JSON.stringify(boot)})`);
+ok(boot.cls && boot.still === "block", `the still view shows from the first paint (${JSON.stringify(boot)})`);
 ok(await screenIs(H, "start", 60000), `the start screen (${Date.now() - tOpen} ms)`);
 ok(await until(H, () => document.getElementById("start-still").complete && document.getElementById("start-still").naturalWidth > 0, null, 10000), "…web/start/night.jpg loaded");
 await sleep(400);
@@ -195,14 +198,17 @@ ok(await screenIs(N, "start", 60000), "the invite opens the start screen…");
 ok(await until(N, () => !!document.querySelector(".st-panel .st-invite") && !document.querySelector(".st-panel [data-start], .st-panel [data-join]"), null, 5000), "…with the party's name and no buttons");
 await until(N, () => document.querySelector(".st-invite b")?.textContent.length > 1, null, 10000);
 await shot(N, "05-invite-joining", "an invite: the party's name on the glass");
-ok(await screenIs(N, "name", 30000), "-> straight on to the name (a first open)");
-await N.click("#onb-name"); await N.keyboard.type("Alex", { delay: QUICK ? 10 : 120 });
+ok(await until(N, () => !!document.querySelector(".st-panel [data-setup] #su-name"), null, 30000), "-> straight on to the setup card, on the same glass (a first open)");
+await until(N, () => !!document.querySelector("#su-stage canvas"), null, 30000);
+await sleep(QUICK ? 800 : 2500);
+await shot(N, "05b-setup-card", "the setup card: a random name to keep, the character, Randomize, Let's go");
+await N.evaluate(() => { const i = document.querySelector("#su-name"); i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true })); i.focus(); });   // (no page.click: the live city behind the glass is never "stable" on software GL)
+await N.keyboard.type("Alex", { delay: QUICK ? 10 : 120 });
 await sleep(QUICK ? 200 : 700);
-await tap(N, "[data-next]");
-ok(await screenIs(N, "char"), "-> the character");
-await sleep(QUICK ? 1500 : 3500);
-await tap(N, "[data-ok]");
-ok(await screenIs(N, "start", 15000), "-> back on the glass, joining");
+await tap(N, "[data-random]");
+await sleep(QUICK ? 800 : 1800);
+await tap(N, "[data-go]");
+ok(await until(N, () => !document.querySelector(".st-panel [data-setup]") && document.querySelector(".onb-screen:not(.out)")?.dataset.screen === "start", null, 15000), "Let's go -> the glass again, joining");
 ok(await until(N, () => document.querySelector(".onb-screen.start.going"), null, 15000), "…the dive");
 ok(await inLobby(N, 15000), "-> the lobby");
 ok(await until(N, () => !!document.querySelector(".onb-in") || window.__youreIn, null, 10000), "…you're in!");

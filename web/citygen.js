@@ -4,21 +4,23 @@
 // chunk worker (citygen.worker.js), on the page as a fallback, and in node
 // tests. web/citytiles.js owns the materials, the meshes and the streaming.
 //
-// The look is the map's: low-poly extrusions, flat roofs on blocks and
-// towers, gabled / hipped roofs on houses, window grids by type (the night
-// lights pick windows per building in the shader), shopfronts and abstract
-// glowing signs where commercial buildings face a street, pale roads with
-// sidewalks, green parks and forests with trees, blue water.
+// The look is Itaewon's, by the rules in assets/world/STYLE.md (web/style.js
+// holds the numbers): low-poly extrusions in six creams with flat roofs,
+// one painted window tile per facade class (mixed / shop / office / res; the
+// night lights pick whole windows per building in the shader), a baked
+// shadow film, AC boxes, awnings, sign panels and bins on the lots facing a
+// road, the asphalt strip on each road's centreline over the map's paving,
+// the lawn tile on parks with sparse painted trees, blue water, and along
+// the roads street lights and power poles with wires and lanterns.
 
 export const SCALE = 0.55;         // world units per metre (world3d geoPos)
 export const FLOOR_U = 3.2 * SCALE * 2.4; // one storey in world units (the map's 2.4x vertical)
 export const EXTENT = 4096;
+import { STYLE, worldHeight, styleClass, wallIndex } from "./style.js";
 
-// metres -> world height: the map's 2.4x vertical up to 25 m, gentler above
-// so a 200 m tower doesn't swallow the screen
-export function worldHeight(m) {
-  return m <= 25 ? m * SCALE * 2.4 : (25 * 2.4 + (m - 25) * 1.45) * SCALE;
-}
+// metres -> world height: the map's 2.4x vertical up to 50 m, gentler above
+// so a 200 m tower doesn't swallow the screen (style.js)
+export { worldHeight };
 
 // same projection as world3d geoPos (north = -z)
 export function projector([lat0, lng0]) {
@@ -61,35 +63,11 @@ export function tileToLngLat(z, x, y, px, py) {
   return [lng, lat];
 }
 
-// ---- palettes (sRGB hex). Warm, slightly desaturated, like the map.
-// the map's warm cream family (theme.js walls), nudged per type
-const WALLS = {
-  h: [0xf2efe7, 0xebdfd6, 0xe6dccb, 0xdcc9b4, 0xe8e2d4, 0xd9c2ad],
-  a: [0xf2efe7, 0xe8e2d4, 0xeeeae2, 0xe3e1da, 0xebe4d6],
-  c: [0xe8e2d4, 0xdcd5c5, 0xe6dccb, 0xebdfd6, 0xd6cfc3, 0xddd0bd, 0xe2d6c4],
-  o: [0xd3d6d6, 0xc8ced2, 0xdcdcd6, 0xc3c8c8, 0xd0d2cc],
-  v: [0xe2cdb8, 0xe6dccb, 0xd9c0a8, 0xe8e2d4],
-  i: [0xd6cfc3, 0xcfcbc1, 0xdcd5c5],
-  s: [0xdcd5c5, 0xd6cfc3],
-};
-const ROOF_PITCHED = [0x9a6a58, 0x7d8590, 0x6f7078, 0x7f907e, 0x8c7466];
-const ROOF_FLAT = [0xd9d4c8, 0xcdc8bc, 0xc4c3ba, 0xd2cabc];
-const ROOF_GREEN = 0x9fb5a0; // Seoul's green-painted rooftops
-const SIGNS = [0xff5d8a, 0xffc83d, 0x5de0ff, 0x8a7dff, 0xff8a3d, 0x5dffb0, 0xff4d4d, 0xfff2a8];
-const GROUND = {
-  park: 0xb4c98c, forest: 0x93b179, plaza: 0xede5d5, walk: 0xe9e3d6, mark: 0xfbfaf4,
-};
-export const ROAD_W = { // world units, a touch wider than real so the streets read
-  motorway: 15, trunk: 14, primary: 13, secondary: 11, tertiary: 9, residential: 6.6,
-  living_street: 5.5, unclassified: 6.6, service: 4.2, pedestrian: 5, footway: 2, cycleway: 2,
-  path: 1.8, steps: 2, track: 3,
-};
-const WALK_ADD = { motorway: 0, trunk: 3, primary: 3.4, secondary: 3, tertiary: 2.6, residential: 2,
-  living_street: 1.6, unclassified: 1.6 };
+// ---- the look is STYLE.md (web/style.js): six creams, flat roofs, Itaewon's
+// window tiles, its props and its road widths. Nothing here picks a colour.
+export const ROAD_W = STYLE.roads;
 const MAIN = new Set(["motorway", "trunk", "primary", "secondary", "tertiary"]);
-const SHOPPY = new Set(["primary", "secondary", "tertiary", "residential", "living_street", "pedestrian", "unclassified"]);
 const MINOR = new Set(["footway", "path", "steps", "cycleway", "service", "track"]);
-const LAMPS = new Set(["trunk", "primary", "secondary", "tertiary", "residential", "living_street", "pedestrian"]);
 
 export function hash32(n) {
   n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
@@ -283,6 +261,107 @@ export function earcut(ring) {
   return out;
 }
 
+// ---- round Itaewon: what the hand-made map already has (opts.exclude)
+//   { b, r }: the plain circles: a building (its centroid) within b world
+//     units of the origin, a road (its middle) within r, is the hand-made map's.
+//   + { env, grid } (handmadeMask, from the hand-made map's own buildings
+//     and roads, world3d.js handmadeSrc): env, how far its buildings reach in each of
+//     env.length directions (from +x toward +z); grid, the cells its
+//     buildings (bit 1) and roads (bit 2) cover. Inside the reach everything
+//     is the hand-made map's; outside it the procedural city fills in, except
+//     what the hand-made map already has there (the same building, a street
+//     it carries on further out), so the two meet with no ring of nothing
+//     between them and nothing twice.
+export function handmade(ex) {
+  if (!ex) return null;
+  if (!ex.env) {
+    const d = (x, z) => Math.hypot(x, z);
+    return {
+      building: (ring, cx, cz) => d(cx, cz) < ex.b,
+      road: pts => d(...pts[pts.length >> 1]) < ex.r,
+      area: ring => d(...ring[0]) < ex.b && d(...ring[ring.length >> 1]) < ex.b,
+      label: (x, z) => d(x, z) < ex.r,
+      inside: () => false,
+    };
+  }
+  const env = ex.env, n = env.length, g = ex.grid;
+  const reach = (x, z) => {
+    const a = ((Math.atan2(z, x) / (2 * Math.PI)) + 1) % 1 * n, i = Math.floor(a) % n, f = a - Math.floor(a);
+    return env[i] * (1 - f) + env[(i + 1) % n] * f;
+  };
+  const inside = (x, z) => Math.hypot(x, z) < reach(x, z);
+  const cell = (x, z, bit) => {
+    const i = Math.floor((x - g.x0) / g.cell), j = Math.floor((z - g.z0) / g.cell);
+    return i >= 0 && j >= 0 && i < g.w && j < g.h && (g.bits[j * g.w + i] & bit) !== 0;
+  };
+  return {
+    // the same building already there: its middle, or most of its corners
+    // (pulled a metre in, so a neighbour sharing a wall doesn't count)
+    building: (ring, cx, cz) => {
+      if (inside(cx, cz) || cell(cx, cz, 1)) return true;
+      let k = 0;
+      for (const [x, z] of ring) { const dx = cx - x, dz = cz - z, l = Math.hypot(dx, dz) || 1, t = Math.min(1, 0.55 / l); if (cell(x + dx * t, z + dz * t, 1)) k++; }
+      return k * 2 > ring.length;
+    },
+    // inside its reach, or a street the hand-made map has drawn: most of
+    // its length in there or on its roads
+    road: pts => {
+      if (inside(...pts[pts.length >> 1])) return true;
+      let on = 0, all = 0;
+      for (let q = 0; q < pts.length - 1; q++) {
+        const [ax, az] = pts[q], [bx, bz] = pts[q + 1], m = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 3));
+        for (let s = 0; s < m; s++) { const t = (s + 0.5) / m, x = ax + (bx - ax) * t, z = az + (bz - az) * t; all++; if (inside(x, z) || cell(x, z, 2)) on++; }
+      }
+      return all > 0 && on * 2 > all;
+    },
+    area: ring => inside(...ring[0]) && inside(...ring[ring.length >> 1]),
+    label: (x, z) => inside(x, z),
+    inside,   // (a park's trees: none on the hand-made map, it has its own)
+  };
+}
+
+// the mask from the hand-made map's footprints and roads, flat ({ bxy, bat,
+// rxy, rat, rhw }: points, where each one starts, roads' half widths): the
+// reach per direction (64 sectors, the furthest footprint corner, widened a
+// sector each way, + 6 u), and a 4 u grid of the cells its buildings (bit 1)
+// and roads (bit 2) cover. Built in the chunk worker, once per city.
+export function handmadeMask({ b, r, src }) {
+  const { bxy, bat, rxy, rat, rhw } = src, N = 64, env = new Float32Array(N);
+  const sector = (x, z) => Math.floor(((Math.atan2(z, x) / (2 * Math.PI)) + 1) % 1 * N) % N;
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (let k = 0; k < bxy.length; k += 2) {
+    const x = bxy[k], z = bxy[k + 1], s = sector(x, z), d = Math.hypot(x, z);
+    if (d > env[s]) env[s] = d;
+    x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z);
+  }
+  for (let k = 0; k < rxy.length; k += 2) { x0 = Math.min(x0, rxy[k]); z0 = Math.min(z0, rxy[k + 1]); x1 = Math.max(x1, rxy[k]); z1 = Math.max(z1, rxy[k + 1]); }
+  const reach = env.map((_, i) => Math.max(env[(i + N - 1) % N], env[i], env[(i + 1) % N]) + 6);
+  const cell = 4; x0 -= 20; z0 -= 20; x1 += 20; z1 += 20;
+  const w = Math.ceil((x1 - x0) / cell), h = Math.ceil((z1 - z0) / cell), bits = new Uint8Array(w * h);
+  const set = (i, j, bit) => { if (i >= 0 && j >= 0 && i < w && j < h) bits[j * w + i] |= bit; };
+  for (let p = 0; p < bat.length - 1; p++) {
+    const ring = [];
+    for (let k = bat[p]; k < bat[p + 1]; k++) ring.push([bxy[k * 2], bxy[k * 2 + 1]]);
+    let a = Infinity, c = Infinity, e = -Infinity, f = -Infinity;
+    for (const [x, z] of ring) { a = Math.min(a, x); c = Math.min(c, z); e = Math.max(e, x); f = Math.max(f, z); set(Math.floor((x - x0) / cell), Math.floor((z - z0) / cell), 1); }
+    for (let i = Math.floor((a - x0) / cell); i <= Math.floor((e - x0) / cell); i++)
+      for (let j = Math.floor((c - z0) / cell); j <= Math.floor((f - z0) / cell); j++)
+        if (pointInRing(x0 + (i + 0.5) * cell, z0 + (j + 0.5) * cell, ring)) set(i, j, 1);
+  }
+  for (let p = 0; p < rat.length - 1; p++) {
+    const hw = rhw[p], k = Math.ceil(hw / cell);
+    for (let q = rat[p]; q < rat[p + 1] - 1; q++) {
+      const ax = rxy[q * 2], az = rxy[q * 2 + 1], bx = rxy[q * 2 + 2], bz = rxy[q * 2 + 3], m = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 2));
+      for (let s = 0; s <= m; s++) {
+        const x = ax + (bx - ax) * s / m, z = az + (bz - az) * s / m, ci = Math.floor((x - x0) / cell), cj = Math.floor((z - z0) / cell);
+        for (let i = ci - k; i <= ci + k; i++) for (let j = cj - k; j <= cj + k; j++)
+          if (Math.hypot(x0 + (i + 0.5) * cell - x, z0 + (j + 0.5) * cell - z) <= hw) set(i, j, 2);
+      }
+    }
+  }
+  return { b, r, env: reach, grid: { cell, x0, z0, w, h, bits } };
+}
+
 // ---- the chunk
 // payload: the parsed tile JSON. opts: { z, x, y, origin:[lat,lng], lod: 0|1,
 // heroes: [{ lat, lng, clear (m), fp: [[lng,lat]...], osm, glb, shape, h, glow }]:
@@ -299,7 +378,7 @@ export function buildChunk(payload, opts) {
   const near = lod === 0;
   const B = {};
   const buf = k => (B[k] ??= new Buf());
-  const stats = { buildings: 0, hidden: 0, shops: 0, signs: 0, roads: 0, trees: 0, lamps: 0 };
+  const stats = { buildings: 0, hidden: 0, awnings: 0, signs: 0, roads: 0, trees: 0, lamps: 0, poles: 0 };
 
   const heroes = (opts.heroes || []).map(h => {
     const [hx, hz] = P.fwd(h.lng, h.lat);
@@ -308,7 +387,7 @@ export function buildChunk(payload, opts) {
       here: Math.floor(fx) === tx && Math.floor(fy) === ty };
   });
   const hides = h => h.glb || (h.landmark && h.shape === "tower");
-  const ex = opts.exclude;
+  const ex = opts.exclude, hm = handmade(ex);
   // a placeholder landmark's own building: the one under its pin (or the nearest within 25 m)
   const boosted = new Map(); // building index -> hero
   for (const h of heroes) {
@@ -324,20 +403,31 @@ export function buildChunk(payload, opts) {
     if (best >= 0) boosted.set(best, h);
   }
 
-  // roads first: shopfronts and lamps look for them
+  // roads first: the lots' street pass, the lamps and the poles look for them
   const roads = [];
   for (const r of payload.r || []) {
     const pts = [];
     for (let k = 0; k < r.p.length; k += 2) pts.push(toW(r.p[k], r.p[k + 1]));
     if (pts.length < 2) continue;
-    if (ex) { const [mx, mz] = pts[pts.length >> 1]; if (Math.hypot(mx, mz) < ex.r) continue; }
+    if (hm?.road(pts)) continue;
     if (!near && MINOR.has(r.c)) continue; // far away: streets only, no paths
-    roads.push({ c: r.c, n: r.n, pts, w: ROAD_W[r.c] ?? 5 });
+    roads.push({ c: r.c, n: r.n, pts, w: ROAD_W[r.c] ?? 11 });
   }
-  const shopRoads = roads.filter(r => SHOPPY.has(r.c));
 
-  // --- buildings
+  // --- buildings (STYLE.md 5): straight walls in one of six creams by
+  // position, Itaewon's window tile per class, a flat roof at wall × 0.8, an
+  // outline, a baked shadow, an AC box; road-facing lots go to the street pass
   const nightWin = 0;
+  const lots = [];
+  const nearestRoad = (cx, cz, within) => {
+    let best = null;
+    for (const r of roads) for (let q = 0; q < r.pts.length - 1; q++) {
+      const [d, qx, qz] = segDist(cx, cz, r.pts[q][0], r.pts[q][1], r.pts[q + 1][0], r.pts[q + 1][1]);
+      if (d < within && (!best || d < best.d)) best = { r, d, qx, qz };
+    }
+    return best;
+  };
+  const acC = linRGB(rgb(STYLE.ac.day));
   for (let i = 0; i < (payload.b || []).length; i++) {
     const b = payload.b[i];
     let ring = [];
@@ -345,7 +435,7 @@ export function buildChunk(payload, opts) {
     if (ring.length < 3) continue;
     if (ringArea(ring) < 0) ring = ring.reverse(); // CCW in (x,z): outward normal is (dz,-dx)
     const [cx, cz] = centroid(ring);
-    if (ex && Math.hypot(cx, cz) < ex.b) continue;
+    if (hm?.building(ring, cx, cz)) continue;
     if (heroes.some(h => hides(h) && ((h.osm && b.o === h.osm) || (h.fpW && pointInRing(cx, cz, h.fpW)) || (h.r && Math.hypot(cx - h.x, cz - h.z) < h.r))) ||
         (opts.clearAt && (pointInRing(0, 0, ring) || Math.hypot(cx, cz) < opts.clearAt * SCALE))) {
       stats.hidden++;
@@ -354,110 +444,114 @@ export function buildChunk(payload, opts) {
     if (!near && b.k === "s") continue;
     stats.buildings++;
     const s = seedOf(b, i, key);
-    const kind = WALLS[b.k] ? b.k : "c";
-    const fc = parseHex(b.fc);
-    const jit = 0.97 + (s % 97) / 97 * 0.09;
-    const wallC = linRGB(rgb(fc ?? pick(WALLS[kind], s >>> 3), jit));
+    const area = Math.abs(ringArea(ring));
+    const road = nearestRoad(cx, cz, STYLE.awning.roadWithin);
+    const main = !!road && MAIN.has(road.r.c) && road.d < road.r.w / 2 + 16;
+    const floors = Math.max(1, b.f || Math.round(b.h / STYLE.LEVEL_M));
+    const cls = styleClass({ floors, area, main });
+    const wi = wallIndex(cx, cz);
+    const wallC = linRGB(rgb(STYLE.walls[wi]));
+    const roofC = wallC.map(c => c * STYLE.roofMul);
     const hero = boosted.get(i);
     const top = worldHeight(hero ? Math.max(b.h, hero.h ?? b.h) : b.h);
     const y0 = -0.4;
-    const floors = Math.max(1, b.f || Math.round(b.h / 3.2));
     const seedF = (s % 997) / 997;
-    const wk = near ? "wall_" + kind : "wall_g";
-    const W = buf(wk);
-    let run = (s % 13) * 1.7;
+    const seedA = wi + seedF * 0.999;   // the shader: floor() the lit variant, fract() the window hash
+    const W = buf("wall_" + cls);
+    let run = ((cx + cz) * 0.07) % STYLE.tile.u;   // the tile desynced between neighbours
+    const vTop = (top - y0) / STYLE.tile.v;
     for (let k = 0; k < ring.length; k++) {
       const [ax, az] = ring[k], [bx, bz] = ring[(k + 1) % ring.length];
       const len = Math.hypot(bx - ax, bz - az);
       if (len < 0.05) continue;
       const nx = (bz - az) / len, nz = -(bx - ax) / len;
-      const u0 = run / 6.6, u1 = (run + len) / 6.6;
+      const u0 = run / STYLE.tile.u, u1 = (run + len) / STYLE.tile.u;
       run += len;
       W.face([[ax, y0, az], [bx, y0, bz], [bx, top, bz], [ax, top, az]],
-        [[u0, 0], [u1, 0], [u1, floors], [u0, floors]], wallC, seedF, [nx, 0, nz]);
+        [[u0, 0], [u1, 0], [u1, vTop], [u0, vTop]], wallC, seedA, [nx, 0, nz]);
     }
     if (near) outline(buf("lines"), ring, y0, top);
     if (hero) crown(buf("glow"), ring, top, linRGB(rgb(parseHex(hero.glow) ?? 0xffd36b)), seedF);
-    // roof
-    const R = buf("roof");
-    const box = b.r !== "f" ? orientedBox(ring) : null;
-    if (box && box.S > 1.2) {
-      const roofC = linRGB(rgb(pick(ROOF_PITCHED, s >>> 5), 0.94 + (s % 7) * 0.02));
-      pitchedRoof(R, box, top, b.r, roofC, wallC, seedF);
-    } else {
-      const korea = opts.origin[0] > 33 && opts.origin[0] < 39 && opts.origin[1] > 124 && opts.origin[1] < 131;
-      const green = korea && b.k !== "o" && (s >>> 7) % 100 < 34;
-      const roofC = linRGB(rgb(green ? ROOF_GREEN : pick(ROOF_FLAT, s >>> 5), 0.95 + (s % 5) * 0.02));
-      R.flat(ring, top, roofC, seedF);
-      if (near && b.k !== "h" && Math.abs(ringArea(ring)) > 40) rooftop(R, ring, top, s, korea);
+    buf("roof").flat(ring, top, roofC, seedF);
+    shadow(buf("shadow"), ring, top);
+    if (near && area > STYLE.ac.minArea && s % 3 !== 0) {
+      const hs = hash32(s + 77);
+      const x = cx + ((hs % 7) - 3) * 0.6, z = cz + (((hs >> 4) % 5) - 2) * 0.6;
+      const [w, h, d] = STYLE.ac.size;
+      if (pointInRing(x, z, ring)) buf("ac").box(x, top, z, w, h, d, (hs >> 8) % 2 ? 0.4 : -0.2, acC, 0);
     }
-    // shopfronts + signs on commercial buildings facing a street
-    if (near && (b.k === "c" || ((b.k === "a" || b.k === "o") && (s % 3 === 0))) && shopRoads.length) {
-      shopfronts(buf, ring, top, floors, b, s, shopRoads, stats);
-    }
+    if (near && road) lots.push({ ring, cx, cz, top, s, road });
   }
+  // the street pass (5.7): awnings, sign panels, bins and cones on road-facing lots
+  let awnings = 0;
+  for (const lot of lots) awnings += streetPass(buf, lot, stats, awnings);
+  stats.awnings = awnings;
 
-  // --- roads: sidewalks under, asphalt over, a dashed centre line on big ones
-  const G = buf("ground");
+  // --- roads (4): the asphalt strip on the centreline; the paving is the sidewalk
   const Rd = buf("road");
-  const walkC = linRGB(rgb(GROUND.walk)), markC = linRGB(rgb(GROUND.mark));
   for (const r of roads) {
     stats.roads++;
-    const wa = WALK_ADD[r.c] ?? 0;
-    if (wa && near) ribbon(G, r.pts, r.w / 2 + wa, 0.1, walkC, 0, 0, true);
-    else if (wa && MAIN.has(r.c)) ribbon(G, r.pts, r.w / 2 + wa * 0.7, 0.1, walkC, 0, 0, false);
     ribbon(Rd, r.pts, r.w / 2, 0.16, [1, 1, 1], 1, MINOR.has(r.c) ? 1 : 0, near || MAIN.has(r.c));
-    if (near && MAIN.has(r.c) && r.w >= 9) dashes(G, r.pts, 0.22, markC);
   }
 
   // --- placeholder towers (landmarks with no model yet, shape "tower")
   for (const h of heroes) if (h.here && !h.glb && h.landmark && h.shape === "tower") tower(buf, h, linRGB(rgb(parseHex(h.glow) ?? 0xffd36b)));
 
-  // --- parks, forests, plazas, water
+  // --- parks and forests (3: the lawn tile), water; plazas are the paving itself
   const Wt = buf("water");
+  const Gr = buf("grass");
   const trees = [], wet = [];
   for (const a of payload.a || []) {
     const ring = [];
     for (let k = 0; k < a.p.length; k += 2) ring.push(toW(a.p[k], a.p[k + 1]));
     if (ring.length < 3) continue;
-    if (ex && Math.hypot(...ring[0]) < ex.b && Math.hypot(...ring[ring.length >> 1]) < ex.b) continue;
-    // (water above parks and plazas: a lake often sits inside its park's outline)
+    if (hm?.area(ring)) continue;
+    // (water above parks: a lake often sits inside its park's outline)
     if (a.k === "water" || a.k === "ocean") { Wt.flat(ring, a.k === "ocean" ? 0.085 : 0.09, [1, 1, 1], 0, 0.02); wet.push(ring); continue; }
-    const y = a.k === "plaza" ? 0.08 : a.k === "forest" ? 0.05 : 0.06;
-    G.flat(ring, y, linRGB(rgb(GROUND[a.k] ?? GROUND.park)), 0);
-    if (a.k === "park" || a.k === "forest") scatterTrees(trees, ring, a.k === "forest" ? 8.5 : 13, near ? 1 : 0.35, key ^ a.p.length);
+    if (a.k !== "park" && a.k !== "forest") continue;
+    Gr.flat(ring, a.k === "forest" ? 0.05 : 0.06, [1, 1, 1], 0, 1 / STYLE.grassRepeat);
+    scatterTrees(trees, ring, a.k === "forest" ? STYLE.tree.forestStep : STYLE.tree.step, 1, key ^ a.p.length);
+  }
+  if (hm) {                   // (nor on the hand-made map)
+    let n = 0;
+    for (let k = 0; k < trees.length; k += 4) if (!hm.inside(trees[k], trees[k + 1])) { trees[n++] = trees[k]; trees[n++] = trees[k + 1]; trees[n++] = trees[k + 2]; trees[n++] = trees[k + 3]; }
+    trees.length = n;
   }
   if (wet.length) {           // no trees on the water
     let n = 0;
     for (let k = 0; k < trees.length; k += 4) if (!wet.some(r => pointInRing(trees[k], trees[k + 1], r))) { trees[n++] = trees[k]; trees[n++] = trees[k + 1]; trees[n++] = trees[k + 2]; trees[n++] = trees[k + 3]; }
     trees.length = n;
   }
-  const maxTrees = near ? 80 : 28;     // (4 numbers a tree)
+  const maxTrees = near ? STYLE.tree.maxNear : STYLE.tree.maxFar;     // (4 numbers a tree)
   if (trees.length > maxTrees * 4) trees.length = maxTrees * 4;
   stats.trees = trees.length / 4;
 
-  // --- street lamps along lit streets (near chunks only)
+  // --- street lights (5.8) along roads wide enough, every 25 u, alternating sides
   const lamps = [];
   if (near) {
     for (const r of roads) {
-      if (!LAMPS.has(r.c)) continue;
-      let acc = 13, side = 1;
-      for (let k = 0; k < r.pts.length - 1; k++) {
+      if (r.w < STYLE.lamp.minRoad) continue;
+      let acc = 12, side = 1;
+      for (let k = 0; k < r.pts.length - 1 && lamps.length < STYLE.lamp.maxPerChunk * 3; k++) {
         const [ax, az] = r.pts[k], [bx, bz] = r.pts[k + 1];
         const len = Math.hypot(bx - ax, bz - az);
         if (len < 0.01) continue;
         const ux = (bx - ax) / len, uz = (bz - az) / len;
-        while (acc < len) {
-          const off = r.w / 2 + 0.8;
+        while (acc < len && lamps.length < STYLE.lamp.maxPerChunk * 3) {
+          const off = r.w / 2 + STYLE.lamp.out;
           lamps.push(ax + ux * acc - uz * off * side, az + uz * acc + ux * off * side, Math.atan2(ux, uz) + (side > 0 ? 0 : Math.PI));
           side = -side;
-          acc += MAIN.has(r.c) ? 24 : 30;
+          acc += STYLE.lamp.spacing;
         }
         acc -= len;
       }
     }
   }
   stats.lamps = lamps.length / 3;
+  // --- power poles with sagging wires, a lamp on every third, a paper lantern on every third span
+  const poles = [], lanterns = [];
+  if (near) polesAlong(roads, buf("wires"), poles, lanterns);
+  stats.poles = poles.length / 3;
 
   // --- street names: one per named road per chunk, at its longest piece
   const labels = [];
@@ -473,7 +567,7 @@ export function buildChunk(payload, opts) {
   for (const l of payload.l || []) {
     if (best.has(l.t) || labels.some(o => o.text === l.t)) continue;
     const [x, z] = toW(l.x, l.y);
-    if (ex && Math.hypot(x, z) < ex.r) continue;
+    if (hm?.label(x, z)) continue;
     labels.push({ text: l.t, x, z, poi: !!l.poi });
   }
 
@@ -481,7 +575,40 @@ export function buildChunk(payload, opts) {
   for (const [k, b] of Object.entries(B)) { const o = b.out(); if (o) groups[k] = o; }
   // round Itaewon the procedural city stands on the hand-made map's hills
   if (ex) for (const g of Object.values(groups)) for (let k = 0; k < g.pos.length; k += 3) g.pos[k + 1] += itaewonHill(g.pos[k], g.pos[k + 2]);
-  return { groups, trees: new Float32Array(trees), lamps: new Float32Array(lamps), labels, stats, nightWin };
+  return { groups, trees: new Float32Array(trees), lamps: new Float32Array(lamps), poles: new Float32Array(poles), lanterns: new Float32Array(lanterns), labels, stats, nightWin };
+}
+
+// What the page draws (citytiles.js): the groups that share a material
+// merged into one geometry, so a chunk costs a handful of draw calls. The
+// four facade classes become one "wall" mesh (one texture array, the class
+// in a byte per vertex, "cls"), and roofs, AC boxes, awnings
+// and kerb clutter (the same plain vertex-coloured material) one "roof".
+// buildChunk's own groups stay as they are: the specs read them.
+const ROOFISH = ["roof", "ac", "awn", "clutter"];
+export function packChunk(out) {
+  const g = out.groups, groups = {};
+  const walls = STYLE.classes.map((c, i) => [g["wall_" + c], i]).filter(([x]) => x);
+  if (walls.length) groups.wall = mergeGroups(walls, true);
+  const roofs = ROOFISH.map(k => [g[k], 0]).filter(([x]) => x);
+  if (roofs.length) groups.roof = mergeGroups(roofs);
+  for (const [k, v] of Object.entries(g)) if (!k.startsWith("wall_") && !ROOFISH.includes(k)) groups[k] = v;
+  return { ...out, groups };
+}
+function mergeGroups(parts, cls = false) {
+  if (parts.length === 1 && !cls) return parts[0][0];
+  let nv = 0, ni = 0;
+  for (const [p] of parts) { nv += p.pos.length / 3; ni += p.idx.length; }
+  const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), col = new Float32Array(nv * 3), seed = new Float32Array(nv);
+  const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni), c = cls ? new Uint8Array(nv) : null;
+  let v = 0, i = 0;
+  for (const [p, k] of parts) {
+    const n = p.pos.length / 3;
+    pos.set(p.pos, v * 3); nrm.set(p.nrm, v * 3); uv.set(p.uv, v * 2); col.set(p.col, v * 3); seed.set(p.seed, v);
+    if (c) c.fill(k, v, v + n);
+    for (let q = 0; q < p.idx.length; q++) idx[i + q] = p.idx[q] + v;
+    v += n; i += p.idx.length;
+  }
+  return c ? { pos, nrm, uv, col, seed, idx, cls: c } : { pos, nrm, uv, col, seed, idx };
 }
 
 // the map's dark outlines: the roof edge and the corners that turn
@@ -496,108 +623,178 @@ function outline(Lb, ring, y0, top) {
   }
 }
 
-function pitchedRoof(R, box, top, kind, roofC, wallC, seed) {
-  const { c, ax } = box;
-  const L = box.L + 0.7, S = box.S + 0.7; // eaves
-  const ux = ax[0], uz = ax[1], vx = -uz, vz = ux;
-  const P = (u, v, y) => [c[0] + ux * u + vx * v, y, c[1] + uz * u + vz * v];
-  const rh = Math.min(S * 0.42, 7.5);
-  const ry = top + rh;
-  const c0 = P(-L / 2, -S / 2, top), c1 = P(L / 2, -S / 2, top), c2 = P(L / 2, S / 2, top), c3 = P(-L / 2, S / 2, top);
-  const up = (a, b) => [(a[0] + b[0]) / 2 - c[0], 1.5, (a[2] + b[2]) / 2 - c[1]];
-  if (kind === "p" || L - S < 0.6) { // pyramid
-    const apex = [c[0], ry, c[1]];
-    for (const [a, b] of [[c0, c1], [c1, c2], [c2, c3], [c3, c0]]) R.face([a, b, apex], null, roofC, seed, up(a, b));
-    return;
+// the baked shadow (5.6): the footprint swept along the sun, capped, a dark
+// film just above the ground that everything else draws over. Only the walls
+// facing the sun's way are swept: whatever another wall's sweep covers lies
+// under the building, or under the cap, or under a sunward sweep (follow a
+// shadow point back toward the sun: it leaves the footprint through a
+// sunward wall), so the film looks the same with a third fewer triangles.
+// (ring: counter-clockwise in x,z, the outward normal (dz, -dx))
+function shadow(S, ring, top) {
+  const { dir, kMax, k0, kPerU, y } = STYLE.shadow;
+  const k = Math.min(kMax, k0 + top * kPerU), ox = dir[0] * k, oz = dir[1] * k;
+  const n = ring.length, c = [1, 1, 1];
+  for (let e = 0; e < n; e++) {
+    const [ax, az] = ring[e], [bx, bz] = ring[(e + 1) % n];
+    if ((bz - az) * ox - (bx - ax) * oz <= 0) continue;
+    S.face([[ax, y, az], [bx, y, bz], [bx + ox, y, bz + oz], [ax + ox, y, az + oz]], null, c, 0, [0, 1, 0]);
   }
-  if (kind === "h") {
-    const r0 = P(-L / 2 + S / 2, 0, ry), r1 = P(L / 2 - S / 2, 0, ry);
-    R.face([c0, c1, r1, r0], null, roofC, seed, up(c0, c1));
-    R.face([c2, c3, r0, r1], null, roofC, seed, up(c2, c3));
-    R.face([c1, c2, r1], null, roofC, seed, up(c1, c2));
-    R.face([c3, c0, r0], null, roofC, seed, up(c3, c0));
-    return;
-  }
-  // gabled: ridge along the long side, wall-coloured gable ends
-  const m0 = P(-L / 2, 0, ry), m1 = P(L / 2, 0, ry);
-  R.face([c0, c1, m1, m0], null, roofC, seed, up(c0, c1));
-  R.face([c2, c3, m0, m1], null, roofC, seed, up(c2, c3));
-  const g = [wallC[0] * 0.92, wallC[1] * 0.92, wallC[2] * 0.92];
-  R.face([c1, c2, m1], null, g, seed, [ux, 0, uz]);
-  R.face([c3, c0, m0], null, g, seed, [-ux, 0, -uz]);
+  S.flat(ring.map(([x, z]) => [x + ox, z + oz]), y, c, 0);
 }
 
-function rooftop(R, ring, top, s, korea) {
-  const [cx, cz] = centroid(ring);
-  const n = 1 + (s % 3);
+// a box in a local frame: X along, Y up (tilted by pitch about X), Z out
+function obb(B, c, X, Z, w, h, d, pitch, col) {
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const Y = [Z[0] * sp, cp, Z[2] * sp], Zp = [Z[0] * cp, -sp, Z[2] * cp];
+  const P = (a, b, e) => [c[0] + X[0] * a + Y[0] * b + Zp[0] * e, c[1] + X[1] * a + Y[1] * b + Zp[1] * e, c[2] + X[2] * a + Y[2] * b + Zp[2] * e];
+  const q = (a, b, e, f, g, hh, want) => B.face([P(...a), P(...b), P(...e), P(...f)], null, col, 0, want);
+  const W = w / 2, H = h / 2, D = d / 2;
+  q([-W, -H, D], [W, -H, D], [W, H, D], [-W, H, D], Zp);
+  q([W, -H, -D], [-W, -H, -D], [-W, H, -D], [W, H, -D], Zp.map(v => -v));
+  q([-W, H, -D], [-W, H, D], [W, H, D], [W, H, -D], Y);
+  q([-W, -H, D], [-W, -H, -D], [W, -H, -D], [W, -H, D], Y.map(v => -v));
+  q([W, -H, D], [W, -H, -D], [W, H, -D], [W, H, D], X);
+  q([-W, -H, -D], [-W, -H, D], [-W, H, D], [-W, H, -D], X.map(v => -v));
+}
+
+// a cylinder or cone (8 sides) standing on the ground
+function cylinder(B, x, z, r0, r1, h, col) {
+  const n = 8, y1 = h, ring0 = [], ring1 = [];
+  for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2; ring0.push([x + Math.cos(a) * r0, z + Math.sin(a) * r0]); ring1.push([x + Math.cos(a) * r1, z + Math.sin(a) * r1]); }
   for (let k = 0; k < n; k++) {
-    const hs = hash32(s + k * 977);
-    const dx = ((hs & 255) / 255 - 0.5) * 5, dz = (((hs >> 8) & 255) / 255 - 0.5) * 5;
-    const x = cx + dx, z = cz + dz;
-    if (!pointInRing(x, z, ring)) continue;
-    const tank = korea && k === 0 && (hs >> 16) % 3 === 0;
-    const c = linRGB(rgb(tank ? 0x5f9a78 : 0xb9b6ae));
-    if (tank) R.box(x, top, z, 1.6, 1.9, 1.6, 0, c, 0);
-    else R.box(x, top, z, 1.4 + (hs % 5) * 0.2, 0.9, 1.1, ((hs >> 4) % 6) * 0.5, c, 0);
+    const a = ring0[k], b = ring0[(k + 1) % n], c2 = ring1[(k + 1) % n], d = ring1[k];
+    const mx = (a[0] + b[0]) / 2 - x, mz = (a[1] + b[1]) / 2 - z;
+    if (r1 > 0.01) B.face([[a[0], 0, a[1]], [b[0], 0, b[1]], [c2[0], y1, c2[1]], [d[0], y1, d[1]]], null, col, 0, [mx, 0, mz]);
+    else B.face([[a[0], 0, a[1]], [b[0], 0, b[1]], [x, y1, z]], null, col, 0, [mx, 0, mz]);
   }
+  if (r1 > 0.01) B.flat(ring1.slice().reverse(), y1, col, 0);
 }
 
-function shopfronts(buf, ring, top, floors, b, s, roads, stats) {
-  const S = buf("shop"), G = buf("sign");
-  const fh = Math.min(FLOOR_U, top - 0.4);
-  let blade = b.k === "c" && floors >= 3 && s % 2 === 0;
+// the street pass (5.7) for one road-facing lot: the edge nearest the road
+// gets an awning (60 %), a sign panel on a tall building (55 %), and one lot
+// in ten a bin or a cone at the kerb. Deterministic from the lot's seed.
+function streetPass(buf, lot, stats, soFar) {
+  const { ring, cx, cz, top, s, road } = lot;
+  let h = s;
+  const rnd = () => ((h = hash32(h + 1)) & 0xffff) / 65536;
+  let edge = null, ed = Infinity;
   for (let k = 0; k < ring.length; k++) {
-    const [ax, az] = ring[k], [bx, bz] = ring[(k + 1) % ring.length];
-    const len = Math.hypot(bx - ax, bz - az);
-    if (len < 2.6) continue;
-    const ux = (bx - ax) / len, uz = (bz - az) / len, nx = uz, nz = -ux;
-    const mx = (ax + bx) / 2, mz = (az + bz) / 2;
-    let faces = false;
-    for (const r of roads) {
-      for (let q = 0; q < r.pts.length - 1 && !faces; q++) {
-        const [d, qx, qz] = segDist(mx, mz, r.pts[q][0], r.pts[q][1], r.pts[q + 1][0], r.pts[q + 1][1]);
-        if (d < r.w / 2 + 6 && (qx - mx) * nx + (qz - mz) * nz > 0.3) faces = true;
+    const [x1, z1] = ring[k], [x2, z2] = ring[(k + 1) % ring.length];
+    const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+    const d = (mx - road.qx) ** 2 + (mz - road.qz) ** 2;
+    if (d < ed) { ed = d; edge = [x1, z1, x2, z2, mx, mz]; }
+  }
+  const [x1, z1, x2, z2, mx, mz] = edge;
+  const elen = Math.hypot(x2 - x1, z2 - z1);
+  if (elen < 5) return 0;
+  const ux = (x2 - x1) / elen, uz = (z2 - z1) / elen;
+  let ox = mx - cx, oz = mz - cz;
+  const on = Math.hypot(ox, oz) || 1; ox /= on; oz /= on;
+  let n = 0;
+  const A = STYLE.awning, Pn = STYLE.panel, C = STYLE.clutter;
+  if (rnd() < A.chance && soFar < 520) {
+    n++;
+    const col = linRGB(rgb(A.colors[s % A.colors.length]));
+    obb(buf("awn"), [mx + ox * A.out, A.y, mz + oz * A.out], [ux, 0, uz], [ox, 0, oz], Math.min(elen * A.lenMul, A.maxLen), A.size[0], A.size[1], A.pitch, col);
+  }
+  if (top > Pn.minH && rnd() < Pn.chance) {
+    stats.signs++;
+    const col = linRGB(rgb(Pn.colors[s % Pn.colors.length]));
+    const t = (rnd() - 0.5) * elen * 0.5;
+    const sx = mx + ux * t + ox * Pn.out, sz = mz + uz * t + oz * Pn.out;
+    const y = Pn.y0 + rnd() * (top - Pn.minH + 1);
+    buf("panel").box(sx, y - Pn.size[1] / 2, sz, Pn.size[2], Pn.size[1], Pn.size[0], Math.atan2(uz, ux), col, 0);
+  }
+  if (rnd() < C.chance) {
+    const kx = road.qx + ox * (road.r.w / 2 + 1.5), kz = road.qz + oz * (road.r.w / 2 + 1.5);
+    if (rnd() < C.binShare) cylinder(buf("clutter"), kx, kz, C.bin.r[0], C.bin.r[1], C.bin.h, linRGB(rgb(C.bin.day)));
+    else cylinder(buf("clutter"), kx, kz, C.cone.r, 0, C.cone.h, linRGB(rgb(C.cone.day)));
+  }
+  return n;
+}
+
+// power poles (5.8) along the wider roads, 80 u apart on one side, wired
+// to the previous pole on the same road with two sagging catenaries; a lamp
+// on every third pole, a paper lantern hung from every third span
+// the pieces of a street (a baked road is cut at every crossing and chunk
+// edge) chained back into one polyline by their shared endpoints, the
+// straightest continuation first, so poles and wires can run down a street
+function chainRoads(roads) {
+  const key = ([x, z]) => `${Math.round(x * 2)}|${Math.round(z * 2)}`;
+  const ends = new Map();
+  const add = (k, v) => { if (!ends.has(k)) ends.set(k, []); ends.get(k).push(v); };
+  for (const r of roads) { add(key(r.pts[0]), { r, atStart: true }); add(key(r.pts[r.pts.length - 1]), { r, atStart: false }); }
+  const heading = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]);
+  const turn = (a, b) => { const d = b - a; return Math.abs(Math.atan2(Math.sin(d), Math.cos(d))); };
+  const used = new Set(), chains = [];
+  const extend = (pts, chain) => {
+    for (;;) {
+      const end = pts[pts.length - 1], dir = heading(pts[pts.length - 2], end);
+      let best = null, bd = 0.6;   // joins that turn less than ~35°
+      for (const c of ends.get(key(end)) ?? []) {
+        if (used.has(c.r)) continue;
+        const q = c.atStart ? c.r.pts : [...c.r.pts].reverse();
+        const d = turn(dir, heading(q[0], q[1]));
+        if (d < bd) { bd = d; best = { r: c.r, q }; }
       }
-      if (faces) break;
+      if (!best) return;
+      used.add(best.r);
+      chain.w = Math.max(chain.w, best.r.w);
+      pts.push(...best.q.slice(1));
     }
-    if (!faces) continue;
-    stats.shops++;
-    const es = hash32(s + k * 131);
-    const inset = Math.min(0.35, len * 0.1), o = 0.1;
-    const p0 = [ax + ux * inset + nx * o, az + uz * inset + nz * o], p1 = [bx - ux * inset + nx * o, bz - uz * inset + nz * o];
-    const L = len - inset * 2;
-    const variant = es % 4;
-    const v0 = variant / 4, v1 = (variant + 1) / 4;
-    const u1 = Math.max(1, Math.round(L / 4.6));
-    S.face([[p0[0], 0, p0[1]], [p1[0], 0, p1[1]], [p1[0], fh, p1[1]], [p0[0], fh, p0[1]]],
-      [[0, v0], [u1, v0], [u1, v1], [0, v1]], [1, 1, 1], (es % 997) / 997, [nx, 0, nz]);
-    // the sign band over the shop: an abstract lit panel (no text)
-    if (top > fh + 1.6) {
-      stats.signs++;
-      const sc = linRGB(rgb(pick(SIGNS, es >>> 3)));
-      const sl = L * (0.6 + (es % 30) / 100), off = (L - sl) / 2, so = 0.28;
-      const q0 = [p0[0] + ux * off + nx * so, p0[1] + uz * off + nz * so], q1 = [q0[0] + ux * sl, q0[1] + uz * sl];
-      const sv = (es >>> 9) % 8;
-      G.face([[q0[0], fh + 0.15, q0[1]], [q1[0], fh + 0.15, q1[1]], [q1[0], fh + 1.25, q1[1]], [q0[0], fh + 1.25, q0[1]]],
-        [[0, sv / 8], [Math.max(1, Math.round(sl / 3)), sv / 8], [Math.max(1, Math.round(sl / 3)), (sv + 1) / 8], [0, (sv + 1) / 8]],
-        sc, 1, [nx, 0, nz]);
+  };
+  for (const r of roads) {
+    if (used.has(r)) continue;
+    used.add(r);
+    const chain = { c: r.c, w: r.w, pts: [...r.pts] };
+    extend(chain.pts, chain);
+    chain.pts.reverse();
+    extend(chain.pts, chain);
+    chains.push(chain);
+  }
+  return chains;
+}
+
+function polesAlong(roads, Wr, poles, lanterns) {
+  const P = STYLE.pole;
+  const total = pts => { let L = 0; for (let k = 1; k < pts.length; k++) L += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); return L; };
+  // the point and direction a distance d along a polyline
+  const along = (pts, d) => {
+    for (let k = 0; k < pts.length - 1; k++) {
+      const [ax, az] = pts[k], [bx, bz] = pts[k + 1], len = Math.hypot(bx - ax, bz - az);
+      if (d <= len || k === pts.length - 2) { const t = len ? Math.min(d, len) / len : 0; return [ax + (bx - ax) * t, az + (bz - az) * t, len ? (bx - ax) / len : 1, len ? (bz - az) / len : 0]; }
+      d -= len;
     }
-    // one vertical blade sign per tall commercial building
-    if (blade && top > fh * 2.2) {
-      blade = false;
-      stats.signs++;
-      const bc = linRGB(rgb(pick(SIGNS, es >>> 11)));
-      const bx0 = ax + ux * 0.8 + nx * 0.2, bz0 = az + uz * 0.8 + nz * 0.2;
-      const y0 = fh + 1.6, y1 = Math.min(top - 1, y0 + FLOOR_U * Math.min(4, floors - 1.5));
-      const w = 0.35, d = 1.5;
-      const A = [bx0 - ux * w, bz0 - uz * w], Bp = [bx0 + ux * w, bz0 + uz * w];
-      const A2 = [A[0] + nx * d, A[1] + nz * d], B2 = [Bp[0] + nx * d, Bp[1] + nz * d];
-      const sv = (es >>> 13) % 8, hv = Math.max(1, Math.round((y1 - y0) / 3));
-      const uvs = [[0, sv / 8], [hv, sv / 8], [hv, (sv + 1) / 8], [0, (sv + 1) / 8]];
-      // two big faces (both sides of the blade) + the front edge
-      G.face([[A[0], y0, A[1]], [A2[0], y0, A2[1]], [A2[0], y1, A2[1]], [A[0], y1, A[1]]], uvs, bc, 1, [-ux, 0, -uz]);
-      G.face([[Bp[0], y0, Bp[1]], [B2[0], y0, B2[1]], [B2[0], y1, B2[1]], [Bp[0], y1, Bp[1]]], uvs, bc, 1, [ux, 0, uz]);
-      G.face([[A2[0], y0, A2[1]], [B2[0], y0, B2[1]], [B2[0], y1, B2[1]], [A2[0], y1, A2[1]]], null, bc, 1, [nx, 0, nz]);
+    return [pts[0][0], pts[0][1], 1, 0];
+  };
+  // the longest streets wide enough carry the poles, a line of them down one
+  // side, so every pole has a wire to the next; a piece too short for two has none
+  const cands = chainRoads(roads.filter(r => r.w >= P.minRoad)).map(r => ({ r, L: total(r.pts) })).filter(c => c.L >= P.spacing * 1.1).sort((a, b) => b.L - a.L);
+  let j = 0;
+  for (const { r, L } of cands) {
+    const n = Math.min(Math.floor(L / P.spacing) + 1, Math.floor((P.maxPerChunk * 3 - poles.length) / 3));
+    if (n < 2) return;
+    const start = (L - (n - 1) * P.spacing) / 2, off = r.w / 2 + P.out;
+    let prev = null;
+    for (let i = 0; i < n; i++, j++) {
+      const [x, z, ux, uz] = along(r.pts, start + i * P.spacing);
+      const px = x - uz * off, pz = z + ux * off;
+      poles.push(px, pz, j % P.lampEvery === 0 ? 1 : 0);
+      if (prev && Math.hypot(px - prev[0], pz - prev[1]) < P.maxSpan) {
+        for (const wy of P.wireY) {
+          for (let q = 0; q < P.segs; q++) {
+            const t0 = q / P.segs, t1 = (q + 1) / P.segs;
+            const sag = t => wy - Math.sin(t * Math.PI) * P.sag;
+            Wr.line(prev[0] + (px - prev[0]) * t0, sag(t0), prev[1] + (pz - prev[1]) * t0, prev[0] + (px - prev[0]) * t1, sag(t1), prev[1] + (pz - prev[1]) * t1);
+          }
+        }
+        if (j % P.lanternEvery === 1) {   // a paper lantern hung mid-span under the lower wire
+          const lx = (prev[0] + px) / 2, lz = (prev[1] + pz) / 2, ly = P.wireY[1] - P.sag - P.lanternDrop;
+          lanterns.push(lx, ly, lz);
+          Wr.line(lx, ly + 1.1, lz, lx, ly + P.lanternDrop + 0.1, lz);
+        }
+      }
+      prev = [px, pz];
     }
   }
 }
@@ -630,22 +827,6 @@ function ribbon(Bf, pts, hw, y, c, uvMode, seedV, joints = true) {
   }
 }
 
-function dashes(G, pts, y, c) {
-  let acc = 0;
-  for (let k = 0; k < pts.length - 1; k++) {
-    const [ax, az] = pts[k], [bx, bz] = pts[k + 1];
-    const len = Math.hypot(bx - ax, bz - az);
-    if (len < 0.05) continue;
-    const ux = (bx - ax) / len, uz = (bz - az) / len, nx = -uz * 0.22, nz = ux * 0.22;
-    while (acc + 3 < len) {
-      const sx = ax + ux * acc, sz = az + uz * acc, ex = sx + ux * 3, ez = sz + uz * 3;
-      G.face([[sx + nx, y, sz + nz], [ex + nx, y, ez + nz], [ex - nx, y, ez - nz], [sx - nx, y, sz - nz]], null, c, 0, [0, 1, 0]);
-      acc += 8;
-    }
-    acc -= len;
-  }
-}
-
 function scatterTrees(out, ring, step, keep, seed) {
   let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
   for (const [x, z] of ring) { mnx = Math.min(mnx, x); mxx = Math.max(mxx, x); mnz = Math.min(mnz, z); mxz = Math.max(mxz, z); }
@@ -657,7 +838,7 @@ function scatterTrees(out, ring, step, keep, seed) {
       if ((s & 1023) / 1023 > keep) continue;
       const jx = x + ((s >> 10) & 255) / 255 * step * 0.8 - step * 0.4, jz = z + ((s >> 18) & 255) / 255 * step * 0.8 - step * 0.4;
       if (!pointInRing(jx, jz, ring)) continue;
-      out.push(jx, jz, 0.8 + ((s >> 4) & 63) / 63 * 0.6, s % 3);
+      out.push(jx, jz, STYLE.tree.scale[0] + ((s >> 4) & 63) / 63 * (STYLE.tree.scale[1] - STYLE.tree.scale[0]), ((s >> 12) % 100) < STYLE.tree.palmShare * 100 ? 1 : 0);
     }
   }
 }

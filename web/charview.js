@@ -11,7 +11,14 @@
 //   v.dispose()
 // stage: a glowing platform under the feet and a soft spotlight cone (the
 // style screen); the box's own CSS paints the backdrop.
-import { spriteFor, silhouetteFor } from "./charsprite.js";
+//
+// mountSpriteView(box, avatar): the same character as the party room draws
+// it, the lobby's own pixel sprite (charsprite.js), big, at a whole multiple
+// with nearest-neighbour scaling: tap to turn it, the room's walk on request.
+// mountLookView(box, avatar, opts): either one behind a small 3D / 2D toggle
+// (the Style screen, the setup card); the choice is kept on this phone.
+import { spriteFor, silhouetteFor, SPRITE } from "./charsprite.js";
+import { t } from "./i18n.js";
 
 export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, stage = false, onSwap = null, onReady = null } = {}) {
   let disposed = false, api = null, pending = avatar, walking = false;
@@ -22,7 +29,7 @@ export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, sta
     setAvatar(a) { pending = a; api?.swap(a); },
     setWalking(on) { walking = !!on; },
     reset() { api?.reset(); },
-    dispose() { disposed = true; api?.dispose(); },
+    dispose() { disposed = true; api?.dispose(); box.querySelector(":scope > .cv-spr")?.remove(); },
   };
   start().catch(e => console.warn("[charview] 3D preview unavailable", e));
   return view;
@@ -58,16 +65,18 @@ export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, sta
     let yaw = yaw0, vel = 0, raf = 0, idle = 0, lastTap = 0;
     const ptrs = new Map();
     let pinch0 = null;
-    box.addEventListener("pointerdown", e => {
+    const ac = new AbortController();
+    const on = (type, fn, opts) => box.addEventListener(type, fn, { ...opts, signal: ac.signal });
+    on("pointerdown", e => {
       if (e.target.closest("button")) return; // the stage's own controls
       ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
       box.setPointerCapture?.(e.pointerId);
       if (ptrs.size === 2 && zoom) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), dist }; }
       const now = performance.now();
-      if (ptrs.size === 1 && now - lastTap < 300) api.reset();
+      if (ptrs.size === 1 && now - lastTap < 300) api?.reset();
       lastTap = now;
     });
-    box.addEventListener("pointermove", e => {
+    on("pointermove", e => {
       const prev = ptrs.get(e.pointerId); if (!prev) return;
       ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (ptrs.size >= 2 && pinch0) {
@@ -77,8 +86,8 @@ export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, sta
       } else if (ptrs.size === 1) { vel = (e.clientX - prev.x) * 0.012; yaw += vel; idle = 0; }
     });
     const up = e => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = null; };
-    box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
-    if (zoom) box.addEventListener("wheel", e => { e.preventDefault(); dist = Math.max(16, Math.min(46, dist * (e.deltaY > 0 ? 1.08 : 1 / 1.08))); place(); }, { passive: false });
+    on("pointerup", up); on("pointercancel", up);
+    if (zoom) on("wheel", e => { e.preventDefault(); dist = Math.max(16, Math.min(46, dist * (e.deltaY > 0 ? 1.08 : 1 / 1.08))); place(); }, { passive: false });
     const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => {
       const W = box.clientWidth, H = box.clientHeight; if (!W || !H) return;
       renderer.setSize(W, H); cam.aspect = W / H; cam.updateProjectionMatrix();
@@ -119,12 +128,100 @@ export function mountCharView(box, avatar, { zoom = false, yaw: yaw0 = 0.35, sta
         onSwap?.();
       },
       reset() { yaw = yaw0; vel = 0; dist = DIST0; place(); },
-      dispose() { cancelAnimationFrame(raf); ro?.disconnect(); ch.dispose?.(); extras?.dispose(); renderer.dispose(); renderer.forceContextLoss?.(); },
+      dispose() { cancelAnimationFrame(raf); ac.abort(); ro?.disconnect(); ch.dispose?.(); extras?.dispose(); renderer.dispose(); renderer.forceContextLoss?.(); renderer.domElement.remove(); },
     };
     if (pending !== shown) api.swap(pending);
     tick();
     onReady?.();
   }
+}
+
+// ---------------------------------------------------------------- 2D: the room's own sprite
+// The lobby's sprite sheet for this look (charsprite.js: the same pipeline
+// the party room uses, so what you see here is exactly what walks around the
+// room), shown big: a whole number of screen pixels per sprite pixel, never
+// smoothed. Facing down; tap to turn (down, left, up, right). setWalking
+// plays the room's walk (step, idle, step, idle).
+const FACING_ROW = { down: 0, left: 1, up: 2, right: 1 };
+const TURN = ["down", "left", "up", "right"];
+export function mountSpriteView(box, avatar, { walking = false } = {}) {
+  let disposed = false, key = null, facing = "down";
+  const el = document.createElement("div");
+  el.className = "cv-2d";
+  el.innerHTML = `<div class="cv-2d-spr"></div>`;
+  const hint = document.createElement("small");
+  hint.className = "cv-2d-hint"; hint.textContent = t("look.turn");
+  box.prepend(el); box.appendChild(hint);
+  const spr = el.querySelector(".cv-2d-spr");
+  const size = () => {
+    const h = box.clientHeight, w = box.clientWidth; if (!h || !w) return;
+    const k = Math.max(2, Math.floor(Math.min(h * 0.72 / SPRITE.H, w * 0.7 / SPRITE.W)));
+    el.style.setProperty("--px", `${k}px`); el.style.setProperty("--sw", `${SPRITE.W * k}px`); el.style.setProperty("--sh", `${SPRITE.H * k}px`);
+  };
+  const face = () => { el.style.setProperty("--row", FACING_ROW[facing]); el.classList.toggle("flip", facing === "right"); };
+  const apply = (sh, k) => { if (disposed || k !== key) return; spr.style.backgroundImage = `url(${sh.url})`; el.classList.toggle("nowalk", !sh.anim); };
+  const show = a => {
+    const k = key = JSON.stringify(a ?? {});
+    apply(silhouetteFor(a ?? {}), k);
+    spriteFor(a ?? {}).then(sh => apply(sh, k));
+  };
+  const turn = e => { if (e.target.closest("button")) return; facing = TURN[(TURN.indexOf(facing) + 1) % TURN.length]; face(); };
+  el.addEventListener("click", turn);
+  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(size) : null;
+  ro?.observe(box);
+  size(); face(); show(avatar);
+  el.classList.toggle("walking", !!walking);
+  return {
+    setAvatar(a) { show(a); },
+    setWalking(on) { el.classList.toggle("walking", !!on); },
+    reset() { facing = "down"; face(); },
+    dispose() { disposed = true; ro?.disconnect(); el.remove(); hint.remove(); },
+  };
+}
+
+// ---------------------------------------------------------------- 3D / 2D
+// One box, two views: the live 3D character (mountCharView) or the room's
+// own 2D sprite (mountSpriteView), behind a small toggle in the box's
+// corner. The last choice is kept on this phone (localStorage); 3D first.
+const MODE_KEY = "rando-look-mode";
+export function lookMode() { try { return localStorage.getItem(MODE_KEY) === "2d" ? "2d" : "3d"; } catch { return "3d"; } }
+export function mountLookView(box, avatar, { toggle = true, onMode = null, ...opts } = {}) {
+  let mode = lookMode(), inner = null, cur = avatar, walking = false, disposed = false;
+  let seg = null;
+  if (toggle) {
+    seg = document.createElement("div");
+    seg.className = "cv-mode glass-seg";
+    seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "3D / 2D");
+    seg.innerHTML = `<button type="button" data-mode="3d">${t("look.3d")}</button><button type="button" data-mode="2d">${t("look.2d")}</button>`;
+    seg.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); view.setMode(b.dataset.mode); }));
+    box.appendChild(seg);
+  }
+  const paint = () => seg?.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
+  const build = () => {
+    inner?.dispose();
+    box.querySelectorAll(":scope > canvas, :scope > .cv-spr, :scope > .cv-2d, :scope > .cv-2d-hint").forEach(n => n.remove());
+    inner = mode === "2d" ? mountSpriteView(box, cur, { walking }) : mountCharView(box, cur, opts);
+    inner.setWalking(walking);
+    box.dataset.look = mode;
+    paint();
+  };
+  build();
+  const view = {
+    get mode() { return mode; },
+    setMode(m) {
+      m = m === "2d" ? "2d" : "3d";
+      if (m === mode || disposed) return;
+      mode = m;
+      try { localStorage.setItem(MODE_KEY, m); } catch {}
+      build();
+      onMode?.(m);
+    },
+    setAvatar(a) { cur = a; inner?.setAvatar(a); },
+    setWalking(on) { walking = !!on; inner?.setWalking(walking); },
+    reset() { inner?.reset(); },
+    dispose() { disposed = true; inner?.dispose(); inner = null; seg?.remove(); delete box.dataset.look; },
+  };
+  return view;
 }
 
 // a glowing gold platform with a slow shimmer ring, and a soft spotlight

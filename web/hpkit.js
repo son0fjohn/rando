@@ -109,7 +109,7 @@ export function resultsHtml(players, { title = "final scores", sub = "", note = 
       <span class="hp-res-score">${p.score ?? 0}</span>
     </li>`;
   }).join("");
-  return `<div class="hp-results">
+  return `<div class="hp-results glass glass-dialog">
     <div class="hp-res-title">${esc(title)}</div>
     ${sub ? `<div class="hp-res-sub">${esc(sub)}</div>` : ""}
     <ol class="hp-res-list">${rows}</ol>

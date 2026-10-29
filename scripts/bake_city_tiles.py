@@ -150,6 +150,40 @@ def classify(cls, sub, area, elong, fronts_main, korea):
     return "c"
 
 
+# a floor count with no data: the class's range, where the seed and the
+# footprint's size place it (a big footprint leans taller within its class:
+# 60 m² at the bottom, 2000 m² at the top)
+def guess_floors(kind, area_m2, seed):
+    lo, hi = FLOORS[kind]
+    rank = (math.log(max(area_m2, 1.0)) - math.log(60.0)) / (math.log(2000.0) - math.log(60.0))
+    u = 0.6 * ((seed % 1000) / 1000.0) + 0.4 * min(1.0, max(0.0, rank))
+    return lo + min(hi - lo, int(u * (hi - lo + 1)))
+
+
+# ... and then its street: a guessed building moves halfway to the median
+# floors of the measured buildings within 60 m, staying in its class's range
+def settle_guesses(tile, m_per_px):
+    bs = tile["b"]
+    pts = []
+    for b in bs:
+        p = b["p"]
+        n = len(p) // 2
+        pts.append((sum(p[0::2]) / n, sum(p[1::2]) / n))
+    r2 = (60.0 / m_per_px) ** 2
+    for i, b in enumerate(bs):
+        if not b.pop("_g", False):
+            continue
+        near = sorted(o["f"] for j, o in enumerate(bs) if o.get("m") and (pts[j][0] - pts[i][0]) ** 2 + (pts[j][1] - pts[i][1]) ** 2 < r2)
+        if len(near) < 2:
+            continue
+        lo, hi = FLOORS[b["k"]]
+        med = near[len(near) // 2]
+        fl = max(lo, min(hi, int(round(0.5 * b["f"] + 0.5 * med))))
+        if fl != b["f"]:
+            b["f"] = fl
+            b["h"] = round(fl * LEVEL_M + 1.0, 1)
+
+
 def roof_for(kind, shape, area, fill, korea, seed):
     s = (shape or "").lower()
     if s in ("gabled", "saltbox", "gambrel", "mansard"):
@@ -362,8 +396,7 @@ def bake_area(a, tiles):
             hgt = fl * LEVEL_M + 1.0
             measured = 1
         else:
-            lo, hi = FLOORS[kind]
-            fl = lo + seed % (hi - lo + 1)
+            fl = guess_floors(kind, lp.area, seed)
             hgt = fl * LEVEL_M + (1.0 if kind != "s" else 0.4)
         hgt = max(2.6, min(float(hgt), 600.0))
         roof = roof_for(kind, r.get("roof_shape"), lp.area, fill, korea, seed)
@@ -374,6 +407,8 @@ def bake_area(a, tiles):
         if measured:
             b["m"] = 1
             stats["measured"] += 1
+        else:
+            b["_g"] = kind != "s"   # settled against the neighbours once the tile is full
         oid = osm_id(r.get("sources"))
         if oid:
             b["o"] = oid
@@ -447,6 +482,10 @@ def main():
     for a in areas:
         report[a["id"]] = bake_area(a, tiles)
         print(a["id"], report[a["id"]])
+    for k, t in tiles.items():
+        # metres per tile pixel at this latitude (a z16 tile is 611 m at the equator)
+        lat = mercantile.ul(k[1], k[2], k[0]).lat
+        settle_guesses(t, 40075016.686 * math.cos(math.radians(lat)) / (2 ** k[0]) / EXTENT)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     order = sorted(tiles, key=lambda k: zxy_to_tileid(*k))
     sizes = []
@@ -469,7 +508,12 @@ def main():
             "max_lon_e7": int((max(lons) + 0.05) * 1e7), "max_lat_e7": int((max(lats) + 0.05) * 1e7),
             "center_zoom": Z, "center_lon_e7": int(areas[0]["lng"] * 1e7), "center_lat_e7": int(areas[0]["lat"] * 1e7),
         }, {"name": "rando-city", "format": "rando-chunk-v1", "extent": EXTENT,
-            "attribution": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL); building registry © VWorld",
+            # what the archive must carry (docs/map_data.md): the produced-work
+            # notice with links, the licence, and where the archive itself is
+            "attribution": '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, '
+                           '<a href="https://overturemaps.org">Overture Maps Foundation</a> (ODbL 1.0); '
+                           'building heights and floors in Korea: <a href="https://www.vworld.kr">국토교통부 브이월드</a> (공공누리 제1유형)',
+            "license": "ODbL-1.0", "notice": "web/tiles/NOTICE.txt",
             "areas": [{k: a[k] for k in ("id", "label", "lat", "lng", "r")} for a in areas]})
     sizes.sort()
     print(f"{len(sizes)} tiles, {sum(sizes) / 1024:.0f} KB total, median {sizes[len(sizes) // 2] / 1024:.1f} KB, "

@@ -1,0 +1,30 @@
+Rando city tiles (cities.pmtiles) — data credits and licence
+
+This archive is a derivative database of:
+
+- OpenStreetMap: © OpenStreetMap contributors, Open Database License 1.0
+  (ODbL). https://www.openstreetmap.org/copyright
+  https://opendatacommons.org/licenses/odbl/1-0/
+- Overture Maps Foundation, buildings + transportation themes, release
+  2026-10-21.0, ODbL 1.0. https://overturemaps.org — which in Korea also
+  carry footprints from Qian Shi et al., East Asian building footprints
+  (Zenodo, doi:10.5281/zenodo.8174931, CC BY 4.0), and in Canada Microsoft
+  Global ML Building Footprints (ODbL / CDLA-Permissive-2.0). Roads also
+  include data from TomTom.
+- In Korea, building heights and floor counts from the Ministry of Land,
+  Infrastructure and Transport's building register through VWorld
+  (국토교통부 GIS건물통합정보 / 도로명주소 건물, 공공누리 제1유형 — attribution):
+  본 저작물은 국토교통부에서 작성하여 공공누리 제1유형으로 개방한 건물 정보를
+  이용하였으며, 해당 저작물은 국토교통부 브이월드(https://www.vworld.kr)에서
+  무료로 다운받으실 수 있습니다.
+- Itaewon only: measured building heights from Google Photorealistic 3D
+  Tiles, used by the owner's decision (see docs/map_data.md).
+
+Modifications: footprints simplified, heights estimated where the sources
+have none (type, area, neighbours), roads clipped into 1/4-tile chunks.
+
+The archive is published under ODbL 1.0 and is downloadable as is from
+https://randoirl.vercel.app/tiles/cities.pmtiles. Anywhere the archive
+doesn't cover, the app reads OpenFreeMap's worldwide tiles
+(https://openfreemap.org, © OpenMapTiles https://openmaptiles.org/, data
+from OpenStreetMap).
