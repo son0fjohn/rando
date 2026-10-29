@@ -11,6 +11,9 @@
 //   scenery.dive(seed)     -> Promise (~1.5 s); seed picks the building, so
 //                          everyone in a party dives into the same one
 //   scenery.slow           this phone struggled: the glass goes lite
+//   scenery.pullOut(seed)  -> Promise (~1.4 s), on the map (scenery off):
+//                          leaving a party, the dive backwards, out of the
+//                          building onto you (onboard.js toWorld)
 //
 // web/start/night.jpg and day.jpg are the drift's first frame (scenery.pose(0))
 // by night and by day (index.html picks by the sun), shown at once and
@@ -61,6 +64,7 @@ export const scenery = {
     if (on || !world3d.camera) return;
     on = true;
     world3d.hold?.();          // Itaewon's own map while the start screen is up
+    world3d.mapView = false;   // the drift's own wide view (no haze round a player, looking straight at the target)
     document.body.classList.add("scenery");
     // full screen, not the map's phone-shaped frame
     world3d.resize();
@@ -98,6 +102,7 @@ export const scenery = {
     this.live = false;
     document.body.classList.remove("scenery-live");
     world3d.camera.fov = 50; world3d.camera.updateProjectionMatrix();
+    world3d.mapView = true;    // the map's own view again (the haze closes in round you)
     document.body.classList.remove("scenery");
     world3d.resize();
     world3d.recenter();
@@ -176,8 +181,8 @@ export const scenery = {
     const T = { x: to.x, y: to.y ?? terrainY(to.x, to.z), z: to.z };
     const P0 = cam.position.clone();
     const L0 = w.target.clone(); L0.y += CHAR_H + 4;
-    const P1 = { x: T.x + d.dist * Math.sin(d.theta) * Math.cos(d.elev), y: T.y + d.dist * Math.sin(d.elev), z: T.z + d.dist * Math.cos(d.theta) * Math.cos(d.elev) };
-    const L1 = { x: T.x, y: T.y + CHAR_H + 4, z: T.z };
+    // (onto the map's own view: looking a little ahead of the spot)
+    const { pos: P1, look: L1 } = w.camPose ? w.camPose(T, d, true) : { pos: { x: T.x + d.dist * Math.sin(d.theta) * Math.cos(d.elev), y: T.y + d.dist * Math.sin(d.elev), z: T.z + d.dist * Math.cos(d.theta) * Math.cos(d.elev) }, look: { x: T.x, y: T.y + CHAR_H + 4, z: T.z } };
     w.target.set(T.x, T.y, T.z);       // (the city streams round where we're going)
     return new Promise(res => {
       let s0 = 0;
@@ -191,6 +196,7 @@ export const scenery = {
         w.needsRender = true;
         if (k >= 1) {
           Object.assign(w.cam, d);
+          w.mapView = true;    // (landed: the map's view, so the next frame doesn't jump)
           w.applyCamera();
           diving = () => {};
           res(true);
@@ -198,6 +204,94 @@ export const scenery = {
       };
     });
   },
+
+  // Leaving a party (onboard.js toWorld): the dive backwards, on the map
+  // itself (the scenery is off). The camera starts just over the party's
+  // building's roof looking down into it, rises out over it and settles on
+  // the map's own view over you (where the map rests: your character, or
+  // your spot while you're hidden), then the map's camera takes over. Far
+  // from that building (a city elsewhere) it lifts off the street right over
+  // you instead. Reduced motion: no flight, the map's view at once.
+  pullOut(seed = "", ms = 1400) {
+    const w = world3d, cam = w.camera;
+    if (!cam) return Promise.resolve(false);
+    const d = w.CAM_DEFAULT;
+    const home = () => w.followPos ?? w.homePos ?? { x: 0, y: 0, z: 0 };
+    const rest = () => {
+      const T = home(), y = T.y ?? terrainY(T.x, T.z);
+      return { T: { x: T.x, y, z: T.z },
+        P: { x: T.x + d.dist * Math.sin(d.theta) * Math.cos(d.elev), y: y + d.dist * Math.sin(d.elev), z: T.z + d.dist * Math.cos(d.theta) * Math.cos(d.elev) },
+        L: { x: T.x, y: y + CHAR_H + 4, z: T.z } };
+    };
+    const settle = () => {
+      const { T } = rest();
+      w.target.set(T.x, T.y, T.z);
+      Object.assign(w.cam, d);
+      w.camGoal = null; w.observing = false;
+      cam.fov = 50; cam.updateProjectionMatrix();
+      w.applyCamera();
+    };
+    if (REDUCED) { settle(); return Promise.resolve(false); }
+    const r0 = rest();
+    const lot = this.lobbyLot(seed);
+    const near = lot && Math.hypot(lot.cx - r0.T.x, lot.cz - r0.T.z) < 450;
+    let P0, L0, C;
+    if (near) {
+      const roofY = terrainY(lot.cx, lot.cz) - 1.2 + lot.h;
+      const hx = r0.P.x - lot.cx, hz = r0.P.z - lot.cz, hd = Math.hypot(hx, hz) || 1;
+      P0 = { x: lot.cx + hx / hd * 7, y: roofY + 9, z: lot.cz + hz / hd * 7 };
+      L0 = { x: lot.cx, y: roofY, z: lot.cz };
+      // the swoop's high point: over the building, a little toward where
+      // we're going, high enough to rise past the map's view and settle onto it
+      C = { x: lot.cx + (r0.P.x - lot.cx) * 0.35, y: Math.max(r0.P.y, roofY) + 90, z: lot.cz + (r0.P.z - lot.cz) * 0.35 };
+    } else {
+      const T = r0.T;
+      P0 = { x: T.x + Math.sin(d.theta) * 6, y: T.y + CHAR_H + 30, z: T.z + Math.cos(d.theta) * 6 };
+      L0 = { x: T.x, y: T.y, z: T.z };
+      C = { x: (P0.x + r0.P.x) / 2, y: Math.max(r0.P.y, P0.y) + 90, z: (P0.z + r0.P.z) / 2 };
+    }
+    const place = k => {
+      const { P: P1, L: L1 } = rest(), e = ease(k), m = 1 - e;
+      cam.position.set(
+        m * m * P0.x + 2 * m * e * C.x + e * e * P1.x,
+        m * m * P0.y + 2 * m * e * C.y + e * e * P1.y,
+        m * m * P0.z + 2 * m * e * C.z + e * e * P1.z);
+      const lk = ease(Math.min(1, k * 1.3));
+      cam.lookAt(L0.x + (L1.x - L0.x) * lk, L0.y + (L1.y - L0.y) * lk, L0.z + (L1.z - L0.z) * lk);
+      cam.fov = 50 + 12 * Math.sin(Math.PI * k);
+      cam.updateProjectionMatrix();
+      w.needsRender = true;
+    };
+    w.observing = false; w.camGoal = null;
+    place(0);
+    this.pulling = true;
+    return new Promise(res => {
+      let s0 = 0, done = false;
+      const finish = () => {
+        if (done) return; done = true;
+        clearTimeout(guard);
+        const i = w.tickHooks.indexOf(hook); if (i >= 0) w.tickHooks.splice(i, 1);
+        this.pulling = false;
+        settle();
+        res(true);
+      };
+      // (a map that isn't drawing still lands: no frame for a while, it's
+      // done; not while a test steps the clock frame by frame)
+      let guard = 0;
+      const watch = () => { clearTimeout(guard); if (typeof globalThis.__sceneryClock !== "function") guard = setTimeout(finish, Math.max(ms, 2500)); };
+      const hook = t => {
+        t = clock(t);
+        if (!s0) s0 = t;
+        const k = Math.min(1, (t - s0) * 1000 / ms);
+        place(k);
+        watch();
+        if (k >= 1) finish();
+      };
+      watch();
+      w.tickHooks.push(hook);
+    });
+  },
+  pulling: false,
 
   // which building is the party's: one of the tallest near the middle of
   // the loop, picked by the seed (the party code)

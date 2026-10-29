@@ -38,7 +38,8 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   -> `017_events.sql`), `web/qr.js` + `web/vendor/qrcode.js`, `web/stats.html`
   (the admin-only dashboard). `?onb=0` turns it off.
 - **Map chrome:** `web/backend.js` (auth, presence, the bottom bar on
-  the world screen only (navy at night, a muted green by day, by `--day`):
+  the world screen only (solid navy at every light, light icons, the
+  active tab gold; it never follows `--day`):
   Explore / Host / Style, flat against the map; Host
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
   the style screen, NPC dialog),
@@ -91,7 +92,9 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   sprites, never in text, buttons or panels; day and night: every glass surface over the map
   follows `--day` (0 night, 1 day, blended at sunrise/sunset) through the
   tokens in theme.css "day and night", set by `web/daylight.js` from the map's
-  light; indoor scenes pin it to night; `?light=day|sunset|night` or the
+  light (`web/sun.js`: the real sun over the place on screen, its height
+  and direction, never the phone's clock or zone; `?sunat=` / `?sunspeed=`
+  move its clock for tests); indoor scenes pin it to night; `?light=day|sunset|night` or the
   `?dev=1` chip force it).
 - **House party:** `web/party.js` (party + lobby: chat, players vote for the
   next game, the host's "Game votes" sheet starts one; the TV opens the same
@@ -220,6 +223,7 @@ test/faces.html                        # every eye style × expression, flat (op
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
 node test/maskoff_shots.mjs <dir> [--bots=4]   # Mask Off round the table with real characters: first person from two seats, a pick by tapping someone, a raised card, the card on the table, looking round / glide back, the end; a 10-player party seats 8 + the seat bar
 node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (round the table, real characters: a pick, a card, an answer, Same, Go deeper, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
+node test/leave_rec.mjs <dir> [--only=1,2,3,4] [--video]   # every way out of a party on the real app page (Leave, turned away past the cap, the party ended after the set's podium + recap, the host closing it): straight onto the explore map on you, nothing over it, the camera pulled out of the building (--video + FFMPEG: frame-stepped mp4s)
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/mapchrome_shots.mjs <dir> [--prefix=after] [--lights=night,sunset,day] [--widths=320,375,390,430]   # the map's round buttons (Home / Friends aligned, measured; the 📝 note button clear of the chat, the bar and Back to me), the plaza chat (no boxes), the bar's colour + label contrast, by night / sunset / day
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
@@ -235,6 +239,7 @@ node test/auth_rec.mjs <dir> [en|ko|both]   # accounts: a guest from an invite (
 node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
 node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps
 node test/world_shots.mjs <dir> [places]  # the map anywhere: Gangnam, Itaewon (+ its edge), Hongdae, Calgary, Edmonton, Lotte World Tower: top-down next to a plan from the raw data (scripts/plan_map.py), street + wide at night, load times cold / cached; Calgary from the worldwide tiles alone (scripts/omt_fixture.py)
+node test/view_shots.mjs <dir> [range,sun,sunset] [--prefix=before]   # the map's Pokémon GO view (Itaewon + a city spot, day / night, closest / furthest zoom: how far you see, where you stand, draws, triangles, chunks, fps) and its light from the place on screen: Seoul and Calgary at the same UTC moment (?sunat=), a sunset sped up as frames
 node test/light_shots.mjs <dir> [night,sunset,day]   # day and night glass: the start screen and the map's chrome at night, sunset and day (?light=), the panel over what's behind it, the text colours
 test/hunter.html                       # Manhunt's Hunter on his own: poses, doors, counter, orbit (open it on npm run serve:test)
 ```

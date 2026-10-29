@@ -9,9 +9,13 @@
 // panels, bins, asphalt, the lawn tile, water, and instanced street lights,
 // power poles with wires and lanterns, and the painted GLB trees.
 //
-// Rings: chunks within NEAR tiles of the target get full detail (the street
-// pass, lamps, poles, outlines); out to FAR they're walls + roofs + shadows
-// + parks; beyond that they're dropped. Everything is deterministic per
+// Range: the map says how far round the target to go (world3d.js
+// viewRange, world units: the haze's radius plus a buffer in the map's
+// Pokémon GO view). Chunks reaching within `near` of the target get full
+// detail (the street pass, lamps, poles, outlines); out to `load` they're
+// walls + roofs + shadows + parks; past `show` they're kept but not drawn
+// (all haze), and well past `load` they're dropped. With no range given:
+// rings of 1 and 2 tiles, as it used to be. Everything is deterministic per
 // chunk, so a chunk you left looks the same when you come back.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
@@ -22,13 +26,15 @@ import { THEME } from "./theme.js";
 
 const Z = 16;
 const REDUCED = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-const NEAR = 1, FAR = 2, DROP = 3;
 // Overture's worldwide building tiles (a buildings PMTiles, z14 MVT, its
 // "building" layer): where set, the worldwide fallback's buildings come
 // from it instead of OpenMapTiles' (OpenStreetMap only). Off until a copy
 // we can rely on is hosted (docs/map_city.md "Worldwide Overture
 // buildings"); ?ovt=<url> tries one.
 const OVT_URL = new URLSearchParams(globalThis.location?.search ?? "").get("ovt") || null;
+const RINGS = { near: 1.2, load: 2.2 };   // tiles, when the map gives no range
+const DROP_U = 140;                        // world units past `load` before a chunk is dropped
+const RETARGET_U = 24;                     // re-pick the chunks every this far the target moves
 const MAX_INFLIGHT = 3;
 
 function canvas(w, h, draw) {
@@ -296,7 +302,7 @@ export class Pool {
     this.cy = geo.boundingSphere.center.y; this.r = geo.boundingSphere.radius;
     if (this.mesh) this.mesh.geometry = geo;
   }
-  fill(recs, frustum, cam, sphere) {
+  fill(recs, frustum, cam, sphere, range = null) {
     let n = 0;
     for (const rec of recs) for (const k of this.src) n += rec.inst?.[k] ? rec.inst[k].length / 16 : 0;
     if (n > this.cap) {
@@ -322,6 +328,7 @@ export class Pool {
           sphere.center.set(a[i + 12], a[i + 13] + this.cy * s * e, a[i + 14]);
           sphere.radius = this.r * s;
           if (!frustum.intersectsSphere(sphere)) continue;
+          if (range && Math.hypot(a[i + 12] - range.x, a[i + 14] - range.z) > range.r + sphere.radius) continue;   // (all haze)
           if (this.far !== null) {
             const d = Math.hypot(a[i + 12] - cam.x, a[i + 14] - cam.z);
             if (this.far ? d < TREE_LOD_U : d >= TREE_LOD_U) continue;
@@ -341,11 +348,14 @@ export class Pool {
   dispose() { if (this.mesh) { this.group.remove(this.mesh); this.mesh.dispose(); } }
 }
 // refill pools from recs ({ inst: { kind: Float32Array of matrices }, riseE })
-// if the camera moved since the last call on this state, or force; true if it did
-export function fillPools(pools, recs, cam, state, force = false) {
+// if the camera moved since the last call on this state, or force; true if it
+// did. range { x, z, r }: leave out what's further than r from x,z (the haze)
+export function fillPools(pools, recs, cam, state, force = false, range = null) {
   cam.updateMatrixWorld();
   const e = state.cam ??= new Float32Array(32);
-  let moved = force;
+  const rk = range ? `${range.x.toFixed(1)},${range.z.toFixed(1)},${range.r.toFixed(1)}` : "";
+  let moved = force || rk !== state.range;
+  state.range = rk;
   for (let i = 0; i < 16; i++) {
     if (e[i] !== cam.matrixWorld.elements[i]) { moved = true; e[i] = cam.matrixWorld.elements[i]; }
     if (e[16 + i] !== cam.projectionMatrix.elements[i]) { moved = true; e[16 + i] = cam.projectionMatrix.elements[i]; }
@@ -353,7 +363,7 @@ export function fillPools(pools, recs, cam, state, force = false) {
   if (!moved) return false;
   state.frustum ??= new THREE.Frustum(); state.sphere ??= new THREE.Sphere(); state.m4 ??= new THREE.Matrix4();
   state.frustum.setFromProjectionMatrix(state.m4.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
-  for (const p of Object.values(pools)) p.fill(recs, state.frustum, cam.position, state.sphere);
+  for (const p of Object.values(pools)) p.fill(recs, state.frustum, cam.position, state.sphere, range);
   return true;
 }
 // painted trees ({ tree: { geo, mat, lo, loMat }, palm }) near the camera,
@@ -563,19 +573,30 @@ export class CityTiles {
     return [Math.floor(fx), Math.floor(fy), fx, fy];
   }
 
-  // call every tick with the camera target
-  update(target) {
+  // world units across one tile here
+  get tileU() { return this._tileU ??= this.P.fwd(360 / 2 ** Z, 0)[0] - this.P.fwd(0, 0)[0]; }
+  // how far a tile is from the target's tile position (fx, fy), world units (0: under it)
+  tileDist(x, y, fx, fy) { return Math.hypot(Math.max(0, x - fx, fx - (x + 1)), Math.max(0, y - fy, fy - (y + 1))) * this.tileU; }
+
+  // call every tick with the camera target and the range round it to
+  // load ({ load, near, show } world units; world3d.js viewRange)
+  update(target, range = null) {
     const cam = this.world.camera;
     if (cam && !this.hidden) { cityUniforms.uCutA.value.copy(cam.position); cityUniforms.uCutB.value.copy(target); }
     const [cx, cy, fx, fy] = this.tileAt(target);
-    if (!this.center || this.center[0] !== cx || this.center[1] !== cy) {
+    const R = range ?? { load: RINGS.load * this.tileU, near: RINGS.near * this.tileU, show: Infinity };
+    const L = this._at;
+    if (!L || L.cx !== cx || L.cy !== cy || Math.hypot(target.x - L.x, target.z - L.z) > RETARGET_U ||
+        Math.abs(R.load - L.load) > 8 || Math.abs(R.near - L.near) > 8 || Math.abs(R.show - L.show) > 8) {
+      this._at = { cx, cy, fx, fy, x: target.x, z: target.z, load: R.load, near: R.near, show: R.show };
       this.center = [cx, cy];
-      this.retarget(cx, cy, fx, fy);
+      this.retarget(cx, cy, fx, fy, R);
     } else if (this.retryDue && performance.now() > this.retryDue) {
       // chunks whose data couldn't be reached: asked for again
       this.retryDue = 0;
-      this.retarget(cx, cy, fx, fy);
+      this.retarget(cx, cy, fx, fy, R);
     }
+    this._range = R.show < Infinity ? { x: target.x, z: target.z, r: R.show } : null;
     this.pump();
     // mount at most two finished chunks per tick so a frame never stalls
     for (let n = 0; n < 2 && this.ready.length; n++) this.mount(this.ready.shift());
@@ -592,19 +613,22 @@ export class CityTiles {
     this.fillPools();
   }
 
-  retarget(cx, cy, fx, fy) {
-    const want = new Map();
-    for (let dy = -FAR; dy <= FAR; dy++) {
-      for (let dx = -FAR; dx <= FAR; dx++) {
-        const d = Math.max(Math.abs(dx), Math.abs(dy));
-        want.set(`${cx + dx},${cy + dy}`, { x: cx + dx, y: cy + dy, lod: d <= NEAR ? 0 : 1, dist: Math.hypot(cx + dx + 0.5 - fx, cy + dy + 0.5 - fy) });
+  retarget(cx, cy, fx, fy, R) {
+    const want = new Map(), n = Math.ceil(R.load / this.tileU) + 1;
+    for (let dy = -n; dy <= n; dy++) {
+      for (let dx = -n; dx <= n; dx++) {
+        const x = cx + dx, y = cy + dy, d = this.tileDist(x, y, fx, fy);
+        if (d > R.load) continue;
+        want.set(`${x},${y}`, { x, y, lod: d <= R.near ? 0 : 1, dist: Math.hypot(x + 0.5 - fx, y + 0.5 - fy) });
       }
     }
     if (!this.firstRing) this.firstRing = { t0: performance.now(), need: new Set([...want.keys()]), near: new Set([...want].filter(([, w]) => !w.lod).map(([k]) => k)), done: null, nearDone: null };
-    // drop what's well out of range
+    // drop what's well out of range; past what shows (all haze), keep but don't draw
     for (const [k, c] of this.chunks) {
-      const [x, y] = k.split(",").map(Number);
-      if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) >= DROP) this.drop(k);
+      const [x, y] = k.split(",").map(Number), d = this.tileDist(x, y, fx, fy);
+      if (d > R.load + DROP_U) { this.drop(k); continue; }
+      const vis = d <= R.show;
+      if (c.shown !== vis) { c.shown = vis; for (const m of c.meshes) m.visible = vis; this.world.needsRender = true; }
     }
     this.queue = [];
     for (const [k, w] of want) {
@@ -635,7 +659,9 @@ export class CityTiles {
     const t1 = performance.now();
     const old = this.chunks.get(r.key);
     // a stale answer (we moved on and it's out of range now): drop it
-    if (this.center && Math.max(Math.abs(r.x - this.center[0]), Math.abs(r.y - this.center[1])) >= DROP) return;
+    const A = this._at;
+    const away = A ? this.tileDist(r.x, r.y, A.fx, A.fy) : 0;
+    if (A && away > A.load + DROP_U) return;
     const rec = { lod: r.lod, meshes: [], labels: [], empty: !!m.empty };
     // part of its data couldn't be reached (offline, a server error): ask again,
     // 15 s, then longer each time (citygen.worker.js marks it)
@@ -678,7 +704,8 @@ export class CityTiles {
     if (old) this.drop(r.key);
     // a chunk seen for the first time rises out of the ground (a LOD swap doesn't)
     if ((!old || old.empty) && !m.empty && !REDUCED) { rec.rise = performance.now(); rec.riseE = 0.02; for (const mesh of rec.meshes) { mesh.scale.y = 0.02; mesh.updateMatrix(); } }
-    for (const mesh of rec.meshes) this.group.add(mesh);
+    rec.shown = !A || away <= A.show;
+    for (const mesh of rec.meshes) { mesh.visible = rec.shown; this.group.add(mesh); }
     this.chunks.set(r.key, rec);
     this.log.push({ key: r.key, lod: r.lod, at: t1, ms: t1 - r.t0, fetch: m.t?.fetch ?? 0, build: m.t?.build ?? 0,
       mount: performance.now() - t1, cached: m.cached ?? null, buildings: m.stats?.buildings ?? 0, empty: rec.empty, src: m.stats?.src ?? null, retry: !!m.retry });
@@ -750,7 +777,7 @@ export class CityTiles {
     const cam = this.world.camera;
     if (!cam || this.hidden) return;
     this._fill ??= {};
-    if (fillPools(this.pools, [...this.chunks.values()], cam, this._fill, this.poolsDirty)) this.world.needsRender = true;
+    if (fillPools(this.pools, [...this.chunks.values()], cam, this._fill, this.poolsDirty, this._range)) this.world.needsRender = true;
     this.poolsDirty = false;
   }
 
@@ -820,6 +847,7 @@ export class CityTiles {
     const live = [...this.chunks.values()];
     let tris = 0, draws = 0;
     for (const c of live) for (const m of c.meshes) {
+      if (!m.visible) continue;   // (kept, all haze: not drawn)
       draws++;
       const g = m.geometry;
       tris += g.index ? g.index.count / 3 : g.attributes.position.count / 3;

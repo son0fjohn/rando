@@ -134,6 +134,7 @@ export function mhMap(world) {
     const th = world.cam.theta, k = r * cover * 1.5;
     world.target.set(c.x + Math.sin(th) * k, 0, c.z + Math.cos(th) * k);
     const dist = Math.max(160, Math.min(1500, r * 2.3));
+    world.setFreeView?.(true);   // the whole zone in view: past the map's own haze and zoom range
     world.camGoal = { theta: world.cam.theta, elev: 0.95, dist };
     // the fog starts past the zone, seen from up there (not 300 units from the camera)
     if (world.scene.fog) { world.scene.fog.near = Math.max(300, dist * 0.85); world.scene.fog.far = Math.max(980, dist + r * 2.2); }
@@ -187,6 +188,7 @@ export function mhMap(world) {
       root.traverse(o => o.geometry?.dispose?.());
       wallTex.dispose(); ringTex.dispose(); wallM.dispose(); lineM.dispose(); nextM.dispose(); pinM.dispose();
       world.camera.far = 2500; world.camera.updateProjectionMatrix();
+      world.setFreeView?.(false);   // (the map's own haze and view back)
       world.observing = false;
       world.needsRender = true;
     },

@@ -3,7 +3,7 @@
 // Start a party -> the dive into the building -> the lobby; a fresh phone
 // from an invite link (no buttons: name, character, the same dive, "you're
 // in!"); Join with a code; the lobby's back button -> "Leave the party?" ->
-// the start screen again. Then the panel over the brightest part of the
+// straight onto the explore map (test/leave_rec.mjs: every way out). Then the panel over the brightest part of the
 // drift, a slow phone (CPU throttled: the glass goes lite), and checks: no
 // nav bar, no labels, no people in the world, nobody waits on the 3D.
 //   node test/start_rec.mjs <dir> [--quick] [--only=1,4,5]
@@ -218,7 +218,7 @@ await shot(N, "06-invite-in", "you're in");
 
 }
 if (ONLY.includes("3")) {
-console.log("\n3. Join with a code, then leave: back -> Leave the party? -> the start screen");
+console.log("\n3. Join with a code, then leave: back -> Leave the party? -> the explore map");
 const jctx = await phoneContext({ init: FAST });
 const J = await page(jctx, "sol");
 await J.goto(appUrl(who("sol")));
@@ -243,8 +243,9 @@ await tap(J, ".pt-confirm [data-no]");
 ok(await J.evaluate(() => !document.querySelector(".pt-confirm") && !!document.querySelector("#pt-floor")), "Stay: still in the party");
 await sleep(600);
 await tap(J, "#pt-back"); await sleep(400); await tap(J, ".pt-confirm [data-yes]");
-ok(await screenIs(J, "start", 15000), "Leave -> the start screen");
-ok(await live(J, 30000), "…the city drifting again");
+ok(await until(J, () => !document.body.classList.contains("in-lobby") && !document.getElementById("navbar").hidden && document.getElementById("party-panel").hidden, null, 15000), "Leave -> the explore map, its bar");
+await sleep(1500);
+ok(await J.evaluate(() => !document.querySelector(".onb-screen:not(.out), .onb-sheet") && !document.body.classList.contains("scenery")), "…no start screen, nothing over it");
 await sleep(2000);
 
 }

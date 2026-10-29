@@ -54,6 +54,20 @@ ok(new Set(geo.lbls).size === 1, `all three labels on one line (${geo.lbls.join(
 ok(geo.border === "2px" && geo.color === "rgb(255, 200, 61)", `2px #FFC83D ring (${geo.border} ${geo.color})`);
 ok(geo.anim === "nav-glow" && geo.dur === "3s", `the glow pulses on a 3 s loop (${geo.anim} ${geo.dur})`);
 ok(geo.label === "Host", "label: Host");
+// the bar is navy at every light: it never follows --day (the glass over the map does)
+const lit = await A.evaluate(async () => {
+  const out = {};
+  for (const l of ["day", "sunset", "night"]) {
+    window.randoLight(l);
+    document.documentElement.style.transition = "none";           // (--day eases over 1.2 s; read it settled)
+    await new Promise(r => setTimeout(r, 50));
+    const bar = getComputedStyle(document.getElementById("navbar")), lbl = getComputedStyle(document.querySelector("#nav-style"));
+    out[l] = { bg: bar.backgroundColor, lbl: lbl.color, day: getComputedStyle(document.documentElement).getPropertyValue("--day").trim() };
+  }
+  document.documentElement.style.transition = "";
+  return out;
+});
+ok(Object.values(lit).every(v => v.bg === "rgb(15, 26, 58)" && v.lbl === "rgb(122, 138, 182)"), `navy bar, light labels by day, sunset and night (${Object.entries(lit).map(([k, v]) => `${k} --day ${v.day}: ${v.bg} / ${v.lbl}`).join(" · ")})`);
 await A.screenshot({ path: join(OUT, "01-world.png"), timeout: 120000 });
 await A.screenshot({ path: join(OUT, "02-bar.png"), clip: await barClip(A), timeout: 120000 });
 

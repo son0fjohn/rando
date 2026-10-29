@@ -134,8 +134,10 @@ export const party = {
   //   game's coins wait, unclaimed, until it's verified)
   //   invite(c) -> the invite sheet · joined(c) · beforeGame(g, c) ·
   //   gameEnded(c, g, results) · setEnded(c, rows)
+  //   left({ why, code, drop }) -> Promise: out of the party to the map
+  //   (exit() below): calls drop() (the room goes) under its transition
   hooks: { isFriend: null, report: null, beaconZone: null, coins: null, ritualDraw: null,
-    holdInvite: null, gate: null, canEarn: null, invite: null, joined: null, beforeGame: null, gameEnded: null, setEnded: null },
+    holdInvite: null, gate: null, canEarn: null, invite: null, joined: null, beforeGame: null, gameEnded: null, setEnded: null, left: null },
   _view: null,
   _inited: false,
 
@@ -223,7 +225,7 @@ export const party = {
     return this.join(`party-${code}`);
   },
 
-  // "Leave the party?" over the room; leaving goes back to the start screen
+  // "Leave the party?" over the room; leaving goes to the map (exit)
   confirmLeave() {
     const p = $("party-panel");
     if (!this.current || p.querySelector(".pt-confirm")) return;
@@ -236,10 +238,35 @@ export const party = {
     const close = () => el.remove();
     el.onclick = e => { if (e.target === el) { sfx.back(); close(); } };
     el.querySelector("[data-no]").onclick = () => { sfx.back(); close(); };
-    el.querySelector("[data-yes]").onclick = async () => { close(); sfx.back(); await this.leave(); this.hooks.left?.(); };
+    el.querySelector("[data-yes]").onclick = () => { close(); sfx.back(); this.exit("leave"); };
     p.appendChild(el);
     sfx.open();
     el.querySelector("[data-no]").focus();
+  },
+
+  // Every way out of a party to the world lands the same: Leave, the host
+  // ending the party (after the set's podium), the host turning you away
+  // (the cap). Straight onto the explore map, on you: no host menu, no start
+  // screen, no Home, no error card over it (the hook's transition: the
+  // camera pulls out of the party's building, onboard.js toWorld). Joining
+  // another party or a room calls leave() alone: that's not out to the map.
+  async exit(why = "leave") {
+    const c = this.current;
+    if (!c || this._exiting) return;
+    this._exiting = true;
+    const drop = async () => {
+      const p = $("party-panel");
+      p.hidden = true; p.classList.remove("pt-behind");      // (before leave() redraws it as the host menu)
+      this.pickerOpen = false;
+      if (this.current === c) await this.leave();
+      this.err("");
+      this._syncPause();
+    };
+    try {
+      if (this.hooks.left) await this.hooks.left({ why, code: c.meta.code, drop });
+      else await drop();
+    } catch (e) { console.warn("[party] exit", e); await drop(); }
+    finally { this._exiting = false; }
   },
 
   async leave() {
@@ -336,8 +363,9 @@ export const party = {
       c.lobby?.wave(m.from);
       if (m.to === this.me.id) { sfx.ping(); buzz(30); c.lobby?.say(m.from, `👋 hi ${this.me.handle}!`); }
     });
-    room.on("partyend", m => { if (m.from === room.hostId && !room.isHost) { this.leave(); this.err("the party's over — thanks for coming"); } });
-    room.on("full", m => { if (m.id === this.me.id) { this.leave(); this.err(`that party is full (cap ${m.cap})`); } });
+    // the host ended the party, or turned this phone away (past the cap): out to the map
+    room.on("partyend", m => { if (m.from === room.hostId && !room.isHost && this.current === c) this.exit("ended"); });
+    room.on("full", m => { if (m.id === this.me.id && this.current === c) this.exit("full"); });
   },
   _sendMeta() {
     const c = this.current; if (!c?.room.isHost) return;
@@ -643,7 +671,7 @@ export const party = {
     showPodium(host, c.set, rows, {
       me: this.me.id, avatars, isHost: c.room.isHost,
       onNewSet: () => { if (!c.room.isHost) return; sfx.confirm(); c.set = newSet(c.set.no + 1, c.set.session); c.queue = null; this._sendMeta(); this.render(); },
-      onEnd: () => { if (!c.room.isHost) return; sfx.back(); c.room.send("partyend", {}); setTimeout(() => this.leave(), 300); },
+      onEnd: () => { if (!c.room.isHost) return; sfx.back(); c.room.send("partyend", {}); setTimeout(() => { if (this.current === c) this.exit("closed"); }, 300); },
     });
     sfx.win?.();
     this.hooks.setEnded?.(c, rows);

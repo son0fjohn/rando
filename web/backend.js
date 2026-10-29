@@ -176,7 +176,7 @@ async function refreshStatus() {
       beforeGame: (g, c) => onboard.beforeGame(g, c),
       gameEnded: (c, g, r) => onboard.gameEnded(c, g, r),
       setEnded: (c, rows) => onboard.setEnded(c, rows),
-      left: () => onboard.startScreen(),
+      left: out => onboard.toWorld(out),
     });
     party.init();
     onboard.start(onboardEnv);
@@ -211,6 +211,12 @@ const onboardEnv = {
   openMap() {
     party.togglePanel(false);
     if (!presence.myZone) explore.enter();
+    world3d.recenter();
+  },
+  // back on the map from a party (onboard.toWorld): where it rests, on you
+  // (your character while visible, your spot while exploring hidden)
+  toMap() {
+    if (!presence.myZone && !world3d.homePos) explore.enter();
     world3d.recenter();
   },
   openStyle() { styleView.open(); },

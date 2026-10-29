@@ -23,7 +23,7 @@ await db.exec(`
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
   create table public.profiles (id uuid primary key references auth.users (id), handle text, avatar jsonb not null default '{}'::jsonb);
 `);
-for (const f of ["013_coins_shop", "017_events", "018_account_events", "019_notes"]) await db.exec(await readFile(`${ROOT}supabase/migrations/${f}.sql`, "utf8"));
+for (const f of ["013_coins_shop", "017_events", "018_account_events", "019_notes", "020_notes_no_verify"]) await db.exec(await readFile(`${ROOT}supabase/migrations/${f}.sql`, "utf8"));
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const N_USERS = 80;
@@ -240,9 +240,7 @@ head("Bans: repeat offenders can't post");
   ok(keep(await leave(60, north(PLAIN, 1900))).why === "banned", "…and leave_note refuses its author: 'banned'");
   ok(Number((await sql("select _note_trust($1) w", [U(60)]))[0].w) === 0, "and their votes weigh nothing");
   await sql("update auth.users set phone_confirmed_at = null where id = $1", [U(61)]);
-  ok(keep(await leave(61, north(PLAIN, 1900))).why === "verify", "an unverified account can't leave notes: 'verify' (reading needs nothing)");
-  await sql("insert into auth.identities values ($1, 'kakao')", [U(61)]);
-  ok(keep(await leave(61, north(PLAIN, 1900))).ok, "a Kakao-linked account counts as verified");
+  ok(keep(await leave(61, north(PLAIN, 1900))).ok, "an unverified account (a guest) can leave notes too (020: no phone needed)");
   ok((await err(as(0, "select leave_note(37.5, 127.0, 'text', 'hi')")))?.includes("sign in"), "signed out: refused");
 }
 

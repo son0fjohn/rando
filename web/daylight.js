@@ -18,7 +18,7 @@
 const DEV_KEY = "rando-light";
 const NAMED = { night: 0, day: 1, sunset: 0.5, sunrise: 0.5 };
 
-import { lightAt } from "./sun.js";
+import { lightAt, sunNow, localClock, phaseOf } from "./sun.js";
 
 const parse = v => {
   if (v == null || v === "" || v === "auto") return null;
@@ -36,7 +36,7 @@ export function lightOverride() {
   } catch { return null; }
 }
 
-let current = null, fixed = null;
+let current = null, fixed = null, chip = null, chipMode = "auto";
 export function setDay(v) {
   v = Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
   if (v === current) return;
@@ -56,10 +56,12 @@ export function startDaylight({ night, forced }) {
   if (fixed != null) setDay(fixed);
 }
 // the light for the map right now: the pinned one, else the sun's over
-// lat/lng; the page's --day follows
-export function sunlight(lat, lng, date = new Date()) {
+// lat/lng; the page's --day follows (and the dev chip shows that place's
+// own clock)
+export function sunlight(lat, lng, date = sunNow()) {
   const t = fixed ?? lightAt(lat, lng, date);
   setDay(t);
+  if (chip) chip.textContent = `☀︎ ${chipMode} · ${localClock(lat, lng, date).text} ${phaseOf(t)}`;
   return t;
 }
 
@@ -74,6 +76,7 @@ function devChip() {
   try { cur = localStorage.getItem(DEV_KEY) || "auto"; } catch {}
   const b = Object.assign(document.createElement("button"), { type: "button", id: "dev-light" });
   b.textContent = `☀︎ ${cur}`;
+  chip = b; chipMode = cur;
   b.style.cssText = "position:fixed;left:8px;bottom:calc(env(safe-area-inset-bottom) + 72px);z-index:99999;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.5);background:rgba(0,0,0,.55);color:#fff;font:600 12px/1 -apple-system,system-ui,sans-serif";
   b.onclick = () => {
     const next = order[(order.indexOf(cur) + 1) % order.length];

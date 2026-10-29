@@ -20,10 +20,11 @@ the end of `web/backend.js`; strings in their own block at the end of
 ## Leaving a note
 
 - **Leave a note** (a round glass 📝 button bottom-right of the world screen, the size of
-  the map's other round buttons, level with the plaza chat's button; day / night like the rest) → the verification gate (a stranger-facing feature: a verified
-  number or a Kakao-linked account, `onboard.requireVerified("notes")`; the
-  SQL refuses unverified accounts too) → your location (a pre-prompt the
-  first time) → the spot check → the composer.
+  the map's other round buttons, level with the plaza chat's button; day / night like the rest) → your location (a pre-prompt the
+  first time) → the spot check → the composer. No phone verification:
+  anyone signed in, guests included, can leave one
+  (`020_notes_no_verify.sql`); earning coins from notes still needs a
+  verified account.
 - **Text** (200 characters), **Photo** (camera or library, an optional line)
   or **Meme** (a picture with top / bottom captions in white Impact with a
   black outline, drawn on a canvas, live as you type).
@@ -160,8 +161,8 @@ inside 013's 300 a day, only if verified and not banned (`_note_pay`, a
 3. Optional safety net: a cron (Supabase scheduled function or pg_cron +
    pg_net) POSTing `{ "sweep": true }` to the function every few minutes
    re-checks anything left pending.
-4. Leaving notes needs a way to verify people (the Phone provider or Kakao):
-   the SQL refuses unverified accounts. Reading needs nothing.
+4. Apply `020_notes_no_verify.sql` after 019: leaving a note needs no
+   verified phone (only coins from notes do). Reading needs nothing.
 5. Add yourself to `admins` to review reports.
 
 ## Testing

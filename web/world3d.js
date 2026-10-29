@@ -14,7 +14,7 @@ import { THEME } from "./theme.js";
 import { CityTiles, cityUniforms, lodTree, treePools, fillPools } from "./citytiles.js";
 import { worldHeight, itaewonHill } from "./citygen.js";
 import { startDaylight, lightOverride, sunlight } from "./daylight.js";
-import { lightAt } from "./sun.js";
+import { lightAt, sunNow, sunPosition, sunClockFast, localClock, shadowSweep as shadowDir } from "./sun.js";
 
 // generated GLB characters are the default; ?glb=0 falls back to procedural
 // character system: the avatar4 clay character by default; ?legacy=glb keeps the old
@@ -151,19 +151,25 @@ export const ARCH_NPC_DEFS = [
 // The ambient blob NPC pairs are retired (user call 2026-08-11): the three
 // archetype mascots above are the only NPCs in the world now.
 
-// Day and night: the real sun over the place the map shows (sun.js), so
-// Seoul is lit by Seoul's sun and Calgary by Calgary's, whatever the phone's
-// clock says. The palette the world is built in (NIGHT) is the sun's over
-// the first spot (Itaewon, or ?devlat/devlng); from then on applyLight()
-// runs every few seconds and lerps every day/night material, the lights,
-// the fog and the sky through golden hour and dusk (the dn() registry), so
-// a sunset happens live while the app is open. ?mode=night|day pins it for
-// the tests; ?light= / the dev chip (daylight.js) pin it for a look.
-// Palettes are the law from assets/world/STYLE.md.
+// Day and night: the real sun over the place on screen (sun.js: the spot
+// under the camera, whichever world it is: Itaewon, its blend, the city
+// anywhere), so Seoul is lit by Seoul's sun and Calgary by Calgary's,
+// whatever the phone's clock or time zone says. NIGHT is only the palette
+// materials start in (the sun over the first spot: Itaewon, or
+// ?devlat/devlng); every day/night material signs up in the dn() registry
+// and takes the live light the moment it's made, and sunTick() re-reads the
+// sun every few seconds (and at once when the world moves), so applyLight()
+// lerps the materials, the lights, the fog and the sky through golden hour
+// and dusk: a sunset happens live while the app is open. The sun's
+// direction moves the key light and the hand-made map's baked shadows too.
+// ?mode=night|day pins it for the tests; ?light= / the dev chip
+// (daylight.js) pin it for a look; ?sunat= / ?sunspeed= move the sun's
+// clock (sun.js sunNow). Palettes are the law from assets/world/STYLE.md.
 const modeParam = new URLSearchParams(location.search).get("mode");
 const Q0 = new URLSearchParams(location.search);
 const SPOT0 = [Number(Q0.get("devlat")) || 37.5346, Number(Q0.get("devlng")) || 126.9946];
 const lightOv = lightOverride();
+const FORCED = lightOv != null || modeParam === "night" || modeParam === "day";
 const light0 = lightOv != null ? lightOv : modeParam === "night" ? 0 : modeParam === "day" ? 1 : lightAt(SPOT0[0], SPOT0[1]);
 export const NIGHT = light0 < 0.5;
 // the app's glass follows the map's light (theme.css, --day)
@@ -185,13 +191,23 @@ const M = {
 // material is right from the start
 const DN = [];
 const dnHex = c => new THREE.Color(c);
+const dnLight = () => world3d.light ?? light0;   // the light right now (a material made later starts in it)
+function dnSet({ mat, pairs }, t) {
+  const n = 1 - t;
+  for (const [k, [d, nv]] of Object.entries(pairs)) {
+    if (typeof d === "number") mat[k] = d + (nv - d) * n;
+    else mat[k].copy(d).lerp(nv, n);
+  }
+}
 function dn(mat, pairs) {
   const e = { mat, pairs: {} };
   for (const [k, [d, n]] of Object.entries(pairs)) e.pairs[k] = typeof d === "number" && typeof n === "number" && (k === "opacity" || k === "emissiveIntensity" || k === "intensity") ? [d, n] : [dnHex(d), dnHex(n)];
   DN.push(e);
+  dnSet(e, dnLight());
   return mat;
 }
 const DN_FN = [];          // (t) => void: the bits that can't be lerped (texture swaps, visibility)
+const dnFn = f => { DN_FN.push(f); f(dnLight()); };
 const lerpRig = (t) => {   // the rig at light t: night -> dusk -> day
   const out = {};
   const [a, b, k] = t < 0.5 ? [THEME.lighting.night, DUSK, t * 2] : [DUSK, THEME.lighting.day, (t - 0.5) * 2];
@@ -199,6 +215,46 @@ const lerpRig = (t) => {   // the rig at light t: night -> dusk -> day
   for (const key of ["hemiInt", "sunInt"]) out[key] = a[key] + (b[key] - a[key]) * k;
   return out;
 };
+
+// the key light at night and when the light is forced (STYLE.md 2): high, from the south-east
+const CLASSIC_SUN = new THREE.Vector3(120, 200, 80).normalize();
+
+// The map's view, Pokémon GO style: the camera tilted, looking a little
+// ahead so you stand in the lower middle of the screen, more top-down as
+// you zoom out and lower toward the horizon as you zoom in; and you see
+// about 270 m round you whatever the zoom: past half that the world fades
+// into the haze (a fog by distance from you, not from the camera: the
+// fog_* shader chunks below), and nothing is loaded or drawn much beyond.
+// The start screen's scenery keeps its own wide view (mapView false), and
+// a game that frames the map itself (Manhunt's zone overview) asks for a
+// free view (freeView).
+export const VIEW = { R: 150, start: 0.5, buffer: 60 };   // world units: clear to R·start, gone at R, chunks to R + buffer
+export const ZOOM = { min: 70, max: 230, elevMin: 0.5, elevMax: 1.0, ahead: 0.2 };
+const elevFor = d => { const f = Math.min(1, Math.max(0, (d - ZOOM.min) / (ZOOM.max - ZOOM.min))); return ZOOM.elevMin + (ZOOM.elevMax - ZOOM.elevMin) * f * f; };
+// The fog round you: three's fog chunks, patched once for every material.
+// A Fog with a negative near is the map's: fogNear = -(how far the camera
+// stands back from you, along the ground), fogFar = the radius where the
+// fog is total; the fog then goes by the ground distance from you (the
+// camera's ground point moved that far along its heading), clear up to
+// fogFar·VIEW.start. Any other fog (the start screen, the game rooms) is
+// three's own depth fog, untouched.
+{
+  const C = THREE.ShaderChunk;
+  if (!C.fog_vertex.includes("vFogRel")) {
+    C.fog_pars_vertex = C.fog_pars_vertex.replace("varying float vFogDepth;", "varying float vFogDepth;\n\tvarying vec2 vFogRel;\n\tuniform float fogNear;");
+    C.fog_vertex = C.fog_vertex.replace("vFogDepth = - mvPosition.z;", `vFogDepth = - mvPosition.z;
+\tvFogRel = vec2(0.0);
+\tif (fogNear < 0.0) {
+\t\tvec3 fogWorld = (vec4(mvPosition.xyz, 0.0) * viewMatrix).xyz;
+\t\tvec2 fogFwd = -vec2(viewMatrix[0][2], viewMatrix[2][2]);
+\t\tfloat fogL = length(fogFwd);
+\t\tvFogRel = fogWorld.xz - (fogL > 1e-4 ? fogFwd / fogL : vec2(0.0)) * (-fogNear);
+\t}`);
+    C.fog_pars_fragment = C.fog_pars_fragment.replace("varying float vFogDepth;", "varying float vFogDepth;\n\tvarying vec2 vFogRel;");
+    C.fog_fragment = C.fog_fragment.replace("float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );",
+      `float fogFactor = fogNear < 0.0 ? smoothstep( fogFar * ${VIEW.start.toFixed(2)}, fogFar, length( vFogRel ) ) : smoothstep( fogNear, fogFar, vFogDepth );`);
+  }
+}
 
 // zone character: density weight for buildings (urban) vs greenery
 const ZONE_FLAVOR = [
@@ -245,8 +301,12 @@ function mulberry32(seed) {
 
 export const world3d = {
   scene: null, camera: null, renderer: null, frame: null,
-  cam: { theta: 0, elev: 0.58, dist: 175 },
-  CAM_DEFAULT: { theta: 0, elev: 0.58, dist: 175 },
+  cam: { theta: 0, elev: elevFor(175), dist: 175 },
+  CAM_DEFAULT: { theta: 0, elev: elevFor(175), dist: 175 },
+  ZOOM, VIEW, elevFor,
+  mapView: true,               // the map's own view (looking ahead, the haze round you); the start screen's scenery turns it off
+  freeView: false,             // a game framing the map itself (Manhunt's overview): its own fog and camera
+  fogR: VIEW.R,                // where the haze is total right now (it closes in after the scenery)
   camGoal: null,               // eased recenter target
   target: new THREE.Vector3(0, 0, 0),
   followPos: null,
@@ -311,6 +371,21 @@ export const world3d = {
     this.worldRoot.name = "itaewon";
     this.scene.add(this.worldRoot);
     this.buildTerrain();
+    // the horizon's haze (the map's view): a band of the fog's own colour
+    // round the far ground, fading up into the sky, so the painted sky
+    // never meets the hazy ground at a hard line
+    {
+      const c = document.createElement("canvas"); c.width = 4; c.height = 64;
+      const g = c.getContext("2d"), gr = g.createLinearGradient(0, 64, 0, 0);
+      gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.3, "rgba(255,255,255,0.9)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
+      const haze = new THREE.Mesh(new THREE.CylinderGeometry(1800, 1800, 560, 48, 1, true),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), color: M.fog, transparent: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+      haze.position.y = 140;     // 140 under the ground to 420 over it
+      haze.visible = false;
+      this.scene.add(haze);
+      this.haze = haze;
+    }
     this.scene.add(this.zoneRings);
     this.remoteGroup = new THREE.Group();
     this.scene.add(this.remoteGroup);
@@ -375,7 +450,7 @@ export const world3d = {
         other.wrapS = THREE.MirroredRepeatWrapping; other.repeat.x = 2;
         skies[NIGHT ? "day" : "night"] = other;
       });
-      DN_FN.push(t => {
+      dnFn(t => {
         const want = skies[t < 0.5 ? "night" : "day"];
         if (want && sky.material.map !== want) { sky.material.map = want; sky.material.needsUpdate = true; }
         const dusk = 1 - Math.abs(t - 0.5) * 2;        // 1 at the flip, 0 by full day / night
@@ -394,7 +469,7 @@ export const world3d = {
     // plane with a pale curb ring marking the transition.
     if (CITY_MODE) { this.buildCityGround(); return; }
     const PAVED_R = 720;
-    const groundMat = new THREE.MeshLambertMaterial({ color: M.grass });
+    const groundMat = dn(new THREE.MeshLambertMaterial({ color: M.grass }), { color: [0x8a9a6a, 0x3f4a42] });
     const gg = new THREE.PlaneGeometry(3000, 3000, 100, 100);
     gg.rotateX(-Math.PI / 2);
     const gp = gg.attributes.position;
@@ -407,7 +482,6 @@ export const world3d = {
       const tex = this.mirrorBlockTex(img, [0.03, 0.03, 0.30, 0.30]);
       tex.repeat.set(38, 38); // block ≈ 80u of ground per repeat
       groundMat.map = tex;
-      groundMat.color.set(NIGHT ? THEME.world.grassNight : THEME.world.grassDay);
       dn(groundMat, { color: [THEME.world.grassDay, THEME.world.grassNight] });
       groundMat.needsUpdate = true;
       this.needsRender = true;
@@ -516,7 +590,7 @@ export const world3d = {
     if (warm) { this.city = warm.city; this.city.show(); }
     else { this.dropWarm(); this.city = new CityTiles(this, { url: CITY_URL, origin: [lat, lng], night: NIGHT, heroes: near, omt: OMT_URL }); }
     this.city.heroList = near;
-    this.applyLight(this.light ?? light0, true);
+    this.relight();
     this.cityHeroes(near);
     this._cityStarting = null;
     this.credit();
@@ -540,7 +614,7 @@ export const world3d = {
     if (this.ground) this.ground.visible = false;
     this.blendGround(false);
     this.scene.fog = new THREE.Fog(M.fog, 340, 1250);
-    this.applyLight(this.light ?? light0, true);
+    this.relight();
     this.target.set(0, 0, 0); this.applyCamera();
     this.replaceAll();
     this.credit();
@@ -707,7 +781,7 @@ export const world3d = {
       if (warm) { this.city = warm.city; this.city.show(); }
       else { this.dropWarm(); this.city = new CityTiles(this, { url: CITY_URL, origin: [...ITAEWON], night: NIGHT, heroes, omt: OMT_URL, exclude: this.handmadeSrc() ?? BLEND }); }
       this.city.heroList = heroes;
-      this.applyLight(this.light ?? light0, true);
+      this.relight();
       this.blending = true;
       this.cityHeroes(heroes);
       this.credit();
@@ -931,11 +1005,11 @@ export const world3d = {
     }
     // ribbons carry the tile's road-strip art (curbs + dashes run along v);
     // junction discs stay flat asphalt so the strip never smears radially
-    const roadMat = new THREE.MeshLambertMaterial({ color: M.road });
+    const roadMat = dn(new THREE.MeshLambertMaterial({ color: M.road }), { color: [0x9d998e, 0x474c59] });
     const roadMesh = new THREE.Mesh(mergeGeometries(roadGeos), roadMat);
     roadMesh.receiveShadow = true;
     this.worldRoot.add(roadMesh);
-    const jointMat = new THREE.MeshLambertMaterial({ color: M.road });
+    const jointMat = dn(new THREE.MeshLambertMaterial({ color: M.road }), { color: [0x9d998e, 0x474c59] });
     this.worldRoot.add(new THREE.Mesh(mergeGeometries(jointGeos), jointMat));
     // plain asphalt for ribbons and junctions alike — no painted lines,
     // one dash-free crop shared so brightness always matches (straight
@@ -951,9 +1025,7 @@ export const world3d = {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       for (const mat of [roadMat, jointMat]) {
         mat.map = tex;
-        mat.color.set(NIGHT ? THEME.world.roadNight : THEME.world.roadDay);
         // at night the walkable path must read instantly against dark blocks
-        mat.emissive = new THREE.Color(NIGHT ? 0x272e48 : 0x000000);
         mat.emissiveIntensity = 1;
         dn(mat, { color: [THEME.world.roadDay, THEME.world.roadNight], emissive: [0x000000, 0x272e48] });
         mat.needsUpdate = true;
@@ -1010,11 +1082,13 @@ export const world3d = {
         mat.map = themed;
         im.close?.(); // free the decoded original (tens of MB per model)
       }
-      if (NIGHT) {
-        // dim the body, then glow ONLY the bright texture areas (windows,
-        // glass, signage) via a contrast-crushed warm emissive map — walls
-        // fall dark, windows read lit, giving the night skyline depth
-        mat.color = new THREE.Color(glow ? 0x6f7c92 : 0x76879c);
+      {
+        // at night: dim the body, then glow ONLY the bright texture areas
+        // (windows, glass, signage) via a contrast-crushed warm emissive map
+        // — walls fall dark, windows read lit, giving the night skyline
+        // depth (made by day too: a sunset lights them live)
+        const day = mat.color ? mat.color.clone() : new THREE.Color(0xffffff);
+        dn(mat, { color: [day, glow ? 0x6f7c92 : 0x76879c] });
         if (glow && mat.map?.image) {
           const im = mat.map.image;
           const c = document.createElement("canvas");
@@ -1029,7 +1103,7 @@ export const world3d = {
           em.flipY = false;
           mat.emissive = new THREE.Color(0xffd9a0);
           mat.emissiveMap = em;
-          mat.emissiveIntensity = 0.85;
+          dn(mat, { emissiveIntensity: [0, 0.85] });
         }
       }
       geo.computeBoundingBox();
@@ -1174,36 +1248,27 @@ export const world3d = {
           roofGeos[wi].push(rg);
         }
         decorLots.push({ poly, cx, cz, h: b.h });
-        // baked cast shadow: footprint swept along the sun direction by a
-        // height-scaled offset (crisp cel-style shadow, zero runtime cost)
+        // baked cast shadow: the footprint swept away from the sun by a
+        // height-scaled offset (crisp cel-style shadow, no shadow maps);
+        // kept as footprint + length so bakeShadows() can sweep it again
+        // when the sun moves
         {
-          const k = Math.min(52, 6 + b.h * 0.95);
-          const off = [-0.52 * k, -0.34 * k]; // sun from (+x,+z) high east
           const base = poly.map(([x, z]) => new THREE.Vector2(x, -z));
           if (THREE.ShapeUtils.area(base) < 0) base.reverse();
-          const quads = [];
-          const shv = (X, Z) => { quads.push(X, terrainY(X, Z) + 0.5, Z); };
-          for (let e = 0; e < base.length; e++) {
-            const a = base[e], b2 = base[(e + 1) % base.length];
-            shv(a.x, -a.y); shv(b2.x, -b2.y); shv(b2.x + off[0], -b2.y - off[1]);
-            shv(a.x, -a.y); shv(b2.x + off[0], -b2.y - off[1]); shv(a.x + off[0], -a.y - off[1]);
-          }
-          const capTris = THREE.ShapeUtils.triangulateShape(
-            base.map(v => new THREE.Vector2(v.x + off[0], v.y + off[1])), []);
-          for (const t of capTris) {
-            for (const vi of t) shv(base[vi].x + off[0], -base[vi].y - off[1]);
-          }
-          const sg = new THREE.BufferGeometry();
-          sg.setAttribute("position", new THREE.Float32BufferAttribute(quads, 3));
-          shadowGeos.push(sg);
+          shadowGeos.push({ ring: base.map(v => [v.x, -v.y]), k: Math.min(52, 6 + b.h * 0.95), tris: THREE.ShapeUtils.triangulateShape(base, []) });
         }
         footprints++;
       }
       if (shadowGeos.length) {
-        const sm = new THREE.Mesh(mergeGeometries(shadowGeos),
+        this._shadowSrc = shadowGeos;
+        this._shadowKey = null;
+        this.shadowMesh = new THREE.Mesh(new THREE.BufferGeometry(),
           new THREE.MeshBasicMaterial({ color: 0x241c12, transparent: true,
             opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
-        this.worldRoot.add(sm); // heights baked per-vertex against the terrain
+        this.worldRoot.add(this.shadowMesh); // heights baked per-vertex against the terrain
+        if (this._sun) this.applySun(this._sun);   // (the sun's sweep, the opacity for the light)
+        this.bakeShadows(true);
+        this.bakeStep(Infinity);                    // the first sweep at once: the map is loading anyway
       }
       const lineMat = dn(new THREE.LineBasicMaterial({
         color: NIGHT ? 0x39435c : 0x6b675e, transparent: true, opacity: 0.5 }), { color: [0x6b675e, 0x39435c] });
@@ -1519,8 +1584,7 @@ export const world3d = {
         const pools = new THREE.Mesh(mergeGeometries(poolGeos),
           new THREE.MeshBasicMaterial({ color: 0xffb95e, transparent: true,
             opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false }));
-        pools.visible = NIGHT;
-        DN_FN.push(t => { pools.visible = t < 0.5; });
+        dnFn(t => { pools.visible = t < 0.5; });
         this.worldRoot.add(pools);
       }
       addMerged(clutterGeos.bin, dn(new THREE.MeshLambertMaterial({ color: NIGHT ? 0x3a4a62 : 0x4c6a80 }), { color: [0x4c6a80, 0x3a4a62] }));
@@ -1641,7 +1705,7 @@ export const world3d = {
         // Self-light it: bright/saturated pixels (neon, lit windows) glow
         // full-strength, the rest keeps a faint floor for silhouette.
         let emis = null;
-        if (NIGHT && piece.mat.map?.image) {
+        if (piece.mat.map?.image) {
           const src = piece.mat.map.image;
           const ec = document.createElement("canvas");
           ec.width = src.width; ec.height = src.height;
@@ -1667,10 +1731,11 @@ export const world3d = {
         const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
           map: piece.mat.map, flatShading: true,
           color: piece.mat.color ?? 0xffffff,
-          emissive: NIGHT && emis ? 0xffffff : 0x000000,
-          emissiveIntensity: NIGHT && emis ? 0.9 : 0,
+          emissive: emis ? 0xffffff : 0x000000,
+          emissiveIntensity: 0,
           ...(emis ? { emissiveMap: emis } : {}),
         }));
+        if (emis) dn(mesh.material, { emissiveIntensity: [0, 0.9] });
         mesh.position.copy(l.pos);
         mesh.rotation.y = l.yaw != null
           ? l.yaw * Math.PI / 180
@@ -1679,14 +1744,14 @@ export const world3d = {
         mesh.receiveShadow = true;
         this.worldRoot.add(mesh);
         const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 34),
-          new THREE.LineBasicMaterial({ color: NIGHT ? 0x2b3441 : 0x5d6b76, transparent: true, opacity: 0.5 }));
+          dn(new THREE.LineBasicMaterial({ color: NIGHT ? 0x2b3441 : 0x5d6b76, transparent: true, opacity: 0.5 }), { color: [0x5d6b76, 0x2b3441] }));
         outline.position.copy(mesh.position);
         outline.rotation.copy(mesh.rotation);
         this.worldRoot.add(outline);
         occupy(l.pos.x, l.pos.z, l.clear);
         // nightlife venues ground their light: warm additive pool tinting
         // the street around the hero at night (color from data/heroes.json)
-        if (NIGHT && l.glow) {
+        if (l.glow) {
           const R2 = l.clear * 1.7;
           const gcv = document.createElement("canvas");
           gcv.width = gcv.height = 128;
@@ -1717,9 +1782,11 @@ export const world3d = {
           gg2.setAttribute("position", new THREE.Float32BufferAttribute(gpos, 3));
           gg2.setAttribute("uv", new THREE.Float32BufferAttribute(guv, 2));
           gg2.setIndex(gidx);
-          this.worldRoot.add(new THREE.Mesh(gg2, new THREE.MeshBasicMaterial({
+          const glowPool = new THREE.Mesh(gg2, dn(new THREE.MeshBasicMaterial({
             map: gtex, transparent: true, opacity: 0.5,
-            blending: THREE.AdditiveBlending, depthWrite: false })));
+            blending: THREE.AdditiveBlending, depthWrite: false }), { opacity: [0, 0.5] }));
+          dnFn(t => { glowPool.visible = t < 0.98; });
+          this.worldRoot.add(glowPool);
         }
         console.log(`[rando] landmark placed: ${l.id}`);
       } catch (e) {
@@ -1771,14 +1838,11 @@ export const world3d = {
         m.castShadow = false; m.receiveShadow = true;
         this.worldRoot.add(m);
       };
-      addM(exitRoof, new THREE.MeshLambertMaterial({
-        color: NIGHT ? 0x6d7890 : 0x9aa1ab, flatShading: true }));
-      addM(exitPost, new THREE.MeshLambertMaterial({
-        color: NIGHT ? 0x4c5468 : 0x767d88, flatShading: true }));
-      addM(exitPanel, new THREE.MeshLambertMaterial({
+      addM(exitRoof, dn(new THREE.MeshLambertMaterial({ flatShading: true }), { color: [0x9aa1ab, 0x6d7890] }));
+      addM(exitPost, dn(new THREE.MeshLambertMaterial({ flatShading: true }), { color: [0x767d88, 0x4c5468] }));
+      addM(exitPanel, dn(new THREE.MeshLambertMaterial({
         // Seoul Line-6 ochre — instant "subway exit" recognition
-        color: NIGHT ? 0x8a5c24 : 0xb07c3a, flatShading: true,
-        emissive: NIGHT ? 0x7a4d16 : 0x000000, emissiveIntensity: 0.9 }));
+        flatShading: true, emissiveIntensity: 0.9 }), { color: [0xb07c3a, 0x8a5c24], emissive: [0x000000, 0x7a4d16] }));
 
       // CROSSWALKS — instanced white zebra bars flat on the road surface.
       // bearingDeg was computed in the fetch's east/north meter frame, so
@@ -1805,10 +1869,10 @@ export const world3d = {
         // so the depth test never lands coplanar with asphalt.
         const barGeo = new THREE.BoxGeometry(4.2, 0.06, 0.55);
         const barMesh = new THREE.InstancedMesh(barGeo,
-          new THREE.MeshBasicMaterial({ color: 0xf0f2ee, transparent: true,
+          dn(new THREE.MeshBasicMaterial({ color: 0xf0f2ee, transparent: true,
             opacity: NIGHT ? 0.42 : 0.68, depthWrite: false,
             polygonOffset: true, polygonOffsetFactor: -4,
-            polygonOffsetUnits: -4 }), bars.length);
+            polygonOffsetUnits: -4 }), { opacity: [0.68, 0.42] }), bars.length);
         const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(),
               UP = new THREE.Vector3(0, 1, 0), SC = new THREE.Vector3(1, 1, 1);
         bars.forEach((bar, i) => {
@@ -1865,12 +1929,10 @@ export const world3d = {
         const postGeo = new THREE.BoxGeometry(0.34, 6.8, 0.34);
         const headGeo = new THREE.BoxGeometry(0.95, 0.5, 0.95);
         const postM = new THREE.InstancedMesh(postGeo,
-          new THREE.MeshLambertMaterial({ color: NIGHT ? 0x3c4356 : 0x6d7076,
-            flatShading: true }), lampPts.length);
+          dn(new THREE.MeshLambertMaterial({ flatShading: true }), { color: [0x6d7076, 0x3c4356] }), lampPts.length);
         const headM = new THREE.InstancedMesh(headGeo,
-          new THREE.MeshLambertMaterial({ color: 0xd8cba8, flatShading: true,
-            emissive: NIGHT ? 0xffc87d : 0x000000,
-            emissiveIntensity: NIGHT ? 1.0 : 0 }), lampPts.length);
+          dn(new THREE.MeshLambertMaterial({ color: 0xd8cba8, flatShading: true, emissive: 0xffc87d }),
+            { emissiveIntensity: [0, 1.0] }), lampPts.length);
         const M4 = new THREE.Matrix4();
         lampPts.forEach((q, i) => {
           const y = terrainY(q.x, q.z);
@@ -1880,8 +1942,8 @@ export const world3d = {
           headM.setMatrixAt(i, M4);
         });
         this.worldRoot.add(postM, headM);
-        if (NIGHT) {
-          // warm pools under every lamp (additive, cheap)
+        {
+          // warm pools under every lamp (additive, cheap), once it's dark
           const pcv = document.createElement("canvas");
           pcv.width = pcv.height = 128;
           const pg = pcv.getContext("2d");
@@ -1894,23 +1956,27 @@ export const world3d = {
           const poolGeo = new THREE.PlaneGeometry(14, 14);
           poolGeo.rotateX(-Math.PI / 2);
           const poolM = new THREE.InstancedMesh(poolGeo,
-            new THREE.MeshBasicMaterial({ map: ptex, transparent: true,
-              blending: THREE.AdditiveBlending, depthWrite: false }),
+            dn(new THREE.MeshBasicMaterial({ map: ptex, transparent: true,
+              blending: THREE.AdditiveBlending, depthWrite: false }), { opacity: [0, 1] }),
             lampPts.length);
           lampPts.forEach((q, i) => {
             M4.identity().setPosition(q.x, terrainY(q.x, q.z) + 0.6, q.z);
             poolM.setMatrixAt(i, M4);
           });
           poolM.renderOrder = 3;
+          dnFn(t => { poolM.visible = t < 0.98; });
           this.worldRoot.add(poolM);
           // real point lights: budgeted to the nightlife core
           const core = geoPos(37.5346, 126.9937);
           const ranked = [...lampPts].sort((a, b2) =>
             ((a.x - core.x) ** 2 + (a.z - core.z) ** 2) -
             ((b2.x - core.x) ** 2 + (b2.z - core.z) ** 2));
+          // (off by day: lights coming and going recompile the
+          // materials once, at the turn of dusk, not every frame)
           for (const q of ranked.slice(0, 14)) {
-            const pl = new THREE.PointLight(0xffd2a0, 1.15, 25, 1.8);
+            const pl = dn(new THREE.PointLight(0xffd2a0, 1.15, 25, 1.8), { intensity: [0, 1.15] });
             pl.position.set(q.x, terrainY(q.x, q.z) + 6.6, q.z);
+            dnFn(t => { pl.visible = t < 0.98; });
             this.worldRoot.add(pl);
           }
         }
@@ -1967,22 +2033,22 @@ export const world3d = {
       gg.setAttribute("uv", new THREE.Float32BufferAttribute(uvA, 2));
       gg.setIndex(idxA);
       const tex = new THREE.CanvasTexture(cv);
-      const m2 = new THREE.Mesh(gg, new THREE.MeshBasicMaterial({
+      const m2 = new THREE.Mesh(gg, dn(new THREE.MeshBasicMaterial({
         map: tex, transparent: true, blending: THREE.AdditiveBlending,
-        depthWrite: false }));
+        depthWrite: false }), { opacity: [0.05 / 0.085, 1] }));
       m2.renderOrder = 1;
       this.worldRoot.add(m2);
     };
     for (const d of DISTRICTS) {
       const dp = geoPos(d.lat, d.lng);
-      mkWash(dp.x, dp.z, 88, d.tint, NIGHT ? 0.085 : 0.05);
+      mkWash(dp.x, dp.z, 88, d.tint, 0.085);   // (by day 0.05: the material's opacity)
       const lp = new THREE.Vector3(dp.x, dp.y + 40, dp.z);
       this.addLabel(d.name, "district", 5, () => lp);
     }
 
     // ---- hero venue beacons: soft vertical light column at night so
     // waypoint venues read from across the map ("meet me by Jack's") ----
-    if (NIGHT) {
+    {   // (made by day too, unseen: a sunset lights them live)
       const beamCv = document.createElement("canvas");
       beamCv.width = 32; beamCv.height = 128;
       const bg2 = beamCv.getContext("2d");
@@ -1996,10 +2062,10 @@ export const world3d = {
         if (!l.glb || !l.glow) continue;
         const hgt = 46;
         const bgeo = new THREE.PlaneGeometry(2.0, hgt);
-        const bmat = new THREE.MeshBasicMaterial({
+        const bmat = dn(new THREE.MeshBasicMaterial({
           map: beamTex, color: l.glow, transparent: true, opacity: 0.34,
           blending: THREE.AdditiveBlending, depthWrite: false,
-          side: THREE.DoubleSide });
+          side: THREE.DoubleSide }), { opacity: [0, 0.34] });
         const beam = new THREE.Group();
         for (const ry of [0, Math.PI / 2]) {
           const pl = new THREE.Mesh(bgeo, bmat);
@@ -2008,6 +2074,7 @@ export const world3d = {
         }
         beam.position.set(l.pos.x, l.pos.y + hgt / 2 + 2, l.pos.z);
         beam.renderOrder = 4;
+        dnFn(t => { beam.visible = t < 0.98; });
         this.worldRoot.add(beam);
       }
     }
@@ -2184,12 +2251,15 @@ export const world3d = {
       }
       const dist = this.camera.position.distanceTo(pos);
       // npc tags never fade, shrink, or distance-cull — always readable
+      // while they're in view (past the haze they go with everything else;
+      // a game's pings always show)
       const far = L.kind === "npc" ? Infinity
         : L.kind === "ping" ? 2600 : L.kind === "district" ? 980 : L.kind === "zone" ? 640 : 460;
-      if (dist > far) { L.el.style.display = "none"; continue; }
+      const fade = L.kind === "ping" ? 1 : this.rangeFade(pos);
+      if (dist > far || fade <= 0.02) { L.el.style.display = "none"; continue; }
       const s = L.kind === "npc" || L.kind === "ping" ? 1 : Math.max(0.6, Math.min(1.22, 170 / dist));
-      const op = L.kind === "npc" ? 1 : L.kind === "ping" ? (L.alpha ?? 1)
-        : Math.max(0, Math.min(1, (far - dist) / (far * 0.22)));
+      const op = fade * (L.kind === "npc" ? 1 : L.kind === "ping" ? (L.alpha ?? 1)
+        : Math.max(0, Math.min(1, (far - dist) / (far * 0.22))));
       placed.push({ L, x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H,
                     s, op, dist });
     }
@@ -2493,9 +2563,11 @@ export const world3d = {
     if (!a.el.isConnected) return false;
     const pos = a.getPos();
     if (!pos) { a.el.style.display = "none"; return true; }
+    const fade = this.rangeFade(pos);
     const v = pos.project(this.camera);
-    if (v.z > 1) { a.el.style.display = "none"; return true; }
+    if (v.z > 1 || fade <= 0.02) { a.el.style.display = "none"; return true; }
     a.el.style.display = "";
+    a.el.style.opacity = fade >= 0.99 ? "" : fade.toFixed(2);
     a.el.style.left = ((v.x * 0.5 + 0.5) * this.frame.clientWidth) + "px";
     a.el.style.top = ((-v.y * 0.5 + 0.5) * this.frame.clientHeight) + "px";
     return true;
@@ -2503,14 +2575,82 @@ export const world3d = {
 
   // ---- camera ----
   applyCamera() {
-    const t = this.target;
-    const { theta, elev, dist } = this.cam;
-    this.camera.position.set(
-      t.x + dist * Math.sin(theta) * Math.cos(elev),
-      t.y + dist * Math.sin(elev),
-      t.z + dist * Math.cos(theta) * Math.cos(elev));
-    this.camera.lookAt(t.x, t.y + CHAR_H + 4, t.z);
+    const { pos, look } = this.camPose(this.target, this.cam);
+    this.camera.position.copy(pos);
+    this.camera.lookAt(look);
+    this._viewAt = null;
     this.needsRender = true;
+  },
+  // where the camera stands and what it looks at for a target and a
+  // { theta, elev, dist }: in the map's view it looks a little ahead of you
+  // (you in the lower middle of the screen, Pokémon GO style); the
+  // scenery and a free view look straight at the target
+  camPose(t, { theta, elev, dist }, map = this.rangeOn) {
+    const ahead = map ? dist * ZOOM.ahead * Math.cos(elev) : 0;
+    return {
+      pos: new THREE.Vector3(t.x + dist * Math.sin(theta) * Math.cos(elev), t.y + dist * Math.sin(elev), t.z + dist * Math.cos(theta) * Math.cos(elev)),
+      look: new THREE.Vector3(t.x - Math.sin(theta) * ahead, t.y + CHAR_H + 4, t.z - Math.cos(theta) * ahead),
+    };
+  },
+  // a game that frames the map itself (Manhunt's zone overview) sets its own
+  // fog and camera: the map's haze and look-ahead step aside until it's done
+  setFreeView(on) {
+    on = !!on;
+    if (on === this.freeView) return;
+    this.freeView = on;
+    this.restoreFog();
+    this.applyCamera();
+  },
+  // the classic depth fog (STYLE.md), for the scenery and a free view
+  restoreFog() {
+    const f = this.scene?.fog;
+    if (f && f.near < 0) { f.near = cityOn ? 300 : 340; f.far = cityOn ? 980 : 1250; }
+    this._rangeWas = false;
+    this.needsRender = true;
+  },
+  // the map's view range, every tick: the haze round you (a fog by ground
+  // distance from you, see the fog chunks up top), easing in after the
+  // scenery so it never pops
+  updateRange(dt) {
+    const f = this.scene?.fog;
+    if (!f) return;
+    if (this.haze) { this.haze.visible = this.rangeOn; this.haze.position.set(this.target.x, 140, this.target.z); }
+    if (!this.rangeOn) { if (this._rangeWas) this.restoreFog(); return; }
+    if (!this._rangeWas) { this._rangeWas = true; this.fogR = Math.max(VIEW.R, 640); }
+    if (this.fogR !== VIEW.R) { this.fogR += (VIEW.R - this.fogR) * Math.min(1, dt * 2.5); if (Math.abs(this.fogR - VIEW.R) < 0.5) this.fogR = VIEW.R; }
+    const back = Math.max(0.01, this.cam.dist * Math.cos(this.cam.elev));
+    if (f.near !== -back || f.far !== this.fogR) { f.near = -back; f.far = this.fogR; this.needsRender = true; }
+  },
+  get rangeOn() { return this.mapView && !this.freeView && !!this.scene?.fog; },
+  // how much of a world point is out of the haze (1 clear .. 0 gone): DOM
+  // things pinned to the map (names, notes, beacons, labels) fade with it
+  rangeFade(p) {
+    if (!this.rangeOn || !p) return 1;
+    const d = Math.hypot(p.x - this.target.x, p.z - this.target.z), R = this.fogR;
+    return 1 - sstep((d - 0.7 * R) / (0.2 * R));
+  },
+  // what to load and draw round the target (world units): in the map's view
+  // the haze's radius plus a buffer; otherwise (the scenery, a free view,
+  // the tests' top-down shots) as far as the camera can see the ground
+  viewRange() {
+    if (this.rangeOn) return { load: Math.max(this.fogR, VIEW.R) + VIEW.buffer, near: VIEW.R, show: this.fogR + 12 };
+    const key = `${this.camera.position.x},${this.camera.position.y},${this.camera.position.z},${this.target.x},${this.target.z},${this.scene.fog?.far}`;
+    if (this._viewAt !== key) {
+      this._viewAt = key;
+      const cam = this.camera, T = this.target, f = this.scene.fog;
+      cam.updateMatrixWorld();
+      const fwd = cam.getWorldDirection(new THREE.Vector3()), d = new THREE.Vector3();
+      let r = 0;
+      for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+        d.set(i / 4 - 1, j / 4 - 1, 0.5).unproject(cam).sub(cam.position).normalize();
+        let k = d.y < -1e-4 ? (T.y - cam.position.y) / d.y : Infinity;
+        const kMax = Math.min(cam.far, f && f.near >= 0 ? f.far / Math.max(0.05, d.dot(fwd)) : Infinity);
+        k = Math.min(k, kMax);
+        r = Math.max(r, Math.hypot(cam.position.x + d.x * k - T.x, cam.position.z + d.z * k - T.z));
+      }
+      this._viewR = Math.min(720, Math.max(VIEW.R + VIEW.buffer, r + 40));
+    }
+    return { load: this._viewR, near: this._viewR * 0.55, show: Infinity };
   },
 
   recenter() {
@@ -2623,6 +2763,7 @@ export const world3d = {
           a0: Math.atan2(b.y - a.y, b.x - a.x),
           midY0: (a.y + b.y) / 2,
           dist0: this.cam.dist, theta0: this.cam.theta, elev0: this.cam.elev,
+          tilt0: this.cam.elev - elevFor(this.cam.dist),   // your own tilt on top of the zoom's
         };
       } else if (pointers.size === 1) {
         // locked on your character while open: one finger orbits around
@@ -2640,10 +2781,11 @@ export const world3d = {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
         const ang = Math.atan2(b.y - a.y, b.x - a.x);
-        this.cam.dist = Math.min(420, Math.max(70, gesture.dist0 * (gesture.d0 / d)));
+        // zoom out: higher and more top-down; zoom in: lower, toward the horizon
+        this.cam.dist = Math.min(this.freeView ? 1500 : ZOOM.max, Math.max(ZOOM.min, gesture.dist0 * (gesture.d0 / d)));
         this.cam.theta = gesture.theta0 + (ang - gesture.a0);
-        this.cam.elev = Math.min(1.25, Math.max(0.22,
-          gesture.elev0 + ((a.y + b.y) / 2 - gesture.midY0) * 0.004));
+        const tilt = Math.min(0.35, Math.max(-0.35, gesture.tilt0 + ((a.y + b.y) / 2 - gesture.midY0) * 0.004));
+        this.cam.elev = Math.min(1.25, Math.max(0.22, elevFor(this.cam.dist) + tilt));
         this.applyCamera();
       } else if (gesture && gesture.type === "orbit") {
         this.cam.theta -= (e.clientX - prev.x) * 0.006;
@@ -2674,7 +2816,9 @@ export const world3d = {
     el.addEventListener("pointercancel", up);
     el.addEventListener("wheel", e => {
       e.preventDefault();
-      this.cam.dist = Math.min(420, Math.max(70, this.cam.dist * (e.deltaY > 0 ? 1.1 : 1 / 1.1)));
+      const tilt = this.cam.elev - elevFor(this.cam.dist);
+      this.cam.dist = Math.min(this.freeView ? 1500 : ZOOM.max, Math.max(ZOOM.min, this.cam.dist * (e.deltaY > 0 ? 1.1 : 1 / 1.1)));
+      this.cam.elev = Math.min(1.25, Math.max(0.22, elevFor(this.cam.dist) + tilt));
       this.applyCamera();
     }, { passive: false });
   },
@@ -2705,22 +2849,104 @@ export const world3d = {
     if (this.hemi) { this.hemi.color.copy(rig.hemiSky); this.hemi.groundColor.copy(rig.hemiGround); this.hemi.intensity = rig.hemiInt; }
     if (this.sun) { this.sun.color.copy(rig.sunCol); this.sun.intensity = rig.sunInt; }
     if (this.scene?.fog) this.scene.fog.color.copy(rig.fog);
+    this.haze?.material.color.copy(rig.fog);
     if (this.scene?.background?.isColor) this.scene.background.copy(rig.fog);
     cityUniforms.uNight.value = n;
     this.city?.setLight?.(t);
     this.needsRender = true;
   },
-  // the sun over the map's own spot, re-read every 5 s (a dev override or a
-  // forced mode pins it, daylight.js)
-  sunTick() {
+  // the sun over the place on screen, re-read every 5 s (every tick while a
+  // test runs the sun's clock fast), and at once when the world moves (a
+  // dev override or a forced mode pins the light, daylight.js)
+  sunTick(force = false) {
     const now = performance.now();
-    if (this.light != null && now - (this._sunAt || 0) < 5000) return;
+    if (!force && this.light != null && now - (this._sunAt || 0) < (sunClockFast() ? 80 : 5000)) return;
     this._sunAt = now;
-    const [lat, lng] = this.city?.origin ?? GEO_CENTER;
-    this.applyLight(sunlight(lat, lng));
+    const [lat, lng] = this.shownSpot(), date = sunNow();
+    const t = sunlight(lat, lng, date);
+    this._sun = { lat, lng, date, t, ...sunPosition(lat, lng, date) };
+    this.applySun(this._sun);
+    this.applyLight(t, force);
+  },
+  relight() { this.sunTick(true); },
+  // the place on screen: the ground under the camera's target, in whichever
+  // world is up (its origin is GEO_CENTER: Itaewon, or the city's own)
+  shownSpot() { return geoInv(this.target.x, this.target.z); },
+  // for the tests and the dev chip: the sun over the place on screen
+  sunInfo() {
+    const s = this._sun;
+    if (!s) return null;
+    const c = localClock(s.lat, s.lng, s.date);
+    return { lat: s.lat, lng: s.lng, at: s.date.toISOString(), alt: s.altitude, bearing: s.bearing, light: s.t, clock: c.text, zone: c.zone, shadow: shadowDir(this.shadowSun).map(v => v.toFixed(3)).join(","), key: this.keyDir };
+  },
+  // the key light comes from the real sun (by day; from the classic high
+  // moonlight at night, blended through dusk; a forced light keeps the
+  // classic one), and the hand-made map's shadows fall away from it
+  applySun({ altitude, bearing, t }) {
+    const k = FORCED ? 0 : sstep((t - 0.35) / 0.3);
+    const a = Math.max(12, altitude) * Math.PI / 180, b = bearing * Math.PI / 180;
+    const v = new THREE.Vector3(Math.cos(a) * Math.sin(b), Math.sin(a), -Math.cos(a) * Math.cos(b));
+    const d = CLASSIC_SUN.clone().lerp(v, k).normalize();
+    this.keyDir = d.toArray();
+    this.sun?.position.copy(d).multiplyScalar(300);
+    this.shadowSun = FORCED || t < 0.5 ? null : { altitude, bearing };
+    this.bakeShadows();
+    if (this.shadowMesh) { this.shadowMesh.material.opacity = 0.32 * (FORCED ? 1 : sstep(Math.abs(t - 0.5) / 0.2)); this.shadowMesh.visible = this.shadowMesh.material.opacity > 0.005; }
+  },
+  // the hand-made map's baked shadows (STYLE.md 5.6): each footprint swept
+  // away from the sun, by k = min(52, 6 + 0.95 h) times a length from the
+  // sun's height (the classic sweep at night or when the light is forced).
+  // Re-swept only when the sun has moved a step (10° round, or its height
+  // changed the length a tenth): about every 40 minutes, a few ms
+  bakeShadows(now = false) {
+    const src = this._shadowSrc;
+    if (!src) return;
+    const dir = shadowDir(this.shadowSun);
+    const key = `${dir[0].toFixed(3)},${dir[1].toFixed(3)}`;
+    if (key === this._shadowKey) return;
+    this._shadowKey = key;
+    let n = 0;
+    for (const { ring, tris } of src) n += ring.length * 6 + tris.length * 3;
+    // (a re-sweep runs a slice a tick, 4 ms at most, and swaps in when done:
+    // ~4,000 footprints are 30-100 ms of work, never one frame's)
+    this._bake = { dir, pos: new Float32Array(n * 3), i: 0, b: 0, ms: 0 };
+    this.bakeStep(now ? Infinity : 4);
+  },
+  bakeStep(budget) {
+    const J = this._bake, src = this._shadowSrc;
+    if (!J || !src) return;
+    const t0 = performance.now(), { dir, pos } = J;
+    let i = J.i, yo = this._bakeYo ??= new Float32Array(64);
+    // (the ground's height once a corner: the footprint's kept, the swept one's per sweep)
+    const put = (X, y, Z) => { pos[i++] = X; pos[i++] = y + 0.5; pos[i++] = Z; };
+    while (J.b < src.length) {
+      const s = src[J.b++];
+      const { ring, k, tris } = s, m = ring.length, ox = dir[0] * k, oz = dir[1] * k;
+      const yb = s.yb ??= Float32Array.from(ring, ([x, z]) => terrainY(x, z));
+      if (yo.length < m) yo = this._bakeYo = new Float32Array(m * 2);
+      for (let e = 0; e < m; e++) yo[e] = terrainY(ring[e][0] + ox, ring[e][1] + oz);
+      for (let e = 0; e < m; e++) {
+        const f = (e + 1) % m, [ax, az] = ring[e], [bx, bz] = ring[f];
+        put(ax, yb[e], az); put(bx, yb[f], bz); put(bx + ox, yo[f], bz + oz);
+        put(ax, yb[e], az); put(bx + ox, yo[f], bz + oz); put(ax + ox, yo[e], az + oz);
+      }
+      for (const tr of tris) for (const vi of tr) put(ring[vi][0] + ox, yo[vi], ring[vi][1] + oz);
+      if ((J.b & 63) === 0 && performance.now() - t0 > budget) break;
+    }
+    J.i = i; J.ms += performance.now() - t0;
+    if (J.b < src.length) return;
+    this._bake = null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.computeBoundingSphere();
+    this.shadowMesh.geometry.dispose();
+    this.shadowMesh.geometry = g;
+    this.shadowBakeMs = J.ms;
+    this.needsRender = true;
   },
   tick() {
     this.sunTick();
+    if (this._bake) this.bakeStep(4);
     // covered by a full-screen screen (party room, style): nothing to draw
     if (this.paused) { this.lastT = performance.now() / 1000; return; }
     const t = performance.now() / 1000;
@@ -2807,11 +3033,13 @@ export const world3d = {
       this.applyCamera();
     }
     for (const fn of this.tickHooks) { try { fn(t, dt); } catch (e) { console.warn("[rando] tick hook", e); } }
-    // the warm city (built ahead, out of sight) streams round its own spot
+    this.updateRange(dt);
+    const range = this.viewRange();
+    // the warm city (built ahead, out of sight) streams round its own spot, for the map's view
     const W = this._warm;
-    if (W?.city) { const [x, z] = W.city.P.fwd(W.spot[1], W.spot[0]); (W.at ??= new THREE.Vector3()).set(x, 0, z); W.city.update(W.at); }
+    if (W?.city) { const [x, z] = W.city.P.fwd(W.spot[1], W.spot[0]); (W.at ??= new THREE.Vector3()).set(x, 0, z); W.city.update(W.at, { load: VIEW.R + VIEW.buffer, near: VIEW.R, show: Infinity }); }
     if (this.city) {
-      this.city.update(this.target);
+      this.city.update(this.target, range);
       // the ground and the sky go where you go (snapped: the paving stays put)
       const P = this.groundPeriod || 80;
       this.ground?.position.set(Math.round(this.target.x / P) * P, this.groundLevel ?? 0, Math.round(this.target.z / P) * P);
@@ -2828,7 +3056,7 @@ export const world3d = {
       this.skyCap?.position.set(this.target.x, 1725, this.target.z);
     }
     // the hand-made map's trees: painted near the camera, light further out
-    if (this.handTrees && this.worldRoot?.visible && fillPools(this.handTrees.pools, this.handTrees.recs, this.camera, this.handTrees.state)) this.needsRender = true;
+    if (this.handTrees && this.worldRoot?.visible && fillPools(this.handTrees.pools, this.handTrees.recs, this.camera, this.handTrees.state, false, range.show < Infinity ? { x: this.target.x, z: this.target.z, r: range.show } : null)) this.needsRender = true;
     this.anchors = this.anchors.filter(a => this.placeAnchor(a));
     this.placeLabels();
     if (this.needsRender && !(this.maxFps && t - this._lastDraw < 1 / this.maxFps - 0.004)) {
