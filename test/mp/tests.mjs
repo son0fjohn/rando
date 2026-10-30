@@ -158,8 +158,12 @@ export async function games(T) {
       if (["sidequest", "mask_off", "ritual"].includes(g)) {
         const subj = new Set(seen.subjects);
         const missed = humans.filter(id => !subj.has(id));
-        if (missed.length) fails.push(`turns didn't reach everyone (no turn for ${missed.map(id => P.find(p => p.id === id)?.name).join(", ")})`);
+        // Mask Off goes round the table: everyone asks. Side Quest and the Ritual pick
+        // "random but fair" (fairpick.js): a turn each on average, not guaranteed
+        if (missed.length && g === "mask_off") fails.push(`turns didn't go round the table (no turn for ${missed.map(id => P.find(p => p.id === id)?.name).join(", ")})`);
+        else if (missed.length) T.note(`${g}: one round of turns left out ${missed.length} player(s) (fairpick is random-but-fair, not a rotation)`);
         if (seen.subjects.length > 1 && seen.subjects.every(x => x === seen.subjects[0])) fails.push("the turn never moved on");
+        if (seen.subjects.some((x, i) => i && x === seen.subjects[i - 1])) fails.push(`someone went twice in a row (${seen.subjects.join(" → ")})`);
       }
       const scores = seen.scores ?? {};
       if (!Object.values(scores).some(v => v > 0)) fails.push(`no score moved (${JSON.stringify(scores)})`);
