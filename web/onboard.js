@@ -387,7 +387,8 @@ export const onboard = {
       sparkle(stage);
     };
     inp.oninput = () => { su.name = inp.value; su.typed = true; err.textContent = ""; };
-    setTimeout(() => { if (!inp.isConnected) return; inp.focus({ preventScroll: true }); if (!su.edit) inp.select(); }, 220);
+    // (not once they've started typing: on a slow phone this can land mid-word and the next key wipes it)
+    setTimeout(() => { if (!inp.isConnected || su.typed) return; inp.focus({ preventScroll: true }); if (!su.edit) inp.select(); }, 220);
     pn.querySelector("[data-have]")?.addEventListener("click", () => { sfx.cursor?.(); this.signInSheet(); });
     pn.querySelector("[data-back]")?.addEventListener("click", () => { sfx.back?.(); this._endSetup(false); });
     const go = async () => {
