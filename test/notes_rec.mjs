@@ -46,6 +46,10 @@ const off = (p, n, e) => ({ lat: p.lat + n / 110540, lng: p.lng + e / (111320 * 
 
 // (1x: two live 3D maps in software GL on one CPU; 2x quadruples the work)
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true });
+// every toast the page shows, recorded as it's added (on a slow machine a 3 s
+// toast can come and go between two polls)
+const TOASTS = () => { window.__toasts = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains("glass-toast")) window.__toasts.push(n.textContent); }).observe(document.documentElement, { childList: true, subtree: true }); };
+await ctx.addInitScript(TOASTS);
 await ctx.addInitScript(() => {
   try {
     localStorage.setItem("rando-hint-v1", "1");
@@ -125,7 +129,7 @@ const look = (pg, p, dist = 175) => pg.evaluate(async ({ p, dist }) => {
 }, { p, dist });
 const marks = pg => pg.evaluate(async () => (await import("/web/notes.js")).notes.markers);
 const refresh = pg => pg.evaluate(async () => (await import("/web/notes.js")).notes.refresh());
-const toastHas = (pg, text) => until(pg, t => [...document.querySelectorAll(".glass-toast")].some(e => e.textContent.includes(t)), text, 20000);
+const toastHas = (pg, text) => until(pg, t => (window.__toasts ?? []).some(x => x.includes(t)) || [...document.querySelectorAll(".glass-toast")].some(e => e.textContent.includes(t)), text, 30000);
 // a picture made in the page: a JPEG from a canvas, optionally WITH a hand-built EXIF GPS block
 const picture = (pg, kind, exif) => pg.evaluate(async ({ kind, exif }) => {
   const { withExifGps, hasMetadata } = await import("/web/noteimage.js");
@@ -337,6 +341,7 @@ console.log("\nnot set up: 019 never applied; no buckets");
 await Promise.all(casts.map(c => c.pg.evaluate(async () => { const { world3d } = await import("/web/world3d.js"); world3d.setPaused(true); }).catch(() => {})));
 const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true });
 await ctx2.addInitScript(() => { try { localStorage.setItem("rando-hint-v1", "1"); } catch {} });
+await ctx2.addInitScript(TOASTS);
 {
   const pg = await phone("cy", A, { pg: await ctx2.newPage(), q: "&notesSetup=none" });
   await pg.evaluate(async () => { const { world3d } = await import("/web/world3d.js"); world3d.maxFps = 15; });
