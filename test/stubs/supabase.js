@@ -32,11 +32,21 @@
 //   sms fails ?smsFail=provider (stub-sms-fail): the provider refuses to text
 //             (Twilio's region error, as Supabase passes it on); =rate: the
 //             server's "only request this after 53 seconds"
-import { StubChannel } from "./bcchannel.js";
+//   strict    ?strictrt=1: realtime-js's real channel bookkeeping
+//             (bcchannel.js strictRealtime: channel() reuses a topic still in
+//             the list, removeChannel() waits for the leave, subscribe() on a
+//             leaving channel does nothing, late .on("presence") throws),
+//             postgres_changes for rows inserted here (every tab), and auth as
+//             supabase-js does it: INITIAL_SESSION on each onAuthStateChange;
+//             &rtleave=MS: how long a leave takes to come back (default 300)
+//   auth      window.__authEvent(event = "TOKEN_REFRESHED"): that auth event,
+//             to every listener (a token refresh, a tab coming back)
+import { StubChannel, open, strictRealtime, pgInsert, pgListen } from "./bcchannel.js";
 import { ITEMS4, HAIRCOLOR_SHOP, STARTER_OUTFITS4 } from "/web/items4.js";
 import { notesStub } from "./notes_stub.js";   // notes on the map (migrations/019): RPCs, buckets, a fake moderator
 
 const q = new URLSearchParams(location.search);
+const strictRt = q.get("strictrt") === "1";
 const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const fresh = !q.get("me");
 const freshId = fresh ? (ls.get("stub-guest") ?? (() => { const h = Math.random().toString(16).slice(2, 8).padEnd(6, "0"); ls.set("stub-guest", h); return h; })()) : null;
@@ -159,6 +169,7 @@ class Query {
         const key = this.t === "presence" ? "user_id" : "id";
         const i = this.op === "upsert" ? T.findIndex(x => x[key] === row[key]) : -1;
         if (i >= 0) T[i] = { ...T[i], ...row }; else T.push(row);
+        if (strictRt && this.op === "insert") pgInsert(this.t, { ...row });
         return row;
       });
     } else if (this.op === "update") {
@@ -261,11 +272,17 @@ const phoneAuth = (q.get("verify") ?? ls.get("stub-verify")) === "1";
 const NOTES = notesStub({ me: () => myId, cstate, save, withState: withCoins,
   verified: () => !phoneAuth || !!session.user.phone_confirmed_at || (session.user.identities ?? []).some(i => i.provider === "kakao") });
 Object.assign(RPC, NOTES.rpc);
+window.__authEvent = (event = "TOKEN_REFRESHED") => { for (const cb of authListeners) cb(event, session); };
 export function createClient() {
+  const rt = strictRt ? strictRealtime({ leaveMs: +(q.get("rtleave") ?? 300) }) : null;
+  if (strictRt) pgListen();
   return {
     auth: {
       getSession: async () => ({ data: { session } }),
-      onAuthStateChange(cb) { authListeners.add(cb); return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } }; },
+      onAuthStateChange(cb) {
+        authListeners.add(cb);
+        if (strictRt) setTimeout(() => authListeners.has(cb) && cb("INITIAL_SESSION", session), 0);
+        return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } }; },
       signInAnonymously: async () => ({ data: { session }, error: null }),
       signInWithOtp: async ({ phone } = {}) => { if (smsFail()) return { error: smsFail() }; pendingPhone = phone; return { error: null }; },
       // a guest linking a number (type phone_change) keeps its id: nothing is lost
@@ -311,9 +328,10 @@ export function createClient() {
       if (!RPC[name]) return { data: null, error: { message: `rpc ${name} not stubbed` } };
       return withCoins(() => { try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; } });
     },
-    channel: (name, cfg) => new StubChannel(name, cfg),
+    channel: (name, cfg) => rt ? rt.channel(name, cfg) : new StubChannel(name, cfg),
     __phoneAuth: phoneAuth,
     __authSettings: { phone: phoneAuth, ...Object.fromEntries(oauthOn.map(p => [p, true])) },
-    removeChannel: ch => ch.close(),
+    removeChannel: ch => rt ? rt.removeChannel(ch) : ch.close(),
+    getChannels: () => rt ? rt.getChannels() : [...open],
   };
 }
