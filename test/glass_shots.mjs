@@ -8,7 +8,12 @@
 // host menu (?onb=0), the Style screen, Keep your new look?, the shop, and a
 // public party's card on the map.
 //
-//   node test/glass_shots.mjs <dir> [--prefix=before] [--only=a,b,c,d]
+//   node test/glass_shots.mjs <dir> [--prefix=before] [--only=a,b,c,d] [--light=night|sunset|day] [--contrast]
+//
+// --light: the map's light for every phone (default night). --contrast: each
+// shot also measures its glass windows' text (test/contrastkit.mjs: WCAG, as
+// drawn, 4.5:1 / 3:1 large text and icons) into <dir>/<prefix>-contrast.md,
+// and fails on anything under.
 //
 // Sections: a = a fresh phone's whole first open, b = a lobby with people,
 // c = the ?onb=0 chrome (host menu, Style, shop, beacon card), d = a
@@ -18,12 +23,19 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { serve } from "./appserve.mjs";
+import { measure } from "./contrastkit.mjs";
 
 const args = process.argv.slice(2);
 const OUT = args.find(a => !a.startsWith("--"));
-if (!OUT) { console.error("usage: node test/glass_shots.mjs <dir> [--prefix=before] [--only=a,b,c,d]"); process.exit(2); }
+if (!OUT) { console.error("usage: node test/glass_shots.mjs <dir> [--prefix=before] [--only=a,b,c,d] [--light=night|sunset|day] [--contrast]"); process.exit(2); }
 const PREFIX = args.find(a => a.startsWith("--prefix="))?.slice(9) ?? "shot";
 const ONLY = args.find(a => a.startsWith("--only="))?.slice(7).split(",") ?? ["a", "b", "c", "d"];
+const LIGHT = args.find(a => a.startsWith("--light="))?.slice(8) ?? "night";
+const CONTRAST = args.includes("--contrast");
+// the glass windows a shot's text is measured in (outermost of each only)
+const ROOTS = [".onb-screen:not(.out)", ".onb-sheet:not(.out)", ".onb-perm", ".onb-toast", ".glass-dialog", ".glass-sheet", ".glass-toast", ".glass", ".glass-btn", ".glass-icon",
+  "#party-panel:not(.pt-lobby):not([hidden])", ".pt-top", ".pt-bottom", "#pp", "#style-screen:not([hidden])", "#party-card:not([hidden])", ".hp-results"];
+const contrastRows = [];
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve({ realAvatars: true });
 const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
@@ -37,7 +49,7 @@ const LOOKS = {
   mina: { skin: "2", eyes: "sparkly", iris: "lightblue", hairColor: "darkbrown", hair: "bob", head: "none", face: "none", top: "varsity", bottom: "plaid-wide", shoes: "white-chunky", neck: "none" },
   sol: { skin: "1", eyes: "fox", iris: "green", hairColor: "red", hair: "twin-buns", head: "none", face: "none", top: "crop-flannel", bottom: "skirt-pleated", shoes: "platform", neck: "none" },
 };
-const appUrl = (q = "") => `${base}/app.html?devlat=37.5347&devlng=126.9945&light=night${q}`;
+const appUrl = (q = "") => `${base}/app.html?devlat=37.5347&devlng=126.9945&light=${LIGHT}${q}`;
 const who = n => `&me=${n}&av=${encodeURIComponent(JSON.stringify(LOOKS[n]))}`;
 const screenIs = (pg, id, ms = 30000) => until(pg, id => document.querySelector(".onb-screen:not(.out)")?.dataset.screen === id, id, ms);
 const sheetIs = (pg, id, ms = 30000) => until(pg, id => !!document.querySelector(`.onb-sheet[data-sheet="${id}"]:not(.out)`), id, ms);
@@ -52,6 +64,12 @@ async function shot(pg, name, what) {
     await cdp.detach().catch(() => {});
     await writeFile(join(OUT, file), Buffer.from(r.data, "base64"));
     shots.push(`${file} — ${what}`); console.log(`  shot ${file} · ${what}`);
+    if (CONTRAST) {
+      const rows = (await measure(pg, ROOTS)).filter(r => r.ratio != null && r.alpha >= 0.05);
+      const low = rows.filter(r => r.ratio < r.need);
+      for (const r of rows) contrastRows.push({ shot: name, ...r });
+      console.log(`    contrast: ${rows.length} measured, ${low.length} under${low.length ? ": " + low.slice(0, 6).map(r => `${r.key} ${r.ratio}:1 (${r.ink} on ${r.bg})`).join(" · ") : ""}`);
+    }
   } catch (e) { console.log(`  (shot failed) ${file}: ${e.message}`); }
 }
 async function context({ fresh = false, verify = false, oauth = false } = {}) {
@@ -286,5 +304,14 @@ if (ONLY.includes("d")) await section("d. a returning player", async () => {
 
 await writeFile(join(OUT, `${PREFIX}-SHOTS.md`), shots.map(s => `- ${s}`).join("\n") + "\n");
 if (errors.length) console.log("\nerrors:\n  " + [...new Set(errors)].slice(0, 10).join("\n  "));
+let under = 0;
+if (CONTRAST) {
+  const low = contrastRows.filter(r => r.ratio < r.need);
+  under = low.length;
+  const md = [`# glass text contrast, ${LIGHT} (${contrastRows.length} measured, ${low.length} under)`, "", "| shot | element | size | needs | ratio | ink on bg |", "|---|---|---|---|---|---|",
+    ...contrastRows.map(r => `| ${r.shot} | ${r.key.replace(/\|/g, "/")} | ${r.size} | ${r.need} | ${r.ratio}${r.ratio < r.need ? " ✗" : ""} | ${r.ink} on ${r.bg} |`)];
+  await writeFile(join(OUT, `${PREFIX}-contrast.md`), md.join("\n") + "\n");
+  console.log(`\ncontrast (${LIGHT}): ${contrastRows.length} measured, ${low.length} under` + (low.length ? ":\n  " + low.map(r => `${r.shot}: ${r.key} ${r.ratio}:1 < ${r.need} (${r.ink} on ${r.bg})`).join("\n  ") : ""));
+}
 await browser.close(); close();
-process.exit(0);
+process.exit(under ? 1 : 0);
