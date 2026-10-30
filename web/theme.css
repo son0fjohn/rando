@@ -331,15 +331,15 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .pc-sheet { width: min(100%, 440px); box-sizing: border-box; padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); animation: y-up var(--y-med) var(--y-pop) both; }
 .pc-head { display: flex; gap: 12px; align-items: center; }
 .pc-head b { display: block; font: 700 var(--fs-h2)/28px var(--f-head); }
-.pc-head small { font: var(--fs-small)/20px var(--f-small); color: var(--y-muted); }
+.pc-head small { font: var(--fs-small)/20px var(--f-small); color: var(--g-ink-soft); }
 .pc-house { width: 48px; height: 44px; flex: none; background: var(--art-neon-pink); filter: drop-shadow(0 0 8px var(--art-neon-pink));
   clip-path: polygon(50% 0, 100% 45%, 88% 45%, 88% 100%, 12% 100%, 12% 45%, 0 45%); }
 .pc-stats { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 6px; font: var(--fs-small)/20px var(--f-small); }
 .pc-stats > span { padding: 4px 10px; border: 2px solid var(--y-line); background: var(--y-night-0); }
-.pc-stats b { color: var(--color-accent); }
+.pc-stats b { color: var(--g-gold); }
 .pc-vibe { color: var(--y-ink-dark); }
 .pc-vibe.v-chill { background: var(--y-aqua) !important; } .pc-vibe.v-chaotic { background: var(--color-accent) !important; } .pc-vibe.v-sporty { background: var(--y-lime) !important; }
-.pc-note { font: var(--fs-small)/20px var(--f-small); color: var(--y-muted); margin: 4px 0 12px; }
+.pc-note { font: var(--fs-small)/20px var(--f-small); color: var(--g-ink-soft); margin: 4px 0 12px; }
 .pc-btns { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
 /* style screen: your character, big */
 #style-screen { position: absolute; inset: 0; z-index: 270; display: flex; flex-direction: column; background: radial-gradient(circle at 50% 32%, var(--y-night-3), var(--y-night-0) 62%); color: var(--y-ink); }
@@ -719,6 +719,7 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .y-input { border-radius: var(--glass-btn-radius); border: 1px solid rgba(255, 255, 255, .3); background: var(--g-field); box-shadow: inset 0 2px 6px rgba(0, 0, 0, .25); }
 .y-btn.small { min-height: 38px; padding: 0 14px; font-size: 14px; }
 .y-input { border-radius: 12px; clip-path: none; border: 1px solid var(--g-line); background: rgba(var(--g-ink-rgb), .08); color: var(--g-ink); font: 16px/22px var(--f-sys); }
+.y-input::placeholder { color: rgba(var(--g-ink-rgb), .82); }
 .y-input:focus { border-color: rgba(159,232,255,.8); }
 .y-mute { width: 36px; height: 36px; border-radius: 50%; clip-path: none; border: 1px solid var(--g-line); background: rgba(var(--g-ink-rgb), .1); }
 .y-mute::before { background: #fff; }
@@ -742,13 +743,24 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .pc-head b { font: 700 20px/26px var(--f-sys); }
 /* host a party */
 .pt-menu::before, .pt-menu::after, .pt-picker-sheet::before, #style-screen::before { display: none; }
-.pt-mhead b { font: 700 22px/28px var(--f-sys); text-shadow: none; }
-.pt-menu .pt-lbl { color: rgba(var(--g-ink-rgb), .7); font: 600 13px/18px var(--f-sys); }
-.pt-tile { border: 1px solid var(--g-line); border-radius: 16px; clip-path: none; background: rgba(var(--g-ink-rgb), .07); font: 600 14px/18px var(--f-sys); }
+/* (every colour here from the glass tokens: light on the dark glass at
+   night, navy #0F1A3A on the light glass by day; the older pixel theme's
+   fixed light inks above don't follow the light) */
+.pt-mhead b { font: 700 22px/28px var(--f-sys); text-shadow: none; color: var(--g-ink); }
+.pt-menu .pt-lbl { color: var(--g-ink-soft); font: 600 13px/18px var(--f-sys); }
+.pt-menu .pt-lbl small, .pt-tile small, .pt-step span, .pt-menu .pt-note, .pt-menu .pt-empty, .pt-menu .rl-row { color: var(--g-ink-soft); }
+.pt-tile.on small { color: var(--g-ink); }
+.pt-menu .rl-row b { color: var(--g-ink); }
+.pt-menu .pt-err { color: rgb(calc(255 - 75 * var(--ink-t)), calc(156 - 120 * var(--ink-t)), calc(138 - 110 * var(--ink-t))); }
+.pt-tile { border: 1px solid var(--g-line); border-radius: 16px; clip-path: none; background: rgba(var(--g-ink-rgb), .07); font: 600 14px/18px var(--f-sys); color: var(--g-ink); }
 .pt-tile i { font: 22px/26px var(--f-sys); }
+/* the vibes' neon glyphs at night; by day the navy ink (neon on light glass doesn't read) */
+.pt-tile.v-chill i { color: color-mix(in srgb, var(--y-aqua), var(--g-ink) calc(var(--ink-t) * 100%)); }
+.pt-tile.v-chaotic i { color: color-mix(in srgb, var(--color-accent), var(--g-ink) calc(var(--ink-t) * 100%)); }
+.pt-tile.v-sporty i { color: color-mix(in srgb, var(--y-lime), var(--g-ink) calc(var(--ink-t) * 100%)); }
 .pt-tile.on, .pt-tile.v-chaotic.on, .pt-tile.v-sporty.on { background: rgba(var(--g-ink-rgb), .18); border-color: rgba(var(--g-ink-rgb), .55); box-shadow: none; }
 .pt-capv { font: 700 30px/36px var(--f-sys); color: var(--g-ink); }
-.pt-sep { color: rgba(var(--g-ink-rgb), .55); font: 600 12px/16px var(--f-sys); }
+.pt-sep { color: var(--g-ink-soft); font: 600 12px/16px var(--f-sys); }
 .pt-sep::before, .pt-sep::after { height: 1px; background: var(--g-line); }
 .pt-codein { font: 700 20px/28px var(--f-sys); letter-spacing: .4em; }
 .pt-menu .rl-row { border-top: 1px solid var(--g-line); }
@@ -763,6 +775,7 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .pt-top-row > b { font: 700 20px/26px var(--f-sys); }
 .pt-invite { color: rgba(var(--g-ink-rgb), .6); font: 600 12px/16px var(--f-sys); }
 .pt-code-chip span { width: auto; height: auto; padding: 2px 6px; margin-left: 2px; border: none; border-radius: 6px; clip-path: none; background: rgba(var(--g-ink-rgb), .16); color: var(--g-ink); font: 700 15px/20px var(--f-sys); }
+#party-panel.pt-lobby #pt-chat-form input::placeholder { color: var(--g-ink-soft); }
 #party-panel.pt-lobby #pt-chat-form input { border-radius: var(--glass-btn-radius); clip-path: none; border: 1px solid rgba(255, 255, 255, .26); background: var(--g-field); color: var(--g-ink); font: 16px/20px var(--f-sys); padding: 9px 14px; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .16); }
 /* the send button is the shared round .glass-icon (the old pixel rule above squared every button in the row) */
 #party-panel.pt-lobby #pt-chat-form button[type=submit] { flex: none; width: 40px; height: 40px; border-radius: 50%; clip-path: none; font-size: 18px; color: var(--g-ink);
@@ -778,7 +791,7 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 #style-screen #outfit-grid > button.selected { border: 2px solid #fff; box-shadow: none; }
 #style-screen #outfit-grid .part-chip { font: 600 12px/16px var(--f-sys); background: rgba(var(--g-ink-rgb), .1); }
 .ss-top b { font: 700 19px/26px var(--f-sys); }
-#style-view small { font: 500 12px/16px var(--f-sys); color: rgba(var(--g-ink-rgb), .55); }
+#style-view small { font: 500 12px/16px var(--f-sys); color: var(--g-ink-soft); }
 .ss-account { flex: none; padding: 8px 14px calc(10px + env(safe-area-inset-bottom)); font: 500 13px/18px var(--f-sys); color: rgba(var(--g-ink-rgb), .6); text-align: center; background: var(--g-bg-strong); }
 .ss-account[hidden] { display: none; }
 .ss-account a { color: #9fe8ff; }
@@ -845,10 +858,10 @@ body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { dis
 .pv-art svg { width: 30px; height: 30px; image-rendering: pixelated; }
 .pv-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pv-t b { font: 600 16px/21px var(--f-sys); color: var(--g-ink); }
-.pv-t small { font: 500 12.5px/17px var(--f-sys); color: rgba(var(--g-ink-rgb), .6); }
+.pv-t small { font: 500 12.5px/17px var(--f-sys); color: var(--g-ink-soft); }
 .pv-n { flex: none; min-width: 44px; display: flex; flex-direction: column; align-items: center; font: 800 22px/24px var(--f-sys); color: var(--g-ink); font-variant-numeric: tabular-nums; }
-.pv-n i { font: 600 10px/12px var(--f-sys); font-style: normal; color: rgba(var(--g-ink-rgb), .55); }
-.pv-n.zero { color: rgba(var(--g-ink-rgb), .35); }
+.pv-n i { font: 600 10px/12px var(--f-sys); font-style: normal; color: var(--g-ink-soft); }
+.pv-n.zero { color: var(--g-ink-faint); }
 .pv-opts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .pv-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--g-line); background: rgba(var(--g-ink-rgb), .06); color: rgba(var(--g-ink-rgb), .75); font: 600 12px/15px var(--f-sys); cursor: pointer; }
 .pv-chip.on { background: var(--g-ink); color: rgb(var(--g-shade-rgb)); border-color: var(--g-ink); }
@@ -1113,7 +1126,7 @@ body.hp-setup-wait #game-layer { display: none !important; }
     linear-gradient(180deg, transparent 0 18%, rgba(28,42,92,.9) 18%) 92% 0 / 13% 100% no-repeat; }
 #style-screen #style-view::before { display: none; }
 #style-screen #style-view canvas { z-index: 1; }
-#style-screen #style-view small { z-index: 2; bottom: 8px; font: 500 11px/14px var(--f-sys); color: rgba(255,255,255,.45); }
+#style-screen #style-view small { z-index: 2; bottom: 8px; font: 500 11px/14px var(--f-sys); color: var(--g-ink-soft); }
 .ss-sparks { position: absolute; z-index: 2; left: 50%; top: 46%; width: 0; height: 0; pointer-events: none; }
 .ss-sparks i { position: absolute; width: 8px; height: 8px; margin: -4px; background: var(--color-accent); clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
   filter: drop-shadow(0 0 4px rgba(var(--color-accent-rgb),.9)); animation: ss-spark .75s cubic-bezier(.2,.7,.3,1) both; }
@@ -1134,7 +1147,7 @@ body.hp-setup-wait #game-layer { display: none !important; }
 #style-screen #outfit-grid.ss-in { animation: ss-in .22s ease-out both; }
 @keyframes ss-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .ss-row { padding: 4px 0 2px; }
-.ss-row > small { display: block; padding: 2px 16px 4px; font: 600 11px/14px var(--f-sys); letter-spacing: .4px; text-transform: uppercase; color: rgba(255,255,255,.45); }
+.ss-row > small { display: block; padding: 2px 16px 4px; font: 600 11px/14px var(--f-sys); letter-spacing: .4px; text-transform: uppercase; color: var(--g-ink-soft); }
 .ss-strip { display: flex; gap: 10px; padding: 4px 16px 6px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
 .ss-strip::-webkit-scrollbar { display: none; }
 #style-screen .ss-strip > button { flex: none; position: relative; margin: 0; padding: 0; scroll-snap-align: start; transition: transform .15s, box-shadow .2s, border-color .2s; }
@@ -1532,11 +1545,11 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 @keyframes onb-out { to { opacity: 0; transform: translateY(10px); } }
 .onb-card { width: min(100%, 420px); margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 .onb-h { font-size: 24px; line-height: 1.2; font-weight: 800; letter-spacing: -.01em; }
-.onb-sub { margin: 0; color: var(--y-muted); font-size: 15px; line-height: 1.4; }
-.onb-fine { margin: 0; color: var(--y-muted); font-size: 12.5px; text-align: center; }
+.onb-sub { margin: 0; color: var(--g-ink-soft); font-size: 15px; line-height: 1.4; }
+.onb-fine { margin: 0; color: var(--g-ink-soft); font-size: 12.5px; text-align: center; }
 .onb-note { margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(var(--color-accent-rgb), .12); color: #ffe7a8; font-size: 14px; }
 .onb-err { min-height: 1em; margin: 0; color: #ff9d9d; font-size: 13.5px; }
-.onb-kicker { display: block; color: var(--color-accent); font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.onb-kicker { display: block; color: var(--g-gold); font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .onb-logo { font-size: 46px; font-weight: 900; letter-spacing: -.03em; color: var(--color-accent); text-shadow: 0 0 24px rgba(var(--color-accent-rgb), .45); }
 .onb-logo.sm { font-size: 24px; text-shadow: none; }
 /* buttons: one gold primary per screen */
@@ -1608,6 +1621,7 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 .onb-chip::before { border-radius: 999px 999px 0 0; }
 .onb-home-acts { display: flex; flex-direction: column; gap: 10px; }
 .onb-code { display: flex; align-items: center; gap: 8px; justify-content: center; color: var(--y-muted); font-size: 14px; }
+.onb-code input::placeholder { color: rgba(var(--g-ink-rgb), .82); }
 .onb-code input { width: 88px; min-height: 36px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .08); color: var(--y-ink);
   font: 700 16px ui-monospace, "SF Mono", monospace; letter-spacing: .2em; text-align: center; text-transform: uppercase; }
 .onb-news { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1624,19 +1638,19 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 .onb-sheet-card .glass-row { display: flex; gap: 10px; }
 .onb-sheet-card .glass-row > * { flex: 1; min-width: 0; }
 .onb-inv-code { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.onb-inv-code small { color: var(--y-muted); font-weight: 700; margin-right: 6px; }
-.onb-inv-code span { display: grid; place-items: center; width: 38px; height: 46px; border-radius: 10px; background: rgba(255, 255, 255, .1); font: 800 24px ui-monospace, "SF Mono", monospace; color: var(--color-accent); }
+.onb-inv-code small { color: var(--g-ink-soft); font-weight: 700; margin-right: 6px; }
+.onb-inv-code span { display: grid; place-items: center; width: 38px; height: 46px; border-radius: 10px; background: rgba(var(--g-ink-rgb), .1); font: 800 24px ui-monospace, "SF Mono", monospace; color: var(--g-gold); }
 .onb-inv-btns { display: flex; flex-direction: column; gap: 10px; }
 .onb-qr { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 16px; background: rgba(255, 255, 255, .06); cursor: zoom-in; }
 .onb-qr .qr { width: 104px; height: 104px; flex: none; border-radius: 10px; }
-.onb-qr p { margin: 0; color: #dfe3ff; font-size: 14.5px; line-height: 1.35; }
+.onb-qr p { margin: 0; color: var(--g-ink); font-size: 14.5px; line-height: 1.35; }
 .onb-qr.big { flex-direction: column; text-align: center; cursor: zoom-out; }
 .onb-qr.big .qr { width: min(78vw, 320px); height: auto; aspect-ratio: 1; }
 .onb-set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
-.onb-set-row em { font-style: normal; color: var(--y-muted); font-size: 14px; text-align: right; }
-.onb-set-row em.on { color: #8ef0b2; }
+.onb-set-row em { font-style: normal; color: var(--g-ink-soft); font-size: 14px; text-align: right; }
+.onb-set-row em.on { color: rgb(calc(142 - 128 * var(--ink-t)), calc(240 - 132 * var(--ink-t)), calc(178 - 120 * var(--ink-t))); }
 .onb-set-row .glass-btn { width: auto; }
-.onb-set-row > span small { display: block; margin-top: 2px; color: var(--y-muted); font-size: 12px; }
+.onb-set-row > span small { display: block; margin-top: 2px; color: var(--g-ink-soft); font-size: 12px; }
 /* one-tap sign-in: each provider's own button (Kakao yellow, Apple and Google white), per their brand rules */
 .onb-oauth { display: flex; flex-direction: column; gap: 10px; }
 .onb-btn.oauth { flex-direction: row; gap: 10px; width: 100%; min-height: 52px; font-size: 16.5px; font-weight: 600; border-radius: 12px; }
@@ -1644,8 +1658,8 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 .onb-btn.oauth.kakao { background: #FEE500; color: rgba(0, 0, 0, .85); }
 .onb-btn.oauth.apple { background: #fff; color: #000; }
 .onb-btn.oauth.google { background: #fff; color: #1f1f1f; }
-.onb-or { display: flex; align-items: center; gap: 10px; color: var(--y-muted); font-size: 13px; }
-.onb-or::before, .onb-or::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, .14); }
+.onb-or { display: flex; align-items: center; gap: 10px; color: var(--g-ink-soft); font-size: 13px; }
+.onb-or::before, .onb-or::after { content: ""; flex: 1; height: 1px; background: var(--g-line); }
 .onb-again { min-height: 1.3em; }
 /* the permission pre-prompt */
 /* above every layer, game screens included (#game-layer is 500): a game asks too */
@@ -1656,7 +1670,7 @@ button.mh-row { width: 100%; border: 0; background: none; color: inherit; font: 
 .onb-perm-card > p { margin: 0 0 6px; font-size: 15px; line-height: 1.4; }
 .onb-perm-card .glass-btn, .onb-perm-card .onb-btn { width: 100%; }
 .onb-perm-ico { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: rgba(var(--color-accent-rgb), .16); }
-.onb-perm-ico svg { width: 28px; height: 28px; fill: none; stroke: var(--color-accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.onb-perm-ico svg { width: 28px; height: 28px; fill: none; stroke: var(--g-gold); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 /* the safety card, over the game's first moment */
 .onb-safety { position: fixed; inset: 0; z-index: 700; display: grid; place-items: center; padding: 16px; font-family: var(--f-sys); color: var(--y-ink); }
 .onb-safety-card { width: min(100%, 360px); align-items: center; gap: 10px; padding: 26px 18px 18px; }
@@ -1686,9 +1700,9 @@ body:has(#onb .onb-sheet:not(.out)) .onb-hint { display: none; }
 .onb-recap-people img { width: 74px; margin: 0 -10px; aspect-ratio: 5 / 8; object-fit: contain; animation: onb-pop .5s cubic-bezier(.2, .9, .3, 1.3) both; animation-delay: calc(var(--i) * 80ms); }
 .onb-recap-people img:not([src]) { visibility: hidden; }
 .onb-moment { padding: 12px; border-radius: 14px; background: rgba(var(--color-accent-rgb), .1); }
-.onb-moment small { display: block; color: var(--color-accent); font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.onb-moment small { display: block; color: var(--g-gold); font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
 .onb-moment q { display: block; margin: 6px 0 2px; font-size: 17px; font-weight: 700; }
-.onb-moment span { color: var(--y-muted); font-size: 13px; }
+.onb-moment span { color: var(--g-ink-soft); font-size: 13px; }
 .onb-coins { display: inline-flex; align-self: center; align-items: center; gap: 8px; font-size: 20px; font-weight: 800; color: var(--color-accent); }
 /* the party room: alone in your own party, the invite, big */
 .pt-floor-wrap .pt-empty-card { position: absolute; left: 50%; top: 50%; z-index: 30; transform: translate(-50%, -50%); width: min(86%, 320px); align-items: center; gap: 8px;
@@ -1894,7 +1908,7 @@ body.onb-on #nav-backtome, body.onb-on #npc-dlg, body.onb-on #match-card { visib
 .glass-btn.gold::after { background: linear-gradient(150deg, rgba(255, 246, 214, .55), rgba(255, 246, 214, .12) 50%, rgba(255, 246, 214, .3)); }
 .glass-btn.gold:active:not(:disabled), .glass-btn.gold.pressed { box-shadow: 0 2px 8px rgba(245, 163, 0, .22), 0 1px 2px rgba(2, 5, 18, .3), inset 0 1px 0 rgba(255, 246, 214, .4); }
 .glass-btn.clear { color: var(--g-ink); text-shadow: var(--glass-text-shadow);
-  background: linear-gradient(rgba(255, 255, 255, calc(.08 + .12 * var(--day))), rgba(255, 255, 255, calc(.08 + .12 * var(--day)))), var(--glass-tint);
+  background: linear-gradient(rgba(255, 255, 255, calc(.08 + .12 * var(--glass-t, var(--day)))), rgba(255, 255, 255, calc(.08 + .12 * var(--glass-t, var(--day))))), var(--glass-tint);
   box-shadow: 0 2px 10px rgba(2, 5, 18, calc(.18 - .1 * var(--day))); }
 .glass-btn.clear:active:not(:disabled), .glass-btn.clear.pressed { box-shadow: 0 1px 4px rgba(2, 5, 18, .2); }
 .glass-btn:focus { outline: none; }
@@ -1927,7 +1941,7 @@ body.glass-lite .glass-seg { -webkit-backdrop-filter: none; backdrop-filter: non
 :where(.glass-field) { width: 100%; min-height: 50px; padding: 0 14px; font: 600 17px var(--f-sys); }
 .glass-field { box-sizing: border-box; border-radius: var(--glass-btn-radius); border: 1px solid rgba(255, 255, 255, calc(.26 + .2 * var(--day)));
   background: var(--g-field); color: var(--g-ink); outline: none; box-shadow: inset 0 1px 2px rgba(0, 0, 0, calc(.16 - .1 * var(--day))); }
-.glass-field::placeholder { color: var(--g-ink-faint); }
+.glass-field::placeholder { color: rgba(var(--g-ink-rgb), .82); }
 .glass-field:focus { border-color: rgba(var(--color-accent-rgb), .8); box-shadow: 0 0 0 3px rgba(var(--color-accent-rgb), .22); }
 /* a passing line (rounded like a panel when it wraps) */
 .glass-toast { box-sizing: border-box; padding: 10px 16px; border-radius: 16px; color: var(--g-ink); text-shadow: var(--glass-text-shadow); font: 600 14px/18px var(--f-sys);
@@ -2045,7 +2059,7 @@ body.scenery .frame > :not(canvas) { visibility: hidden !important; }
 .cv-2d.walking .cv-2d-spr { animation: lr-walk .56s step-end infinite; }
 .cv-2d.walking.nowalk .cv-2d-spr { animation: lr-bob .3s steps(2) infinite; background-position-x: 0; }
 .cv-2d::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: calc(var(--px) * -1); height: calc(var(--px) * 3); border-radius: 50%; background: rgba(8, 10, 30, .35); z-index: -1; }
-.cv-2d-hint { position: absolute; z-index: 2; left: 50%; bottom: 6px; transform: translateX(-50%); white-space: nowrap; font: 500 11px/14px var(--f-sys); color: var(--g-ink-faint); text-shadow: var(--glass-text-shadow); pointer-events: none; }
+.cv-2d-hint { position: absolute; z-index: 2; left: 50%; bottom: 6px; transform: translateX(-50%); white-space: nowrap; font: 500 11px/14px var(--f-sys); color: var(--g-ink-soft); text-shadow: var(--glass-text-shadow); pointer-events: none; }
 .cv-2d { bottom: 20%; }
 #style-view .cv-2d { bottom: 24%; }
 #style-view .cv-2d-hint { bottom: 8px; font-size: 11px; }
@@ -2056,7 +2070,7 @@ body.scenery .frame > :not(canvas) { visibility: hidden !important; }
 /* a game's final scores (hpkit.js resultsHtml): the shared glass card, its rows left to right */
 .hp-results.glass-dialog { width: auto; text-align: left; gap: 0; color: var(--g-ink); }
 .hp-results.glass-dialog .hp-res-sub, .hp-results.glass-dialog .hp-res-rank, .hp-results.glass-dialog .hp-res-note, .hp-results.glass-dialog .hp-left { color: var(--g-ink-soft); }
-.hp-results.glass-dialog .hp-res-row.win .hp-res-score { color: var(--color-accent); }
+.hp-results.glass-dialog .hp-res-row.win .hp-res-score { color: var(--g-gold); }
 /* the votes sheet covers the room's own cards (the invite card alone in the room) */
 #party-panel.pt-lobby .pt-picker { z-index: 40; }
 /* the lobby's way out (top left) and the host's menu (top right) */
@@ -2100,15 +2114,23 @@ body.world-arrive #label-layer, body.world-arrive #beacon-layer, body.world-arri
   /* text: #f2f4ff at night, #0F1A3A by day; its shadow: dark at night, a soft white glow by day */
   --g-ink-rgb: calc(242 - 227 * var(--ink-t)), calc(244 - 218 * var(--ink-t)), calc(255 - 197 * var(--ink-t));
   --g-ink: rgb(var(--g-ink-rgb));
-  --g-ink-soft: rgba(var(--g-ink-rgb), .74);
-  --g-ink-faint: rgba(var(--g-ink-rgb), .5);
+  /* (softer text: a touch firmer by day, when the light glass lets more of the map through) */
+  --g-ink-soft: rgba(var(--g-ink-rgb), calc(.78 + .12 * var(--ink-t)));
+  --g-ink-faint: rgba(var(--g-ink-rgb), calc(.6 + .18 * var(--ink-t)));
+  /* gold as text or a line on the glass: the accent at night; by day a deep amber (the accent on light glass is ~1.5:1) */
+  --g-gold: color-mix(in srgb, var(--color-accent), color-mix(in srgb, var(--color-accent-deep), #000 62%) calc(var(--ink-t) * 100%));
   --g-shade-rgb: calc(3 + 252 * var(--ink-t)), calc(6 + 249 * var(--ink-t)), calc(20 + 235 * var(--ink-t));
   --g-text-shadow: 0 1px 2px rgba(var(--g-shade-rgb), calc(.6 - .1 * var(--ink-t))), 0 0 14px rgba(var(--g-shade-rgb), calc(.4 + .15 * var(--ink-t)));
   --glass-text-shadow: var(--g-text-shadow);
-  /* glass fills: navy at night, white frost with a faint blue by day */
-  --glass-tint: rgba(calc(15 + 221 * var(--day)), calc(26 + 217 * var(--day)), calc(58 + 197 * var(--day)), calc(.22 + .1 * var(--day)));
-  --glass-tint-lite: rgba(calc(15 + 217 * var(--day)), calc(26 + 214 * var(--day)), calc(58 + 194 * var(--day)), calc(.86 + .04 * var(--day)));
-  --glass-tint-deep: rgba(calc(15 + 221 * var(--day)), calc(26 + 217 * var(--day)), calc(58 + 197 * var(--day)), calc(.42 + .2 * var(--day)));
+  /* glass fills: navy at night, white frost with a faint blue by day. They
+     lighten mostly where the text flips (--glass-t: 30% with --day, 70%
+     with --ink-t), so at sunset the glass is still dark enough for its
+     light text (it was a mid grey there, white text at ~3:1 over a lit
+     map) and by day light enough for navy; test/glass_contrast.mjs */
+  --glass-t: calc(.3 * var(--day) + .7 * var(--ink-t));
+  --glass-tint: rgba(calc(15 + 221 * var(--glass-t)), calc(26 + 217 * var(--glass-t)), calc(58 + 197 * var(--glass-t)), calc(.22 + .2 * var(--glass-t)));
+  --glass-tint-lite: rgba(calc(15 + 217 * var(--glass-t)), calc(26 + 214 * var(--glass-t)), calc(58 + 194 * var(--glass-t)), calc(.86 + .04 * var(--glass-t)));
+  --glass-tint-deep: rgba(calc(15 + 221 * var(--glass-t)), calc(26 + 217 * var(--glass-t)), calc(58 + 197 * var(--glass-t)), calc(.42 + .3 * var(--glass-t)));
   --g-bg: rgba(calc(18 + 218 * var(--day)), calc(24 + 219 * var(--day)), calc(52 + 203 * var(--day)), calc(.56 + .08 * var(--day)));
   --g-bg-strong: rgba(calc(14 + 226 * var(--day)), calc(20 + 225 * var(--day)), calc(46 + 209 * var(--day)), calc(.8 + .06 * var(--day)));
   --g-line: rgba(255, 255, 255, calc(.16 + .44 * var(--day)));
