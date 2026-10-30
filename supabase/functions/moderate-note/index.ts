@@ -101,7 +101,10 @@ async function check(id: string): Promise<string> {
 }
 
 Deno.serve(async req => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  // (the preflight: allow whatever headers this supabase-js asks for; newer
+  // versions send more than the four listed below, and a refused preflight
+  // means the picture is never checked)
+  if (req.method === "OPTIONS") return new Response(null, { headers: { ...cors, "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": req.headers.get("access-control-request-headers") ?? cors["access-control-allow-headers"] } });
   try {
     const body = await req.json().catch(() => ({}));
     if (body?.sweep) {

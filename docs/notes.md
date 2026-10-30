@@ -35,16 +35,22 @@ the end of `web/backend.js`; strings in their own block at the end of
   test checks they agree on 400 points in 5 cities).
 - **Public places only:** never on a house or an apartment block. Decided on
   the phone from the map data round the snapped cell: Itaewon's hand-made
-  `buildings.json` (`cls: "res"`), the procedural city's chunks (baked
-  archive, else the worldwide OpenMapTiles tiles: building kinds `h` house,
-  `a` apartments) and a residential land-use area if the data has one. The
+  `buildings.json` (`cls: "res"`), the procedural city's chunks, read in
+  the order the map draws them (`citygen.worker.js`): the areas' archive
+  `cities.pmtiles`, then a region archive (`tiles/regions.json`: Seoul and
+  the capital area, Busan), else the worldwide OpenMapTiles tiles (building
+  kinds `h` house, `a` apartments; a footprint the data gives no type has
+  one guessed from its size and shape, as the map does) and a residential
+  land-use area if the data has one. The
   cell's centre and 8 points 7 m round it are each "home" or not: refused
   if the centre is, or 5 of the 9 are (a yard between apartment towers), or
   the phone itself stands inside a home. Streets, parks, plazas, shops,
   offices and civic buildings are fine. Refused: "Notes can't be left here"
   / "여기에는 쪽지를 남길 수 없어요". The server can't check this (it has no
-  map data); it's the phone's rule. If the map data can't be read at all,
-  the phone says so and doesn't post.
+  map data); it's the phone's rule. If the map data round the cell can't
+  be read (offline, the worldwide tiles unreachable), the phone says so
+  ("Couldn't check this spot") and doesn't post: it never takes missing
+  data for an empty street.
 - **5 a day** per player (UTC day), in SQL.
 - **The text filter** (`notefilter.js`), as you type and again on the
   server: phone numbers (9+ digits in a run), emails (also "(at)/(dot)"),
@@ -151,19 +157,46 @@ inside 013's 300 a day, only if verified and not banned (`_note_pay`, a
 
 ## Set up (the owner)
 
+Check first: `python3 scripts/check_notes_setup.py` (read-only; the
+Management API token in `.env`, like `apply_migration.py`). It runs
+`scripts/notes_setup_check.sql` (tables, functions, grants, whether 020 is
+in, the buckets, the upload policies, pictures stuck pending) and looks at
+the `moderate-note` function and its secrets (names only), then prints each
+missing piece with the command that fixes it.
+
 1. Apply the migration: `python3 scripts/apply_migration.py supabase/migrations/019_notes.sql`
    (after 013 and 017 / 018). It creates the two buckets and their policies
-   when Supabase Storage is there.
-2. Deploy the image check: `supabase functions deploy moderate-note`, and set
-   a key: `supabase secrets set OPENAI_API_KEY=sk-…` (omni-moderation), or
-   `supabase secrets set MODERATION_PROVIDER=google GOOGLE_VISION_KEY=…`
-   (Cloud Vision SafeSearch). Without one, pictures stay pending.
-3. Optional safety net: a cron (Supabase scheduled function or pg_cron +
+   when Supabase Storage is there; a role that may not create them gets a
+   warning (not a failed migration), and then they're made by hand:
+   Storage → New bucket `note-uploads` (private, 2 MB, `image/jpeg`) and
+   `notes` (public, 2 MB, `image/jpeg`); Storage → Policies → `note-uploads`:
+   INSERT and SELECT for `authenticated` with
+   `(storage.foldername(name))[1] = auth.uid()::text`.
+2. Apply `020_notes_no_verify.sql` after 019: leaving a note needs no
+   verified phone (only coins from notes do). Reading needs nothing.
+   Re-applying 019 later puts the phone check back: apply 020 again after it.
+3. Deploy the image check: `supabase functions deploy moderate-note --project-ref ghhenktihhjqnhtmacin`,
+   and set a key: `supabase secrets set OPENAI_API_KEY=sk-… --project-ref ghhenktihhjqnhtmacin`
+   (omni-moderation), or `supabase secrets set MODERATION_PROVIDER=google GOOGLE_VISION_KEY=…`
+   (Cloud Vision SafeSearch). Without one, pictures stay pending (only their
+   author sees them). If the app's console says `moderate-note: 401`, the
+   project's JWT signing keys aren't ones the function gateway checks:
+   deploy it with `--no-verify-jwt` (it only ever moderates a pending note
+   by id, with the service role, so a caller can't do more than ask for the
+   check to run).
+4. Optional safety net: a cron (Supabase scheduled function or pg_cron +
    pg_net) POSTing `{ "sweep": true }` to the function every few minutes
    re-checks anything left pending.
-4. Apply `020_notes_no_verify.sql` after 019: leaving a note needs no
-   verified phone (only coins from notes do). Reading needs nothing.
 5. Add yourself to `admins` to review reports.
+6. Check again: `python3 scripts/check_notes_setup.py` should say "notes: all
+   set up".
+
+What the app does while the server isn't set up: the 📝 button says "Notes
+aren't switched on yet" (`notes.notReady`) instead of opening the composer
+(it asks the server again on each tap); a photo or meme to a project without
+the buckets says "Photos and memes aren't switched on yet" (a text note still
+works); and the console names the missing piece (`[notes] server not set up:
+…`, `[notes] moderate-note: …`).
 
 ## Testing
 
@@ -173,12 +206,20 @@ inside 013's 300 a day, only if verified and not banned (`_note_pay`, a
 - `node test/notes_sql.mjs`: 019 in PGlite: snapping (JS = SQL), the 5 a day,
   80 m in / out, one vote per player, lifespan + landmark + spots, trust
   weights, reports, bans, pending images, the text filter (JS = SQL), the
-  coin cap, the author never returned, no client access.
+  coin cap, the author never returned, no client access; with a Storage
+  stand-in, the buckets, the upload policies (RLS on `<uid>/<uuid>.jpg`), 019's
+  Storage part as a role that may not touch Storage, and the setup self-check.
 - `node test/notes_rec.mjs <dir>`: the real app page offline (Supabase faked,
   `test/stubs/notes_stub.js`; its fake moderator passes a picture after
-  2.5 s unless it's mostly magenta): a text note, a photo (with EXIF GPS put
-  in by the test: the uploaded bytes are checked for APP1 / Exif / GPS) and
-  a meme; markers from far away; walking closer until the ring shows and
-  opening one; a second player upvoting, agreeing, the view count; a report
-  and the note gone; "Notes can't be left here" on a residential spot; "Get
-  closer to read this". `FFMPEG=…` for an mp4, else frame strips.
+  2.5 s unless it's mostly magenta), two guests, every tap a real pointer
+  tap checked for anything covering it: a text note, a photo (with EXIF GPS
+  put in by the test: the uploaded bytes are checked for APP1 / Exif / GPS)
+  and a meme; markers from far away; walking closer until the ring shows;
+  the second player opening the text, the photo and the meme (drawn),
+  upvoting, agreeing, leaving a note of his own (no verification), the view
+  count; a report and the note gone; "Notes can't be left here" on a
+  residential spot; "Get closer to read this"; then a project that isn't set
+  up (`?notesSetup=none` / `no-buckets`, the stub's production states:
+  also `no-020`, `no-function`, `no-key`): "Notes aren't switched on yet" on
+  the tap, "Photos and memes aren't switched on yet" that stays on screen.
+  `FFMPEG=…` for an mp4, else frame strips.

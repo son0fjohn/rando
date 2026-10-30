@@ -2196,7 +2196,7 @@ body.notes-on #pubchat-row { padding-right: 50px; }
 .note-sheet .ns-sub { margin: -4px 0 0; font: 500 13.5px/1.4 var(--f-sys); color: var(--g-ink-soft); }
 .note-sheet .ns-seg { align-self: flex-start; }
 .note-sheet .ns-pane { display: flex; flex-direction: column; gap: 8px; }
-.note-sheet .ns-pane[hidden], .note-sheet [hidden] { display: none; }
+.note-sheet .ns-pane[hidden], .note-sheet [hidden] { display: none !important; }   /* (over .ns-meme / .ns-preview / .glass-field's own display) */
 .note-sheet .ns-text { min-height: 100px; padding: 12px 14px; resize: none; font: 600 17px/1.35 var(--f-sys); }
 .note-sheet .ns-pick { display: flex; gap: 8px; }
 .note-sheet .ns-preview { display: block; width: 100%; height: auto; max-height: 38vh; object-fit: contain; border-radius: 14px; background: rgba(0, 0, 0, .3); }
