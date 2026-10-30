@@ -39,7 +39,7 @@ import { rooms } from "./rooms.js";
 import { PARTY_CATALOG, gameById, gameTitle } from "./partycatalog.js";
 import { FLAGS, PARTY, DIARY } from "./hpconfig.js";
 import { esc, trash } from "./hpkit.js";
-import { makeBots, shareText } from "./gamekit.js";
+import { makeBots, shareText, ui as gameUi } from "./gamekit.js";
 import { LobbyRoom } from "./hplobby.js";
 import { openCard, close as closeCard } from "./profilecard.js";
 import { partyBeacons } from "./partybeacon.js";
@@ -152,6 +152,18 @@ export const party = {
     $("party-btn")?.addEventListener("click", () => this.togglePanel());
     // one lobby at a time: joining a room/raid drops the party and vice versa
     rooms.onBeforeJoin = () => this.leave();
+    // the phone's / browser's Back (Android back, iOS swipe-back, the
+    // browser's button) in a party is the lobby's own back: "Leave the
+    // party?", never off the page. A party keeps one history entry of its
+    // own (_armBack); Back pops it, so it goes straight back on.
+    addEventListener("popstate", () => {
+      if (this._popOwn) { this._popOwn = false; return; }
+      const c = this.current;
+      if (!c) return;
+      this._armBack(true);
+      if (c.launched || this._exiting || $("party-panel").hidden) return;     // (mid-game: a game has its own ways out)
+      sfx.back(); this.confirmLeave();
+    });
     this.render();
     // ?party=CODE — join straight from a shared link
     const code = params.get("party");
@@ -186,6 +198,7 @@ export const party = {
     this._announce();
     sfx.open(); buzz([30, 40, 30]);
     this.render();
+    this._armBack();
     return true;
   },
 
@@ -216,6 +229,7 @@ export const party = {
     this.current.room.send("hello", {});       // nudge the host to send meta + queue
     sfx.ping();
     this.render();
+    this._armBack();
     this.hooks.joined?.(this.current);
     return true;
   },
@@ -257,16 +271,36 @@ export const party = {
     const drop = async () => {
       const p = $("party-panel");
       p.hidden = true; p.classList.remove("pt-behind");      // (before leave() redraws it as the host menu)
-      this.pickerOpen = false;
+      // nothing of the party left behind: a game still on this phone, the
+      // host's controls, the sheets, the host menu's open state
+      if (c.launched) { try { c.ctx?.hostGame?.stop(); } catch {} gameUi.hide(); }
+      clearInterval(c.watch);
+      this._hostCtl(null);
+      document.body.classList.remove("hp-setup-wait", "hp-on-map", "hp-room3d");
+      this.pickerOpen = false; this.settingsOpen = false; this.chatOpen = false;
       if (this.current === c) await this.leave();
       this.err("");
+      this._view = null; this.render();                      // (the host menu, fresh, for the next time it's opened)
       this._syncPause();
+      this._disarmBack();
     };
     try {
       if (this.hooks.left) await this.hooks.left({ why, code: c.meta.code, drop });
       else await drop();
     } catch (e) { console.warn("[party] exit", e); await drop(); }
     finally { this._exiting = false; }
+  },
+
+  // the party's own history entry (Back = the lobby's back, above); gone
+  // with the party, so Back on the map is the page's own again
+  _armBack(force = false) {
+    if (!this.current || (!force && history.state?.randoParty)) return;
+    try { history.pushState({ randoParty: this.current.meta.code }, ""); } catch {}
+  },
+  _disarmBack() {
+    if (!history.state?.randoParty) return;
+    this._popOwn = true;
+    try { history.back(); } catch { this._popOwn = false; }
   },
 
   async leave() {

@@ -67,7 +67,10 @@ always opens at night now (`index.html` sets `__RANDO_FIRST_NIGHT` unless
   (`party.exit` → `onboard.toWorld`): the room fades to navy, the camera
   pulls out of the party's building onto you (`scenery.pullOut`, the dive
   backwards), the bar slides in. Nothing over the map: no host menu, no
-  start screen, no Home, no sheet or toast (`test/leave_rec.mjs`).
+  start screen, no Home, no sheet or toast (`test/leave_rec.mjs`). The
+  phone's / browser's Back in the lobby (Android back, iOS swipe-back) is
+  the lobby's own back: "Leave the party?", then the same landing; a party
+  keeps one history entry of its own, gone when you leave.
 
 ## Path A: an invite link (the main path)
 

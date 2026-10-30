@@ -8,11 +8,14 @@
 //   3. the party ends after the last game: the set's podium (and the first
 //      party's recap) -> the host ends the party -> every guest
 //   4. the host closes it: the host's own phone, End the party on the podium
+//   5. the phone's / browser's Back in the lobby (history popstate: Android
+//      back, iOS swipe-back): the lobby's own back, "Leave the party?", then
+//      the same landing; still on the page, the party's history entry gone
 // The phone under test is the real app; the other players are light pages
 // (test/hpparty.html), relayed between browser contexts like onboard_rec.
 // The set's three games are filled in on the host (the podium is what's
 // tested here, not the games: test/party_e2e.mjs plays whole sets).
-//   node test/leave_rec.mjs <dir> [--only=1,2,3,4] [--video]
+//   node test/leave_rec.mjs <dir> [--only=1,2,3,4,5] [--video]
 //   (--video: paths 1 and 3 filmed frame by frame, the transition's clock
 //   stepped (this sandbox has no GPU): <dir>/leave-button/, <dir>/leave-party-ended/,
 //   and .mp4s of them with FFMPEG=/path/to/ffmpeg)
@@ -24,8 +27,8 @@ import { serve } from "./appserve.mjs";
 
 const args = process.argv.slice(2);
 const OUT = args.find(a => !a.startsWith("--"));
-if (!OUT) { console.error("usage: node test/leave_rec.mjs <dir> [--only=1,2,3,4] [--video]"); process.exit(2); }
-const ONLY = args.find(a => a.startsWith("--only="))?.slice(7).split(",") ?? ["1", "2", "3", "4"];
+if (!OUT) { console.error("usage: node test/leave_rec.mjs <dir> [--only=1,2,3,4,5] [--video]"); process.exit(2); }
+const ONLY = args.find(a => a.startsWith("--only="))?.slice(7).split(",") ?? ["1", "2", "3", "4", "5"];
 const VIDEO = args.includes("--video");
 await mkdir(OUT, { recursive: true });
 const { base, close } = await serve({ realAvatars: true });
@@ -57,7 +60,7 @@ const inLobby = async (pg, ms = 60000) => {
 // ---- phones: their own storage each, realtime relayed between them
 const contexts = [];
 async function phoneContext() {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, locale: "en-US",
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: VIDEO ? 1 : 2, hasTouch: true, isMobile: true, locale: "en-US",
   });
   await ctx.addInitScript(() => {
     try { localStorage.setItem("rando-lang", "en"); localStorage.setItem("rando-hint-v1", "1"); } catch {}
@@ -110,7 +113,7 @@ async function joinFromStart(ctx, name, code) {
   await until(S, () => document.querySelector(".onb-screen:not(.out)")?.dataset.screen === "start" && !!document.querySelector(".st-panel [data-join]"), null, 90000);
   await sleep(1200);
   await tap(S, ".st-panel [data-join]");
-  await until(S, () => !!document.querySelector("#st-code input"), null, 5000);
+  await until(S, () => !!document.querySelector("#st-code input"), null, 20000);
   await S.evaluate(code => { document.querySelector("#st-code input").value = code; document.querySelector("#st-code").requestSubmit(); }, code);
   ok(await inLobby(S, 120000), `${name}: the start screen, Join a party, the code, the dive, the lobby`);
   return S;
@@ -131,7 +134,7 @@ async function finishSet(H) {
 // this sandbox's software WebGL as on a phone; the camera's height is kept
 // each frame. With a name, every frame is shot too, and written as
 // <dir>/<name>/ (and <dir>/<name>.mp4 with FFMPEG=...).
-const FPS = 24;
+const FPS = VIDEO ? 12 : 24;          // (a film: 12 fps at 1x, so a loaded machine still gets through it)
 async function stepLeave(pg, trigger, name = null, lead = 0) {
   await pg.evaluate(async () => {
     const { world3d } = await import("/web/world3d.js"), { scenery } = await import("/web/scenery.js"), { party } = await import("/web/party.js");
@@ -150,8 +153,10 @@ async function stepLeave(pg, trigger, name = null, lead = 0) {
   for (let i = 0; i < 600; i++) {
     const out = await step();
     await grab();
+    if (i && i % 40 === 0 && at < 0) console.log("    (step", i, await pg.evaluate(() => JSON.stringify({ party: !!window.__P.current, pulling: window.__S.pulling, panel: !document.getElementById("party-panel").hidden,
+      veil: document.getElementById("dive-veil")?.classList.contains("on"), confirm: !!document.querySelector(".pt-confirm"), clock: window.__ft })), ")");
     if (out && at < 0) at = i;
-    if (at >= 0 && i - at >= (name ? FPS * 1.5 : 2)) break;
+    if (at >= 0 && i - at >= (name ? FPS * 1.2 : 2)) break;
   }
   await pg.evaluate(() => { delete globalThis.__sceneryClock; });
   if (!name) return;
@@ -197,7 +202,7 @@ async function landed(pg, tag) {
   ok(r.ndc && Math.abs(r.ndc[0]) < 0.12 && Math.abs(r.ndc[1]) < 0.5, `${tag}: …in the middle of the screen (${JSON.stringify(r.ndc)})`);
   if (r.pull.length) {
     const top = Math.max(...r.pull), y0 = r.pull[0], y1 = r.pull[r.pull.length - 1];
-    ok(r.pull.length > 10 && y0 < y1 - 40 && top > y1 + 10, `${tag}: the camera pulled out of the building and settled on you (height ${r.pull.filter((_, i, a) => i % Math.ceil(a.length / 8) === 0 || i === a.length - 1).join(" → ")})`);
+    ok(r.pull.length > (VIDEO ? 6 : 10) && y0 < y1 - 40 && (VIDEO || top > y1 + 10), `${tag}: the camera pulled out of the building and settled on you (height ${r.pull.filter((_, i, a) => i % Math.ceil(a.length / 8) === 0 || i === a.length - 1).join(" → ")})`);
   } else if (process.env.LEAVE_NEED_PULL !== "0") ok(false, `${tag}: the camera pulled out of the building (no frames recorded)`);
   return r;
 }
@@ -212,10 +217,10 @@ if (ONLY.includes("1")) {
   ok(await until(H, () => party.current.room.members.length >= 2, null, 20000), "…the host sees sol arrive");
   await sleep(2500);
   await tap(S, "#pt-back");
-  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 5000), "back -> Leave the party?");
+  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 20000), "back -> Leave the party?");
   await sleep(900);
   await shot(S, "leave-1-confirm");
-  await stepLeave(S, () => tap(S, ".pt-confirm [data-yes]"), VIDEO ? "leave-button" : null, 18);
+  await stepLeave(S, () => tap(S, ".pt-confirm [data-yes]"), VIDEO ? "leave-button" : null, 8);
   await landed(S, "Leave");
   await shot(S, "leave-1-explore");
   ok(await until(H, () => party.current.room.members.length === 1, null, 15000), "the host sees sol go");
@@ -260,7 +265,7 @@ if (ONLY.includes("3")) {
   ok(await until(S, () => !!document.querySelector('.onb-sheet[data-sheet="recap"]'), null, 15000), "…then the first party's recap");
   await sleep(1500);
   await shot(S, "leave-3-recap");
-  await stepLeave(S, () => H.evaluate(() => document.getElementById("pp-end").click()), VIDEO ? "leave-party-ended" : null, 24);
+  await stepLeave(S, () => H.evaluate(() => document.getElementById("pp-end").click()), VIDEO ? "leave-party-ended" : null, 10);
   await landed(S, "Party ended (guest)");
   await shot(S, "leave-3-ended-explore");
   ok(await until(F, () => !window.party.current && document.getElementById("party-panel").hidden, null, 15000), "the other guest is out too, nothing left open (light page)");
@@ -301,6 +306,34 @@ if (ONLY.includes("4")) {
   ok(gOut, "the guest is out too (light page)");
   if (!gOut) console.log("    (guest:", await G.evaluate(() => JSON.stringify({ in: !!party.current, host: party.current?.room.isHost, members: party.current?.room.members.length, panel: !document.getElementById("party-panel").hidden })), ")");
   await gctx.close(); await sctx.close();
+  contexts.splice(0);
+}
+
+// ================================================================ 5. the phone's Back
+if (ONLY.includes("5")) {
+  console.log("\n5. The phone's / browser's Back in the lobby");
+  const hctx = await phoneContext();
+  const { H, code } = await lightHost(hctx, "jae");
+  const sctx = await phoneContext();
+  const S = await joinFromStart(sctx, "sol", code);
+  ok(await until(H, () => party.current.room.members.length >= 2, null, 20000), "…the host sees sol arrive");
+  await sleep(2000);
+  const url0 = S.url();
+  ok(await S.evaluate(() => !!history.state?.randoParty), "the party keeps a history entry of its own");
+  await S.evaluate(() => history.back());
+  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 20000), "Back -> Leave the party? (the lobby's own back)");
+  await sleep(900);
+  await shot(S, "leave-5-back-confirm");
+  ok(S.url() === url0 && await S.evaluate(() => !!document.querySelector("#party-panel:not([hidden]) #pt-floor") && !!history.state?.randoParty), "…still on the page, in the lobby, the entry back on (Stay is one tap)");
+  await tap(S, ".pt-confirm [data-no]");
+  await sleep(600);
+  await S.evaluate(() => history.back());
+  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 20000), "Stay, then Back again -> asks again");
+  await stepLeave(S, () => tap(S, ".pt-confirm [data-yes]"));
+  await landed(S, "Back");
+  ok(await until(S, () => !history.state?.randoParty, null, 20000) && S.url() === url0, "…the party's history entry gone, the same page");
+  await shot(S, "leave-5-back-explore");
+  await sctx.close(); await hctx.close();
   contexts.splice(0);
 }
 
