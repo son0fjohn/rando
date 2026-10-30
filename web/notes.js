@@ -402,32 +402,75 @@ function confirmReport(n, at) {
 
 // ---------------------------------------------------------------- public places only (the phone's own map data)
 const ITAEWON = { lat: 37.5346, lng: 126.9946 }, U_PER_M = 0.55;
-let itaewonB = null, pm = null, store = null, omtTpl = null;
+let itaewonB = null, archives = null, omtStore = null, omtTpl = null;
 const omtCache = new Map();
 function cityUrl() { return Q().get("tiles") || "tiles/cities.pmtiles"; }
-async function chunk(x, y) {
-  pm ??= new PMTiles(new URL(cityUrl(), document.baseURI).href);
-  store ??= tileStore(cityUrl());
+// The archives the map's chunk worker reads, in its order (citygen.worker.js
+// payload()): the areas' archive, then the region archives of regions.json
+// (Seoul and the capital area, Busan: what the map draws there), then the
+// worldwide tiles. The device-cache keys are the worker's own, so a chunk
+// the map has shown is read from the phone.
+const missingArchive = e => /pmtiles 404|not a PMTiles/.test(e?.message || "");
+function cityArchives() {
+  return archives ??= (async () => {
+    const base = new URL(cityUrl(), document.baseURI);
+    const main = { src: new PMTiles(base.href), store: null };
+    let ok = true;
+    try { main.store = tileStore(`${cityUrl()}@${(await main.src.header()).dataLen}`); }
+    catch (e) { main.store = tileStore(cityUrl()); if (!missingArchive(e)) ok = false; }
+    let regions = [];
+    if (Q().get("regions") !== "0") {
+      try {
+        const r = await fetch(new URL("regions.json", base));
+        if (r.ok) regions = ((await r.json()).regions ?? []).map(g => ({ ...g, src: new PMTiles(new URL(g.file, base).href), store: tileStore(`${g.file}@${g.bytes ?? 0}`) }));
+        else if (r.status !== 404) ok = false;
+      } catch { ok = false; }
+    }
+    if (!ok) setTimeout(() => { archives = null; }, 0);     // (unreachable just now: asked again next time)
+    return { main, regions };
+  })();
+}
+// one chunk out of one archive: the device cache first. null: the archive has no such chunk; throws when it can't be reached
+async function fromArchive(a, x, y) {
   const k = `16/${x}/${y}`;
-  let bytes = await store.get(k), failed = false;
-  if (!bytes) { bytes = await pm.tile(16, x, y).catch(() => { failed = true; return null; }); if (bytes) store.put(k, bytes); }
-  let p = bytes ? JSON.parse(new TextDecoder().decode(bytes)) : null;
-  if (!p || p.cut) {
-    const w = await omtChunk(x, y).catch(() => undefined);
-    if (w === undefined && !p) return failed ? undefined : null;
-    if (w) p = p ? { ...p, b: [...(p.b ?? []), ...(w.b ?? [])], a: [...(p.a ?? []), ...(w.a ?? [])] } : w;
+  let bytes = await a.store.get(k);
+  if (!bytes) { bytes = await a.src.tile(16, x, y); if (bytes) a.store.put(k, bytes); }
+  return bytes ? JSON.parse(new TextDecoder().decode(bytes)) : null;
+}
+const joinChunks = (p, w) => ({ ...p, b: [...(p.b ?? []), ...(w.b ?? [])], a: [...(p.a ?? []), ...(w.a ?? [])] });
+// the z16 chunk (x, y): its payload, null when the data has nothing there, or
+// undefined when (part of) it couldn't be read: then the spot can't be
+// checked, and missing data is never taken for an empty street
+export async function chunk(x, y) {
+  const { main, regions } = await cityArchives();
+  const read = a => fromArchive(a, x, y).catch(e => missingArchive(e) ? null : undefined);
+  let p = await read(main);
+  if (p === undefined) p = null;
+  let whole = !!p && !p.cut;
+  if (!whole) {
+    // a region archive whose box holds the chunk's middle (whole cities, so it completes a cut chunk)
+    const [lng, lat] = tileToLngLat(16, x, y, 2048, 2048);
+    for (const g of regions.filter(g => lng > g.bbox[0] && lng < g.bbox[2] && lat > g.bbox[1] && lat < g.bbox[3])) {
+      const r = await read(g);
+      if (r) { p = p ? joinChunks(p, r) : r; whole = true; break; }
+    }
   }
-  return p;
+  if (!whole) {
+    const w = await omtChunk(x, y).catch(() => undefined);
+    if (w !== undefined) { if (w) p = p ? joinChunks(p, w) : w; whole = true; }
+  }
+  return whole ? p : undefined;
 }
 // the worldwide OpenMapTiles fallback (cityomt.js), as the city worker reads it
 async function omtChunk(x16, y16) {
   const src = Q().get("omt") === "0" ? null : Q().get("omt") || "https://tiles.openfreemap.org/planet";
   if (!src) return null;
+  omtStore ??= tileStore("omt");
   const x14 = x16 >> 2, y14 = y16 >> 2, k = `${x14},${y14}`;
   if (!omtCache.has(k)) {
     omtCache.set(k, (async () => {
       const key = `omt/${OMT_Z}/${x14}/${y14}`;
-      let bytes = await store.get(key);
+      let bytes = await omtStore.get(key);
       if (!bytes) {
         omtTpl ??= src.includes("{z}") ? Promise.resolve(src)
           : fetch(src).then(r => r.json()).then(tj => new URL(tj.tiles[0], src).href.replace(/%7B/g, "{").replace(/%7D/g, "}"));
@@ -436,7 +479,7 @@ async function omtChunk(x16, y16) {
         if (r.status === 204 || r.status === 404) return new Map();
         if (!r.ok) throw new Error(`omt ${r.status}`);
         bytes = new Uint8Array(await r.arrayBuffer());
-        store.put(key, bytes);
+        omtStore.put(key, bytes);
       }
       if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = new Uint8Array(await gunzip(bytes));
       return omtChunks(bytes, x14, y14);
@@ -444,7 +487,8 @@ async function omtChunk(x16, y16) {
   }
   return (await omtCache.get(k)).get(`${x16},${y16}`) ?? null;
 }
-// the buildings and areas round a cell, in metres from its centre; null when no map data could be read
+// the buildings and areas round a cell, in metres from its centre; null when
+// the map data round it couldn't be read (every chunk it touches must be)
 export async function placeShapes(cell) {
   const out = { buildings: [], areas: [] };
   let any = false;
@@ -473,7 +517,7 @@ export async function placeShapes(cell) {
     for (const k of tiles) {
       const [x, y] = k.split(",").map(Number);
       const p = await chunk(x, y);
-      if (p === undefined) continue;          // couldn't be read (offline)
+      if (p === undefined) return null;       // couldn't be read (offline, the worldwide tiles unreachable): can't check
       any = true;
       if (!p) continue;                       // read, and nothing there
       const ring = q => { const r = []; for (let i = 0; i < q.length; i += 2) { const [lng, lat] = tileToLngLat(16, x, y, q[i], q[i + 1]); r.push(toLocal(cell, lat, lng)); } return r; };
