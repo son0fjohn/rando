@@ -111,6 +111,8 @@ export async function chat(T) {
   await setVisible(A, false);
   const hush = `[mpt ${T.tag}] hidden ${A.name}`;
   await say(A, hush);
+  T.check(await A.until(() => !!document.querySelector("#pubchat-ask [data-no]"), null, 15000), `${A.name}, hidden, is asked to show themselves first`);
+  await A.tap("#pubchat-ask [data-no]");
   await sleep(4000);
   if (rest[0]) T.check(!(await rest[0].r((R, t) => R.chat.lines().some(l => l.text.includes(t)), hush)), "a hidden player's line doesn't reach the plaza");
   for (const ph of P) await setVisible(ph, false).catch(() => {});
@@ -140,7 +142,7 @@ export async function games(T) {
   // 2 players: every game needs 3, so the host's phone adds one bot (?bots=1, the app's own dev seat)
   if (T.n < 3) { T.w.hostQuery = { bots: 1 }; T.note("2 players: + 1 bot on the host's phone (?bots=1): every game needs 3"); }
   await formParty(T.w, P, P.map(p => handle(T, p)), T.log);
-  T.need(!(await allSeeAll(P)).length, "everyone is in the lobby");
+  { const bad = await allSeeAll(P); T.need(!bad.length, `everyone is in the lobby${bad.length ? `: ${bad.join("; ")}` : ""}`); }
   const photos = await makePhotos(P[0], `${T.w.out}/tmp/photos-${T.tag}`);
   const list = T.opts.games ?? GAMES;
   for (const g of list) {
@@ -214,31 +216,36 @@ export async function hostcontrols(T) {
   const pause = controls.find(c => /pause/.test(c));
   if (!pause) problems.push(new NotImplemented(`no pause / resume for the host mid-game (looked for #hp-pause or [data-testid=host-pause]; the host has: ${controls.join(", ")})`));
   else {
-    await H.tap(pause.startsWith("host-") ? `[data-testid="${pause}"]` : `#${pause}`);
-    const paused = await Promise.all(P.map(ph => ph.until(R => R.game()?.paused, null, 8000)));
-    T.check(paused.every(Boolean), `pause reaches every phone (${paused.filter(Boolean).length}/${P.length})`);
+    await H.tap(`#${pause}`);
+    const paused = await Promise.all(P.map(ph => ph.until(R => R.game()?.paused && !!document.getElementById("hp-paused"), null, 10000)));
+    T.check(paused.every(Boolean), `pause reaches every phone, the paused sheet on each (${paused.filter(Boolean).length}/${P.length})`);
     const l0 = await H.r(R => R.game()?.left); await sleep(4000); const l1 = await H.r(R => R.game()?.left);
-    T.check(Math.abs(l0 - l1) < 200, `the clock stands still while paused (${l0} -> ${l1})`);
-    await H.tap('[data-testid="host-resume"], #hp-resume');
-    const resumed = await Promise.all(P.map(ph => ph.until(R => R.game() && !R.game().paused, null, 8000)));
-    T.check(resumed.every(Boolean), "resume reaches every phone");
-  }
-  // ---- kicking a player mid-game
-  if (P.length >= 2) {
-    const X = P[P.length - 1];
-    const kick = await H.r((R, id) => {
-      const el = document.querySelector(`[data-testid="host-kick"][data-id="${id}"], [data-kick="${id}"]`);
-      if (el) { el.click(); return "kicked"; }
-      return null;
-    }, X.id);
-    if (!kick) problems.push(new NotImplemented(`no way for the host to remove a player mid-game (looked for [data-testid=host-kick][data-id], [data-kick]; the profile card has report / block only)`));
-    else {
-      T.check(await X.until(R => !R.party() && R.screen().map, null, 20000), `${X.name} is removed: out of the party, on the map`);
-      const gone = await Promise.all(P.filter(p => p !== X).map(ph => ph.until((R, id) => !R.party()?.members.some(m => m.id === id), X.id, 20000)));
-      T.check(gone.every(Boolean), "…gone from everyone's party");
-      const ph0 = await H.r(R => `${R.game()?.phase}:${R.game()?.ti}`);
-      T.check(await H.until((R, k) => R.game() && `${R.game().phase}:${R.game().ti}` !== k, ph0, 60000), "the game keeps going");
+    T.check(Math.abs(l0 - l1) < 200, `the clock stands still while paused (${Math.round(l0)} -> ${Math.round(l1)} ms left)`);
+    // ---- kicking a player mid-game (from the host's paused sheet)
+    const X = P.length >= 2 ? P[P.length - 1] : null;
+    if (X) {
+      const kick = await H.r((R, id) => { const el = document.querySelector(`[data-kick="${id}"]`); el?.click(); return !!el; }, X.id);
+      if (!kick) problems.push(new NotImplemented(`no way for the host to remove a player mid-game (looked for [data-kick] on the paused sheet)`));
+      else {
+        T.check(await X.until(R => !R.party() && R.screen().map, null, 40000), `${X.name} is removed: out of the party, on the map`);
+        X.closed = true;      // (out of the game: the drivers leave it be)
+        const gone = await Promise.all(P.filter(p => p !== X).map(ph => ph.until((R, id) => !R.party()?.members.some(m => m.id === id), X.id, 20000)));
+        T.check(gone.every(Boolean), "…gone from everyone's party");
+      }
     }
+    await H.tap("#hp-resume");
+    const live = P.filter(p => !p.closed);
+    const resumed = await Promise.all(live.map(ph => ph.until(R => R.game() && !R.game().paused && !document.getElementById("hp-paused"), null, 10000)));
+    T.check(resumed.every(Boolean), "resume reaches every phone");
+    // the game goes on: the turn ends (everyone left rates) and the next one starts
+    const k0 = await H.r(R => R.game()?.ti);
+    let moved = false;
+    for (let i = 0; i < 60 && !moved; i++) {
+      for (const ph of live) await ph.r(R => { const g = R.game(); if (g?.phase === "do" && g.turn?.who !== R.me().id) R.input("rate", { v: 4 }); });
+      moved = (await H.r(R => R.game()?.ti)) !== k0;
+      if (!moved) await sleep(1500);
+    }
+    T.check(moved, "the game keeps going after the resume (and without whoever was removed)");
   }
   if (problems.length) { const e = new NotImplemented(problems.map(p => p.message.replace(/^not implemented: /, "")).join(" · ")); throw e; }
 }
@@ -247,7 +254,7 @@ export async function hostcontrols(T) {
 export async function leaving(T) {
   const P = await phones(T, T.n);
   await formParty(T.w, P, P.map(p => handle(T, p)), T.log);
-  T.need(!(await allSeeAll(P)).length, "everyone is in the lobby");
+  { const bad = await allSeeAll(P); T.need(!bad.length, `everyone is in the lobby${bad.length ? `: ${bad.join("; ")}` : ""}`); }
   const X = P[P.length - 1], rest = P.filter(p => p !== X);
   await leaveParty(X);
   const out = await X.until(R => { const s = R.screen(); return !R.party() && s.map && !s.onboarding && !s.lobby; }, null, 40000);
@@ -296,9 +303,11 @@ export async function notes(T) {
     const m = await ph.until(async (R, id) => (await R.notes.markers()).find(m => m.id === id), mine.id, 25000);
     if (!m) return { marker: false };
     const pin = await ph.until((R, id) => R.notes.pin(id), mine.id, 10000);
+    await ph.page.evaluate(() => document.querySelectorAll(".glass-toast").forEach(t => t.remove()));
     if (pin) await ph.page.mouse.click(pin.x, pin.y); else await ph.tap(`.note-pin[data-id="${mine.id}"]`);
-    const card = await ph.until(() => document.querySelector(".note-open .nc-text")?.textContent ?? null, null, 12000);
-    const toast = await ph.page.evaluate(() => [...document.querySelectorAll(".glass-toast")].map(t => t.textContent).join(" | "));
+    // the card, or a toast saying why not (a toast lasts ~2.6 s: read it while it's up)
+    const got = await ph.until(() => { const c = document.querySelector(".note-open .nc-text")?.textContent; const t = [...document.querySelectorAll(".glass-toast")].map(t => t.textContent).join(" | "); return c || t ? { c: c ?? null, t } : null; }, null, 12000, 150);
+    const card = got?.c ?? null, toast = got?.t ?? "";
     await ph.tap(".note-open .nc-x");
     return { marker: true, card, toast, near: m.near };
   };
@@ -330,32 +339,31 @@ export async function disconnect(T) {
   const P = await phones(T, T.n);
   if (T.n < 3) { T.w.hostQuery = { bots: 1 }; T.note("2 players: + 1 bot on the host's phone"); }
   await formParty(T.w, P, P.map(p => handle(T, p)), T.log);
-  T.need(!(await allSeeAll(P)).length, "everyone is in the lobby");
+  { const bad = await allSeeAll(P); T.need(!bad.length, `everyone is in the lobby${bad.length ? `: ${bad.join("; ")}` : ""}`); }
   const H = P[0];
-  let dropped = null, droppedTi = null, skippedAfter = null, nextAfter = null;
+  // a guest's network dies (no goodbye) just before a turn they have to rate:
+  // everyone else rates at once, so the turn can only end by giving up on them
+  const X = P[P.length - 1];
+  let droppedTi = null, overAfter = null, nextAfter = null;
   const seen = await playGame("sidequest", P, {
     log: T.log, maxMs: 14 * 60000,
     onTick: async (hs) => {
       const t = hs.turn;
-      // the first turn that's a guest's own (not the host's, not a bot's): their connection drops mid-quest
-      if (!dropped && hs.phase === "do" && t) {
-        const X = P.find(p => p.id === t.who && p !== H);
-        if (X) { dropped = X; droppedTi = hs.ti; await T.w.drop(X); T.log(`${X.name} drops (turn ${hs.ti}, mid-quest)`); }
+      if (!X.dropped && ["spin", "quest"].includes(hs.phase) && t && t.who !== X.id) {
+        droppedTi = hs.ti; await T.w.drop(X); T.log(`${X.name} drops (turn ${hs.ti}, ${hs.phase}; ${t.who === H.id ? H.name : t.who} is up)`);
       }
-      if (dropped && skippedAfter === null && hs.ti === droppedTi && (hs.turn?.skipped || hs.phase === "result")) {
-        skippedAfter = (Date.now() - dropped.droppedAt) / 1000;
-        T.log(`turn ${droppedTi} over ${skippedAfter.toFixed(1)} s after the drop (skipped: ${!!hs.turn?.skipped}, status ${hs.turn?.status})`);
+      if (X.dropped && overAfter === null && hs.ti === droppedTi && hs.phase === "result") {
+        overAfter = (Date.now() - X.droppedAt) / 1000;
+        T.log(`turn ${droppedTi} over ${overAfter.toFixed(1)} s after the drop (status ${hs.turn?.status}, ${hs.turn?.n} ratings)`);
       }
-      if (dropped && nextAfter === null && hs.ti > droppedTi) nextAfter = (Date.now() - dropped.droppedAt) / 1000;
+      if (X.dropped && nextAfter === null && hs.ti > droppedTi) nextAfter = (Date.now() - X.droppedAt) / 1000;
     },
   });
-  T.need(!!dropped, "a guest had a turn to drop out of");
+  T.need(X.dropped, `${X.name} dropped out of a turn someone else was on`);
   const want = T.opts.skipS ?? 30;
-  T.check(skippedAfter !== null && skippedAfter <= want + 15, `the dropped player's turn is skipped within ~${want} s (${skippedAfter === null ? "never" : skippedAfter.toFixed(1) + " s"})`);
+  T.check(overAfter !== null && overAfter <= want + 15, `the game stops waiting for ${X.name} within ~${want} s (${overAfter === null ? "never" : overAfter.toFixed(1) + " s"}; the server notices a dead socket only after ${Math.round(T.w.presenceTimeoutMs / 1000)} s here)`);
   T.check(nextAfter !== null, `the game moves on to the next turn (${nextAfter === null ? "never" : nextAfter.toFixed(1) + " s after the drop"})`);
   T.check(seen.ended && seen.endedEverywhere, `the game still ends for everyone left (${seen.ended ? "ended" : "didn't end"}${seen.notBack?.length ? `; stuck: ${seen.notBack.join(", ")}` : ""})`);
-  const pts = seen.last?.players?.[dropped.id];
-  T.log(`dropped player's seat at the end: gone=${pts?.gone} score=${pts?.score}`);
 }
 
 export const TESTS = { presence, chat, hosting, games, hostcontrols, leaving, notes, disconnect };

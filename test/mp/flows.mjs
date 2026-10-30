@@ -33,9 +33,13 @@ export async function boot(ph, url = null) {
 export async function setupCard(ph, handle) {
   const up = await ph.until(() => !!document.querySelector(".st-panel [data-setup] #su-name"), null, 60000);
   if (!up) return false;
-  await ph.page.evaluate(() => { const i = document.querySelector("#su-name"); i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true })); i.focus(); });
-  await ph.page.keyboard.type(handle, { delay: 15 });
-  await sleep(300);
+  // (the card can redraw while it settles, which resets a half-typed field: type, then check it took)
+  for (let i = 0; i < 5; i++) {
+    await ph.page.evaluate(() => { const i = document.querySelector("#su-name"); if (!i) return; i.focus(); i.select(); });
+    await ph.page.keyboard.type(handle, { delay: 15 });
+    await sleep(600);
+    if (await ph.page.evaluate(h => document.querySelector("#su-name")?.value === h, handle)) break;
+  }
   await ph.tap(".st-panel [data-go]");
   ph.world.log(`${ph.name}: setup card -> ${handle}`);
   return true;
@@ -138,7 +142,7 @@ export async function formParty(w, phones, handles, log) {
 // everyone sees everyone (the members list and the room's characters)
 export async function allSeeAll(phones, ms = 40000) {
   const ids = phones.map(p => p.id).sort();
-  const res = await Promise.all(phones.map(ph => ph.until((R, ids) => { const p = R.party(); if (!p) return false; const m = p.members.map(x => x.id).sort(), r = [...p.inRoom].sort(); return JSON.stringify(m) === JSON.stringify(ids) && JSON.stringify(r) === JSON.stringify(ids); }, ids, ms)));
+  const res = await Promise.all(phones.map(ph => ph.until((R, ids) => { const p = R.party(); if (!p) return false; const m = p.members.map(x => x.id).sort(), r = p.inRoom.filter(id => !/^bot-/.test(id)).sort(); return JSON.stringify(m) === JSON.stringify(ids) && JSON.stringify(r) === JSON.stringify(ids); }, ids, ms)));
   const bad = [];
   for (const [i, ok] of res.entries()) if (!ok) bad.push(`${phones[i].name} sees ${JSON.stringify(await phones[i].r(R => { const p = R.party(); return p ? { members: p.members.map(m => m.handle), room: p.inRoom } : null; }).catch(e => e.message))}`);
   return bad;

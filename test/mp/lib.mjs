@@ -37,7 +37,7 @@ export const NAMES = ["ana", "ben", "cy", "dee", "eli", "fay", "gus", "hal"];
 
 export class World {
   constructor(o) {
-    Object.assign(this, { fps: 8, video: false, presenceTimeoutMs: 25000, viewport: { width: 390, height: 844 } }, o);
+    Object.assign(this, { fps: 8, video: false, presenceTimeoutMs: 60000, viewport: { width: 390, height: 844 } }, o);
     this.phones = [];
     this.state = { coins: null, tables: {} };      // the one fake server (offline)
     this.version = 0;

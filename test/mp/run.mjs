@@ -22,6 +22,8 @@
 //   --real-gps each phone's location comes from the browser context's geolocation only
 //              (by default the app's ?devlat=&devlng= override is set too: a starved
 //              machine can miss the app's 10 s geolocation timeout)
+//   --presence-timeout  offline: how long the fake Realtime takes to notice a
+//              dropped phone's dead socket (default 60 s; it never says goodbye)
 // Not part of `npm test` or CI: a tool to run on demand.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -39,6 +41,7 @@ const OUT = arg("out", process.env.MP_OUT ?? "test-results/multiplayer");
 const FPS = +arg("fps", 8);
 const DRAW_ALL = !!arg("draw-all", false);
 const REAL_GPS = !!arg("real-gps", false);
+const PRESENCE_S = +arg("presence-timeout", 60);
 const SLOW = +arg("slow", 1);
 const VIDEO = !!arg("video", false);
 const GAMES_ONLY = arg("games", null)?.split(",") ?? null;
@@ -69,7 +72,7 @@ async function runOne(test, n, run) {
   const log = [];
   const t0 = Date.now();
   const say = m => { const l = `[${((Date.now() - t0) / 1000).toFixed(1).padStart(6)}s] ${m}`; log.push(l); if (process.env.MP_VERBOSE) console.log("   ", l); };
-  const w = await World.create({ base, offline, out: OUT, fps: FPS, video: VIDEO, log: say, slow: SLOW, pauseIdle: offline && !DRAW_ALL, realGps: REAL_GPS });
+  const w = await World.create({ base, offline, out: OUT, fps: FPS, video: VIDEO, log: say, slow: SLOW, pauseIdle: offline && !DRAW_ALL, realGps: REAL_GPS, presenceTimeoutMs: PRESENCE_S * 1000, query: offline ? { strictrt: 1 } : {} });
   const checks = [], notes = [], rows = [];
   const T = {
     w, n, tag, run, dir, log: say, opts: { games: GAMES_ONLY },
