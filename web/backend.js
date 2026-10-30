@@ -33,6 +33,11 @@ const acct = params.get("acct");
 export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { storageKey: "rando-auth" + (acct ? "-" + acct : "") },
 });
+// supabase-js hands back the channel already in its list under a topic, and a
+// removed channel stays listed (deaf: subscribe() does nothing) until its
+// leave comes back. A postgres_changes topic is ours to name, so each
+// subscription gets its own and is never the one still leaving.
+const freshTopic = name => `${name}-${Math.random().toString(36).slice(2, 10)}`;
 
 // --- auth sheet elements ---
 const sheet = document.getElementById("auth-sheet");
@@ -915,7 +920,7 @@ export const chat = {
     this.unsubscribe();
     const matchId = this.current.id;
     this.channel = sb
-      .channel("match-" + matchId)
+      .channel(freshTopic("match-" + matchId))
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: "match_id=eq." + matchId },
         payload => this.append(payload.new))
@@ -1185,6 +1190,7 @@ const lobbyChat = {
 
   async join(arch) {
     this.leave();
+    const turn = this.turn = (this.turn ?? 0) + 1;
     this.feed.innerHTML = "";
     this.sys("only people in this lobby can see this chat");
     if (!this.handle) {
@@ -1195,13 +1201,21 @@ const lobbyChat = {
         this.handle = data?.handle ?? null;
       }
     }
+    // everyone in the lobby shares its topic, so this waits for the last
+    // removal to come back (until then supabase-js would hand back that one)
+    while (this.leaving) await this.leaving;
+    if (turn !== this.turn) return;      // (left, or joined another, meanwhile)
     this.ch = sb.channel(`lobby-${arch}`, { config: { broadcast: { self: true } } });
     this.ch.on("broadcast", { event: "msg" }, ({ payload }) => this.render(payload));
     this.ch.subscribe();
   },
 
   leave() {
-    if (this.ch) { sb.removeChannel(this.ch); this.ch = null; }
+    this.turn = (this.turn ?? 0) + 1;
+    if (!this.ch) return;
+    const p = this.leaving = Promise.resolve(sb.removeChannel(this.ch)).catch(() => {})
+      .finally(() => { if (this.leaving === p) this.leaving = null; });
+    this.ch = null;
   },
 
   send(text) {
@@ -1380,7 +1394,7 @@ export const friendChat = {
     this.unsubscribe();
     const friendshipId = this.friendshipId;
     this.channel = sb
-      .channel("friend-" + friendshipId)
+      .channel(freshTopic("friend-" + friendshipId))
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "friend_messages", filter: "friendship_id=eq." + friendshipId },
         payload => this.append(payload.new))
@@ -1903,19 +1917,22 @@ export const pubchat = {
     return !ids.length || ids.includes(m.zone_id);
   },
 
+  // (every auth event re-signs in: INITIAL_SESSION, a token refresh. The
+  // feed is refilled; the live channel stays the one this user subscribed.)
   async onSignedIn() {
     const { data: { session } } = await sb.auth.getSession();
+    if (this.channel && this.myId !== session.user.id) { sb.removeChannel(this.channel); this.channel = null; }
     this.myId = session.user.id;
     pubEl.hidden = false;
-    pubFeed.innerHTML = "";
     let q = sb.from("public_messages").select("*")
       .order("created_at", { ascending: false })
       .limit(25);
     const ids = this.itaewonZones();
     if (ids.length) q = q.in("zone_id", ids);
     const { data } = await q;
+    pubFeed.innerHTML = "";      // (after the fetch: two sign-ins at once fill it once)
     (data ?? []).reverse().forEach(m => this.addLine(m));
-    this.subscribe();
+    if (!this.channel) this.subscribe();
   },
 
   onSignedOut() {
@@ -1928,7 +1945,7 @@ export const pubchat = {
   subscribe() {
     if (this.channel) sb.removeChannel(this.channel);
     this.channel = sb
-      .channel("pubchat")
+      .channel(freshTopic("pubchat"))
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "public_messages" },
         p => {

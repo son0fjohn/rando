@@ -181,7 +181,7 @@ export const party = {
     };
     this._wire(room);
     try { await room.join(); }
-    catch (e) { this.current = null; this.err("couldn't open the party: " + e.message); return; }
+    catch (e) { if (this.current?.room === room) { this.current = null; this.err("couldn't open the party: " + e.message); } return; }
     if (privacy === "public") await this._findZone();
     this._announce();
     sfx.open(); buzz([30, 40, 30]);
@@ -212,7 +212,7 @@ export const party = {
     };
     this._wire(room);
     try { await room.join(); }
-    catch (e) { this.current = null; this.err("couldn't join: " + e.message); return; }
+    catch (e) { if (this.current?.room === room) { this.current = null; this.err("couldn't join: " + e.message); } return; }
     this.current.room.send("hello", {});       // nudge the host to send meta + queue
     sfx.ping();
     this.render();

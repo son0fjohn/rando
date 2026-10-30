@@ -202,7 +202,8 @@ npm run serve              # http://localhost:8743
 npm run serve:test         # offline, no Supabase: http://localhost:8744/test/hpparty.html?me=alice (more tabs: ?me=bob&party=CODE), /app.html
 npm test                   # logic suites: all games + "you + 3 bots", the wardrobe rules, then the coin + ritual SQL in PGlite (≈1 min)
 npm run test:sql           # just the coin/shop + ritual_draw migrations, run in an embedded Postgres
-npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Diary, through the real UI (≈5 min)
+npm run test:e2e           # 3 phones play a whole party, then 5 play Secret Diary, through the real UI, then realtime_strict below (≈6 min)
+node test/realtime_strict.mjs   # channels dropped and made again under the same topic, on the real app page with the stub as strict as realtime-js (?strictrt=1): an invite's peek then a join gets the room's presence, a room left and rejoined, two peeks, the plaza chat after INITIAL_SESSION + token refreshes, match / friend threads reopened, the lobby chat re-entered
 npm run test:e2e:iphone    # same, on WebKit with an iPhone profile (needs: npx playwright install webkit)
 node test/diary3d_shots.mjs [dir]   # the 3D diary models: load, triangle budget, a live shelf unlock (+ screenshots)
 node test/diary_e2e.mjs [dir] --diary=3d|sprite|css   # pin how the diaries are drawn
@@ -247,7 +248,16 @@ test/hunter.html                       # Manhunt's Hunter on his own: poses, doo
 The test pages swap the network, 3D and audio modules for stubs in
 `test/stubs/`, so they run offline. `test/appserve.mjs` also serves the real
 app as `/app.html` with Supabase faked in memory (`test/stubs/supabase.js`,
-channels over BroadcastChannel) and three.js from `node_modules`. The real page needs Supabase and esm.sh;
+channels over BroadcastChannel) and three.js from `node_modules`. Add
+`?strictrt=1` for realtime-js's real channel rules (below), `&rtleave=MS` for
+a slow leave.
+
+**Realtime channels:** supabase-js hands back the channel already listed
+under a topic, and a removed channel stays listed, deaf, until its leave comes
+back. Never `removeChannel` then `channel` the same topic straight away: a
+postgres_changes channel takes a fresh topic per subscription (`freshTopic`
+in backend.js); a broadcast / presence room must share its topic, so wait for
+the removal first (net.js `dropChannel` / `untilLeft`, `lobbyChat.leaving`). The real page needs Supabase and esm.sh;
 if your sandbox can't reach them, say so — don't claim you tested it.
 
 Run `npm test` before every PR. Run `npm run test:e2e` too when you touch

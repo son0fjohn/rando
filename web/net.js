@@ -22,6 +22,25 @@ const DIR_CHANNEL = "rooms-directory-v1";
 const ANNOUNCE_MS = 2500;
 const EXPIRE_MS = 8000;
 
+// A room's channel is always `room-<id>`: its presence and broadcasts are
+// keyed on that topic, so a peek, a join and a rejoin must all share it. But
+// supabase-js (realtime-js 2.11+) hands back the channel still in its list
+// under a topic, and a removed channel stays in that list until its leave
+// comes back; meanwhile subscribe() on it does nothing. So a room channel is
+// only made once the last removal of that topic is through, and a join first
+// ends a peek still looking at that room (they can't share its channel).
+const leaving = new Map();      // topic -> the removeChannel() still under way
+const peeking = new Map();      // topic -> { done: the peek's promise, stop: end it now }
+function dropChannel(topic, ch) {
+  const p = Promise.resolve().then(() => sb.removeChannel(ch)).catch(() => {})
+    .finally(() => { if (leaving.get(topic) === p) leaving.delete(topic); });
+  leaving.set(topic, p);
+  return p;
+}
+async function untilLeft(topic) {
+  while (leaving.has(topic)) await leaving.get(topic);
+}
+
 export class Room {
   constructor(id, me) {
     this.id = id;
@@ -35,12 +54,15 @@ export class Room {
   }
 
   async join() {
-    this.ch = sb.channel(`room-${this.id}`, {
+    peeking.get(`room-${this.id}`)?.stop();
+    await untilLeft(`room-${this.id}`);
+    if (this.left) throw new Error("room left");      // (left while it waited)
+    const ch = this.ch = sb.channel(`room-${this.id}`, {
       config: { broadcast: { self: true, ack: false }, presence: { key: this.me.id } },
     });
-    this.ch.on("broadcast", { event: "msg" }, ({ payload }) => this._dispatch(payload));
-    this.ch.on("presence", { event: "sync" }, () => {
-      const st = this.ch.presenceState();
+    ch.on("broadcast", { event: "msg" }, ({ payload }) => this._dispatch(payload));
+    ch.on("presence", { event: "sync" }, () => {
+      const st = ch.presenceState();
       const p = {};
       for (const [key, metas] of Object.entries(st)) {
         if (metas && metas.length) p[key] = metas[0];
@@ -50,10 +72,11 @@ export class Room {
     });
     await new Promise((res, rej) => {
       const to = setTimeout(() => rej(new Error("room join timeout")), 8000);
-      this.ch.subscribe(async status => {
+      ch.subscribe(async status => {
         if (status === "SUBSCRIBED") {
-          await this.ch.track({ id: this.me.id, handle: this.me.handle, avatar: this.me.avatar,
-                                joined_at: this.joinedAt });
+          if (this.left) { clearTimeout(to); rej(new Error("room left")); return; }
+          await ch.track({ id: this.me.id, handle: this.me.handle, avatar: this.me.avatar,
+                           joined_at: this.joinedAt });
           this.alive = true;
           clearTimeout(to);
           res();
@@ -76,8 +99,10 @@ export class Room {
 
   leave() {
     this.alive = false;
-    if (this.ch) { try { sb.removeChannel(this.ch); } catch {} }
+    this.left = true;
+    const ch = this.ch;
     this.ch = null;
+    return ch ? dropChannel(`room-${this.id}`, ch) : Promise.resolve();
   }
 
   // members sorted by join order (stable host election)
@@ -105,11 +130,14 @@ export class Room {
 // summary, and read who's there. Resolves { name, hostName, count, members,
 // playing, cap } or null if nobody answers in time (an ended party).
 export function peekRoom(id, { timeout = 7000 } = {}) {
+  const topic = `room-${id}`;
+  if (peeking.has(topic)) return peeking.get(topic).done;      // (a second look while one is out: the same answer)
   const me = `peek-${Math.random().toString(36).slice(2, 10)}`;
-  const ch = sb.channel(`room-${id}`, { config: { broadcast: { self: false, ack: false }, presence: { key: me } } });
-  return new Promise(res => {
+  const peek = { stop() { this.stopped = true; } };
+  peek.done = untilLeft(topic).then(() => peek.stopped ? null : new Promise(res => {
+    const ch = sb.channel(topic, { config: { broadcast: { self: false, ack: false }, presence: { key: me } } });
     let done = false, seen = null;
-    const finish = v => { if (done) return; done = true; clearTimeout(to); try { sb.removeChannel(ch); } catch {} res(v); };
+    const finish = v => { if (done) return; done = true; clearTimeout(to); dropChannel(topic, ch); res(v); };
     // presence alone (an older host, or the host's answer lost): who's there, no name
     const fromPresence = () => {
       const st = ch.presenceState?.() ?? {};
@@ -117,6 +145,7 @@ export function peekRoom(id, { timeout = 7000 } = {}) {
       return members.length ? { name: null, hostName: members[0].handle, count: members.length, members: members.map(m => ({ id: m.id, handle: m.handle, avatar: m.avatar })), playing: null } : null;
     };
     const to = setTimeout(() => finish(seen ?? fromPresence()), timeout);
+    peek.stop = () => finish(seen ?? fromPresence());      // (a join: what it has so far)
     ch.on("broadcast", { event: "msg" }, ({ payload: p }) => { if (p?.type === "peekinfo" && p.to === me) finish(p.info); });
     ch.on("presence", { event: "sync" }, () => { seen = fromPresence() ?? seen; });
     ch.subscribe(status => {
@@ -124,7 +153,11 @@ export function peekRoom(id, { timeout = 7000 } = {}) {
       const send = () => !done && ch.send({ type: "broadcast", event: "msg", payload: { type: "peek", from: me, t: Date.now() } });
       send(); setTimeout(send, 1200); setTimeout(send, 3500);      // again, in case one went out before the host was listening
     });
-  });
+  }));
+  const forget = () => { if (peeking.get(topic) === peek) peeking.delete(topic); };
+  peek.done.then(forget, forget);
+  peeking.set(topic, peek);
+  return peek.done;
 }
 
 // ---------------------------------------------------------------- directory
