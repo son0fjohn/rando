@@ -279,6 +279,12 @@
 #pubchat-open, #pubchat-send { border-radius: 50%; background: var(--g-bg); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); border: 1px solid var(--g-line); color: var(--g-ink); }
 #pubchat-input { border-radius: 999px; font: 16px/20px var(--f-sys); background: var(--g-bg-strong); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur);
   border: 1px solid var(--g-line); color: var(--g-ink); }
+/* hidden and about to talk: show yourself first (a small glass panel over the input) */
+#pubchat-ask { pointer-events: auto; padding: 12px 14px; border-radius: 16px; max-width: 340px; }
+#pubchat-ask b { display: block; font: 600 var(--fs-body)/21px var(--f-sys); color: var(--g-ink); }
+#pubchat-ask p { margin: 3px 0 10px; font: 400 var(--fs-small)/17px var(--f-sys); color: var(--g-ink); opacity: .82; }
+#pubchat-ask .pa-btns { display: flex; gap: 8px; }
+#pubchat-ask .glass-btn { flex: 1; min-width: 0; }
 /* friends / match chat: top right, round glass, level with Home on the left
    (#nav-home, the same size, top and edge distance; test/mapchrome_shots.mjs) */
 #side-actions { top: calc(env(safe-area-inset-top) + 12px); right: 12px; bottom: auto; }
