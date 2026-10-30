@@ -9,13 +9,17 @@
 // panels, bins, asphalt, the lawn tile, water, and instanced street lights,
 // power poles with wires and lanterns, and the painted GLB trees.
 //
-// Range: the map says how far round the target to go (world3d.js
-// viewRange, world units: the haze's radius plus a buffer in the map's
-// Pokémon GO view). Chunks reaching within `near` of the target get full
-// detail (the street pass, lamps, poles, outlines); out to `load` they're
-// walls + roofs + shadows + parks; past `show` they're kept but not drawn
-// (all haze), and well past `load` they're dropped. With no range given:
-// rings of 1 and 2 tiles, as it used to be. Everything is deterministic per
+// Range: the map says what to load round the target (world3d.js
+// viewRange, world units): every chunk within `ring` of it, and out to
+// `load` those the camera sees (near the `view` hull, the ground on
+// screen), so a zoomed-out view fills to the haze without loading the
+// city behind you. Chunks reaching within `near` get full detail (the
+// street pass, lamps, poles, outlines); to `mid` walls + roofs + shadows +
+// parks (lod 1); past it the simple far ones (lod 2: bigger buildings as
+// plain blocks, main roads, parks and water). Past `show` (all haze)
+// they're kept but not drawn; out of range they're dropped, the furthest
+// first, once more than MAX_KEEP are kept. With no range given: rings of
+// 1.2 and 2.2 tiles, as it used to be. Everything is deterministic per
 // chunk, so a chunk you left looks the same when you come back.
 import * as THREE from "https://esm.sh/three@0.160.0";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
@@ -34,6 +38,7 @@ const REDUCED = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduce
 const OVT_URL = new URLSearchParams(globalThis.location?.search ?? "").get("ovt") || null;
 const RINGS = { near: 1.2, load: 2.2 };   // tiles, when the map gives no range
 const DROP_U = 140;                        // world units past `load` before a chunk is dropped
+const MAX_KEEP = 40;                       // chunks kept (out of view ones go past this, the furthest first)
 const RETARGET_U = 24;                     // re-pick the chunks every this far the target moves
 const MAX_INFLIGHT = 3;
 
@@ -395,7 +400,9 @@ export class CityTiles {
     world.scene.add(this.group);
     this.chunks = new Map();   // "x,y" -> { lod, meshes, labels, want }
     this.queue = [];           // requests not yet sent
-    this.inflight = new Map(); // id -> { key, lod, t0 }
+    this.inflight = new Map(); // id -> { key, lod, t0, shadow, sweepKey }
+    this.sweep = null;         // the baked shadows' sweep (setShadow; null: the classic one)
+    this.sweepKey = "";
     this.ready = [];           // results waiting to be mounted
     this.nextId = 1;
     this.center = null;
@@ -406,6 +413,8 @@ export class CityTiles {
     this.labelNames = new Map();
     cityUniforms.uNight.value = night ? 1 : 0;
     this.makeMaterials(night);
+    const sh = world.shadowNow?.();    // (built in today's sun from the start)
+    if (sh) this.setShadow(sh.sweep, sh.k);
     this.startWorker();
   }
 
@@ -557,11 +566,11 @@ export class CityTiles {
         const bytes = await src.tile(m.z, m.x, m.y);
         const t1 = performance.now();
         if (!bytes) return onMsg({ type: "chunk", id: m.id, empty: true, t: { fetch: t1 - t0, build: 0 } });
-        const out = packChunk(buildChunk(JSON.parse(new TextDecoder().decode(bytes)), { z: m.z, x: m.x, y: m.y, origin: init.origin, lod: m.lod, heroes: init.heroes, clearAt: init.clearAt, exclude: init.exclude }));
+        const out = packChunk(buildChunk(JSON.parse(new TextDecoder().decode(bytes)), { z: m.z, x: m.x, y: m.y, origin: init.origin, lod: m.lod, heroes: init.heroes, clearAt: init.clearAt, exclude: init.exclude, shadow: m.shadow ?? null }));
         onMsg({ type: "chunk", id: m.id, ...out, t: { fetch: t1 - t0, build: performance.now() - t1 } });
       } catch (err) { onMsg({ type: "chunk", id: m.id, error: String(err) }); }
     };
-    for (const [id, r] of this.inflight) this.post({ type: "chunk", id, z: Z, x: r.x, y: r.y, lod: r.lod });
+    for (const [id, r] of this.inflight) this.post({ type: "chunk", id, z: Z, x: r.x, y: r.y, lod: r.lod, shadow: r.shadow });
   }
 
   send(m) { if (this.worker) this.worker.postMessage(m); else this.post?.(m); }
@@ -584,11 +593,11 @@ export class CityTiles {
     const cam = this.world.camera;
     if (cam && !this.hidden) { cityUniforms.uCutA.value.copy(cam.position); cityUniforms.uCutB.value.copy(target); }
     const [cx, cy, fx, fy] = this.tileAt(target);
-    const R = range ?? { load: RINGS.load * this.tileU, near: RINGS.near * this.tileU, show: Infinity };
+    const R = range ?? { load: RINGS.load * this.tileU, near: RINGS.near * this.tileU, mid: Infinity, ring: RINGS.load * this.tileU, show: Infinity, view: null, sig: "" };
     const L = this._at;
     if (!L || L.cx !== cx || L.cy !== cy || Math.hypot(target.x - L.x, target.z - L.z) > RETARGET_U ||
-        Math.abs(R.load - L.load) > 8 || Math.abs(R.near - L.near) > 8 || Math.abs(R.show - L.show) > 8) {
-      this._at = { cx, cy, fx, fy, x: target.x, z: target.z, load: R.load, near: R.near, show: R.show };
+        Math.abs(R.load - L.load) > 8 || Math.abs(R.near - L.near) > 8 || Math.abs(R.show - L.show) > 8 || R.sig !== L.sig) {
+      this._at = { cx, cy, fx, fy, x: target.x, z: target.z, load: R.load, near: R.near, show: R.show, sig: R.sig };
       this.center = [cx, cy];
       this.retarget(cx, cy, fx, fy, R);
     } else if (this.retryDue && performance.now() > this.retryDue) {
@@ -615,30 +624,81 @@ export class CityTiles {
 
   retarget(cx, cy, fx, fy, R) {
     const want = new Map(), n = Math.ceil(R.load / this.tileU) + 1;
+    const seen = R.view ? this.inView(R.view, R.margin ?? 110) : null;
     for (let dy = -n; dy <= n; dy++) {
       for (let dx = -n; dx <= n; dx++) {
         const x = cx + dx, y = cy + dy, d = this.tileDist(x, y, fx, fy);
         if (d > R.load) continue;
-        want.set(`${x},${y}`, { x, y, lod: d <= R.near ? 0 : 1, dist: Math.hypot(x + 0.5 - fx, y + 0.5 - fy) });
+        if (d > (R.ring ?? R.load) && seen && !seen(x, y)) continue;   // (out of view: when you turn to it)
+        want.set(`${x},${y}`, { x, y, lod: d <= R.near ? 0 : d <= (R.mid ?? Infinity) ? 1 : 2, dist: Math.hypot(x + 0.5 - fx, y + 0.5 - fy) });
       }
     }
     if (!this.firstRing) this.firstRing = { t0: performance.now(), need: new Set([...want.keys()]), near: new Set([...want].filter(([, w]) => !w.lod).map(([k]) => k)), done: null, nearDone: null };
-    // drop what's well out of range; past what shows (all haze), keep but don't draw
+    this._want = want;
+    this.firstDone();
+    // drop what's well out of range, and past MAX_KEEP what isn't wanted
+    // (the furthest first); past what shows (all haze), keep but don't draw
+    const spare = [];
+    let fresh = 0;
+    for (const k of want.keys()) if (!this.chunks.has(k)) fresh++;
     for (const [k, c] of this.chunks) {
       const [x, y] = k.split(",").map(Number), d = this.tileDist(x, y, fx, fy);
       if (d > R.load + DROP_U) { this.drop(k); continue; }
+      if (!want.has(k)) spare.push([k, d]);
       const vis = d <= R.show;
       if (c.shown !== vis) { c.shown = vis; for (const m of c.meshes) m.visible = vis; this.world.needsRender = true; }
     }
+    spare.sort((a, b) => b[1] - a[1]);
+    for (const [k] of spare) { if (this.chunks.size + fresh <= MAX_KEEP) break; this.drop(k); }
     this.queue = [];
     for (const [k, w] of want) {
       const c = this.chunks.get(k);
-      if (c && !c.retry && (c.lod === w.lod || c.pending === w.lod)) continue;
+      const key = this.sweepKey;
+      if (c && !c.retry && ((c.lod === w.lod && c.sweep === key) || (c.pending === w.lod && c.pendingSweep === key))) continue;
       if (c?.retry && c.pending === w.lod) continue;
-      if ([...this.inflight.values()].some(r => r.key === k && r.lod === w.lod)) continue;
-      this.queue.push({ key: k, ...w });
+      if ([...this.inflight.values()].some(r => r.key === k && r.lod === w.lod && r.sweepKey === key)) continue;
+      this.queue.push({ key: k, has: c ? 1 : 0, ...w });
     }
-    this.queue.sort((a, b) => a.lod - b.lod || a.dist - b.dist);
+    // a missing chunk before a new copy of one already there, then the finer, the nearest
+    this.queue.sort((a, b) => a.has - b.has || a.lod - b.lod || a.dist - b.dist);
+  }
+
+  // the first view's chunks are in (stats firstRingMs, the tests wait on it);
+  // what the view no longer wants (it turned or zoomed first) isn't waited for
+  firstDone() {
+    const F = this.firstRing, W = this._want;
+    if (!F || F.done) return;
+    if (W) for (const k of F.need) if (!W.has(k)) { F.need.delete(k); F.near.delete(k); }
+    if (!F.near.size && !F.nearDone) F.nearDone = performance.now() - F.t0;
+    if (!F.need.size) F.done = performance.now() - F.t0;
+  }
+
+  // (x, y) -> is the tile within margin of the view hull ([x, z] world points)
+  inView(H, margin) {
+    const P = this.P, t = 2 ** Z, m2 = margin * margin;
+    const edge = (px, pz, ax, az, bx, bz) => {
+      const ex = bx - ax, ez = bz - az, L = ex * ex + ez * ez || 1;
+      const k = Math.max(0, Math.min(1, ((px - ax) * ex + (pz - az) * ez) / L));
+      return (px - ax - ex * k) ** 2 + (pz - az - ez * k) ** 2;
+    };
+    const close = (px, pz) => {
+      let pos = 0, neg = 0, best = Infinity;
+      for (let i = 0; i < H.length; i++) {
+        const [ax, az] = H[i], [bx, bz] = H[(i + 1) % H.length];
+        const c = (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+        if (c > 0) pos++; else if (c < 0) neg++;
+        best = Math.min(best, edge(px, pz, ax, az, bx, bz));
+      }
+      return (H.length > 2 && (!pos || !neg)) || best <= m2;
+    };
+    return (x, y) => {
+      for (let i = 0; i <= 2; i++) for (let j = 0; j <= 2; j++) {
+        const lng = (x + i / 2) / t * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + j / 2) / t))) * 180 / Math.PI;
+        const [wx, wz] = P.fwd(lng, lat);
+        if (close(wx, wz)) return true;
+      }
+      return false;
+    };
   }
 
   pump() {
@@ -647,8 +707,9 @@ export class CityTiles {
       const id = this.nextId++;
       this.inflight.set(id, { ...r, t0: performance.now() });
       const c = this.chunks.get(r.key);
-      if (c) c.pending = r.lod;
-      this.send({ type: "chunk", id, z: Z, x: r.x, y: r.y, lod: r.lod });
+      if (c) { c.pending = r.lod; c.pendingSweep = this.sweepKey; }
+      Object.assign(this.inflight.get(id), { shadow: this.sweep, sweepKey: this.sweepKey });
+      this.send({ type: "chunk", id, z: Z, x: r.x, y: r.y, lod: r.lod, shadow: this.sweep });
     }
   }
 
@@ -662,7 +723,7 @@ export class CityTiles {
     const A = this._at;
     const away = A ? this.tileDist(r.x, r.y, A.fx, A.fy) : 0;
     if (A && away > A.load + DROP_U) return;
-    const rec = { lod: r.lod, meshes: [], labels: [], empty: !!m.empty };
+    const rec = { lod: r.lod, meshes: [], labels: [], empty: !!m.empty, sweep: r.sweepKey ?? "" };
     // part of its data couldn't be reached (offline, a server error): ask again,
     // 15 s, then longer each time (citygen.worker.js marks it)
     if (m.retry) {
@@ -711,8 +772,24 @@ export class CityTiles {
       mount: performance.now() - t1, cached: m.cached ?? null, buildings: m.stats?.buildings ?? 0, empty: rec.empty, src: m.stats?.src ?? null, retry: !!m.retry });
     if (this.firstRing && !this.firstRing.done) {
       this.firstRing.need.delete(r.key); this.firstRing.near.delete(r.key);
-      if (!this.firstRing.near.size && !this.firstRing.nearDone) this.firstRing.nearDone = performance.now() - this.firstRing.t0;
-      if (!this.firstRing.need.size) this.firstRing.done = performance.now() - this.firstRing.t0;
+      this.firstDone();
+    }
+    this.world.needsRender = true;
+  }
+
+  // where the baked shadows fall (sun.js shadowSweep: away from the sun by
+  // day, the classic sweep at night; null: the classic one) and how dark
+  // (0..1 of STYLE's, fading through dusk): as the hand-made map's
+  // (world3d.js applySun). A new sweep (the sun moved a 10° step, about
+  // every 40 minutes) builds the chunks again, a few a frame, no rise
+  setShadow(sweep, k = 1) {
+    const key = sweep ? sweep.map(v => v.toFixed(3)).join(",") : "";
+    this.mats.shadow.opacity = STYLE.shadow.opacity * k;
+    this.mats.shadow.visible = k > 0.005;
+    if (key !== this.sweepKey) {
+      this.sweep = sweep ? [...sweep] : null;
+      this.sweepKey = key;
+      this._at = null;      // (pick the chunks again: they're built anew)
     }
     this.world.needsRender = true;
   }

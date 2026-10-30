@@ -219,24 +219,45 @@ const lerpRig = (t) => {   // the rig at light t: night -> dusk -> day
 // the key light at night and when the light is forced (STYLE.md 2): high, from the south-east
 const CLASSIC_SUN = new THREE.Vector3(120, 200, 80).normalize();
 
-// The map's view, Pokémon GO style: the camera tilted, looking a little
-// ahead so you stand in the lower middle of the screen, more top-down as
-// you zoom out and lower toward the horizon as you zoom in; and you see
-// about 270 m round you whatever the zoom: past half that the world fades
-// into the haze (a fog by distance from you, not from the camera: the
-// fog_* shader chunks below), and nothing is loaded or drawn much beyond.
-// The start screen's scenery keeps its own wide view (mapView false), and
-// a game that frames the map itself (Manhunt's zone overview) asks for a
-// free view (freeView).
-export const VIEW = { R: 150, start: 0.5, buffer: 60 };   // world units: clear to R·start, gone at R, chunks to R + buffer
-export const ZOOM = { min: 70, max: 230, elevMin: 0.5, elevMax: 1.0, ahead: 0.2 };
-const elevFor = d => { const f = Math.min(1, Math.max(0, (d - ZOOM.min) / (ZOOM.max - ZOOM.min))); return ZOOM.elevMin + (ZOOM.elevMax - ZOOM.elevMin) * f * f; };
+// The map's view: the classic orbit camera (STYLE.md 1), looking straight
+// at you from 175 u at 0.58 rad; pinch 70–420 u, two fingers up / down tilt
+// it 0.22–1.25 rad, a twist or (locked on you) one finger orbits. And a
+// clear city round you: the haze is a fog by ground distance from you (not
+// depth from the camera: the fog_* shader chunks below), clear for about a
+// kilometre round you at the home view and two zoomed out (`fogFar`), so
+// only the band at the top of the screen, where the view reaches the
+// horizon, is hazy.
+// The city loads what the camera can see out to it, simpler with distance
+// (citytiles.js). The start screen's scenery keeps its own wide view
+// (mapView false), and a game that frames the map itself (Manhunt's zone
+// overview) asks for a free view (freeView): its own fog and zoom.
+export const ZOOM = { min: 70, max: 420, elevMin: 0.22, elevMax: 1.25 };
+// FOG: clear to far × start, total at far; far = perDist × the camera's
+// distance, within [min, max] (the horizon band and the sky stand further
+// out); nightMul: a touch further at night (navy haze reads heavier)
+export const FOG = { start: 0.65, perDist: 5.0, min: 850, max: 1750, nightMul: 1.1 };
+export const fogFar = (dist, light = 1) => Math.min(FOG.max, Math.max(FOG.min, FOG.perDist * dist) * (1 + (FOG.nightMul - 1) * (1 - light)));
+// what the city loads round you (world units; viewRange, citytiles.js):
+// every chunk within ring, and those the camera sees (within margin of the
+// ground on screen) out to the haze + buffer; full detail inside near,
+// walls + roofs to mid, past it the simple far ones (citygen.js lod 2)
+export const RANGE = { ring: 300, near: 330, mid: 700, buffer: 40, margin: 110 };
+// the convex hull of [x, z] points (counter-clockwise), for the ground in view
+function hull(pts) {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], hi = [];
+  for (const q of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (let k = p.length - 1; k >= 0; k--) { const q = p[k]; while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], q) <= 0) hi.pop(); hi.push(q); }
+  return lo.slice(0, -1).concat(hi.slice(0, -1));
+}
 // The fog round you: three's fog chunks, patched once for every material.
 // A Fog with a negative near is the map's: fogNear = -(how far the camera
 // stands back from you, along the ground), fogFar = the radius where the
 // fog is total; the fog then goes by the ground distance from you (the
 // camera's ground point moved that far along its heading), clear up to
-// fogFar·VIEW.start. Any other fog (the start screen, the game rooms) is
+// fogFar·FOG.start. Any other fog (the start screen, the game rooms) is
 // three's own depth fog, untouched.
 {
   const C = THREE.ShaderChunk;
@@ -252,7 +273,7 @@ const elevFor = d => { const f = Math.min(1, Math.max(0, (d - ZOOM.min) / (ZOOM.
 \t}`);
     C.fog_pars_fragment = C.fog_pars_fragment.replace("varying float vFogDepth;", "varying float vFogDepth;\n\tvarying vec2 vFogRel;");
     C.fog_fragment = C.fog_fragment.replace("float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );",
-      `float fogFactor = fogNear < 0.0 ? smoothstep( fogFar * ${VIEW.start.toFixed(2)}, fogFar, length( vFogRel ) ) : smoothstep( fogNear, fogFar, vFogDepth );`);
+      `float fogFactor = fogNear < 0.0 ? smoothstep( fogFar * ${FOG.start.toFixed(2)}, fogFar, length( vFogRel ) ) : smoothstep( fogNear, fogFar, vFogDepth );`);
   }
 }
 
@@ -301,12 +322,12 @@ function mulberry32(seed) {
 
 export const world3d = {
   scene: null, camera: null, renderer: null, frame: null,
-  cam: { theta: 0, elev: elevFor(175), dist: 175 },
-  CAM_DEFAULT: { theta: 0, elev: elevFor(175), dist: 175 },
-  ZOOM, VIEW, elevFor,
-  mapView: true,               // the map's own view (looking ahead, the haze round you); the start screen's scenery turns it off
+  cam: { theta: 0, elev: 0.58, dist: 175 },
+  CAM_DEFAULT: { theta: 0, elev: 0.58, dist: 175 },
+  ZOOM, FOG, FOG_START: FOG.start,
+  mapView: true,               // the map's own view (the haze round you); the start screen's scenery turns it off
   freeView: false,             // a game framing the map itself (Manhunt's overview): its own fog and camera
-  fogR: VIEW.R,                // where the haze is total right now (it closes in after the scenery)
+  fogR: fogFar(175),           // where the haze is total right now (eases with the zoom)
   camGoal: null,               // eased recenter target
   target: new THREE.Vector3(0, 0, 0),
   followPos: null,
@@ -2582,18 +2603,16 @@ export const world3d = {
     this.needsRender = true;
   },
   // where the camera stands and what it looks at for a target and a
-  // { theta, elev, dist }: in the map's view it looks a little ahead of you
-  // (you in the lower middle of the screen, Pokémon GO style); the
-  // scenery and a free view look straight at the target
-  camPose(t, { theta, elev, dist }, map = this.rangeOn) {
-    const ahead = map ? dist * ZOOM.ahead * Math.cos(elev) : 0;
+  // { theta, elev, dist }: straight at the target, a little over the
+  // ground (the classic orbit; the scenery's glide lands on it)
+  camPose(t, { theta, elev, dist }) {
     return {
       pos: new THREE.Vector3(t.x + dist * Math.sin(theta) * Math.cos(elev), t.y + dist * Math.sin(elev), t.z + dist * Math.cos(theta) * Math.cos(elev)),
-      look: new THREE.Vector3(t.x - Math.sin(theta) * ahead, t.y + CHAR_H + 4, t.z - Math.cos(theta) * ahead),
+      look: new THREE.Vector3(t.x, t.y + CHAR_H + 4, t.z),
     };
   },
   // a game that frames the map itself (Manhunt's zone overview) sets its own
-  // fog and camera: the map's haze and look-ahead step aside until it's done
+  // fog and camera: the map's haze steps aside until it's done
   setFreeView(on) {
     on = !!on;
     if (on === this.freeView) return;
@@ -2608,16 +2627,19 @@ export const world3d = {
     this._rangeWas = false;
     this.needsRender = true;
   },
-  // the map's view range, every tick: the haze round you (a fog by ground
-  // distance from you, see the fog chunks up top), easing in after the
-  // scenery so it never pops
+  // the map's haze, every tick: a fog by ground distance from you (see the
+  // fog chunks up top), total at fogFar(zoom), easing as the zoom moves
   updateRange(dt) {
     const f = this.scene?.fog;
     if (!f) return;
-    if (this.haze) { this.haze.visible = this.rangeOn; this.haze.position.set(this.target.x, 140, this.target.z); }
+    if (this.haze) {
+      this.haze.visible = this.rangeOn;
+      this.haze.position.set(this.target.x, 140, this.target.z);
+    }
     if (!this.rangeOn) { if (this._rangeWas) this.restoreFog(); return; }
-    if (!this._rangeWas) { this._rangeWas = true; this.fogR = Math.max(VIEW.R, 640); }
-    if (this.fogR !== VIEW.R) { this.fogR += (VIEW.R - this.fogR) * Math.min(1, dt * 2.5); if (Math.abs(this.fogR - VIEW.R) < 0.5) this.fogR = VIEW.R; }
+    const want = fogFar(this.cam.dist, this.light ?? light0);
+    if (!this._rangeWas) { this._rangeWas = true; this.fogR = want; }
+    if (this.fogR !== want) { this.fogR += (want - this.fogR) * Math.min(1, dt * 4); if (Math.abs(this.fogR - want) < 1) this.fogR = want; }
     const back = Math.max(0.01, this.cam.dist * Math.cos(this.cam.elev));
     if (f.near !== -back || f.far !== this.fogR) { f.near = -back; f.far = this.fogR; this.needsRender = true; }
   },
@@ -2627,30 +2649,47 @@ export const world3d = {
   rangeFade(p) {
     if (!this.rangeOn || !p) return 1;
     const d = Math.hypot(p.x - this.target.x, p.z - this.target.z), R = this.fogR;
-    return 1 - sstep((d - 0.7 * R) / (0.2 * R));
+    return 1 - sstep((d - 0.8 * R) / (0.15 * R));
   },
-  // what to load and draw round the target (world units): in the map's view
-  // the haze's radius plus a buffer; otherwise (the scenery, a free view,
-  // the tests' top-down shots) as far as the camera can see the ground
+  // what to load and draw round the target (world units), for citytiles.js:
+  // load: how far; ring: always this far round you (so turning round finds
+  // the city there); view: the ground the camera sees (a hull of [x, z],
+  // cut at the haze), what's further from it than RANGE.margin waits;
+  // near / mid: full detail inside near, walls + roofs to mid, the simple
+  // far ones past it; show: past it all haze, kept but not drawn. In the
+  // map's view it goes as far as you see, up to the haze; otherwise (the
+  // scenery, a free view, the tests' top-down shots) round the target as
+  // far as the camera can see the ground, up to 720 u, as before
   viewRange() {
-    if (this.rangeOn) return { load: Math.max(this.fogR, VIEW.R) + VIEW.buffer, near: VIEW.R, show: this.fogR + 12 };
-    const key = `${this.camera.position.x},${this.camera.position.y},${this.camera.position.z},${this.target.x},${this.target.z},${this.scene.fog?.far}`;
-    if (this._viewAt !== key) {
-      this._viewAt = key;
-      const cam = this.camera, T = this.target, f = this.scene.fog;
-      cam.updateMatrixWorld();
-      const fwd = cam.getWorldDirection(new THREE.Vector3()), d = new THREE.Vector3();
-      let r = 0;
-      for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
-        d.set(i / 4 - 1, j / 4 - 1, 0.5).unproject(cam).sub(cam.position).normalize();
-        let k = d.y < -1e-4 ? (T.y - cam.position.y) / d.y : Infinity;
-        const kMax = Math.min(cam.far, f && f.near >= 0 ? f.far / Math.max(0.05, d.dot(fwd)) : Infinity);
-        k = Math.min(k, kMax);
-        r = Math.max(r, Math.hypot(cam.position.x + d.x * k - T.x, cam.position.z + d.z * k - T.z));
-      }
-      this._viewR = Math.min(720, Math.max(VIEW.R + VIEW.buffer, r + 40));
+    const cam = this.camera, T = this.target, f = this.scene.fog, map = this.rangeOn;
+    const key = `${cam.position.x},${cam.position.y},${cam.position.z},${cam.aspect},${T.x},${T.z},${f?.near},${f?.far},${map}`;
+    if (this._viewAt === key) return this._view;
+    this._viewAt = key;
+    cam.updateMatrixWorld();
+    const fwd = cam.getWorldDirection(new THREE.Vector3()), d = new THREE.Vector3();
+    let r = 0;
+    const pts = [];
+    for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+      d.set(i / 4 - 1, j / 4 - 1, 0.5).unproject(cam).sub(cam.position).normalize();
+      let k = d.y < -1e-4 ? (T.y - cam.position.y) / d.y : Infinity;
+      const kMax = Math.min(cam.far, f && f.near >= 0 ? f.far / Math.max(0.05, d.dot(fwd)) : Infinity);
+      k = Math.min(k, kMax);
+      let x = cam.position.x + d.x * k - T.x, z = cam.position.z + d.z * k - T.z, h = Math.hypot(x, z);
+      if (map && h > this.fogR) { x *= this.fogR / h; z *= this.fogR / h; h = this.fogR; }   // (past the haze: nothing to see)
+      pts.push([T.x + x, T.z + z]);
+      r = Math.max(r, h);
     }
-    return { load: this._viewR, near: this._viewR * 0.55, show: Infinity };
+    if (!map) {
+      const R = Math.min(720, Math.max(RANGE.ring + 60, r + 40));
+      return (this._view = { load: R, near: R * 0.55, mid: Infinity, show: Infinity, ring: R, view: null, sig: "" });
+    }
+    const q = v => Math.round(v);
+    return (this._view = {
+      load: Math.min(this.fogR, r) + RANGE.buffer, ring: RANGE.ring, near: RANGE.near, mid: RANGE.mid, show: this.fogR + 12,
+      view: hull(pts),
+      // (the chunks are picked again when the view turns, tilts or zooms a step)
+      sig: `${q(this.cam.theta / 0.12)},${q(this.cam.elev / 0.08)},${q(Math.log(this.cam.dist) / 0.08)},${q(cam.aspect * 10)}`,
+    });
   },
 
   recenter() {
@@ -2763,7 +2802,6 @@ export const world3d = {
           a0: Math.atan2(b.y - a.y, b.x - a.x),
           midY0: (a.y + b.y) / 2,
           dist0: this.cam.dist, theta0: this.cam.theta, elev0: this.cam.elev,
-          tilt0: this.cam.elev - elevFor(this.cam.dist),   // your own tilt on top of the zoom's
         };
       } else if (pointers.size === 1) {
         // locked on your character while open: one finger orbits around
@@ -2781,15 +2819,15 @@ export const world3d = {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
         const ang = Math.atan2(b.y - a.y, b.x - a.x);
-        // zoom out: higher and more top-down; zoom in: lower, toward the horizon
+        // (a free view, Manhunt's zone overview, zooms out past the map's own limit)
         this.cam.dist = Math.min(this.freeView ? 1500 : ZOOM.max, Math.max(ZOOM.min, gesture.dist0 * (gesture.d0 / d)));
         this.cam.theta = gesture.theta0 + (ang - gesture.a0);
-        const tilt = Math.min(0.35, Math.max(-0.35, gesture.tilt0 + ((a.y + b.y) / 2 - gesture.midY0) * 0.004));
-        this.cam.elev = Math.min(1.25, Math.max(0.22, elevFor(this.cam.dist) + tilt));
+        this.cam.elev = Math.min(ZOOM.elevMax, Math.max(ZOOM.elevMin,
+          gesture.elev0 + ((a.y + b.y) / 2 - gesture.midY0) * 0.004));
         this.applyCamera();
       } else if (gesture && gesture.type === "orbit") {
         this.cam.theta -= (e.clientX - prev.x) * 0.006;
-        this.cam.elev = Math.min(1.25, Math.max(0.22, this.cam.elev + (e.clientY - prev.y) * 0.004));
+        this.cam.elev = Math.min(ZOOM.elevMax, Math.max(ZOOM.elevMin, this.cam.elev + (e.clientY - prev.y) * 0.004));
         this.applyCamera();
       } else if (gesture && gesture.type === "pan") {
         this.observing = true; // free observer mode until recenter
@@ -2816,9 +2854,7 @@ export const world3d = {
     el.addEventListener("pointercancel", up);
     el.addEventListener("wheel", e => {
       e.preventDefault();
-      const tilt = this.cam.elev - elevFor(this.cam.dist);
       this.cam.dist = Math.min(this.freeView ? 1500 : ZOOM.max, Math.max(ZOOM.min, this.cam.dist * (e.deltaY > 0 ? 1.1 : 1 / 1.1)));
-      this.cam.elev = Math.min(1.25, Math.max(0.22, elevFor(this.cam.dist) + tilt));
       this.applyCamera();
     }, { passive: false });
   },
@@ -2892,6 +2928,14 @@ export const world3d = {
     this.shadowSun = FORCED || t < 0.5 ? null : { altitude, bearing };
     this.bakeShadows();
     if (this.shadowMesh) { this.shadowMesh.material.opacity = 0.32 * (FORCED ? 1 : sstep(Math.abs(t - 0.5) / 0.2)); this.shadowMesh.visible = this.shadowMesh.material.opacity > 0.005; }
+    // the procedural city's shadows fall the same way (rebuilt a few chunks a frame when the sweep steps)
+    const sh = this.shadowNow();
+    for (const c of [this.city, this._warm?.city]) c?.setShadow?.(sh.sweep, sh.k);
+  },
+  // the baked shadows right now: the sweep (null: the classic one) and how dark (0..1)
+  shadowNow() {
+    const t = this._sun?.t ?? this.light ?? light0;
+    return { sweep: this.shadowSun ? shadowDir(this.shadowSun) : null, k: FORCED ? 1 : sstep(Math.abs(t - 0.5) / 0.2) };
   },
   // the hand-made map's baked shadows (STYLE.md 5.6): each footprint swept
   // away from the sun, by k = min(52, 6 + 0.95 h) times a length from the
@@ -3037,7 +3081,7 @@ export const world3d = {
     const range = this.viewRange();
     // the warm city (built ahead, out of sight) streams round its own spot, for the map's view
     const W = this._warm;
-    if (W?.city) { const [x, z] = W.city.P.fwd(W.spot[1], W.spot[0]); (W.at ??= new THREE.Vector3()).set(x, 0, z); W.city.update(W.at, { load: VIEW.R + VIEW.buffer, near: VIEW.R, show: Infinity }); }
+    if (W?.city) { const [x, z] = W.city.P.fwd(W.spot[1], W.spot[0]); (W.at ??= new THREE.Vector3()).set(x, 0, z); W.city.update(W.at, null); }
     if (this.city) {
       this.city.update(this.target, range);
       // the ground and the sky go where you go (snapped: the paving stays put)

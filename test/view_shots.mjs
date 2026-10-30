@@ -1,11 +1,16 @@
-// The map's view range (Pokémon GO style) and its light from the place on
-// screen. For Itaewon (the hand-made map + the city round it) and a
-// procedural-city spot, by day and by night, at the closest and the
-// furthest zoom: a shot each at phone width, and the numbers — how far you
-// can see (the screen's ground cast onto the street, cut where the fog is
-// total), where your character sits on the screen, the camera's angle, what
-// one frame draws (draw calls, triangles), the chunks loaded, and the frame
-// rate (SwiftShader here: compare runs with each other, not with a phone).
+// The map's view (the classic orbit camera, a clear city round you) and its
+// light from the place on screen. For Itaewon (the hand-made map + the city
+// round it) and a procedural-city spot, by day, at sunset and by night, at
+// the closest, the home and the furthest zoom (the home tilt): a shot each
+// at phone width, and the numbers — how far it's clear straight ahead
+// (fog under 5 %), how much of the ground on screen is clear, the fog at the
+// top of the screen, how far you can see (cut where the fog is total), where
+// your character sits on the screen, the camera's angle, what one frame
+// draws (draw calls, triangles), the chunks loaded (by detail), and the
+// frame rate (SwiftShader here: compare runs with each other, not with a
+// phone). Checks: clear for a kilometre ahead at the home view (two zoomed
+// out), and the ground on screen clear but for the band at the top, where
+// the classic camera's view reaches the horizon (the haze).
 // Then the same moment in Seoul and in Calgary side by side (the sun over
 // the place shown, not the phone's clock), and a sunset sped up as frames.
 //   node test/view_shots.mjs <dir> [range,sun,sunset] [--prefix=before]
@@ -47,7 +52,7 @@ function measure() {
   const cx = radial ? cam.position.x - fx * f.near : 0, cz = radial ? cam.position.z - fz * f.near : 0;
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const fogAt = (p, depth) => !f ? 0 : radial ? ss(f.far * (w.FOG_START ?? 0.5), f.far, Math.hypot(p.x - cx, p.z - cz)) : ss(f.near, f.far, depth);
-  let maxR = 0, top = null, N = 32, sky = 0;
+  let maxR = 0, top = null, N = 32, sky = 0, ground = 0, clear = 0, topFog = null;
   for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) {
     const sx = i / N * 2 - 1, sy = j / N * 2 - 1;
     const d = new V(sx, sy, 0.5).unproject(cam).sub(cam.position).normalize();
@@ -56,56 +61,64 @@ function measure() {
     if (k > cam.far) { sky++; continue; }
     const p = cam.position.clone().add(d.clone().multiplyScalar(k));
     const fog = fogAt(p, k * d.dot(fwd));
+    ground++; if (fog < 0.05) clear++;
+    if (i === N / 2 && j === N) topFog = fog;
     if (fog >= 0.98) continue;
     const r = Math.hypot(p.x - T.x, p.z - T.z);
     maxR = Math.max(maxR, r);
     if (i === N / 2 && j === N) top = r;
   }
   // where the ground stops being visible straight ahead (fog total), from the character
-  let ahead = 0;
+  let ahead = 0, clearAhead = 0;
   for (let r = 0; r < 4000; r += 2) {
     const p = new V(T.x + fx * r, T.y, T.z + fz * r), depth = p.clone().sub(cam.position).dot(fwd);
     const v = p.clone().project(cam);
     if (v.y > 1 || fogAt(p, depth) >= 0.98) break;
     ahead = r;
   }
+  // how far it's clear straight ahead (fog under 5 %), on screen or not
+  for (let r = 0; r < 4000; r += 2) { const p = new V(T.x + fx * r, T.y, T.z + fz * r); if (fogAt(p, p.clone().sub(cam.position).dot(fwd)) >= 0.05) break; clearAhead = r; }
   const ch = new V(T.x, T.y + 7, T.z).project(cam);
   const elevDeg = Math.asin((cam.position.y - T.y) / cam.position.distanceTo(T)) * 180 / Math.PI;
   const pitchDeg = -Math.asin(fwd.y) * 180 / Math.PI;
   const st = w.city?.stats();
-  return { ...info, chunks: st?.chunks ?? 0, cityTris: st?.tris ?? 0, maxR_m: Math.round(maxR / 0.55), ahead_m: Math.round(ahead / 0.55), top_m: top == null ? null : Math.round(top / 0.55),
+  const lods = {}; for (const c of w.city?.chunks?.values?.() ?? []) lods["lod" + c.lod] = (lods["lod" + c.lod] ?? 0) + 1;
+  return { ...info, chunks: st?.chunks ?? 0, lods, clearAhead_m: Math.round(clearAhead / 0.55), groundClearPct: ground ? Math.round(clear / ground * 100) : 0, topFog: topFog == null ? null : +topFog.toFixed(2), cityTris: st?.tris ?? 0, maxR_m: Math.round(maxR / 0.55), ahead_m: Math.round(ahead / 0.55), top_m: top == null ? null : Math.round(top / 0.55),
     skyPct: Math.round(sky / ((N + 1) * (N + 1)) * 100), charFromTopPct: Math.round((-ch.y * 0.5 + 0.5) * 100), dist: Math.round(w.cam.dist), camElevDeg: +elevDeg.toFixed(1), pitchDeg: +pitchDeg.toFixed(1),
     fog: f ? { near: Math.round(f.near), far: Math.round(f.far), radial } : null, viewR_m: w.viewR ? Math.round(w.viewR / 0.55) : null };
 }
 async function fps(pg, ms = 3000) {
   return pg.evaluate(ms => new Promise(res => { const w = window.__w; let n = 0; const t0 = performance.now(); const loop = () => { w.needsRender = true; n++; if (performance.now() - t0 < ms) requestAnimationFrame(loop); else res(+(n * 1000 / (performance.now() - t0)).toFixed(1)); }; requestAnimationFrame(loop); }), ms);
 }
-// the furthest / closest zoom the player can pinch to (older builds: 420 / 70 at the home tilt)
+// the furthest / home / closest zoom the player can pinch to, at the home tilt
+// (older builds: 420 / 70; the Pokémon GO build tilted with the zoom, elevFor)
 const zoom = (pg, which) => pg.evaluate(which => {
   const w = window.__w, Z = w.ZOOM ?? { min: 70, max: 420 };
-  const dist = which === "max" ? Z.max : Z.min;
+  const dist = which === "max" ? Z.max : which === "home" ? w.CAM_DEFAULT.dist : Z.min;
   w.camGoal = null;
   Object.assign(w.cam, { dist, elev: w.elevFor ? w.elevFor(dist) : w.CAM_DEFAULT.elev });
   w.applyCamera();
 }, which);
 
-if (PARTS.includes("range")) for (const s of SPOTS) for (const mode of ["day", "night"]) {
+if (PARTS.includes("range")) for (const s of SPOTS) for (const mode of ["day", "sunset", "night"]) {
   console.log(`\n${s.label}, ${mode}`);
   const ctx = await browser.newContext(PHONE);
   const pg = await ctx.newPage();
   const errs = []; pg.on("pageerror", e => errs.push(e.message));
-  await pg.goto(`${base}/test/city.html?at=${s.lat},${s.lng}&mode=${mode}`);
+  await pg.goto(`${base}/test/city.html?at=${s.lat},${s.lng}&${mode === "sunset" ? "light=sunset" : "mode=" + mode}`, { timeout: 180000 });
   await pg.waitForFunction(() => window.__ready || window.__failed, null, { timeout: 60000 });
   await pg.waitForFunction(() => window.__w?.city?.stats().firstRingMs, null, { timeout: 240000, polling: 300 }).catch(() => {});
-  for (const which of ["max", "min"]) {
+  for (const which of ["max", "home", "min"]) {
     await zoom(pg, which);
     await settled(pg); await sleep(2500);
     const m = await pg.evaluate(measure);
     m.fps = await fps(pg);
     const row = { spot: s.id, mode, zoom: which, ...m };
     out.range.push(row);
-    console.log(`    zoom ${which}: you see ${m.maxR_m} m round you at most, ${m.ahead_m} m straight ahead; character ${m.charFromTopPct}% down; camera ${m.camElevDeg}° up, looking ${m.pitchDeg}° down (dist ${m.dist}); ${m.calls} draws, ${(m.tris / 1000).toFixed(0)}k tris, ${m.chunks} chunks, ${m.fps} fps`);
+    console.log(`    zoom ${which}: clear ${m.clearAhead_m} m straight ahead, ${m.groundClearPct}% of the ground on screen clear, fog ${m.topFog} at the top; you see ${m.maxR_m} m round you at most, ${m.ahead_m} m straight ahead; character ${m.charFromTopPct}% down; camera ${m.camElevDeg}° up, looking ${m.pitchDeg}° down (dist ${m.dist}); ${m.calls} draws, ${(m.tris / 1000).toFixed(0)}k tris, ${m.chunks} chunks, ${m.fps} fps`);
     await snap(pg, join(OUT, `${PREFIX}range-${s.id}-${mode}-${which}.png`));
+    if (which === "home") ok(m.clearAhead_m >= 1000 && m.groundClearPct >= 80, `${s.id} ${mode}, home view: clear ${m.clearAhead_m} m ahead, ${m.groundClearPct}% of the ground on screen`);
+    if (which === "max") ok(m.clearAhead_m >= 2000 && m.groundClearPct >= 85, `${s.id} ${mode}, zoomed out: clear ${m.clearAhead_m} m ahead, ${m.groundClearPct}% of the ground on screen`);
   }
   ok(!errs.length, `no page errors${errs.length ? ": " + errs.slice(0, 2).join(" | ") : ""}`);
   await ctx.close();
