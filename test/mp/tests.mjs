@@ -139,15 +139,15 @@ export async function hosting(T) {
 // ================================================================ 4. playing the games
 export async function games(T) {
   const P = await phones(T, T.n);
-  // 2 players: every game needs 3, so the host's phone adds one bot (?bots=1, the app's own dev seat)
-  if (T.n < 3) { T.w.hostQuery = { bots: 1 }; T.note("2 players: + 1 bot on the host's phone (?bots=1): every game needs 3"); }
+  // the host's phone runs Manhunt's clock fast (?mhfast=30: a minute lasts 2 s); 2 players: + 1 bot (?bots=1): every game needs 3
+  T.w.hostQuery = { mhfast: 30, ...(T.n < 3 ? { bots: 1 } : {}) };
+  if (T.n < 3) T.note("2 players: + 1 bot on the host's phone (?bots=1): every game needs 3");
   await formParty(T.w, P, P.map(p => handle(T, p)), T.log);
   { const bad = await allSeeAll(P); T.need(!bad.length, `everyone is in the lobby${bad.length ? `: ${bad.join("; ")}` : ""}`); }
   const photos = await makePhotos(P[0], `${T.w.out}/tmp/photos-${T.tag}`);
   const list = T.opts.games ?? GAMES;
   for (const g of list) {
     const id = `game:${g}`;
-    if (g === "manhunt") { T.row(id, null, "not driven: Manhunt needs a zone drawn on the live map and simulated walking (test/manhunt_rec.mjs covers it)"); continue; }
     try {
       await nextSetIfDone(P[0], T.log);
       const seen = await playGame(g, P, { log: T.log, ctx: { photoFiles: photos }, maxMs: (T.opts.gameMin ?? 14) * 60000, onTick: syncWatch(T, P) });
@@ -221,8 +221,9 @@ export async function hostcontrols(T) {
   if (!pause) problems.push(new NotImplemented(`no pause / resume for the host mid-game (looked for #hp-pause or [data-testid=host-pause]; the host has: ${controls.join(", ")})`));
   else {
     await H.tap(`#${pause}`);
-    const paused = await Promise.all(P.map(ph => ph.until(R => R.game()?.paused && !!document.getElementById("hp-paused"), null, 10000)));
-    T.check(paused.every(Boolean), `pause reaches every phone, the paused sheet on each (${paused.filter(Boolean).length}/${P.length})`);
+    const paused = await Promise.all(P.map(ph => ph.until(R => R.game()?.paused && !!document.getElementById("hp-paused"), null, 40000)));
+    for (const [i, ph] of P.entries()) if (!paused[i]) T.log(`  ${ph.name} on pause: ${JSON.stringify(await ph.r(R => ({ paused: R.game()?.paused, phase: R.game()?.phase, sheet: !!document.getElementById("hp-paused"), launched: R.party()?.launched, screen: R.screen() })).catch(e => e.message))}`);
+    T.check(paused.every(Boolean), `pause reaches every phone, the paused sheet on each (${paused.filter(Boolean).length}/${P.length}${paused.every(Boolean) ? "" : `; not: ${P.filter((_, i) => !paused[i]).map(p => p.name).join(", ")}`})`);
     const l0 = await H.r(R => R.game()?.left); await sleep(4000); const l1 = await H.r(R => R.game()?.left);
     T.check(Math.abs(l0 - l1) < 200, `the clock stands still while paused (${Math.round(l0)} -> ${Math.round(l1)} ms left)`);
     // ---- kicking a player mid-game (from the host's paused sheet)
@@ -272,8 +273,8 @@ export async function leaving(T) {
     const H = rest[0], left = rest.slice(1);
     await leaveParty(H);
     T.check(await H.until(R => !R.party() && R.screen().map, null, 40000), `the host (${H.name}) leaves: on the map too`);
-    const newHost = await Promise.all(left.map(ph => ph.until(R => R.party()?.hostId, null, 20000)));
-    T.check(new Set(newHost).size === 1 && newHost[0] === left[0].id, `the next to have joined (${left[0].name}) is host for everyone`);
+    const newHost = await Promise.all(left.map(ph => ph.until((R, id) => R.party()?.hostId === id && R.party().hostId, left[0].id, 30000)));
+    T.check(new Set(newHost).size === 1 && newHost[0] === left[0].id, `the next to have joined (${left[0].name}) is host for everyone (${newHost.map((h, i) => `${left[i].name}: ${h ? "yes" : "no"}`).join(", ")})`);
   }
 }
 

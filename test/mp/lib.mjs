@@ -98,6 +98,12 @@ export class World {
         if (ph.dropped) return { offline: true };
         const st = (this.stats ??= { reads: 0, writes: 0, conflicts: 0 });
         if (op === "get") { st.reads++; return { version: this.version, state: this.state }; }
+        // a request the page sent on its way out (keepalive): applied at once, nothing comes back
+        if (op === "delete" && arg?.table) {
+          const T = this.state.tables?.[arg.table];
+          if (T) { this.state = { ...this.state, tables: { ...this.state.tables, [arg.table]: T.filter(r => r.user_id !== arg.user_id) } }; this.version++; }
+          return { ok: true };
+        }
         if (op === "put") {
           if (arg?.version !== this.version) { st.conflicts++; return { ok: false }; }
           this.state = arg.state; this.version++; st.writes++;
@@ -115,6 +121,12 @@ export class World {
     // remember which presence keys this phone holds on which channel (a drop: the server times them out)
     if (d && (d.k === "join" || d.k === "here") && d.key) (from.presenceKeys[name] ??= new Set()).add(d.key);
     if (d && d.k === "leave" && d.key) from.presenceKeys[name]?.delete(d.key);
+    // the server's own copy of who's on a channel: a new subscriber gets it at once, from
+    // the server, not from the other phones (which may be too busy to answer)
+    const P = (this.pres ??= {})[name] ??= new Map();
+    if (d && (d.k === "join" || d.k === "here") && d.key) P.set(d.key, { meta: d.meta, ph: from });
+    if (d && d.k === "leave" && d.key) P.delete(d.key);
+    if (d?.k === "who") { for (const [key, v] of P) if (v.ph !== from && !v.ph.dropped && !v.ph.closed) from._deliver(name, { k: "here", key, meta: v.meta }); return; }
     for (const ph of this.phones) if (ph !== from && !ph.dropped && !ph.closed) ph._deliver(name, d);
   }
 
@@ -191,7 +203,8 @@ export class Phone {
   // the app is closed (swiped away): its socket closes, so the server drops its presence at once
   async close() {
     this.closed = true;
-    await this.page?.close().catch(() => {});
+    await this.page?.close({ runBeforeUnload: true }).catch(() => {});
+    await sleep(500);
     if (this.world.offline) for (const [name, set] of Object.entries(this.presenceKeys)) for (const key of set)
       for (const o of this.world.phones) if (o !== this && !o.dropped && !o.closed) o._deliver(name, { k: "leave", key });
   }

@@ -148,7 +148,18 @@ if (mpShared) await mpShared.tx(st => {
   if (!P.some(p => p.id === myId)) P.push({ ...db.profiles[0] });
   st.tables.public_messages ??= db.public_messages;
   st.tables.presence ??= [];
+  st.tables.zones ??= db.zones;
 }).catch(() => {});
+// test/mp/: the app's raw request on its way out (backend.js pagehide: DELETE
+// /rest/v1/presence?user_id=eq.…, keepalive), played as PostgREST would
+if (mpShared) {
+  const f0 = window.fetch.bind(window);
+  window.fetch = (u, o = {}) => {
+    const m = /\/rest\/v1\/(presence)\?user_id=eq\.([^&]+)/.exec(String(u));
+    if (m && (o.method ?? "GET").toUpperCase() === "DELETE" && decodeURIComponent(m[2]) === myId) { window.__mpdb("delete", { table: m[1], user_id: myId }); return Promise.resolve(new Response(null, { status: 204 })); }
+    return f0(u, o);
+  };
+}
 
 // a tiny PostgREST-ish query builder: filters, order, limit, single rows
 class Query {
@@ -275,7 +286,8 @@ const RPC = {
   ensure_auto_zone: ({ p_cell_lat, p_cell_lng }) => {
     // the id as migrations/008 builds it: 'auto_' || replace(lat::text, '.', 'p') || '_' || …
     const z = { id: `auto_${String(p_cell_lat).replace(".", "p")}_${String(p_cell_lng).replace(".", "p")}`, name: `Area ${p_cell_lat}, ${p_cell_lng}`, lat: p_cell_lat, lng: p_cell_lng, kind: "auto" };
-    if (!db.zones.some(x => x.id === z.id)) db.zones.push(z);
+    const Z = TX ? (TX.tables.zones ??= db.zones) : db.zones;      // (test/mp/: the one server's zones)
+    if (!Z.some(x => x.id === z.id)) Z.push(z);
     return z;
   },
   ensure_dm: ({ p_other }) => `dm-${p_other}`,

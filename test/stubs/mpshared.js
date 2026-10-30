@@ -16,7 +16,7 @@
 //
 // A phone the runner has cut off (a dropped connection) gets an error back,
 // as a phone with no network would.
-export const SHARED_TABLES = ["presence", "public_messages", "profiles"];
+export const SHARED_TABLES = ["presence", "public_messages", "profiles", "zones"];
 
 export const mpShared = typeof window.__mpdb === "function" ? {
   async tx(fn) {

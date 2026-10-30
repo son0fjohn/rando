@@ -108,7 +108,18 @@ const DRIVERS = {
       if (f && !f.titles?.some(x => x.by === me) && f.votes?.[me] === undefined) return once(`vote-${s.fi}`, () => send(ph, "vote", { idx: (s.fi + ph.name.length) % Math.max(1, f.titles?.length ?? 1) }));
     }
   },
-  async manhunt() { /* driven in playManhunt */ },
+  // Manhunt on the streets: the host's phone draws a zone round itself at setup;
+  // no head start, the shortest round (the host's ?mhfast=30: a minute lasts 2 s);
+  // everyone in the zone the whole time (their GPS doesn't move), so the runners survive
+  async manhunt(ph, s, { isHost, once }) {
+    if (s.phase === "setup" && isHost && s.setup?.zone) return once(`go-${Math.floor(Date.now() / 15000)}`, async () => {   // (again if it said no: S.err)
+      await send(ph, "mh-set", { k: "head", v: 0 });
+      await send(ph, "mh-set", { k: "round", v: 10 });
+      await sleep(600);
+      await send(ph, "mh-go");
+    });
+    if (s.phase === "rules" && !s.players?.[ph.id]?.ready) return once("ready", () => send(ph, "mh-ready"));
+  },
 };
 
 // who the game's "subject" is this turn (the one picked / performing / asking)
