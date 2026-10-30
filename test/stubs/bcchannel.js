@@ -18,10 +18,16 @@ export class StubChannel {
     this.mine = null;
     this.bc = null;
   }
-  on(type, filter, cb) { this.handlers.push({ type, event: filter?.event, cb }); return this; }
+  on(type, filter, cb) { this.handlers.push({ type, event: filter?.event, table: filter?.table, cb }); return this; }
   subscribe(cb) {
     this.bc = new BroadcastChannel(`sbstub:${this.name}`);
     this.bc.onmessage = e => this._rx(e.data);
+    // postgres_changes: a table's inserts (pgNotify below), like Realtime's
+    this.pg = [...new Set(this.handlers.filter(h => h.type === "postgres_changes" && h.table).map(h => h.table))].map(table => {
+      const bc = new BroadcastChannel(`sbstub:pg:${table}`);
+      bc.onmessage = e => { for (const h of this.handlers) if (h.type === "postgres_changes" && h.table === table && (!h.event || h.event === "*" || h.event === e.data.type)) { try { h.cb({ eventType: e.data.type, table, new: e.data.row, old: e.data.old ?? {} }); } catch (x) { console.warn("[sbstub]", x); } } };
+      return bc;
+    });
     open.add(this);
     setTimeout(() => cb?.("SUBSCRIBED"), 5);
     return this;
@@ -41,6 +47,8 @@ export class StubChannel {
   close() {
     if (this.mine && this.bc) this.bc.postMessage({ k: "leave", key: this.key });
     this.bc?.close(); this.bc = null; this.mine = null;
+    for (const bc of this.pg ?? []) bc.close();
+    this.pg = [];
     open.delete(this);
   }
   _rx(d) {
@@ -57,5 +65,13 @@ export class StubChannel {
   }
 }
 
+
+// a row written to a table: every channel listening for its postgres_changes
+// hears it (this page's too, as Realtime sends your own inserts back)
+export function pgNotify(table, type, row) {
+  const bc = new BroadcastChannel(`sbstub:pg:${table}`);
+  bc.postMessage({ type, row });
+  setTimeout(() => bc.close(), 50);
+}
 
 window.addEventListener("pagehide", () => { for (const ch of [...open]) ch.close(); });

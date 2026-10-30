@@ -32,7 +32,8 @@
 //   sms fails ?smsFail=provider (stub-sms-fail): the provider refuses to text
 //             (Twilio's region error, as Supabase passes it on); =rate: the
 //             server's "only request this after 53 seconds"
-import { StubChannel } from "./bcchannel.js";
+import { StubChannel, pgNotify } from "./bcchannel.js";
+import { mpShared, SHARED_TABLES } from "./mpshared.js";   // test/mp/: one server for many browser contexts
 import { ITEMS4, HAIRCOLOR_SHOP, STARTER_OUTFITS4 } from "/web/items4.js";
 import { notesStub } from "./notes_stub.js";   // notes on the map (migrations/019): RPCs, buckets, a fake moderator
 
@@ -58,7 +59,7 @@ const ZONES = [
 const LOOKS = STARTER_OUTFITS4.map(({ id, name, ...o }, i) => ({ skin: String(1 + (i * 3) % 8), eyes: ["sharp", "round", "cat", "sleepy", "sparkly", "narrow"][i], iris: ["brown", "lightblue", "green", "amber", "violet", "gray"][i],
   hair: o.hair ?? ["middle-part", "buzz", "bob", "wolf", "twin-buns", "slicked"][i], hairColor: ["darkbrown", "black", "blonde", "lightbrown", "black", "red"][i], ...o }));
 const NAMES = ["mina", "jae", "sol", "haru", "dana", "kit", "yuna", "rio", "bo", "lux", "ari", "noa"];
-const crowd = Math.max(0, Math.min(12, q.get("crowd") === null ? 5 : +q.get("crowd")));
+const crowd = Math.max(0, Math.min(12, q.get("crowd") === null ? (mpShared ? 0 : 5) : +q.get("crowd")));
 const strangers = Array.from({ length: crowd }, (_, i) => ({
   user_id: `u-${NAMES[i]}`, handle: NAMES[i], avatar: LOOKS[i % LOOKS.length],
   zone_id: ZONES[[0, 0, 1, 4, 2, 0, 5, 3, 1, 4, 0, 2][i]].id,
@@ -94,7 +95,9 @@ const idbPut = async v => { const d = await idb(); return new Promise(res => { c
 const load = () => CUR;
 const save = st => { CUR = st; dirty = true; };
 const cstate = () => load() ?? { ledger: [], games: {}, receipts: {}, inventory: {} };
+let TX = null;     // test/mp/: the shared state, while a call runs on it
 function withCoins(fn) {
+  if (mpShared) return mpShared.tx(st => { TX = st; CUR = st.coins ?? null; dirty = false; try { const r = fn(); if (dirty) st.coins = CUR; return r; } finally { TX = null; } });
   const go = async () => { CUR = await idbGet(); dirty = false; const r = fn(); if (dirty) await idbPut(CUR); return r; };
   return navigator.locks ? navigator.locks.request("stub-coins", go) : go();
 }
@@ -127,6 +130,13 @@ function hostReward(st, session, set) {
 }
 const wallet = st => ({ coins: balance(st, myId), owned: st.inventory[myId] ?? [] });
 window.__db = db;
+// test/mp/: this phone's profile on the one server (others' get_world shows it), and the plaza's seed lines once
+if (mpShared) await mpShared.tx(st => {
+  const P = (st.tables.profiles ??= []);
+  if (!P.some(p => p.id === myId)) P.push({ ...db.profiles[0] });
+  st.tables.public_messages ??= db.public_messages;
+  st.tables.presence ??= [];
+}).catch(() => {});
 
 // a tiny PostgREST-ish query builder: filters, order, limit, single rows
 class Query {
@@ -147,7 +157,16 @@ class Query {
   upsert(rows) { this.op = "upsert"; this.rows = [].concat(rows); return this; }
   update(patch) { this.op = "update"; this.patch = patch; return this; }
   delete() { this.op = "delete"; return this; }
-  then(res, rej) { return Promise.resolve().then(() => this._run()).then(res, rej); }
+  then(res, rej) {
+    const told = r => { for (const row of this._notify ?? []) pgNotify(this.t, "INSERT", row); return r; };
+    // test/mp/: the tables everyone shares run on the one server
+    if (mpShared && SHARED_TABLES.includes(this.t)) return mpShared.tx(st => {
+      this._notify = []; this._err = null;       // (a transaction can run again on newer state)
+      for (const k of SHARED_TABLES) db[k] = (st.tables[k] ??= []);
+      try { return this._run(); } finally { for (const k of SHARED_TABLES) st.tables[k] = db[k]; }
+    }).then(told, e => ({ data: null, error: { message: e.message } })).then(res, rej);
+    return Promise.resolve().then(() => told(this._run())).then(res, rej);
+  }
   _run() {
     const T = (db[this.t] ??= []);
     const match = r => this.filters.every(f => f(r));
@@ -155,12 +174,19 @@ class Query {
     if (this.op === "insert" || this.op === "upsert") {
       out = this.rows.map(r => {
         const row = { id: r.id ?? `${this.t}-${T.length + 1}`, created_at: new Date().toISOString(), ...r };
-        if (this.t === "public_messages") Object.assign(row, { sender: myId, handle, zone_id: db.presence.find(p => p.user_id === myId)?.zone_id ?? "itaewon-station" });
+        if (this.t === "public_messages") {
+          // as the real trigger (migrations/007): the sender's own handle and presence zone; speaking needs being open
+          const zone = db.presence.find(p => p.user_id === myId)?.zone_id;
+          if (mpShared && !zone) { this._err = "go open to talk in public chat"; return null; }
+          Object.assign(row, { sender: myId, handle: db.profiles.find(p => p.id === myId)?.handle ?? handle, zone_id: zone ?? "itaewon-station" });
+        }
         const key = this.t === "presence" ? "user_id" : "id";
         const i = this.op === "upsert" ? T.findIndex(x => x[key] === row[key]) : -1;
         if (i >= 0) T[i] = { ...T[i], ...row }; else T.push(row);
+        if (this.op === "insert") (this._notify ??= []).push({ ...row });
         return row;
       });
+      if (this._err) return { data: null, error: { message: this._err } };
     } else if (this.op === "update") {
       out = T.filter(match);
       if (this.t === "profiles" && this.patch.avatar) {
@@ -200,7 +226,11 @@ const RPC = {
     const p = ritualDraws.get(key);
     return p ? { id: p.id, text: p.text } : null;
   },
-  get_world: () => [
+  get_world: () => TX ? [
+    // test/mp/: everyone open, on the one server (their handle and look from their profile)
+    ...strangers.map(s => ({ ...s, is_self: false })),
+    ...(TX.tables.presence ?? []).map(p => { const pr = (TX.tables.profiles ?? []).find(x => x.id === p.user_id); return { user_id: p.user_id, handle: pr?.handle ?? "rando", avatar: pr?.avatar ?? {}, zone_id: p.zone_id, is_self: p.user_id === myId }; }),
+  ] : [
     ...strangers.map(s => ({ ...s, is_self: false })),
     ...db.presence.filter(p => p.user_id === myId).map(p => ({ user_id: myId, handle, avatar: myAvatar, zone_id: p.zone_id, is_self: true })),
   ],
