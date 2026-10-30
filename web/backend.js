@@ -16,6 +16,8 @@ import { onboard } from "./onboard.js";
 import { setSink } from "./analytics.js";
 import { askPermission } from "./permissions.js";
 import { FLAGS } from "./hpconfig.js";
+import { t } from "./i18n.js";
+import { PLAZA, areaOfZone, areaAt, inArea } from "./chatscope.js";
 // the new player character (avatar4) everywhere; the old names stay local so
 // the rest of this file reads unchanged
 const DEFAULT_AVATAR = DEFAULT_AVATAR4;
@@ -692,6 +694,8 @@ const explore = {
     } catch { /* no permission: keep the fallback */ }
     if (presence.myZone) return;              // went visible meanwhile
     home ??= { lat: 37.5346, lng: 126.9946 };
+    this.home = home;                         // (the plaza chat reads its area from it, on this phone)
+    pubchat.setArea().catch(() => {});
     world3d.setExplore(home.lat, home.lng, EXPLORE_M);
     world3d.recenter();
     if (!this.marker) {
@@ -1878,71 +1882,114 @@ document.getElementById("ss-ask").addEventListener("click", async e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape") styleView.requestClose(); });
 
 // ===================== public chat =====================
-// Real world-wide public messages: Twitch/Minecraft-style bottom feed +
-// inline input (no takeover panel). Sender identity in the feed is the
-// pseudonymous handle; the floating bubble anchors to the sender's ZONE
-// cluster, not a specific sprite — presence stays identity-free.
+// The map's plaza chat: lines straight on the map over the bar (theme.css),
+// the inline input. Lines are stored (public_messages, migrations/007) and
+// come in live over Realtime postgres_changes. Who hears a line is its AREA
+// (chatscope.js): Itaewon's fixed zones are one plaza, anywhere else your
+// ~2.2 km cell. The server stamps each line with the sender's presence zone,
+// so talking needs you on the map; hidden, you read your area's lines but
+// the chat asks to show you first. The sender's handle is shown; the bubble
+// floats over the sender's ZONE, never a person (presence stays identity-free).
 
 const pubEl = document.getElementById("pubchat");
 const pubFeed = document.getElementById("pubchat-feed");
 const pubForm = document.getElementById("pubchat-form");
 const pubInput = document.getElementById("pubchat-input");
 const pubOpenBtn = document.getElementById("pubchat-open");
+pubInput.placeholder = t("chat.placeholder");
 
 export const pubchat = {
   channel: null,
   myId: null,
+  area: null,          // the area the feed shows (chatscope.js), null while signed out
+  seen: new Set(),     // ids in the feed: your own line shows at once, then its realtime echo is skipped
+  _buf: null,          // lines that came in while the feed was (re)loading
 
-  // the public feed is the ITAEWON square, not a global firehose: only
-  // messages stamped with one of the fixed launch zones appear
-  itaewonZones() {
-    return presence.zones.filter(z => z.kind !== "auto").map(z => z.id);
-  },
-  inScope(m) {
-    const ids = this.itaewonZones();
-    return !ids.length || ids.includes(m.zone_id);
+  // the feed's area: your zone's while you're on the map; while hidden, the
+  // area round where you explore from, worked out on this phone, never sent
+  currentArea() {
+    if (presence.myZone) return areaOfZone(presence.myZone.id);
+    const h = explore.home;
+    return h ? areaAt(h.lat, h.lng, presence.zones) : PLAZA;
   },
 
   async onSignedIn() {
     const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
     this.myId = session.user.id;
     pubEl.hidden = false;
-    pubFeed.innerHTML = "";
-    let q = sb.from("public_messages").select("*")
-      .order("created_at", { ascending: false })
-      .limit(25);
-    const ids = this.itaewonZones();
-    if (ids.length) q = q.in("zone_id", ids);
-    const { data } = await q;
-    (data ?? []).reverse().forEach(m => this.addLine(m));
     this.subscribe();
+    await this.setArea(true);
   },
 
   onSignedOut() {
     if (this.channel) { sb.removeChannel(this.channel); this.channel = null; }
+    this.area = null; this.myId = null;
+    this.closeAsk();
     pubEl.hidden = true;
     pubForm.hidden = true;
     pubOpenBtn.hidden = false;
   },
 
+  // One live subscription per sign-in, kept across auth refreshes (supabase-js
+  // fires INITIAL_SESSION / TOKEN_REFRESHED / USER_UPDATED, and each one runs
+  // the sign-in path again). Each subscription gets its own topic: realtime-js
+  // hands back a live channel of the same name, so the old remove-then-
+  // resubscribe under "pubchat" got the channel that was still leaving, which
+  // never joins again: the chat went deaf after every refresh.
+  // Every insert comes in, and the area is checked here: a hidden phone never
+  // tells the server where it is.
   subscribe() {
-    if (this.channel) sb.removeChannel(this.channel);
-    this.channel = sb
-      .channel("pubchat")
-      .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "public_messages" },
-        p => {
-          if (!this.inScope(p.new)) return; // Itaewon-only feed
-          this.addLine(p.new);
-          this.bubble(p.new);
-        })
-      .subscribe();
+    if (this.channel) return;
+    const ch = sb.channel(`pubchat-${Math.random().toString(36).slice(2, 10)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "public_messages" }, p => this.receive(p.new));
+    this.channel = ch;
+    ch.subscribe((status, err) => {
+      if (status === "SUBSCRIBED") return;
+      console.warn("[rando] plaza chat:", status, err?.message ?? "");
+      // (errors and time-outs rejoin by themselves; a channel closed under us is replaced)
+      if (status === "CLOSED" && this.channel === ch && this.myId) {
+        this.channel = null;
+        setTimeout(() => { if (this.myId && !this.channel) { this.subscribe(); this.setArea(true); } }, 2000);
+      }
+    });
+  },
+
+  // (re)load the feed for where you are now: on sign-in, when you go on or off
+  // the map, when your zone changes, when the phone wakes
+  async setArea(force = false) {
+    if (!this.myId) return;
+    const area = this.currentArea();
+    if (!force && area === this.area) return;
+    this.area = area;
+    const buf = this._buf = [];
+    let q = sb.from("public_messages").select("*").order("created_at", { ascending: false });
+    if (presence.myZone && area === PLAZA) q = q.in("zone_id", presence.zones.filter(z => z.kind !== "auto").map(z => z.id)).limit(25);
+    else if (presence.myZone) q = q.eq("zone_id", presence.myZone.id).limit(25);   // the server has your zone already
+    else q = q.limit(100);                    // hidden: the latest lines, sorted out on this phone
+    const { data, error } = await q;
+    if (this.area !== area || this._buf !== buf) return;   // moved on meanwhile
+    this._buf = null;
+    if (error) console.warn("[rando] plaza chat history:", error.message);
+    pubFeed.innerHTML = "";
+    this.seen.clear();
+    (data ?? []).filter(m => inArea(m, area)).slice(0, 25).reverse().forEach(m => this.addLine(m));
+    buf.forEach(m => this.receive(m));
+  },
+
+  receive(m) {
+    if (!inArea(m, this.area)) return;
+    if (this._buf) { this._buf.push(m); return; }
+    if (this.seen.has(m.id)) return;
+    this.addLine(m);
+    this.bubble(m);
   },
 
   addLine(m, sys = false) {
     const line = document.createElement("div");
     line.className = "pub-line" + (sys ? " sys" : "");
     if (!sys) {
+      this.seen.add(m.id);
       const b = document.createElement("b");
       b.textContent = m.handle;
       line.appendChild(b);
@@ -1975,13 +2022,49 @@ export const pubchat = {
     }, 4000);
   },
 
+  // hidden: "show yourself here to talk", over the input. Resolves true once
+  // you're on the map (the same way as the bar's Explore button: the location
+  // pre-prompt, then your zone), false for "not now" or no location.
+  ask: null,
+  askToShow() {
+    this.closeAsk();
+    return new Promise(res => {
+      const el = document.createElement("div");
+      el.id = "pubchat-ask";
+      el.className = "glass";
+      el.setAttribute("role", "dialog");
+      el.innerHTML = `<b>${escHtml(t("chat.askTitle"))}</b><p>${escHtml(t("chat.askBody"))}</p>
+        <div class="pa-btns"><button type="button" class="glass-btn clear" data-no>${escHtml(t("chat.askNo"))}</button><button type="button" class="glass-btn gold" data-yes>${escHtml(t("chat.askYes"))}</button></div>`;
+      pubEl.insertBefore(el, document.getElementById("pubchat-row"));
+      const done = v => { if (this.ask === el) this.ask = null; el.remove(); res(v); };
+      el.querySelector("[data-no]").onclick = () => { sfx.back(); done(false); };
+      el.querySelector("[data-yes]").onclick = async e => {
+        e.currentTarget.disabled = true;
+        sfx.confirm();
+        try {
+          if (params.get("devlat") || await askPermission("location")) await presence.goOpen();
+          else this.addLine(t("chat.noLoc"), true);
+          matching.renderButton();
+        } catch (err) { this.addLine(err.message || String(err), true); }
+        done(!!presence.myZone);
+      };
+      el._cancel = () => done(false);
+      this.ask = el;
+    });
+  },
+  closeAsk() { this.ask?._cancel?.(); },
+
+  // true once it's sent (and already in your feed)
   async send(text) {
-    const { error } = await sb.from("public_messages").insert({ body: text });
+    if (!presence.myZone && !(await this.askToShow())) return false;
+    const { data, error } = await sb.from("public_messages").insert({ body: text }).select().maybeSingle();
     if (error) {
-      this.addLine(/open/i.test(error.message)
-        ? "go open to talk in public chat"
-        : error.message, true);
+      this.addLine(/open/i.test(error.message) ? t("chat.hidden") : t("chat.failed"), true);
+      console.warn("[rando] plaza chat send:", error.message);
+      return false;
     }
+    if (data) { await this.setArea(); this.receive(data); }   // your own line now (its echo is skipped)
+    return true;
   },
 };
 
@@ -1990,19 +2073,24 @@ pubOpenBtn.addEventListener("click", () => {
   pubOpenBtn.hidden = true;
   pubInput.focus();
 });
+let pubSending = false;
 pubForm.addEventListener("submit", async e => {
   e.preventDefault();
   const text = pubInput.value.trim();
-  if (!text) return;
-  pubInput.value = "";
-  await pubchat.send(text);
+  if (!text || pubSending) return;
+  pubSending = true;
+  try { if (await pubchat.send(text) && pubInput.value.trim() === text) pubInput.value = ""; }
+  finally { pubSending = false; }
 });
 pubInput.addEventListener("keydown", e => {
   if (e.key === "Escape") {
+    pubchat.closeAsk();
     pubForm.hidden = true;
     pubOpenBtn.hidden = false;
   }
 });
+// the phone wakes: whatever was said while it slept
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pubchat.setArea(true).catch(() => {}); });
 
 // the matching wrapper already chains onto presence handlers; add pubchat
 const _pOnSignedIn = presence.onSignedIn.bind(presence);
@@ -2019,6 +2107,11 @@ presence.onSignedOut = function () {
   styleView.close();
   friends.onSignedOut();
 };
+// on or off the map, a new zone: the feed follows your area
+for (const k of ["goOpen", "goClosed", "heartbeat"]) {
+  const f = presence[k].bind(presence);
+  presence[k] = async function (...a) { try { return await f(...a); } finally { pubchat.setArea().catch(() => {}); } };
+}
 
 // ===================== the bottom bar =====================
 // center: host a party (opens the party screen, or your party if you're in
