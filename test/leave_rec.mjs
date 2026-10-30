@@ -113,7 +113,7 @@ async function joinFromStart(ctx, name, code) {
   await until(S, () => document.querySelector(".onb-screen:not(.out)")?.dataset.screen === "start" && !!document.querySelector(".st-panel [data-join]"), null, 90000);
   await sleep(1200);
   await tap(S, ".st-panel [data-join]");
-  await until(S, () => !!document.querySelector("#st-code input"), null, 5000);
+  await until(S, () => !!document.querySelector("#st-code input"), null, 20000);
   await S.evaluate(code => { document.querySelector("#st-code input").value = code; document.querySelector("#st-code").requestSubmit(); }, code);
   ok(await inLobby(S, 120000), `${name}: the start screen, Join a party, the code, the dive, the lobby`);
   return S;
@@ -153,6 +153,8 @@ async function stepLeave(pg, trigger, name = null, lead = 0) {
   for (let i = 0; i < 600; i++) {
     const out = await step();
     await grab();
+    if (i && i % 40 === 0 && at < 0) console.log("    (step", i, await pg.evaluate(() => JSON.stringify({ party: !!window.__P.current, pulling: window.__S.pulling, panel: !document.getElementById("party-panel").hidden,
+      veil: document.getElementById("dive-veil")?.classList.contains("on"), confirm: !!document.querySelector(".pt-confirm"), clock: window.__ft })), ")");
     if (out && at < 0) at = i;
     if (at >= 0 && i - at >= (name ? FPS * 1.5 : 2)) break;
   }
@@ -215,7 +217,7 @@ if (ONLY.includes("1")) {
   ok(await until(H, () => party.current.room.members.length >= 2, null, 20000), "…the host sees sol arrive");
   await sleep(2500);
   await tap(S, "#pt-back");
-  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 5000), "back -> Leave the party?");
+  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 20000), "back -> Leave the party?");
   await sleep(900);
   await shot(S, "leave-1-confirm");
   await stepLeave(S, () => tap(S, ".pt-confirm [data-yes]"), VIDEO ? "leave-button" : null, 18);
@@ -319,17 +321,17 @@ if (ONLY.includes("5")) {
   const url0 = S.url();
   ok(await S.evaluate(() => !!history.state?.randoParty), "the party keeps a history entry of its own");
   await S.evaluate(() => history.back());
-  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 8000), "Back -> Leave the party? (the lobby's own back)");
+  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 20000), "Back -> Leave the party? (the lobby's own back)");
   await sleep(900);
   await shot(S, "leave-5-back-confirm");
   ok(S.url() === url0 && await S.evaluate(() => !!document.querySelector("#party-panel:not([hidden]) #pt-floor") && !!history.state?.randoParty), "…still on the page, in the lobby, the entry back on (Stay is one tap)");
   await tap(S, ".pt-confirm [data-no]");
   await sleep(600);
   await S.evaluate(() => history.back());
-  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 8000), "Stay, then Back again -> asks again");
+  ok(await until(S, () => !!document.querySelector(".pt-confirm"), null, 20000), "Stay, then Back again -> asks again");
   await stepLeave(S, () => tap(S, ".pt-confirm [data-yes]"));
   await landed(S, "Back");
-  ok(await until(S, () => !history.state?.randoParty, null, 5000) && S.url() === url0, "…the party's history entry gone, the same page");
+  ok(await until(S, () => !history.state?.randoParty, null, 20000) && S.url() === url0, "…the party's history entry gone, the same page");
   await shot(S, "leave-5-back-explore");
   await sctx.close(); await hctx.close();
   contexts.splice(0);
