@@ -400,7 +400,9 @@ export class CityTiles {
     world.scene.add(this.group);
     this.chunks = new Map();   // "x,y" -> { lod, meshes, labels, want }
     this.queue = [];           // requests not yet sent
-    this.inflight = new Map(); // id -> { key, lod, t0 }
+    this.inflight = new Map(); // id -> { key, lod, t0, shadow, sweepKey }
+    this.sweep = null;         // the baked shadows' sweep (setShadow; null: the classic one)
+    this.sweepKey = "";
     this.ready = [];           // results waiting to be mounted
     this.nextId = 1;
     this.center = null;
@@ -411,6 +413,8 @@ export class CityTiles {
     this.labelNames = new Map();
     cityUniforms.uNight.value = night ? 1 : 0;
     this.makeMaterials(night);
+    const sh = world.shadowNow?.();    // (built in today's sun from the start)
+    if (sh) this.setShadow(sh.sweep, sh.k);
     this.startWorker();
   }
 
@@ -562,11 +566,11 @@ export class CityTiles {
         const bytes = await src.tile(m.z, m.x, m.y);
         const t1 = performance.now();
         if (!bytes) return onMsg({ type: "chunk", id: m.id, empty: true, t: { fetch: t1 - t0, build: 0 } });
-        const out = packChunk(buildChunk(JSON.parse(new TextDecoder().decode(bytes)), { z: m.z, x: m.x, y: m.y, origin: init.origin, lod: m.lod, heroes: init.heroes, clearAt: init.clearAt, exclude: init.exclude }));
+        const out = packChunk(buildChunk(JSON.parse(new TextDecoder().decode(bytes)), { z: m.z, x: m.x, y: m.y, origin: init.origin, lod: m.lod, heroes: init.heroes, clearAt: init.clearAt, exclude: init.exclude, shadow: m.shadow ?? null }));
         onMsg({ type: "chunk", id: m.id, ...out, t: { fetch: t1 - t0, build: performance.now() - t1 } });
       } catch (err) { onMsg({ type: "chunk", id: m.id, error: String(err) }); }
     };
-    for (const [id, r] of this.inflight) this.post({ type: "chunk", id, z: Z, x: r.x, y: r.y, lod: r.lod });
+    for (const [id, r] of this.inflight) this.post({ type: "chunk", id, z: Z, x: r.x, y: r.y, lod: r.lod, shadow: r.shadow });
   }
 
   send(m) { if (this.worker) this.worker.postMessage(m); else this.post?.(m); }
@@ -649,9 +653,10 @@ export class CityTiles {
     this.queue = [];
     for (const [k, w] of want) {
       const c = this.chunks.get(k);
-      if (c && !c.retry && (c.lod === w.lod || c.pending === w.lod)) continue;
+      const key = this.sweepKey;
+      if (c && !c.retry && ((c.lod === w.lod && c.sweep === key) || (c.pending === w.lod && c.pendingSweep === key))) continue;
       if (c?.retry && c.pending === w.lod) continue;
-      if ([...this.inflight.values()].some(r => r.key === k && r.lod === w.lod)) continue;
+      if ([...this.inflight.values()].some(r => r.key === k && r.lod === w.lod && r.sweepKey === key)) continue;
       this.queue.push({ key: k, has: c ? 1 : 0, ...w });
     }
     // a missing chunk before a new copy of one already there, then the finer, the nearest
@@ -702,8 +707,9 @@ export class CityTiles {
       const id = this.nextId++;
       this.inflight.set(id, { ...r, t0: performance.now() });
       const c = this.chunks.get(r.key);
-      if (c) c.pending = r.lod;
-      this.send({ type: "chunk", id, z: Z, x: r.x, y: r.y, lod: r.lod });
+      if (c) { c.pending = r.lod; c.pendingSweep = this.sweepKey; }
+      Object.assign(this.inflight.get(id), { shadow: this.sweep, sweepKey: this.sweepKey });
+      this.send({ type: "chunk", id, z: Z, x: r.x, y: r.y, lod: r.lod, shadow: this.sweep });
     }
   }
 
@@ -717,7 +723,7 @@ export class CityTiles {
     const A = this._at;
     const away = A ? this.tileDist(r.x, r.y, A.fx, A.fy) : 0;
     if (A && away > A.load + DROP_U) return;
-    const rec = { lod: r.lod, meshes: [], labels: [], empty: !!m.empty };
+    const rec = { lod: r.lod, meshes: [], labels: [], empty: !!m.empty, sweep: r.sweepKey ?? "" };
     // part of its data couldn't be reached (offline, a server error): ask again,
     // 15 s, then longer each time (citygen.worker.js marks it)
     if (m.retry) {
@@ -767,6 +773,23 @@ export class CityTiles {
     if (this.firstRing && !this.firstRing.done) {
       this.firstRing.need.delete(r.key); this.firstRing.near.delete(r.key);
       this.firstDone();
+    }
+    this.world.needsRender = true;
+  }
+
+  // where the baked shadows fall (sun.js shadowSweep: away from the sun by
+  // day, the classic sweep at night; null: the classic one) and how dark
+  // (0..1 of STYLE's, fading through dusk): as the hand-made map's
+  // (world3d.js applySun). A new sweep (the sun moved a 10° step, about
+  // every 40 minutes) builds the chunks again, a few a frame, no rise
+  setShadow(sweep, k = 1) {
+    const key = sweep ? sweep.map(v => v.toFixed(3)).join(",") : "";
+    this.mats.shadow.opacity = STYLE.shadow.opacity * k;
+    this.mats.shadow.visible = k > 0.005;
+    if (key !== this.sweepKey) {
+      this.sweep = sweep ? [...sweep] : null;
+      this.sweepKey = key;
+      this._at = null;      // (pick the chunks again: they're built anew)
     }
     this.world.needsRender = true;
   }

@@ -171,8 +171,9 @@ Warm `#ffd98f #ffc76a #ffe7b0`; cool `#c8ddff #aecbf2 #dfe9ff`.
   map, by day, the sweep falls away from the real sun instead, 0.6–2.2×
   as long as it sinks (`sun.js` `shadowSweep`, in 10° steps, re-swept a
   slice a frame), fading out and back through dusk; at night the classic
-  sweep. (The procedural city's chunks are swept in the worker,
-  `citygen.js`, still the classic way.)
+  sweep. The procedural city's chunks fall the same way: swept in the
+  worker (`citygen.js` `shadow`) with the same sweep, built again a few a
+  frame when it steps (`citytiles.js` `setShadow`), fading the same.
 
 ### 5.7 On and around each building (the "street density pass")
 Deterministic from the lot's position; `road-facing edge` = the footprint

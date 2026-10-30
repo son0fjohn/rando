@@ -2928,6 +2928,14 @@ export const world3d = {
     this.shadowSun = FORCED || t < 0.5 ? null : { altitude, bearing };
     this.bakeShadows();
     if (this.shadowMesh) { this.shadowMesh.material.opacity = 0.32 * (FORCED ? 1 : sstep(Math.abs(t - 0.5) / 0.2)); this.shadowMesh.visible = this.shadowMesh.material.opacity > 0.005; }
+    // the procedural city's shadows fall the same way (rebuilt a few chunks a frame when the sweep steps)
+    const sh = this.shadowNow();
+    for (const c of [this.city, this._warm?.city]) c?.setShadow?.(sh.sweep, sh.k);
+  },
+  // the baked shadows right now: the sweep (null: the classic one) and how dark (0..1)
+  shadowNow() {
+    const t = this._sun?.t ?? this.light ?? light0;
+    return { sweep: this.shadowSun ? shadowDir(this.shadowSun) : null, k: FORCED ? 1 : sstep(Math.abs(t - 0.5) / 0.2) };
   },
   // the hand-made map's baked shadows (STYLE.md 5.6): each footprint swept
   // away from the sun, by k = min(52, 6 + 0.95 h) times a length from the

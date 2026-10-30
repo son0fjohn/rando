@@ -489,7 +489,7 @@ export function buildChunk(payload, opts) {
     if (near) outline(buf("lines"), ring, y0, top);
     if (hero) crown(buf("glow"), ring, top, linRGB(rgb(parseHex(hero.glow) ?? 0xffd36b)), seedF);
     buf("roof").flat(ring, top, roofC, seedF);
-    if (!far) shadow(buf("shadow"), ring, top);
+    if (!far) shadow(buf("shadow"), ring, top, opts.shadow);
     if (near && area > STYLE.ac.minArea && s % 3 !== 0) {
       const hs = hash32(s + 77);
       const x = cx + ((hs % 7) - 3) * 0.6, z = cz + (((hs >> 4) % 5) - 2) * 0.6;
@@ -646,8 +646,8 @@ function outline(Lb, ring, y0, top) {
 // shadow point back toward the sun: it leaves the footprint through a
 // sunward wall), so the film looks the same with a third fewer triangles.
 // (ring: counter-clockwise in x,z, the outward normal (dz, -dx))
-function shadow(S, ring, top) {
-  const { dir, kMax, k0, kPerU, y } = STYLE.shadow;
+function shadow(S, ring, top, sweep = null) {
+  const { kMax, k0, kPerU, y } = STYLE.shadow, dir = sweep ?? STYLE.shadow.dir;
   const k = Math.min(kMax, k0 + top * kPerU), ox = dir[0] * k, oz = dir[1] * k;
   const n = ring.length, c = [1, 1, 1];
   for (let e = 0; e < n; e++) {
