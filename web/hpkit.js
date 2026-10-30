@@ -36,9 +36,13 @@ export function avatarHtml(p, { size = 44, ring = "" } = {}) {
 // A player who closes the tab mid-round stops blocking it. Their already-made
 // submissions still count (the state keeps them); they just stop being
 // expected. `active()` is what every "is everyone done?" check must use.
-export function syncGone(s, room) {
-  const present = new Set(room.members.map(m => m.id));
-  for (const p of Object.values(s.players)) if (!p.isBot) p.gone = !present.has(p.id);
+// A phone that's still in presence but hasn't been heard from for 30 s (its
+// network died: net.js STALE_MS) counts as gone too, so a game never waits
+// on it for long; heard from again, it's back. ({ stale: false }: Manhunt,
+// where a locked phone in a pocket is part of the game.)
+export function syncGone(s, room, { stale = true } = {}) {
+  const present = new Set(room.members.map(m => m.id)), now = Date.now();
+  for (const p of Object.values(s.players)) if (!p.isBot) p.gone = !present.has(p.id) || (stale && !!room.stale?.(p.id, now));
 }
 export const active = s => Object.values(s.players || {}).filter(p => !p.gone);
 export const everyone = s => Object.values(s.players || {});
