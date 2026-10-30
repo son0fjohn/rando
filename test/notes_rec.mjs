@@ -1,16 +1,23 @@
 // Notes on the map, recorded on the REAL app page offline (test/appserve.mjs
 // /app.html, Supabase faked: test/stubs/notes_stub.js; locations simulated
 // with ?devlat=&devlng=, moved with history.replaceState). Two phones in one
-// browser context (one fake server), each in its own window:
-//   alice (verified) leaves a text note, a photo (a JPEG the test builds WITH
-//   an EXIF GPS block: the uploaded bytes are checked for APP1 / Exif / GPS),
-//   a meme, and a magenta "bad" picture the fake moderator rejects;
-//   bob (not verified) is asked to verify when he tries to leave one; sees
-//   the markers from ~450 m away; a tap says "Get closer to read this"; he
-//   walks closer until the 80 m ring shows; opens the text note, upvotes,
-//   agrees; alice sees the view, the score and the agree; bob reports the
-//   meme and it's gone for both; alice on a residential block: "Notes can't
-//   be left here"; zoomed out, a spot's notes fold into a hub.
+// browser context (one fake server), each in its own window, both guests
+// (no phone verification: 020_notes_no_verify.sql). Every tap is a real
+// pointer tap at the element's centre, after checking nothing covers it:
+//   alice leaves a text note, a photo (a JPEG the test builds WITH an EXIF
+//   GPS block: the uploaded bytes are checked for APP1 / Exif / GPS), a meme,
+//   and a magenta "bad" picture the fake moderator rejects;
+//   bob sees the markers from ~450 m away; a tap says "Get closer to read
+//   this"; he walks closer until the 80 m ring shows; opens the text note
+//   (upvotes, agrees), the photo and the meme (their moderated public
+//   copies, drawn); leaves a note of his own; alice sees the view, the score
+//   and the agree; bob reports the meme and it's gone for both; alice on a
+//   residential block: "Notes can't be left here"; zoomed out, a spot's
+//   notes fold into a hub.
+//   Then a production project that isn't set up (the stub's ?notesSetup=):
+//   019 never applied -> the 📝 button says "Notes aren't switched on yet";
+//   no buckets -> a photo says "Photos and memes aren't switched on yet", and
+//   the message stays (a text note still goes).
 //   node test/notes_rec.mjs [dir]        (FFMPEG=/path/to/ffmpeg for notes.mp4; else frame strips)
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -42,8 +49,7 @@ const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, de
 await ctx.addInitScript(() => {
   try {
     localStorage.setItem("rando-hint-v1", "1");
-    localStorage.setItem("stub-phone-u-alice", "+821012345678");     // alice is verified; bob isn't
-    localStorage.setItem("stub-moderate-ms", "2500");
+    localStorage.setItem("stub-moderate-ms", "6000");   // (long enough to see "pending" on a slow machine)
   } catch {}
 
 });
@@ -55,13 +61,13 @@ async function win() {
   await bcdp.send("Target.createTarget", { url: "about:blank", browserContextId: cid, newWindow: true, background: false });
   const pg = await made; await pg.setViewportSize({ width: 390, height: 844 }); return pg;
 }
-async function phone(name, at) {
-  const pg = await win();
+async function phone(name, at, { pg = null, q = "" } = {}) {
+  pg ??= await win();
   pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
   pg.on("console", m => { if (/\[notes\]/.test(m.text())) console.log(`  [${name}] ${m.text().slice(0, 300)}`); });
-  await pg.goto(`${base}/app.html?onb=0&me=${name}&verify=1&mode=night&devlat=${at.lat}&devlng=${at.lng}`);
+  await pg.goto(`${base}/app.html?onb=0&me=${name}&verify=1&mode=night&devlat=${at.lat}&devlng=${at.lng}${q}`);
   await pg.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 90000 });
-  ok(await until(pg, () => document.body.classList.contains("notes-on") && !!document.getElementById("notes-leave"), null, 60000), `${name}: the world screen has "Leave a note"`);
+  ok(await until(pg, () => document.body.classList.contains("notes-on") && !!document.getElementById("notes-leave"), null, 180000), `${name}: the world screen has "Leave a note"`);
   return pg;
 }
 async function cast(pg) {
@@ -89,8 +95,27 @@ const shot = async (pg, n, note) => {
 async function use(pg) {
   for (const c of casts) await c.pg.evaluate(async on => { const { world3d } = await import("/web/world3d.js"); world3d.maxFps = 15; world3d.setPaused(!on); }, c.pg === pg).catch(() => {});
   await pg.bringToFront();
+  await until(pg, () => document.body.classList.contains("notes-on"), null, 20000);    // (the notes layer is back with the map)
 }
-const tap = (pg, sel) => pg.evaluate(sel => { const el = document.querySelector(sel); el?.click(); return !!el; }, sel);
+// a real tap at the element's centre (pointer events, hit testing), after
+// checking that it's what's on top there (nothing over the 📝 button or a marker)
+const hits = [];
+async function tap(pg, sel) {
+  const look = () => pg.evaluate(sel => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const top = r.width ? document.elementFromPoint(x, y) : null;
+    return { x, y, on: !!top && (top === el || el.contains(top)), top: top ? `${top.tagName.toLowerCase()}${top.id ? "#" + top.id : ""}.${String(top.className).split(" ")[0]}` : "nothing (not shown)" };
+  }, sel);
+  // (up to 10 s for it to be shown and settle: a sheet sliding in, a layer coming back)
+  let at = await look();
+  for (let i = 0; i < 20 && at && !at.on; i++) { await sleep(500); at = await look(); }
+  if (!at) return false;
+  if (!at.on) { hits.push(`${sel} under ${at.top}`); console.log(`  ✗ ${sel} is covered by ${at.top}`); fails++; }
+  await pg.mouse.click(at.x, at.y);
+  return true;
+}
 const move = (pg, p) => pg.evaluate(p => { const u = new URL(location.href); u.searchParams.set("devlat", p.lat); u.searchParams.set("devlng", p.lng); history.replaceState(null, "", u); }, p);
 // the camera over a spot (as a pan would), at a zoom
 const look = (pg, p, dist = 175) => pg.evaluate(async ({ p, dist }) => {
@@ -100,7 +125,7 @@ const look = (pg, p, dist = 175) => pg.evaluate(async ({ p, dist }) => {
 }, { p, dist });
 const marks = pg => pg.evaluate(async () => (await import("/web/notes.js")).notes.markers);
 const refresh = pg => pg.evaluate(async () => (await import("/web/notes.js")).notes.refresh());
-const toastHas = (pg, text) => until(pg, t => [...document.querySelectorAll(".glass-toast")].some(e => e.textContent.includes(t)), text, 8000);
+const toastHas = (pg, text) => until(pg, t => [...document.querySelectorAll(".glass-toast")].some(e => e.textContent.includes(t)), text, 20000);
 // a picture made in the page: a JPEG from a canvas, optionally WITH a hand-built EXIF GPS block
 const picture = (pg, kind, exif) => pg.evaluate(async ({ kind, exif }) => {
   const { withExifGps, hasMetadata } = await import("/web/noteimage.js");
@@ -124,11 +149,12 @@ async function compose(pg) {
   const done = await until(pg, () => !!document.querySelector(".note-compose .ns-post"), null, 90000);
   if (!done) console.log("    (Leave a note got to:", JSON.stringify(await pg.evaluate(async () => ({ step: (await import("/web/notes.js")).notes.step,
     sheets: [...document.querySelectorAll(".onb-sheet, .onb-perm, .notes-scrim")].map(e => e.className), toasts: [...document.querySelectorAll(".glass-toast")].map(e => e.textContent) }))), ")");
+  if (done) await sleep(1200);     // (the sheet slides in: tap it once it sits still)
   return done;
 }
 async function post(pg) {
   await tap(pg, ".note-compose .ns-post");
-  const done = await until(pg, () => !document.querySelector(".note-compose"), null, 90000);
+  const done = await until(pg, () => !document.querySelector(".note-compose"), null, 180000);
   if (!done) console.log("    (composer says:", JSON.stringify(await pg.evaluate(() => document.querySelector(".ns-err")?.textContent + " | " + document.querySelector(".ns-post")?.textContent)), ")");
   return done;
 }
@@ -159,6 +185,7 @@ ok(await until(P1, () => document.querySelectorAll("#notes-layer .note-pin.k-tex
 await move(P1, off(A, -22, 18));
 ok(await compose(P1), "composer again, 22 m on");
 await tap(P1, '.ns-seg [data-k="photo"]');
+ok(await P1.evaluate(() => !!document.querySelector(".ns-cap").offsetParent && !document.querySelector(".ns-mtop").offsetParent), "Photo: one optional line, no meme captions (they showed in Photo too)");
 const photo = await picture(P1, "photo", true);
 ok(photo.meta.app1 && photo.meta.exif && photo.meta.gps, "the test photo carries an EXIF APP1 segment with a GPS block (37.5347 N, 126.9945 E)");
 await P1.setInputFiles(".note-compose [data-lib-in]", { name: "IMG_0042.jpg", mimeType: "image/jpeg", buffer: Buffer.from(photo.bytes) });
@@ -183,6 +210,7 @@ ok(await until(P1, () => document.querySelector("#notes-layer .note-pin.k-photo.
 await move(P1, off(A, 25, 5));     // (by Danco, like the text note: the two make a hub)
 ok(await compose(P1), "composer, 25 m north");
 await tap(P1, '.ns-seg [data-k="meme"]');
+ok(await P1.evaluate(() => !!document.querySelector(".ns-mtop").offsetParent && !document.querySelector(".ns-cap").offsetParent), "Meme: the top / bottom captions show, the photo's line doesn't");
 const mp = await picture(P1, "meme", false);
 await P1.setInputFiles(".note-compose [data-lib-in]", { name: "meme.jpg", mimeType: "image/jpeg", buffer: Buffer.from(mp.bytes) });
 await until(P1, () => !document.querySelector(".ns-preview").hidden, null, 10000);
@@ -200,8 +228,8 @@ await until(P1, () => !document.querySelector(".ns-preview").hidden, null, 10000
 ok(await post(P1), "left (pending)");
 await sleep(500);
 await shot(P1, "06-alice-pending", "alice's map: the text note, and her three pictures pending (dashed)");
-// the fake moderator: 2.5 s
-await sleep(5000); await refresh(P1); await sleep(1500);
+// the fake moderator: 6 s
+await sleep(7000); await refresh(P1); await sleep(1500);
 const m1 = await marks(P1);
 ok(m1.filter(m => m.kind !== "text" && !m.state).length === 2 && m1.some(m => m.state === "rejected"), `moderated: the photo and the meme pass, the magenta one is rejected (${m1.map(m => `${m.kind}:${m.state ?? "live"}`).join(", ")})`);
 await shot(P1, "07-alice-moderated", "after the check: two pictures live, the flagged one greyed (rejected: only alice sees it)");
@@ -209,18 +237,19 @@ await shot(P1, "07-alice-moderated", "after the check: two pictures live, the fl
 // ---- bob, unverified and far away
 console.log("\nbob: far away, then closer");
 await use(P2);
-// (with the onboarding on, the verification sheet asks first; this page runs ?onb=0, so it's the server that says no)
-ok(await compose(P2), "bob (not verified) opens the composer");
-await P2.locator(".note-compose .ns-text").fill("hello from bob"); await sleep(300);
-await tap(P2, ".note-compose .ns-post");
-ok(await until(P2, () => /Verify your number/.test(document.querySelector(".note-compose .ns-err")?.textContent ?? ""), null, 30000), "bob isn't verified: the server refuses his note (\"Verify your number to leave notes.\"); reading needs nothing");
-await shot(P2, "08-bob-verify", "leaving a note is a stranger-facing feature: an unverified account is refused (in SQL too)");
-await tap(P2, ".note-compose [data-x]"); await sleep(800);
-await look(P2, A, 260); await sleep(1500); await refresh(P2); await sleep(2500);
+// bob is a guest (no phone): he can leave one too (020_notes_no_verify.sql)
+ok(await compose(P2), "bob (a guest, not verified) opens the composer");
+await P2.locator(".note-compose .ns-text").fill("hello from up the hill"); await sleep(300);
+await shot(P2, "08-bob-compose", "bob, a guest with no phone number, writing a note ~450 m away");
+ok(await post(P2), "bob's note is left: no verification needed");
+await sleep(800);
+// (at 175: past HUB_DIST (200) a spot's notes fold into one hub and their own markers hide)
+await look(P2, A, 175); await sleep(1500); await refresh(P2); await sleep(2500);
 const m2 = await marks(P2);
-ok(m2.length === 3 && !m2.some(m => m.near), `from ~450 m: 3 markers on bob's map (text, photo, meme; the rejected one isn't), none in range (${m2.map(m => m.kind).join(", ")})`);
+const theirs = m2.filter(m => !m.mine);
+ok(theirs.length === 3 && !theirs.some(m => m.near), `from ~450 m: alice's 3 notes on bob's map (text, photo, meme; the rejected one isn't), none in range (${theirs.map(m => m.kind).join(", ")})`);
 await shot(P2, "09-bob-far", "bob ~450 m away, looking over: the markers, no rings");
-const textId = m2.find(m => m.kind === "text").id, memeId = m2.find(m => m.kind === "meme").id;
+const textId = theirs.find(m => m.kind === "text").id, memeId = theirs.find(m => m.kind === "meme").id, photoId = theirs.find(m => m.kind === "photo").id;
 await tap(P2, `.note-pin[data-id="${textId}"]`);
 ok(await toastHas(P2, "Get closer to read this"), "tapping one from there: \"Get closer to read this\"");
 await shot(P2, "10-bob-closer", "Get closer to read this");
@@ -251,6 +280,13 @@ await tap(P2, ".note-open .nc-agree");
 ok(await until(P2, () => document.querySelector(".note-open .nc-agree b")?.textContent === "1", null, 10000), "agree: 1");
 await shot(P2, "14-bob-voted", "upvoted and agreed (one each; tapping again takes it back)");
 await tap(P2, ".note-open .nc-x"); await sleep(600);
+// the photo: its moderated public copy, drawn
+await move(P2, off(A, -10, 10)); await look(P2, off(A, -22, 18), 150); await sleep(2200);
+await tap(P2, `.note-pin[data-id="${photoId}"]`);
+ok(await until(P2, () => { const i = document.querySelector(".note-open .nc-pic img"); return !!i?.complete && i.naturalWidth > 0; }, null, 15000), "bob opens the photo: the picture is drawn (the public copy)");
+ok(/the sky over Itaewon/.test(await P2.evaluate(() => document.querySelector(".note-open .nc-text")?.textContent ?? "")), "with its line");
+await shot(P2, "14b-bob-photo", "bob opens alice's photo note");
+await tap(P2, ".note-open .nc-x"); await sleep(600);
 
 // ---- alice sees it
 await use(P1);
@@ -266,7 +302,7 @@ await tap(P1, ".note-open .nc-x"); await sleep(400);
 await use(P2);
 await move(P2, off(A, 30, 0)); await look(P2, off(A, 25, 5), 150); await sleep(2000);
 await tap(P2, `.note-pin[data-id="${memeId}"]`);
-ok(await until(P2, () => !!document.querySelector(".note-open .nc-pic img[src]"), null, 15000), "bob opens the meme (the moderated public copy)");
+ok(await until(P2, () => { const i = document.querySelector(".note-open .nc-pic img"); return !!i?.complete && i.naturalWidth > 0; }, null, 15000), "bob opens the meme (the moderated public copy, drawn)");
 await sleep(800);
 await shot(P2, "16-bob-meme", "the meme, opened");
 await tap(P2, ".note-open .nc-report");
@@ -295,6 +331,39 @@ ok(await until(P1, () => document.querySelector(".note-blocked")?.textContent.in
 await shot(P1, "20-residential-ko", "the same in Korean");
 await tap(P1, ".note-blocked [data-ok]");
 await P1.evaluate(async () => { (await import("/web/i18n.js")).setLang("en"); });
+
+// ---- a production project that isn't set up for notes (the stub's ?notesSetup=)
+console.log("\nnot set up: 019 never applied; no buckets");
+await Promise.all(casts.map(c => c.pg.evaluate(async () => { const { world3d } = await import("/web/world3d.js"); world3d.setPaused(true); }).catch(() => {})));
+const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true });
+await ctx2.addInitScript(() => { try { localStorage.setItem("rando-hint-v1", "1"); } catch {} });
+{
+  const pg = await phone("cy", A, { pg: await ctx2.newPage(), q: "&notesSetup=none" });
+  await pg.evaluate(async () => { const { world3d } = await import("/web/world3d.js"); world3d.maxFps = 15; });
+  await look(pg, A, 150); await sleep(1500);
+  await tap(pg, "#notes-leave");
+  ok(await toastHas(pg, "Notes aren't switched on yet"), "019 not applied: the 📝 button says \"Notes aren't switched on yet\" (no composer that fails at the end)");
+  ok(!(await pg.evaluate(() => !!document.querySelector(".note-compose"))), "and no composer opens");
+  await shot(pg, "21-not-set-up", "the server has no notes yet (019 not applied): said at once, on the tap");
+  await pg.goto(`${base}/app.html?onb=0&me=cy&mode=night&devlat=${A.lat}&devlng=${A.lng}&notesSetup=no-buckets`);
+  ok(await until(pg, () => document.body.classList.contains("notes-on"), null, 180000), "cy again, on a project without the buckets");
+  await look(pg, A, 150); await sleep(1500);
+  ok(await compose(pg), "the composer opens (the API is there)");
+  await tap(pg, '.ns-seg [data-k="photo"]');
+  const ph = await picture(pg, "photo", false);
+  await pg.setInputFiles(".note-compose [data-lib-in]", { name: "IMG_0100.jpg", mimeType: "image/jpeg", buffer: Buffer.from(ph.bytes) });
+  await until(pg, () => !document.querySelector(".ns-preview").hidden, null, 10000);
+  await tap(pg, ".note-compose .ns-post");
+  ok(await until(pg, () => /Photos and memes aren't switched on yet/.test(document.querySelector(".note-compose .ns-err")?.textContent ?? ""), null, 20000), "a photo: \"Photos and memes aren't switched on yet\"");
+  await sleep(1500);
+  ok(/aren't switched on yet/.test(await pg.evaluate(() => document.querySelector(".note-compose .ns-err")?.textContent ?? "")), "and the message stays (it isn't wiped by the form's own check)");
+  await shot(pg, "22-no-buckets", "no buckets in Storage: the photo is refused with a reason that stays on screen");
+  await tap(pg, '.ns-seg [data-k="text"]');
+  await pg.locator(".note-compose .ns-text").fill("text still works"); await sleep(300);
+  ok(await post(pg), "a text note still goes");
+  await pg.close();
+}
+await ctx2.close();
 
 // ---- what went to the server: positions only ever snapped
 const coins = await P1.evaluate(() => window.__coins());
@@ -336,7 +405,7 @@ if (shots.length) {
   await pg.close();
 }
 await writeFile(join(OUT, "shots.md"), shots.map(s => `- ${s.n}.jpg — ${s.note}`).join("\n") + "\n");
-await writeFile(join(OUT, "report.json"), JSON.stringify({ fails, errors, ...report[0] }, null, 2));
+await writeFile(join(OUT, "report.json"), JSON.stringify({ fails, errors, covered: hits, ...report[0] }, null, 2));
 console.log("\nEXIF check:", JSON.stringify(report[0]?.exif));
 if (errors.length) { console.log("\npage errors:"); for (const e of errors) console.log("  " + e); }
 console.log(`\n${fails ? `${fails} FAILED` : "all passed"} · ${shots.length} shots in ${OUT}`);
