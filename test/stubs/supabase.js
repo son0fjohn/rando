@@ -352,7 +352,7 @@ export function createClient() {
     functions: NOTES.functions,
     rpc: async (name, args) => {
       if (!RPC[name]) return { data: null, error: { message: `rpc ${name} not stubbed` } };
-      return withCoins(() => { try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; } });
+      return withCoins(() => { try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message, code: e.code ?? null, details: e.details ?? null, hint: e.hint ?? null } }; } });
     },
     channel: (name, cfg) => {
       if (strictRT && liveChannels.has(name)) return liveChannels.get(name);
