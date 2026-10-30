@@ -14,10 +14,27 @@
 // The fake moderator passes a picture unless it's mostly magenta (#ff00ff:
 // the tests' stand-in for nudity / violence), which it rejects.
 // Every player's vote weighs 1 here (the trust weights are the SQL's).
+//
+// A production project that isn't (fully) set up for notes, as Supabase
+// answers then (?notesSetup=a,b or localStorage stub-notes-setup):
+//   none          019_notes.sql never applied: every note RPC is PostgREST's
+//                 PGRST202 "Could not find the function …", and no buckets
+//   no-buckets    019 applied where Storage wasn't there: "Bucket not found"
+//   no-020        020_notes_no_verify.sql not applied: an unverified player
+//                 gets { ok: false, why: "verify" } from leave_note
+//   no-function   moderate-note not deployed: invoke() answers 404 and the
+//                 pictures stay pending
+//   no-key        deployed without a provider key: no verdict, still pending
 import { snap, distM, spotFor, NOTE_SPOTS, NOTE_RULES, RANGE_M } from "/web/notegeo.js";
 import { serverProblem } from "/web/notefilter.js";
 
 export function notesStub({ me, verified, cstate, save, withState }) {
+  const q = new URLSearchParams(location.search);
+  const setup = new Set(String(q.get("notesSetup") ?? localStorage.getItem("stub-notes-setup") ?? "").split(",").filter(Boolean));
+  const ARGS = { notes_in_box: "p_e, p_n, p_s, p_w", leave_note: "p_body, p_bottom, p_image, p_kind, p_lat, p_lng, p_top", open_note: "p_id, p_lat, p_lng",
+    vote_note: "p_id, p_lat, p_lng, p_v", react_note: "p_id, p_lat, p_lng, p_r", report_note: "p_id, p_lat, p_lng", remove_my_note: "p_id" };
+  const noFn = name => Object.assign(new Error(`Could not find the function public.${name}${ARGS[name] ? `(${ARGS[name]})` : " without parameters"} in the schema cache`),
+    { code: "PGRST202", details: `Searched for the function public.${name}, but no matches were found in the schema cache.`, hint: null });
   const S = st => (st.notes ??= { list: [], votes: {}, reacts: {}, views: {}, reports: {}, bans: [], imgs: {} });
   const day0 = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d.getTime(); };
   const visible = (n, u) => ["live", "restored"].includes(n.status) && (n.landmark || n.expires > Date.now()) && (["none", "approved"].includes(n.image_state) || n.author === u);
@@ -65,6 +82,7 @@ export function notesStub({ me, verified, cstate, save, withState }) {
     leave_note: ({ p_lat, p_lng, p_kind, p_body = null, p_top = null, p_bottom = null, p_image = null }) => {
       const st = cstate(), N = S(st), u = me();
       if (N.bans.includes(u)) return { ok: false, why: "banned" };
+      if (setup.has("no-020") && !verified?.()) return { ok: false, why: "verify" };
       if (!["text", "photo", "meme"].includes(p_kind)) throw new Error("bad kind");
       const clean = s => (s ?? "").trim() || null;
       p_body = clean(p_body); p_top = clean(p_top); p_bottom = clean(p_bottom);
@@ -132,12 +150,15 @@ export function notesStub({ me, verified, cstate, save, withState }) {
     },
   };
 
+  if (setup.has("none")) for (const k of Object.keys(rpc)) rpc[k] = () => { throw noFn(k); };
+
   // the two buckets: note-uploads (private, your own folder) and notes (public, moderated copies)
   globalThis.__noteUploads ??= [];
   const toDataUrl = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
   const storage = {
     from: bucket => ({
       async upload(path, blob, opts = {}) {
+        if (setup.has("none") || setup.has("no-buckets")) return { data: null, error: { name: "StorageApiError", message: "Bucket not found", statusCode: "404", status: 400 } };
         if (bucket === "note-uploads" && !path.startsWith(`${me()}/`)) return { data: null, error: { message: "new row violates row-level security policy" } };
         if (bucket !== "note-uploads") return { data: null, error: { message: "not allowed" } };
         const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -151,6 +172,7 @@ export function notesStub({ me, verified, cstate, save, withState }) {
         return { data: { publicUrl: bucket === "notes" ? st?.notes?.imgs?.[`notes/${path}`] ?? "" : "" } };
       },
       async createSignedUrl(path) {
+        if (setup.has("none") || setup.has("no-buckets")) return { data: null, error: { message: "Bucket not found" } };
         const url = await withState(() => {
           if (bucket === "note-uploads" && !path.startsWith(`${me()}/`)) return null;
           return cstate()?.notes?.imgs?.[`${bucket}/${path}`] ?? null;
@@ -177,6 +199,9 @@ export function notesStub({ me, verified, cstate, save, withState }) {
   const functions = {
     async invoke(name, { body } = {}) {
       if (name !== "moderate-note") return { data: null, error: { message: `function ${name} not stubbed` } };
+      // (supabase-js: a FunctionsHttpError whose context is the Response)
+      if (setup.has("none") || setup.has("no-function")) return { data: null, error: { name: "FunctionsHttpError", message: "Edge Function returned a non-2xx status code", context: new Response(JSON.stringify({ code: "NOT_FOUND", message: "Requested function was not found" }), { status: 404 }) } };
+      if (setup.has("no-key")) return { data: { state: "pending (no verdict)" }, error: null };
       const ms = Number(localStorage.getItem("stub-moderate-ms") ?? 2500);
       setTimeout(async () => {
         const n = await withState(() => find(cstate(), body?.id));

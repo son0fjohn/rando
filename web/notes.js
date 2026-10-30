@@ -37,7 +37,7 @@ import { lngLatToTile, tileToLngLat } from "./citygen.js";
 import { omtChunks, OMT_Z } from "./cityomt.js";
 
 const Q = () => new URLSearchParams(location.search);    // read fresh: the tests move ?devlat with history.replaceState
-const HUB_DIST = 200;           // camera distance (world units) past which a spot's notes fold into one hub (the zoom goes to 230)
+const HUB_DIST = 270;           // camera distance (world units) past which a spot's notes fold into one hub
 const LIFT = 7;                 // a marker floats this far over the street (world units)
 const REFRESH_MS = 1200;
 
@@ -85,8 +85,28 @@ async function hereCell(opts) { const p = await hereRaw(opts); return p ? { cell
 // ---------------------------------------------------------------- the server
 async function rpc(name, args) {
   const { data, error } = await sb.rpc(name, args);
-  if (error) throw new Error(error.message);
+  if (error) throw Object.assign(new Error(error.message), { code: error.code ?? null });
+  if (setup !== "ok") setup = "ok";
   return data;
+}
+// A production project without 019_notes.sql answers every note RPC with
+// PostgREST's PGRST202 "Could not find the function … in the schema cache"
+// (Postgres' 42883 when called some other way). Then Leave a note says so on
+// the tap, instead of a composer that fails at the end
+// (docs/notes.md "Set up"; scripts/check_notes_setup.py says what's missing).
+export const notSetUp = e => e?.code === "PGRST202" || e?.code === "42883" || /could not find the function|schema cache/i.test(e?.message ?? "");
+const noBucket = e => /bucket not found/i.test(e?.message ?? "");
+let setup = null;                    // null: not asked yet; "ok"; "missing" (019 isn't applied)
+let setupSaid = false;
+function setupMissing(e) {
+  setup = "missing";
+  if (!setupSaid) { setupSaid = true; console.error(`[notes] server not set up: ${e?.message} — apply supabase/migrations/019_notes.sql then 020_notes_no_verify.sql (docs/notes.md "Set up"; python3 scripts/check_notes_setup.py)`); }
+}
+// is the server set up? (asked again on each tap until it is: the owner may have just applied it)
+async function ready() {
+  if (setup === "ok") return true;
+  try { await rpc("note_spot_list"); return true; }
+  catch (e) { if (notSetUp(e)) { setupMissing(e); return false; } return true; }   // (offline / a hiccup: carry on, the post will say)
 }
 async function myId() { return (await sb.auth.getSession()).data.session?.user?.id ?? null; }
 
@@ -151,7 +171,10 @@ async function refresh(force = false) {
     if (g !== gen) { lastFetch = 0; return; }     // a note was left / reported meanwhile: this answer is stale
     lastBox = b; lastFetch = now;
     sync(list ?? [], b);
-  } catch (e) { if (!/sign in/.test(e.message)) console.warn("[notes] markers:", e.message); }
+  } catch (e) {
+    if (notSetUp(e)) { setupMissing(e); lastFetch = now; }        // (asked again in 20 s, not every second)
+    else if (!/sign in/.test(e.message)) console.warn("[notes] markers:", e.message);
+  }
   finally { fetching = false; }
 }
 
@@ -379,32 +402,75 @@ function confirmReport(n, at) {
 
 // ---------------------------------------------------------------- public places only (the phone's own map data)
 const ITAEWON = { lat: 37.5346, lng: 126.9946 }, U_PER_M = 0.55;
-let itaewonB = null, pm = null, store = null, omtTpl = null;
+let itaewonB = null, archives = null, omtStore = null, omtTpl = null;
 const omtCache = new Map();
 function cityUrl() { return Q().get("tiles") || "tiles/cities.pmtiles"; }
-async function chunk(x, y) {
-  pm ??= new PMTiles(new URL(cityUrl(), document.baseURI).href);
-  store ??= tileStore(cityUrl());
+// The archives the map's chunk worker reads, in its order (citygen.worker.js
+// payload()): the areas' archive, then the region archives of regions.json
+// (Seoul and the capital area, Busan: what the map draws there), then the
+// worldwide tiles. The device-cache keys are the worker's own, so a chunk
+// the map has shown is read from the phone.
+const missingArchive = e => /pmtiles 404|not a PMTiles/.test(e?.message || "");
+function cityArchives() {
+  return archives ??= (async () => {
+    const base = new URL(cityUrl(), document.baseURI);
+    const main = { src: new PMTiles(base.href), store: null };
+    let ok = true;
+    try { main.store = tileStore(`${cityUrl()}@${(await main.src.header()).dataLen}`); }
+    catch (e) { main.store = tileStore(cityUrl()); if (!missingArchive(e)) ok = false; }
+    let regions = [];
+    if (Q().get("regions") !== "0") {
+      try {
+        const r = await fetch(new URL("regions.json", base));
+        if (r.ok) regions = ((await r.json()).regions ?? []).map(g => ({ ...g, src: new PMTiles(new URL(g.file, base).href), store: tileStore(`${g.file}@${g.bytes ?? 0}`) }));
+        else if (r.status !== 404) ok = false;
+      } catch { ok = false; }
+    }
+    if (!ok) setTimeout(() => { archives = null; }, 0);     // (unreachable just now: asked again next time)
+    return { main, regions };
+  })();
+}
+// one chunk out of one archive: the device cache first. null: the archive has no such chunk; throws when it can't be reached
+async function fromArchive(a, x, y) {
   const k = `16/${x}/${y}`;
-  let bytes = await store.get(k), failed = false;
-  if (!bytes) { bytes = await pm.tile(16, x, y).catch(() => { failed = true; return null; }); if (bytes) store.put(k, bytes); }
-  let p = bytes ? JSON.parse(new TextDecoder().decode(bytes)) : null;
-  if (!p || p.cut) {
-    const w = await omtChunk(x, y).catch(() => undefined);
-    if (w === undefined && !p) return failed ? undefined : null;
-    if (w) p = p ? { ...p, b: [...(p.b ?? []), ...(w.b ?? [])], a: [...(p.a ?? []), ...(w.a ?? [])] } : w;
+  let bytes = await a.store.get(k);
+  if (!bytes) { bytes = await a.src.tile(16, x, y); if (bytes) a.store.put(k, bytes); }
+  return bytes ? JSON.parse(new TextDecoder().decode(bytes)) : null;
+}
+const joinChunks = (p, w) => ({ ...p, b: [...(p.b ?? []), ...(w.b ?? [])], a: [...(p.a ?? []), ...(w.a ?? [])] });
+// the z16 chunk (x, y): its payload, null when the data has nothing there, or
+// undefined when (part of) it couldn't be read: then the spot can't be
+// checked, and missing data is never taken for an empty street
+export async function chunk(x, y) {
+  const { main, regions } = await cityArchives();
+  const read = a => fromArchive(a, x, y).catch(e => missingArchive(e) ? null : undefined);
+  let p = await read(main);
+  if (p === undefined) p = null;
+  let whole = !!p && !p.cut;
+  if (!whole) {
+    // a region archive whose box holds the chunk's middle (whole cities, so it completes a cut chunk)
+    const [lng, lat] = tileToLngLat(16, x, y, 2048, 2048);
+    for (const g of regions.filter(g => lng > g.bbox[0] && lng < g.bbox[2] && lat > g.bbox[1] && lat < g.bbox[3])) {
+      const r = await read(g);
+      if (r) { p = p ? joinChunks(p, r) : r; whole = true; break; }
+    }
   }
-  return p;
+  if (!whole) {
+    const w = await omtChunk(x, y).catch(() => undefined);
+    if (w !== undefined) { if (w) p = p ? joinChunks(p, w) : w; whole = true; }
+  }
+  return whole ? p : undefined;
 }
 // the worldwide OpenMapTiles fallback (cityomt.js), as the city worker reads it
 async function omtChunk(x16, y16) {
   const src = Q().get("omt") === "0" ? null : Q().get("omt") || "https://tiles.openfreemap.org/planet";
   if (!src) return null;
+  omtStore ??= tileStore("omt");
   const x14 = x16 >> 2, y14 = y16 >> 2, k = `${x14},${y14}`;
   if (!omtCache.has(k)) {
     omtCache.set(k, (async () => {
       const key = `omt/${OMT_Z}/${x14}/${y14}`;
-      let bytes = await store.get(key);
+      let bytes = await omtStore.get(key);
       if (!bytes) {
         omtTpl ??= src.includes("{z}") ? Promise.resolve(src)
           : fetch(src).then(r => r.json()).then(tj => new URL(tj.tiles[0], src).href.replace(/%7B/g, "{").replace(/%7D/g, "}"));
@@ -413,7 +479,7 @@ async function omtChunk(x16, y16) {
         if (r.status === 204 || r.status === 404) return new Map();
         if (!r.ok) throw new Error(`omt ${r.status}`);
         bytes = new Uint8Array(await r.arrayBuffer());
-        store.put(key, bytes);
+        omtStore.put(key, bytes);
       }
       if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = new Uint8Array(await gunzip(bytes));
       return omtChunks(bytes, x14, y14);
@@ -421,7 +487,8 @@ async function omtChunk(x16, y16) {
   }
   return (await omtCache.get(k)).get(`${x16},${y16}`) ?? null;
 }
-// the buildings and areas round a cell, in metres from its centre; null when no map data could be read
+// the buildings and areas round a cell, in metres from its centre; null when
+// the map data round it couldn't be read (every chunk it touches must be)
 export async function placeShapes(cell) {
   const out = { buildings: [], areas: [] };
   let any = false;
@@ -450,7 +517,7 @@ export async function placeShapes(cell) {
     for (const k of tiles) {
       const [x, y] = k.split(",").map(Number);
       const p = await chunk(x, y);
-      if (p === undefined) continue;          // couldn't be read (offline)
+      if (p === undefined) return null;       // couldn't be read (offline, the worldwide tiles unreachable): can't check
       any = true;
       if (!p) continue;                       // read, and nothing there
       const ring = q => { const r = []; for (let i = 0; i < q.length; i += 2) { const [lng, lat] = tileToLngLat(16, x, y, q[i], q[i + 1]); r.push(toLocal(cell, lat, lng)); } return r; };
@@ -468,6 +535,8 @@ async function leave() {
   busy = true;
   sfx.confirm?.();
   try {
+    step = "server";
+    if (!(await ready())) { sfx.back?.(); toast(t("notes.notReady"), 3400); return; }
     step = "locate";
     const here = await hereCell({ ask: true });
     if (!here) { toast(t("notes.needLoc")); return; }
@@ -479,7 +548,8 @@ async function leave() {
     if (!v.ok) { blocked(); return; }
     step = "limit";
     let n = NOTE_RULES.PER_DAY;
-    try { n = await rpc("my_notes_left"); } catch {}
+    try { n = await rpc("my_notes_left"); }
+    catch (e) { if (notSetUp(e)) { setupMissing(e); sfx.back?.(); toast(t("notes.notReady"), 3400); return; } }
     if (n <= 0) { sfx.back?.(); toast(t("notes.limit")); return; }
     step = "composer";
     composer(here.cell, n);
@@ -526,14 +596,17 @@ function composer(cell, leftToday) {
   const f = el.querySelector("form"), $ = s => f.querySelector(s);
   const err = $(".ns-err"), post = $(".ns-post"), cv = $(".ns-preview");
   let kind = "text", file = null, img = null;
+  let said = "";                     // what the server (or the upload) last said: stays until the note is changed
+  const say = msg => { said = msg; err.textContent = msg; err.classList.add("on"); };
   const fields = () => kind === "text" ? [$(".ns-text").value] : kind === "photo" ? [$(".ns-cap").value] : [$(".ns-mtop").value, $(".ns-mbottom").value];
-  const check = () => {
+  const check = (edited = false) => {
+    if (edited) said = "";
     const vals = fields();
     let why = null;
     for (const v of vals) { const r = checkNote(v, { allow, max: kind === "meme" ? NOTE_RULES.CAPTION_MAX : NOTE_RULES.TEXT_MAX, required: false }); if (!r.ok) { why = r.why; break; } }
     const need = kind === "text" ? !!vals[0].trim() : !!img;
-    err.textContent = why ? t(`notes.why.${why}`) : "";
-    err.classList.toggle("on", !!why);
+    err.textContent = why ? t(`notes.why.${why}`) : said;
+    err.classList.toggle("on", !!(why || said));
     post.disabled = !!why || !need;
     return !why && need;
   };
@@ -549,21 +622,21 @@ function composer(cell, leftToday) {
     $('[data-p="pic"]').hidden = k === "text";
     $(".ns-cap").hidden = k !== "photo";
     $(".ns-meme").hidden = k !== "meme";
-    preview(); check();
+    preview(); check(true);
   };
   f.querySelectorAll(".ns-seg button").forEach(b => b.onclick = () => { sfx.tick?.(); tab(b.dataset.k); });
   const pick = async inp => {
     const fl = inp.files?.[0];
     if (!fl) return;
-    try { const d = await decode(fl); img?.close?.(); img = d; file = fl; preview(); check(); }
-    catch { err.textContent = t("notes.badPic"); }
+    try { const d = await decode(fl); img?.close?.(); img = d; file = fl; preview(); check(true); }
+    catch { say(t("notes.badPic")); }
   };
   $("[data-cam]").onclick = () => $("[data-cam-in]").click();
   $("[data-lib]").onclick = () => $("[data-lib-in]").click();
   $("[data-cam-in]").onchange = e => pick(e.target);
   $("[data-lib-in]").onchange = e => pick(e.target);
-  for (const s of [".ns-text", ".ns-cap"]) $(s).addEventListener("input", check);
-  for (const s of [".ns-mtop", ".ns-mbottom"]) $(s).addEventListener("input", () => { preview(); check(); });
+  for (const s of [".ns-text", ".ns-cap"]) $(s).addEventListener("input", () => check(true));
+  for (const s of [".ns-mtop", ".ns-mbottom"]) $(s).addEventListener("input", () => { preview(); check(true); });
   $("[data-x]").onclick = () => { sfx.back?.(); close(el); };
   setTimeout(() => $(".ns-text").focus(), 250);
   f.onsubmit = async e => {
@@ -582,19 +655,19 @@ function composer(cell, leftToday) {
         const uid = await myId();
         const path = `${uid}/${crypto.randomUUID()}.jpg`;
         const { error } = await sb.storage.from("note-uploads").upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
-        if (error) throw new Error(error.message);
+        if (error) throw Object.assign(new Error(error.message), { upload: true });
         args.p_image = path;
       }
       const r = await rpc("leave_note", args);
       if (!r?.ok) {
         post.textContent = t("notes.post");
         // only a server still without 020_notes_no_verify.sql says this
-        if (r?.why === "verify") { err.textContent = t("notes.why.verify"); err.classList.add("on"); post.disabled = true; onboard.requireVerified("notes").catch(() => {}); return; }
-        err.textContent = t(r?.why === "limit" ? "notes.limit" : `notes.why.${r?.why ?? "other"}`); err.classList.add("on");
+        if (r?.why === "verify") { say(t("notes.why.verify")); post.disabled = true; onboard.requireVerified("notes").catch(() => {}); return; }
+        say(t(r?.why === "limit" ? "notes.limit" : `notes.why.${r?.why ?? "other"}`));
         check();
         return;
       }
-      if (args.p_image) sb.functions?.invoke?.("moderate-note", { body: { id: r.id } }).catch?.(() => {});
+      if (args.p_image) moderate(r.id);
       sfx.ping?.();
       close(el);
       toast(t(args.p_image ? "notes.postedImg" : "notes.posted"), 3400);
@@ -603,11 +676,30 @@ function composer(cell, leftToday) {
       sync([...[...markers.values()].map(m => m.n), { id: r.id, kind, lat: r.lat, lng: r.lng, landmark: false, spot: NOTE_SPOTS.find(s => s.name === r.spot)?.id ?? null, mine: true, state: args.p_image ? "pending" : null }], { s: 0, n: 0, w: 0, e: 0 });
       lastFetch = 0;
     } catch (x) {
-      console.warn("[notes] leave:", x?.message);
-      post.textContent = t("notes.post"); err.textContent = t("notes.why.other"); err.classList.add("on"); check();
+      post.textContent = t("notes.post");
+      if (notSetUp(x)) { setupMissing(x); say(t("notes.notReady")); }
+      else if (x?.upload && noBucket(x)) { console.error(`[notes] server not set up: no "note-uploads" bucket (${x.message}) — re-apply supabase/migrations/019_notes.sql where Storage is on (docs/notes.md "Set up")`); say(t("notes.picsNotReady")); }
+      else { console.warn(`[notes] leave${x?.upload ? " (the picture's upload)" : ""}:`, x?.message); say(t("notes.why.other")); }
+      check();
     }
   };
   check();
+}
+
+// the picture check (supabase/functions/moderate-note). Its answer isn't
+// waited on (the note shows "being checked" meanwhile), but a function that
+// isn't deployed (404), refuses the call (401: deploy it --no-verify-jwt) or
+// has no provider key ("pending (no verdict)") is said in the console: the
+// picture would stay pending, seen by its author only
+function moderate(id) {
+  const p = sb.functions?.invoke?.("moderate-note", { body: { id } });
+  p?.then?.(async ({ data, error } = {}) => {
+    if (error) {
+      const st = error.context?.status ?? "";
+      const body = await error.context?.text?.().catch(() => "") ?? "";
+      console.error(`[notes] moderate-note: ${st} ${error.message} ${body}`.trim(), st === 404 ? "— deploy it: supabase functions deploy moderate-note" : st === 401 ? "— deploy it with --no-verify-jwt" : "");
+    } else if (/no verdict|not readable|copy failed/.test(data?.state ?? "")) console.warn(`[notes] moderate-note: ${data.state} — the picture stays pending (a provider key: supabase secrets set OPENAI_API_KEY=…)`);
+  }).catch?.(e => console.warn("[notes] moderate-note:", e?.message));
 }
 
 // ---------------------------------------------------------------- start
@@ -615,7 +707,7 @@ export const notes = {
   init(client) {
     if (sb || Q().get("notes") === "0") return;
     sb = client;
-    rpc("note_spot_list").then(l => { if (Array.isArray(l) && l.length) spots = l; }).catch(() => {});
+    rpc("note_spot_list").then(l => { if (Array.isArray(l) && l.length) spots = l; }).catch(e => { if (notSetUp(e)) setupMissing(e); });
     onLang(() => { label(); for (const m of markers.values()) m.key = null; });
     // show / hide with the world screen; refresh the markers as the map moves
     const loop = () => {
@@ -634,6 +726,7 @@ export const notes = {
   },
   refresh: () => refresh(true),
   get step() { return step; },       // where Leave a note got to (tests)
+  get setup() { return setup; },     // is the server set up for notes? (tests; null: not asked yet)
   // tests: what's on the map right now (no positions of anyone but the notes)
   get markers() { return [...markers.values()].map(m => ({ id: m.n.id, kind: m.n.kind, near: m.near, landmark: m.n.landmark, mine: m.n.mine, state: m.n.state, spot: m.n.spot })); },
 };

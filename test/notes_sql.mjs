@@ -23,7 +23,29 @@ await db.exec(`
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
   create table public.profiles (id uuid primary key references auth.users (id), handle text, avatar jsonb not null default '{}'::jsonb);
 `);
-for (const f of ["013_coins_shop", "017_events", "018_account_events", "019_notes", "020_notes_no_verify"]) await db.exec(await readFile(`${ROOT}supabase/migrations/${f}.sql`, "utf8"));
+// Supabase Storage, the parts 019 touches: storage.buckets, storage.objects (RLS on), storage.foldername()
+const STORAGE = `
+  create schema storage;
+  create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
+  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id), name text not null, owner uuid default auth.uid());
+  alter table storage.objects enable row level security;
+  create function storage.foldername(name text) returns text[] language plpgsql immutable as $$
+    declare p text[] := string_to_array(name, '/'); begin return p[1:array_length(p, 1) - 1]; end $$;
+  grant usage on schema storage to authenticated, anon;
+  grant usage on schema auth to authenticated, anon;
+  grant execute on function auth.uid() to authenticated, anon;
+  grant select, insert on storage.objects to authenticated;
+`;
+// the setup self-check (scripts/notes_setup_check.sql) on a project with nothing applied yet
+const CHECK = await readFile(`${ROOT}scripts/notes_setup_check.sql`, "utf8");
+const check = async d => { const r = await d.exec(CHECK); return r[r.length - 1].rows[0].notes_setup; };
+const bare = new PGlite();
+await bare.exec("create role anon; create role authenticated; create schema auth; create function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;");
+const before = await check(bare);
+await db.exec(STORAGE);
+for (const f of ["013_coins_shop", "017_events", "018_account_events", "019_notes"]) await db.exec(await readFile(`${ROOT}supabase/migrations/${f}.sql`, "utf8"));
+const after019 = await check(db);
+await db.exec(await readFile(`${ROOT}supabase/migrations/020_notes_no_verify.sql`, "utf8"));
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const N_USERS = 80;
@@ -339,6 +361,39 @@ head("Spots: the SQL's rows are web/notegeo.js NOTE_SPOTS, covering the NPC venu
   ok(npcs.length === 3 && npcs.every(has), `every NPC spot of world3d.js is a spot (${npcs.map(n => n.id).join(", ")})`);
   ok(heroes.every(has), `every place in heroes.json is a spot (${heroes.length})`);
   ok((await as(1, "select note_spot_list() l"))[0].l.length === NOTE_SPOTS.length, "note_spot_list() gives the map its hubs");
+}
+
+head("Set up: the buckets and their policies (019 where Storage is), and the self-check");
+{
+  const b = await sql("select id, public, file_size_limit, allowed_mime_types from storage.buckets order by id");
+  ok(JSON.stringify(b.map(r => [r.id, r.public, Number(r.file_size_limit), r.allowed_mime_types])) === JSON.stringify([["note-uploads", false, 2097152, ["image/jpeg"]], ["notes", true, 2097152, ["image/jpeg"]]]),
+    `019 makes the private note-uploads and the public notes bucket, 2 MB, JPEG only (${b.map(r => `${r.id}:${r.public ? "public" : "private"}`).join(", ")})`);
+  // the app uploads '<my id>/<uuid>.jpg' (web/notes.js): as that player, through RLS
+  const up = async (n, name) => err((async () => { await db.exec(`set test.uid = '${U(n)}'; set role authenticated`); try { await db.query("insert into storage.objects (bucket_id, name) values ('note-uploads', $1)", [name]); } finally { await db.exec("reset role"); } })());
+  const id = "0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6";
+  ok(await up(7, `${U(7)}/${id}.jpg`) === null, "a player may upload into their own folder of note-uploads");
+  ok(/row-level security/.test(await up(7, `${U(8)}/${id}.jpg`) ?? ""), "but not into anyone else's");
+  ok(/row-level security/.test(await up(7, `${id}.jpg`) ?? ""), "nor outside a folder");
+  const read = async n => { await db.exec(`set test.uid = '${U(n)}'; set role authenticated`); try { return (await db.query("select name from storage.objects where bucket_id = 'note-uploads'")).rows.length; } finally { await db.exec("reset role"); } };
+  ok(await read(7) === 1 && await read(8) === 0, "and only they can read it back (the signed URL for their pending picture)");
+  // the path the app makes is the one leave_note accepts
+  ok((await one(7, "select leave_note($1, $2, 'photo', null, null, null, $3)", [PLAIN.lat, PLAIN.lng, `${U(7)}/${id}.jpg`])).ok === true, "leave_note takes that path as a photo");
+  await sql("delete from notes");
+  // a role that may not touch Storage (not the owner of storage.objects): 019's Storage part warns instead
+  // of failing, so the tables and the API (the rest of the one transaction) still go in
+  const m019 = await readFile(`${ROOT}supabase/migrations/019_notes.sql`, "utf8");
+  const block = m019.slice(m019.lastIndexOf("do $$"));
+  await db.exec("create role limited; grant usage on schema storage to limited; set role limited");
+  const blockErr = await err(db.exec(block));
+  await db.exec("reset role");
+  ok(blockErr === null, `as a role that may not create buckets or policies, 019's Storage part doesn't fail the migration (${blockErr ?? "warnings only"})`);
+  const now = await check(db);
+  ok(Object.values(before.functions).every(v => !v) && before.storage === false && before.no_verify === null,
+    "the self-check on a project without 019: every function missing (no error)");
+  ok(Object.values(after019.functions).every(Boolean) && after019.no_verify === false, "after 019 alone: the API is there, and leave_note still asks for a verified phone (020 missing)");
+  ok(Object.values(now.functions).every(Boolean) && Object.values(now.tables).every(Boolean) && now.granted && now.anon_blocked && now.no_verify
+    && now.buckets?.["note-uploads"]?.public === false && now.buckets?.notes?.public === true && now.policies.length === 2 && now.stuck_pending === 0,
+    `after 019 + 020: all set up (${JSON.stringify({ granted: now.granted, anon_blocked: now.anon_blocked, no_verify: now.no_verify, policies: now.policies })})`);
 }
 
 console.log(`\n${passes} passed, ${fails} failed`);

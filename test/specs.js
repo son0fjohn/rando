@@ -30,6 +30,7 @@ import { EVENTS, clean, track } from "/web/analytics.js";
 import { starterLook, e164, otpWait, otpError, OTP, needsSetup, ESSENTIALS, cycleLook } from "/web/onbkit.js";
 import { invitePage } from "/api/invite.mjs";
 import { STARTER_OUTFITS4, normalizeAvatar4 } from "/web/items4.js";
+import * as CS from "/web/chatscope.js";
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -1768,6 +1769,22 @@ group("The map anywhere — vector tiles (MVT) and OpenMapTiles -> chunks");
   ok(mw.b.every(b => b.h > 2 && b.f >= 1 && "hacovis".includes(b.k)), "…every one with a height (measured, or estimated by type)");
   ok(await seoul.tile(16, ...lngLatToTile(126.5, 37.3, 16).map(Math.floor)) === null, "…and nothing outside the region's box");
 }
+}
+group("The plaza chat — who hears a line (chatscope.js); the live run is test/chat_rec.mjs");
+{
+  const Z = [["itaewon-station", 37.5346, 126.9946], ["hamilton-alley", 37.5349, 126.9941], ["gyeongnidan", 37.5392, 126.9887], ["bogwang", 37.5289, 126.9944]]
+    .map(([id, lat, lng]) => ({ id, lat, lng, kind: "fixed" }));
+  ok(CS.areaOfZone("hamilton-alley") === CS.PLAZA && CS.areaOfZone("itaewon-station") === CS.PLAZA, "every Itaewon zone is one plaza: Hamilton Alley hears the station");
+  ok(CS.areaAt(37.5347, 126.9945, Z) === CS.PLAZA && CS.areaAt(37.55, 127.01, Z) === CS.PLAZA, "…and so does anyone within 3 km of it, worked out on the phone");
+  const calgary = CS.areaAt(51.0447, -114.0719, Z), gangnam = CS.areaAt(37.4979, 127.0276, Z);
+  ok(calgary === "auto_51.04_-114.08".replace(/\./g, "p") && gangnam === "auto_37p5_127p02", `anywhere else, the ~2.2 km cell's zone id as ensure_auto_zone writes it (${calgary}, ${gangnam})`);
+  ok(CS.areaAt(51.0447, -114.0719, Z) === CS.areaAt(51.0452, -114.0702, Z) && CS.areaAt(51.0447, -114.0719, Z) !== CS.areaAt(51.0447, -114.04, Z), "…two people a block apart share a cell; 2.5 km away is another one");
+  const m = (zone_id, body = "hi") => ({ id: body, zone_id, body });
+  ok(CS.inArea(m("gyeongnidan"), CS.PLAZA) && !CS.inArea(m("gyeongnidan"), calgary), "an Itaewon line reaches the plaza, not Calgary");
+  ok(CS.inArea(m(calgary), calgary) && !CS.inArea(m(calgary), CS.PLAZA) && !CS.inArea(m(calgary), gangnam), "a Calgary line stays in its cell: not Itaewon, not Gangnam");
+  ok(!CS.inArea(m("bogwang"), null) && !CS.inArea(null, CS.PLAZA), "no area yet (signed out), no lines");
+  const c = CS.cellOf(-33.8688, 151.2093);
+  ok(c.lat === -33.86 && c.lng === 151.2 && CS.autoZoneId(c.lat, c.lng) === "auto_-33p86_151p2", "south and west of zero too (Sydney: auto_-33p86_151p2)");
 }
 group("Day and night — the real sun over the place the map shows, one light for every panel");
 {

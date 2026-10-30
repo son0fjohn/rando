@@ -570,19 +570,31 @@ grant execute on function note_image_verdict(uuid, boolean) to service_role;
 --   notes         public read: written only by the moderation function, once
 --                 an image has passed, as '<note id>.jpg' (no user id in the
 --                 name), so nothing unchecked is ever public
+-- (A role that may not touch Storage gets a warning, not a failed migration:
+-- the whole file runs as one transaction, and a refusal here would take the
+-- tables and the API down with it. scripts/check_notes_setup.py says what's
+-- still missing.)
 do $$
 begin
   if exists (select 1 from pg_namespace where nspname = 'storage') then
-    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-      values ('note-uploads', 'note-uploads', false, 2097152, array['image/jpeg']) on conflict (id) do nothing;
-    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-      values ('notes', 'notes', true, 2097152, array['image/jpeg']) on conflict (id) do nothing;
-    execute 'drop policy if exists note_uploads_insert on storage.objects';
-    execute $p$create policy note_uploads_insert on storage.objects for insert to authenticated
-      with check (bucket_id = 'note-uploads' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
-    execute 'drop policy if exists note_uploads_read on storage.objects';
-    execute $p$create policy note_uploads_read on storage.objects for select to authenticated
-      using (bucket_id = 'note-uploads' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
+    begin
+      execute $p$insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+        values ('note-uploads', 'note-uploads', false, 2097152, array['image/jpeg']) on conflict (id) do nothing$p$;
+      execute $p$insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+        values ('notes', 'notes', true, 2097152, array['image/jpeg']) on conflict (id) do nothing$p$;
+    exception when insufficient_privilege then
+      raise warning 'notes: may not create the buckets (%): make note-uploads (private) and notes (public) in Storage', sqlerrm;
+    end;
+    begin
+      execute 'drop policy if exists note_uploads_insert on storage.objects';
+      execute $p$create policy note_uploads_insert on storage.objects for insert to authenticated
+        with check (bucket_id = 'note-uploads' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
+      execute 'drop policy if exists note_uploads_read on storage.objects';
+      execute $p$create policy note_uploads_read on storage.objects for select to authenticated
+        using (bucket_id = 'note-uploads' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
+    exception when insufficient_privilege then
+      raise warning 'notes: may not create policies on storage.objects (%): add note_uploads_insert / note_uploads_read in Storage -> Policies (docs/notes.md)', sqlerrm;
+    end;
   end if;
 end;
 $$;

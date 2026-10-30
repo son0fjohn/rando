@@ -198,7 +198,7 @@ self.onmessage = async e => {
       const { p, cached, retry } = await payload(m.z, m.x, m.y);
       const t1 = performance.now();
       if (!p) { self.postMessage({ type: "chunk", id: m.id, empty: true, retry, t: { fetch: t1 - t0, build: 0 } }); return; }
-      const out = packChunk(buildChunk(p, { z: m.z, x: m.x, y: m.y, origin: cfg.origin, lod: m.lod, heroes: cfg.heroes, clearAt: cfg.clearAt, exclude: cfg.exclude }));
+      const out = packChunk(buildChunk(p, { z: m.z, x: m.x, y: m.y, origin: cfg.origin, lod: m.lod, heroes: cfg.heroes, clearAt: cfg.clearAt, exclude: cfg.exclude, shadow: m.shadow ?? null }));
       out.stats.src = p.src ?? (p.cut ? "baked+omt" : "baked");
       const t2 = performance.now();
       const xfer = [out.trees.buffer, out.lamps.buffer, out.poles.buffer, out.lanterns.buffer, out.centres.buffer];

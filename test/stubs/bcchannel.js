@@ -18,18 +18,20 @@ export class StubChannel {
     this.mine = null;
     this.bc = null;
   }
-  on(type, filter, cb) { this.handlers.push({ type, event: filter?.event, table: filter?.table, cb }); return this; }
+  on(type, filter, cb) {
+    // strict (supabase.js ?strictrt=1): realtime-js refuses these on a joining/joined channel
+    if (this.strict && this.bc && !this.leaving && (type === "presence" || type === "postgres_changes"))
+      throw new Error(`cannot add \`${type}\` callbacks for realtime:${this.name} after \`subscribe()\`.`);
+    this.handlers.push({ type, event: filter?.event, table: filter?.table, cb }); return this;
+  }
   subscribe(cb) {
+    // strict: a channel that's leaving or left doesn't join again (realtime-js only joins a closed one)
+    if (this.strict && (this.leaving || this.bc)) return this;
     this.bc = new BroadcastChannel(`sbstub:${this.name}`);
     this.bc.onmessage = e => this._rx(e.data);
-    // postgres_changes: a table's inserts (pgNotify below), like Realtime's
-    this.pg = [...new Set(this.handlers.filter(h => h.type === "postgres_changes" && h.table).map(h => h.table))].map(table => {
-      const bc = new BroadcastChannel(`sbstub:pg:${table}`);
-      bc.onmessage = e => { for (const h of this.handlers) if (h.type === "postgres_changes" && h.table === table && (!h.event || h.event === "*" || h.event === e.data.type)) { try { h.cb({ eventType: e.data.type, table, new: e.data.row, old: e.data.old ?? {} }); } catch (x) { console.warn("[sbstub]", x); } } };
-      return bc;
-    });
     open.add(this);
-    setTimeout(() => cb?.("SUBSCRIBED"), 5);
+    // (strict: the join is a round trip to the server; until it's back the channel is "joining")
+    setTimeout(() => { if (this.bc || !this.strict) { this.joined = !!this.bc; cb?.("SUBSCRIBED"); } }, this.strict ? 150 : 5);
     return this;
   }
   async track(meta) {
@@ -46,9 +48,7 @@ export class StubChannel {
   }
   close() {
     if (this.mine && this.bc) this.bc.postMessage({ k: "leave", key: this.key });
-    this.bc?.close(); this.bc = null; this.mine = null;
-    for (const bc of this.pg ?? []) bc.close();
-    this.pg = [];
+    this.bc?.close(); this.bc = null; this.mine = null; this.joined = false;
     open.delete(this);
   }
   _rx(d) {
@@ -63,15 +63,15 @@ export class StubChannel {
   _emit(type, event, arg) {
     for (const h of this.handlers) if (h.type === type && h.event === event) { try { h.cb(arg); } catch (e) { console.warn("[sbstub]", e); } }
   }
+  // a row change from the "database" (supabase.js): to this channel's
+  // postgres_changes listeners for that table, while it's subscribed
+  _pg(table, eventType, row) {
+    if (!this.bc) return;
+    for (const h of this.handlers) if (h.type === "postgres_changes" && (!h.table || h.table === table) && (h.event === "*" || h.event === eventType)) {
+      try { h.cb({ schema: "public", table, eventType, new: { ...row }, old: {} }); } catch (e) { console.warn("[sbstub]", e); }
+    }
+  }
 }
 
-
-// a row written to a table: every channel listening for its postgres_changes
-// hears it (this page's too, as Realtime sends your own inserts back)
-export function pgNotify(table, type, row) {
-  const bc = new BroadcastChannel(`sbstub:pg:${table}`);
-  bc.postMessage({ type, row });
-  setTimeout(() => bc.close(), 50);
-}
 
 window.addEventListener("pagehide", () => { for (const ch of [...open]) ch.close(); });

@@ -42,7 +42,10 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   active tab gold; it never follows `--day`):
   Explore / Host / Style, flat against the map; Host
   is the gold-ringed house, "My party" while you're in one; pull-to-refresh,
-  the style screen, NPC dialog),
+  the style screen, NPC dialog, the plaza chat: stored lines
+  (`007_public_chat.sql`) live over Realtime, heard in the sender's AREA,
+  `web/chatscope.js`: Itaewon's zones are one plaza, elsewhere the ~2.2 km
+  cell; talking needs you on the map, so a hidden player is asked first),
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
   the city map, everywhere (see `docs/map_city.md`): near Itaewon its
   hand-made map with the procedural city round its edges, anywhere else the
@@ -225,6 +228,7 @@ node test/maskoff_shots.mjs <dir> [--bots=4]   # Mask Off round the table with r
 node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (round the table, real characters: a pick, a card, an answer, Same, Go deeper, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
 node test/leave_rec.mjs <dir> [--only=1,2,3,4] [--video]   # every way out of a party on the real app page (Leave, turned away past the cap, the party ended after the set's podium + recap, the host closing it): straight onto the explore map on you, nothing over it, the camera pulled out of the building (--video + FFMPEG: frame-stepped mp4s)
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
+node test/chat_rec.mjs <dir> [--prefix=after] [--video]   # the plaza chat on 3 phones (2 in Itaewon, 1 in Calgary), Realtime as supabase-js really does it (?strictrt=1): after token refreshes, a line reaches its sender and the same area within 2 s and never another area; a hidden player is asked to show themselves first; a reload reads the area's lines back (FFMPEG=... for chat.mp4)
 node test/mapchrome_shots.mjs <dir> [--prefix=after] [--lights=night,sunset,day] [--widths=320,375,390,430]   # the map's round buttons (Home / Friends aligned, measured; the 📝 note button clear of the chat, the bar and Back to me), the plaza chat (no boxes), the bar's colour + label contrast, by night / sunset / day
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/layout_shots.mjs <dir> [games] [--secs=40]   # every game's screens, and where the header / pill / action area / dialog box sit on each (layout.json)
@@ -239,7 +243,7 @@ node test/auth_rec.mjs <dir> [en|ko|both]   # accounts: a guest from an invite (
 node test/manhunt_rec.mjs <dir>        # Manhunt on 5 phones (2 on the real app page, simulated GPS, a fast clock): setup on the map, the Hunter's opening, a ping, a tag, a locked screen, SAFE, the results; what went over the wire (FFMPEG=... for manhunt.mp4)
 node test/city_shots.mjs <dir> [areas]  # the city map: day/night shots per area, chunk fetch/build/mount times, the device cache, fps
 node test/world_shots.mjs <dir> [places]  # the map anywhere: Gangnam, Itaewon (+ its edge), Hongdae, Calgary, Edmonton, Lotte World Tower: top-down next to a plan from the raw data (scripts/plan_map.py), street + wide at night, load times cold / cached; Calgary from the worldwide tiles alone (scripts/omt_fixture.py)
-node test/view_shots.mjs <dir> [range,sun,sunset] [--prefix=before]   # the map's Pokémon GO view (Itaewon + a city spot, day / night, closest / furthest zoom: how far you see, where you stand, draws, triangles, chunks, fps) and its light from the place on screen: Seoul and Calgary at the same UTC moment (?sunat=), a sunset sped up as frames
+node test/view_shots.mjs <dir> [range,sun,sunset] [--prefix=before]   # the map's view (Itaewon + a city spot, day / night / sunset, closest / home / furthest zoom of the orbit camera: how far it's clear, draws, triangles, chunks by detail, fps) and its light from the place on screen: Seoul and Calgary at the same UTC moment (?sunat=), a sunset sped up as frames
 node test/light_shots.mjs <dir> [night,sunset,day]   # day and night glass: the start screen and the map's chrome at night, sunset and day (?light=), the panel over what's behind it, the text colours
 test/hunter.html                       # Manhunt's Hunter on his own: poses, doors, counter, orbit (open it on npm run serve:test)
 ```

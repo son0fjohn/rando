@@ -29,10 +29,21 @@
 //             makes it come back with identity_already_exists instead.
 //             signInWithOAuth switches this browser to that provider's
 //             account (u-guest-<provider>acct), a returning player.
+//   chat     public_messages (migrations/007): an insert needs your presence
+//             row ("go open to talk in public chat" otherwise) and takes its
+//             zone; the new row reaches every tab's postgres_changes
+//             listeners (and its own), over BroadcastChannel
+//   strict   ?strictrt=1: realtime and auth as supabase-js 2.118 does them:
+//             onAuthStateChange fires INITIAL_SESSION at once, channel(name)
+//             hands back the live channel of that name instead of a new one,
+//             removeChannel on a joined channel leaves after a round trip
+//             (subscribe() on a leaving one does nothing; .on("presence" |
+//             "postgres_changes") on a joined one throws). window.__authEvent(
+//             "TOKEN_REFRESHED") fires an auth event, as the hourly refresh does
 //   sms fails ?smsFail=provider (stub-sms-fail): the provider refuses to text
 //             (Twilio's region error, as Supabase passes it on); =rate: the
 //             server's "only request this after 53 seconds"
-import { StubChannel, pgNotify } from "./bcchannel.js";
+import { StubChannel } from "./bcchannel.js";
 import { mpShared, SHARED_TABLES } from "./mpshared.js";   // test/mp/: one server for many browser contexts
 import { ITEMS4, HAIRCOLOR_SHOP, STARTER_OUTFITS4 } from "/web/items4.js";
 import { notesStub } from "./notes_stub.js";   // notes on the map (migrations/019): RPCs, buckets, a fake moderator
@@ -69,7 +80,8 @@ const db = {
   zones: ZONES,
   profiles: [{ id: myId, handle: ls.get(`stub-handle-${myId}`) ?? handle, avatar: JSON.parse(ls.get(`stub-avatar-${myId}`) ?? "null") ?? myAvatar }, ...strangers.map(s => ({ id: s.user_id, handle: s.handle, avatar: s.avatar }))],
   presence: [],
-  public_messages: [
+  // (what's been said is kept for the whole browser context, like the real table: a reload reads it back)
+  public_messages: JSON.parse(ls.get("stub-pubchat") ?? "null") ?? [
     { id: 1, sender: "u-mina", handle: "mina", body: "anyone at hamilton rn?", zone_id: "hamilton-alley", created_at: "2026-10-21T10:00:00Z" },
     { id: 2, sender: "u-jae", handle: "jae", body: "coffee line is insane lol", zone_id: "itaewon-station", created_at: "2026-10-21T10:01:00Z" },
   ],
@@ -158,35 +170,44 @@ class Query {
   update(patch) { this.op = "update"; this.patch = patch; return this; }
   delete() { this.op = "delete"; return this; }
   then(res, rej) {
-    const told = r => { for (const row of this._notify ?? []) pgNotify(this.t, "INSERT", row); return r; };
-    // test/mp/: the tables everyone shares run on the one server
-    if (mpShared && SHARED_TABLES.includes(this.t)) return mpShared.tx(st => {
-      this._notify = []; this._err = null;       // (a transaction can run again on newer state)
-      for (const k of SHARED_TABLES) db[k] = (st.tables[k] ??= []);
-      try { return this._run(); } finally { for (const k of SHARED_TABLES) st.tables[k] = db[k]; }
-    }).then(told, e => ({ data: null, error: { message: e.message } })).then(res, rej);
-    return Promise.resolve().then(() => told(this._run())).then(res, rej);
+    // test/mp/: the tables everyone shares run on the one server (row changes go out once it's written)
+    if (mpShared && SHARED_TABLES.includes(this.t)) {
+      let held = [];
+      return mpShared.tx(st => {
+        held = []; pgHeld = held;
+        for (const k of SHARED_TABLES) db[k] = (st.tables[k] ??= []);
+        try { return this._run(); } finally { pgHeld = null; for (const k of SHARED_TABLES) st.tables[k] = db[k]; }
+      }).then(r => { for (const c of held) pgChange(...c); return r; }, e => ({ data: null, error: { message: e.message } })).then(res, rej);
+    }
+    return Promise.resolve().then(() => this._run()).then(res, rej);
   }
   _run() {
     const T = (db[this.t] ??= []);
     const match = r => this.filters.every(f => f(r));
     let out;
+    if (this.t === "public_messages" && this.op === "insert") {
+      // migrations/007's trigger: the server owns sender, handle, zone and
+      // time, and you can only speak while you're on the map (a presence row)
+      const zone = db.presence.find(p => p.user_id === myId)?.zone_id;
+      if (!zone) return { data: null, error: { message: "go open to talk in public chat", code: "P0001" } };
+      out = this.rows.map(r => {
+        const row = { id: crypto.randomUUID(), body: r.body, sender: myId, handle: db.profiles.find(p => p.id === myId)?.handle ?? handle, zone_id: zone, created_at: new Date().toISOString() };
+        T.push(row);
+        ls.set("stub-pubchat", JSON.stringify(T.slice(-200)));
+        pgChange("public_messages", "INSERT", row);
+        return row;
+      });
+      out = out.map(r => ({ ...r }));
+      return { data: this.one ? out[0] ?? null : this.ret ? out : null, error: null };
+    }
     if (this.op === "insert" || this.op === "upsert") {
       out = this.rows.map(r => {
         const row = { id: r.id ?? `${this.t}-${T.length + 1}`, created_at: new Date().toISOString(), ...r };
-        if (this.t === "public_messages") {
-          // as the real trigger (migrations/007): the sender's own handle and presence zone; speaking needs being open
-          const zone = db.presence.find(p => p.user_id === myId)?.zone_id;
-          if (mpShared && !zone) { this._err = "go open to talk in public chat"; return null; }
-          Object.assign(row, { sender: myId, handle: db.profiles.find(p => p.id === myId)?.handle ?? handle, zone_id: zone ?? "itaewon-station" });
-        }
         const key = this.t === "presence" ? "user_id" : "id";
         const i = this.op === "upsert" ? T.findIndex(x => x[key] === row[key]) : -1;
         if (i >= 0) T[i] = { ...T[i], ...row }; else T.push(row);
-        if (this.op === "insert") (this._notify ??= []).push({ ...row });
         return row;
       });
-      if (this._err) return { data: null, error: { message: this._err } };
     } else if (this.op === "update") {
       out = T.filter(match);
       if (this.t === "profiles" && this.patch.avatar) {
@@ -208,6 +229,22 @@ class Query {
     return { data: this.one ? out[0] ?? null : out, error: null };
   }
 }
+
+// row changes, to every channel listening on this page and on the other tabs
+const pgBus = new BroadcastChannel("sbstub:pg");
+const pgChannels = new Set();
+let pgHeld = null;
+function pgChange(table, eventType, row) {
+  if (pgHeld) { pgHeld.push([table, eventType, row]); return; }
+  pgBus.postMessage({ table, eventType, row });
+  setTimeout(() => { for (const ch of pgChannels) ch._pg(table, eventType, row); }, 0);
+}
+pgBus.onmessage = ({ data: { table, eventType, row } }) => {
+  const T = (db[table] ??= []);
+  if (eventType === "INSERT" && !T.some(r => r.id === row.id)) T.push({ ...row });   // one "server": this tab's reads see it too
+  for (const ch of pgChannels) ch._pg(table, eventType, row);
+};
+const strictRT = q.get("strictrt") === "1";
 
 const RITUAL_POOL = await fetch(new URL("../../web/data/ritual_prompts.json", import.meta.url)).then(r => r.json()).then(j => j.prompts).catch(() => []);
 const ritualDraws = new Map();     // `${room}|${turn}` -> prompt (this phone's draws only)
@@ -236,7 +273,8 @@ const RPC = {
   ],
   list_friends: () => [],
   ensure_auto_zone: ({ p_cell_lat, p_cell_lng }) => {
-    const z = { id: `auto-${p_cell_lat}-${p_cell_lng}`, name: `Area ${p_cell_lat}, ${p_cell_lng}`, lat: p_cell_lat, lng: p_cell_lng, kind: "auto" };
+    // the id as migrations/008 builds it: 'auto_' || replace(lat::text, '.', 'p') || '_' || …
+    const z = { id: `auto_${String(p_cell_lat).replace(".", "p")}_${String(p_cell_lng).replace(".", "p")}`, name: `Area ${p_cell_lat}, ${p_cell_lng}`, lat: p_cell_lat, lng: p_cell_lng, kind: "auto" };
     if (!db.zones.some(x => x.id === z.id)) db.zones.push(z);
     return z;
   },
@@ -291,11 +329,13 @@ const phoneAuth = (q.get("verify") ?? ls.get("stub-verify")) === "1";
 const NOTES = notesStub({ me: () => myId, cstate, save, withState: withCoins,
   verified: () => !phoneAuth || !!session.user.phone_confirmed_at || (session.user.identities ?? []).some(i => i.provider === "kakao") });
 Object.assign(RPC, NOTES.rpc);
+const liveChannels = new Map();   // strict: name -> the channel until it has left
+window.__authEvent = (ev = "TOKEN_REFRESHED") => { for (const cb of authListeners) setTimeout(() => cb(ev, session), 0); };
 export function createClient() {
   return {
     auth: {
       getSession: async () => ({ data: { session } }),
-      onAuthStateChange(cb) { authListeners.add(cb); return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } }; },
+      onAuthStateChange(cb) { authListeners.add(cb); if (strictRT) setTimeout(() => cb("INITIAL_SESSION", session), 0); return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } }; },
       signInAnonymously: async () => ({ data: { session }, error: null }),
       signInWithOtp: async ({ phone } = {}) => { if (smsFail()) return { error: smsFail() }; pendingPhone = phone; return { error: null }; },
       // a guest linking a number (type phone_change) keeps its id: nothing is lost
@@ -339,11 +379,25 @@ export function createClient() {
     functions: NOTES.functions,
     rpc: async (name, args) => {
       if (!RPC[name]) return { data: null, error: { message: `rpc ${name} not stubbed` } };
-      return withCoins(() => { try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; } });
+      return withCoins(() => { try { return { data: RPC[name](args ?? {}), error: null }; } catch (e) { return { data: null, error: { message: e.message, code: e.code ?? null, details: e.details ?? null, hint: e.hint ?? null } }; } });
     },
-    channel: (name, cfg) => new StubChannel(name, cfg),
+    channel: (name, cfg) => {
+      if (strictRT && liveChannels.has(name)) return liveChannels.get(name);
+      const ch = new StubChannel(name, cfg);
+      pgChannels.add(ch);
+      if (strictRT) { ch.strict = true; liveChannels.set(name, ch); }
+      return ch;
+    },
     __phoneAuth: phoneAuth,
     __authSettings: { phone: phoneAuth, ...Object.fromEntries(oauthOn.map(p => [p, true])) },
-    removeChannel: ch => ch.close(),
+    removeChannel: async ch => {
+      const gone = () => { ch.close(); pgChannels.delete(ch); if (liveChannels.get(ch.name) === ch) liveChannels.delete(ch.name); return "ok"; };
+      // (realtime-js: a channel still joining is closed at once, its leave never sent)
+      if (!strictRT || !ch.joined) return gone();
+      // joined: the leave goes to the server and back before the channel is gone
+      ch.leaving = true;
+      await new Promise(r => setTimeout(r, 60));
+      return gone();
+    },
   };
 }

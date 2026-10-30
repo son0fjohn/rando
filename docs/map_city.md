@@ -199,28 +199,37 @@ Place. To add a model: put the glb under `web/` and set `glb` (and `status:
 
 ## Loading and speed (`web/citytiles.js`)
 
-- **The view, Pokémon GO style** (`world3d.js` `VIEW`, `ZOOM`): the camera
-  is tilted and looks a little ahead of you, so you stand in the lower
-  middle of the screen; zooming out (to 230 u) lifts it toward top-down
-  (57°), zooming in (to 70 u) lowers it toward the horizon (29°). Whatever
-  the zoom you see about 270 m round you: the haze is a fog by ground
-  distance from you (not depth from the camera: three's fog chunks are
-  patched for a Fog with a negative near), clear to ~140 m, total at
-  150 u ≈ 270 m, in the light's own fog colour. Names, notes, beacons and
-  labels fade with it (`rangeFade`); a party beacon past it is pinned to
-  the edge, pointing the way. The start screen's drift keeps its wide view
-  (`mapView` false) and a game that frames the map itself (Manhunt's zone
-  overview) asks for a free view (`setFreeView`).
+- **The view** (`world3d.js` `ZOOM`, `FOG`): the classic orbit camera,
+  175 u from you at 0.58 rad, looking straight at you; pinch 70–420 u,
+  two fingers up / down tilt 0.22–1.25 rad, a twist orbits. The city is
+  clear round you: the haze is a fog by ground distance from you (not
+  depth from the camera: three's fog chunks are patched for a Fog with a
+  negative near), clear to 0.65 × its far edge, and the far edge grows
+  with the zoom (`fogFar`: 5 × the camera's distance, 850–1750 u, 10 %
+  further at night): at the home view clear for ~1.1 km round you,
+  zoomed all the way out ~2.2 km, so everything but the band at the top
+  of the screen (where the classic camera's view reaches the horizon) is
+  clear, and that band is a light haze. A band in the fog's colour stands
+  where the ground meets the sky, so there's never a hard edge. Names,
+  notes, beacons and labels fade where the haze is all but total
+  (`rangeFade`); a party beacon past it is pinned to the edge, pointing
+  the way. The start screen's drift keeps its wide view (`mapView` false)
+  and a game that frames the map itself (Manhunt's zone overview) asks for
+  a free view (`setFreeView`): its own fog, zoom out to 1500 u.
 - Chunks stream round the camera target, as far as the map says
-  (`world3d.js` `viewRange`): in the map's view the haze's radius plus a
-  60 u buffer (2–6 chunks, against 25 before), full detail on those
-  reaching inside the haze; past the haze they're kept but not drawn, and
-  dropped 140 u further out. Trees, lamps and poles past it aren't
-  drawn either. A wider camera (the scenery, a free view, the tests'
-  top-down shots) loads as far as it sees the ground, up to 720 u.
-  Built in a worker, at most two mounted per frame, nearest first
-  (the near ring before the far one); a new chunk rises out of the ground
-  (half a second) instead of popping.
+  (`world3d.js` `viewRange`, `RANGE`): every chunk within 300 u of you
+  (so turning round finds the city there), and out to the haze those the
+  camera sees (within 110 u of the ground on screen, cast and cut at the
+  haze), not the city behind you. Full detail within 330 u, walls +
+  roofs + shadows + parks to 700 u, past that the simple far chunks
+  (`citygen.js` lod 2: footprints as their oriented box when they nearly
+  fill it, no baked shadows, a quarter of the trees). Past the haze
+  they're kept but not drawn; out of view they stay until more than 40
+  are kept (the furthest go first), and go 140 u past the range. A wider
+  camera (the scenery, a free view, the tests' top-down shots) loads a
+  circle as far as it sees the ground, up to 720 u. Built in a worker, at
+  most two mounted per frame, missing ones first, nearest first; a new
+  chunk rises out of the ground (half a second) instead of popping.
 - **Draw calls.** A chunk is a handful of meshes: the worker
   (`citygen.js` `packChunk`) merges what shares a material, so the four
   facade classes are one wall mesh (one texture array, a class byte per
