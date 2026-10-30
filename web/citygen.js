@@ -362,8 +362,21 @@ export function handmadeMask({ b, r, src }) {
   return { b, r, env: reach, grid: { cell, x0, z0, w, h, bits } };
 }
 
+// a far chunk's footprint (lod 2): its oriented box when it nearly fills
+// it (most buildings), else as it is; counter-clockwise like the ring
+function farRing(ring) {
+  if (ring.length <= 4) return ring;
+  const ob = orientedBox(ring);
+  if (!ob || Math.abs(ringArea(ring)) < 0.72 * ob.L * ob.S) return ring;
+  const [cx, cz] = ob.c, [ux, uz] = ob.ax, L = ob.L / 2, S = ob.S / 2;
+  const box = [[-L, -S], [L, -S], [L, S], [-L, S]].map(([a, b]) => [cx + ux * a - uz * b, cz + uz * a + ux * b]);
+  return ringArea(box) < 0 ? box.reverse() : box;
+}
+
 // ---- the chunk
-// payload: the parsed tile JSON. opts: { z, x, y, origin:[lat,lng], lod: 0|1,
+// payload: the parsed tile JSON. opts: { z, x, y, origin:[lat,lng], lod: 0|1|2
+// (0 full detail, 1 walls + roofs + shadows + parks, 2 the far ones:
+// buildings as plain blocks, no shadows, fewer trees),
 // heroes: [{ lat, lng, clear (m), fp: [[lng,lat]...], osm, glb, shape, h, glow }]:
 //   with a glb, the model replaces the procedural buildings at its spot;
 //   without one (yet) it still stands out: its building grows to the
@@ -375,7 +388,7 @@ export function buildChunk(payload, opts) {
   const P = projector(opts.origin);
   const toW = (px, py) => P.fwd(...tileToLngLat(z, tx, ty, px, py));
   const key = hash32(tx * 73856093 ^ ty * 19349663);
-  const near = lod === 0;
+  const near = lod === 0, far = lod >= 2;
   const B = {};
   const buf = k => (B[k] ??= new Buf());
   const stats = { buildings: 0, hidden: 0, awnings: 0, signs: 0, roads: 0, trees: 0, lamps: 0, poles: 0 };
@@ -443,6 +456,7 @@ export function buildChunk(payload, opts) {
       continue;
     }
     if (!near && b.k === "s") continue;
+    if (far) ring = farRing(ring);
     stats.buildings++;
     centres.push(cx, cz);
     const s = seedOf(b, i, key);
@@ -475,7 +489,7 @@ export function buildChunk(payload, opts) {
     if (near) outline(buf("lines"), ring, y0, top);
     if (hero) crown(buf("glow"), ring, top, linRGB(rgb(parseHex(hero.glow) ?? 0xffd36b)), seedF);
     buf("roof").flat(ring, top, roofC, seedF);
-    shadow(buf("shadow"), ring, top);
+    if (!far) shadow(buf("shadow"), ring, top);
     if (near && area > STYLE.ac.minArea && s % 3 !== 0) {
       const hs = hash32(s + 77);
       const x = cx + ((hs % 7) - 3) * 0.6, z = cz + (((hs >> 4) % 5) - 2) * 0.6;
@@ -524,7 +538,7 @@ export function buildChunk(payload, opts) {
     for (let k = 0; k < trees.length; k += 4) if (!wet.some(r => pointInRing(trees[k], trees[k + 1], r))) { trees[n++] = trees[k]; trees[n++] = trees[k + 1]; trees[n++] = trees[k + 2]; trees[n++] = trees[k + 3]; }
     trees.length = n;
   }
-  const maxTrees = near ? STYLE.tree.maxNear : STYLE.tree.maxFar;     // (4 numbers a tree)
+  const maxTrees = near ? STYLE.tree.maxNear : far ? STYLE.tree.maxFar >> 2 : STYLE.tree.maxFar;     // (4 numbers a tree)
   if (trees.length > maxTrees * 4) trees.length = maxTrees * 4;
   stats.trees = trees.length / 4;
 

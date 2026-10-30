@@ -37,7 +37,7 @@ import { lngLatToTile, tileToLngLat } from "./citygen.js";
 import { omtChunks, OMT_Z } from "./cityomt.js";
 
 const Q = () => new URLSearchParams(location.search);    // read fresh: the tests move ?devlat with history.replaceState
-const HUB_DIST = 200;           // camera distance (world units) past which a spot's notes fold into one hub (the zoom goes to 230)
+const HUB_DIST = 270;           // camera distance (world units) past which a spot's notes fold into one hub
 const LIFT = 7;                 // a marker floats this far over the street (world units)
 const REFRESH_MS = 1200;
 

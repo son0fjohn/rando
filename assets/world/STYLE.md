@@ -22,10 +22,11 @@ roads and the ground are given in world units as drawn. The character is
 - **Lambert only** on the world (no PBR, no specular, no tone mapping).
   Flat shading on props and landmarks; building walls are flat per face.
 - No shadow maps. Shadows are **baked** (section 5.6).
-- Camera: fov 50, near 1, far 2500. Home view: 175 u from the target at
-  elevation 0.72 rad, looking 0.2 × the ground distance ahead of it (you
-  in the lower middle of the screen). Zoom 70–230 u, the elevation
-  following it (0.50 rad close in, 1.0 rad out; `world3d.js` `ZOOM`).
+- Camera: fov 50, near 1, far 2500. Home view: elevation 0.58 rad, 175 u
+  from the target, looking straight at it. Pinch zooms 70–420 u, two
+  fingers moved up / down tilt it 0.22–1.25 rad, a twist (or one finger,
+  locked on you) orbits; a recenter eases back to the home view
+  (`world3d.js` `ZOOM`, `bindControls`).
 - Text is never in the canvas (labels are DOM on top).
 
 ## 2. Lighting, sky and fog (`web/theme.js` lighting)
@@ -41,7 +42,7 @@ moonlight), blended through dusk.
 | Hemisphere sky / ground / intensity | `#fff0d6` / `#9b8f7a` / 0.95 | `#5b6fa0` / `#2e3048` / 0.9 |
 | Sun colour / intensity | `#ffdfae` / 1.45 | `#aec6ee` / 0.65 |
 | Fog colour | `#e9dcc3` (cream haze) | `#2a3452` (navy) |
-| Fog | on the map: by ground distance from you, clear to 75 u, total at 150 u (≈ 270 m); on the start screen 340 / 1250 u from the camera | same |
+| Fog | on the map: by ground distance from you, clear to 0.65 × far, total at far = 5 × the camera's distance, 850–1750 u (home view: clear to 570 u ≈ 1 km, total at 875 u ≈ 1.6 km; 10 % further at night); a band in the fog colour hides where the ground meets the sky; on the start screen 340 / 1250 u from the camera | same |
 | Sky | painted cylinder `world2/sky_day.jpg`, cap `#3072c7` | `world2/sky_night.jpg`, cap `#030b25` |
 | Everything lit at night | walls multiplied by **(0.36, 0.42, 0.60)** blue moonlight; props use their own night colours below | |
 
