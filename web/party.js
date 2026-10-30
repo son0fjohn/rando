@@ -310,6 +310,16 @@ export const party = {
     directory.stopAnnouncing(c.room.id);
     c.lobby?.destroy();
     closeCard($("party-panel"), true);
+    // out mid-game (left, removed, the party ended): the game stops on this
+    // phone too, and its screen goes (it would stay up over the map, dead)
+    if (c.launched) {
+      clearInterval(c.watch);
+      try { c.ctx?.hostGame?.stop(); } catch {}
+      c.launched = false;
+      gameUi.hide(); $("game-layer").hidden = true;
+      this._hostCtl(null); $("hp-paused")?.remove();
+      document.body.classList.remove("hp-setup-wait");
+    }
     c.room.leave();
     this.current = null;
     this.pickerOpen = false; this.chatOpen = false;
