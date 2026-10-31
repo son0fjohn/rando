@@ -258,8 +258,9 @@ export const SIDE_QUEST = {
       hostTick(s, dt) {
         syncGone(s, room);
         const t = turn(s);
-        // the player on the quest left: skip the turn, nobody scores it
-        if (t && s.players[t.who]?.gone && ["spin", "quest", "do"].includes(s.phase)) {
+        // the player on the quest left (presence: they're gone from the room), skip the turn, nobody scores it.
+        // Not "unheard for 30 s" (syncGone's stale): out doing it, their phone may well be locked in a pocket
+        if (t && !s.players[t.who]?.isBot && !room.members.some(m => m.id === t.who) && ["spin", "quest", "do"].includes(s.phase)) {
           t.skipped = true; t.pts = 0;
           rounds.enter(s, "result");
           return;
