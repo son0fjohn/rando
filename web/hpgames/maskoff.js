@@ -32,7 +32,7 @@
 import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
 import { MASKOFF } from "./../hpconfig.js";
-import { Rounds, syncGone, active, esc, shuffle, hostSkip, bindHostSkip, trash, roomBackdrop } from "./../hpkit.js";
+import { Rounds, syncGone, active, esc, shuffle, hostSkip, bindHostSkip, trash, roomBackdrop, seatLate } from "./../hpkit.js";
 import { fairPick } from "./../fairpick.js";
 import { SKIN4_RGB, normalizeAvatar4 } from "./../items4.js";
 import { dialogBox } from "./../dialog.js";
@@ -91,6 +91,8 @@ export const MASK_OFF = {
   // the deck and the rounds are the host's own setup: everyone else waits in
   // the lobby, and the host can back out of it (party.js)
   hostSetup: ["setup"],
+  // someone who joins mid-game takes a chair from the next turn (hpkit seatLate)
+  lateJoin: true,
 
   start(ctx) {
     if (!POOL) { ui.show(); ui.stage("Mask Off", `<div class="mo-game"><p class="ab-sub">shuffling the cards…</p></div>`, "loading"); poolReady.then(() => this._start(ctx)); return; }
@@ -250,6 +252,9 @@ export const MASK_OFF = {
       while (h.length < M.HAND && s.deck.length) h.push(s.deck.shift());
     }
     function nextTurn(s) {
+      // anyone who joined the party meanwhile pulls up a chair (their hand
+      // is dealt when they're first to ask; their turns round the table are added)
+      for (const id of seatLate(s, room, seat)) { s.hands[id] ??= []; s.turns += s.setup.rounds; }
       const ids = active(s).map(p => p.id);
       for (const id of ids) if (!s.order.includes(id)) s.order.push(id);   // (a late joiner takes a seat)
       const asker = nextAsker(s.order, s.ai, ids);

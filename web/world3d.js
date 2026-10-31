@@ -2539,12 +2539,16 @@ export const world3d = {
     this.needsRender = true;
   },
 
+  // skipRemote(r) -> true: someone drawn elsewhere (a public party's host
+  // stands under their house, partybeacon.js), not in the presence cluster
+  skipRemote: null,
   setRemotes(list) { // [{ avatar, lat, lng, slot }]
     this._lastRemotes = list;
     for (const rec of this.remoteRecs) this.removeChar(rec, this.remoteGroup);
     this.remoteRecs = [];
     this.remoteGroup.clear();
     for (const r of list) {
+      if (this.skipRemote?.(r)) continue;
       const dx = (r.slot % 2 ? -1 : 1) * Math.ceil((r.slot + 1) / 2) * 9;
       const dz = ((r.slot % 3) - 1) * 5;
       const pos = geoPos(r.lat, r.lng).add(new THREE.Vector3(dx, 0, dz));
@@ -2733,16 +2737,28 @@ export const world3d = {
   // tap-to-chat: short, drag-free press on a remote character fires
   // onCharTap(meta). Set by backend.js; meta = { userId, handle, avatar }.
   onCharTap: null,
+  // other tappable things on the map: [{ object, onTap }] (a public party's
+  // house and its host, partybeacon.js); they win over what's behind them
+  tapTargets: [],
   tryCharTap(clientX, clientY) {
     const archList = Object.values(this.archRecs);
     if ((!this.onCharTap || !this.remoteRecs.length) &&
-        (!this.onArchNpcTap || !archList.length)) return;
+        (!this.onArchNpcTap || !archList.length) && !this.tapTargets.length) return;
     const r = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((clientX - r.left) / r.width) * 2 - 1,
       -((clientY - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
+    if (this.tapTargets.length) {
+      const hit = ray.intersectObjects(this.tapTargets.map(x => x.object), true)[0];
+      for (let node = hit?.object; node; node = node.parent) {
+        const tt = this.tapTargets.find(x => x.object === node);
+        if (tt) { tt.onTap(); return; }
+      }
+    }
+    if ((!this.onCharTap || !this.remoteRecs.length) &&
+        (!this.onArchNpcTap || !archList.length)) return;
     const targets = [
       ...this.remoteRecs.map(x => x.api.group),
       ...archList.map(x => x.api.group),
