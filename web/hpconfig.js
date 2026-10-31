@@ -8,8 +8,9 @@
 // ---------------------------------------------------------------- flags
 export const FLAGS = {
   // Public parties: the host can pick "public" when throwing a party; it's
-  // then listed nearby and shown on the map as a neon house in its ZONE
-  // (never the host's spot). Invite-only stays the default. false hides the
+  // then listed nearby and shown on the map as a house over its host's
+  // character, placed in the host's ZONE (never the host's spot). Invite-only
+  // stays the default. false hides the
   // choice: every party is code/link only and nothing is announced.
   PUBLIC_PARTIES: true,
   // Spicy prompts are OFF by default. Flipping this to true serves the spicy

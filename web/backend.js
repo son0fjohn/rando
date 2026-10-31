@@ -131,9 +131,6 @@ async function refreshStatus() {
       if (error) console.warn("[rando] report failed", error.message);
       return !error;
     };
-    // a public party's map beacon sits in the host's ZONE (the same on-device
-    // snap presence uses), never at the host's position: parties are often
-    // at someone's home
     // coins: the host reports each completed game, every player confirms
     // they played it; the server pays only when both agree (migrations/013)
     party.hooks.coins = {
@@ -162,13 +159,24 @@ async function refreshStatus() {
       if (error) throw error;
       return data;
     };
+    // a public party's house: the host's phone announces only its presence
+    // ZONE (the same on-device snap presence uses: a launch zone or a ~2 km
+    // cell), and every phone stands the host's character at that zone's
+    // centre plus an offset from the party id, with the house over their head
+    // (partybeacon.js) — in the lobby and through every game too. That's the
+    // one exception to presence.sync() (on the map only while the world
+    // screen is up): the host's presence row still goes off in the party;
+    // the announce, not presence, keeps them on the map, at zone level.
+    // Never the host's position: parties are often at someone's home.
+    // Invite-only parties announce nothing.
+    party.hooks.beaconZone = async () => {
+      let z = presence.myZone;
+      if (!z) { try { z = await presence.resolveZone(); } catch (e) { z = presence.lastZone; if (!z) throw e; } }
+      return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;
+    };
     // the join-range check (joinrange.js): your own fix, only if location is
     // already allowed; it never leaves the phone as is
     party.hooks.fix = () => passiveCoords();
-    party.hooks.beaconZone = async () => {
-      const z = presence.myZone ?? await presence.resolveZone();
-      return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;
-    };
     // the onboarding's moments (onboard.js): an invite link's landing, phone
     // verification where it matters, the invite sheet, the first game's
     // safety card and host lines, hints, the first party's recap

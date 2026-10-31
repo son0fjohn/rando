@@ -36,8 +36,8 @@
   --y-sky: #4da6ff;
   --y-lime: #7dff5e;
   --y-red: #ff4d5e;
-  /* art, not UI: the map's party beacon (a neon house over the zone) and the
-     chaotic room's TV glow keep their neon pink; hearts stay heart-coloured */
+  /* art, not UI: the chaotic room's TV glow keeps its neon pink; hearts stay
+     heart-coloured */
   --art-neon-pink: #ff5d8a;
   --art-neon-pink-rgb: 255, 93, 138;
   --art-neon-pink-light: #ff7aa4;
@@ -298,45 +298,50 @@ body.in-lobby #navbar, body.in-lobby #pubchat { display: none !important; }
 /* NPC says hi */
 #npc-dlg { position: absolute; left: 12px; right: 12px; bottom: calc(var(--nav-h) + 76px + env(safe-area-inset-bottom)); z-index: 140; pointer-events: none; }
 #npc-dlg .y-dlg-wrap { pointer-events: auto; }
-/* public party beacons: a giant neon house over the area */
+/* a public party's house (partybeacon.js): the 3D house floats over its
+   host on the map; this is its glass tag (the party, how many are in, "Full"),
+   over the roof, tappable like the house. It follows --day like the map's
+   other glass. */
 #beacon-layer { position: absolute; inset: 0; z-index: 90; pointer-events: none; overflow: hidden; }
-.pbeacon { position: absolute; left: 0; top: 0; width: 0; height: 0; padding: 0; border: none; background: none; pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.pbeacon > span { position: absolute; left: 0; transform: translateX(-50%); }
-.pb-house { top: calc(-64px * var(--k, 1)); width: calc(78px * var(--k, 1)); height: calc(70px * var(--k, 1)); animation: pb-bob 2.2s ease-in-out infinite;
-  filter: drop-shadow(0 0 4px var(--art-neon-pink)) drop-shadow(0 0 14px var(--art-neon-pink)) drop-shadow(0 0 30px rgba(var(--art-neon-pink-rgb),.8)); }
-.pb-house svg { width: 100%; height: 100%; display: block; animation: pb-pulse 1.4s steps(2) infinite; }
-.pb-roof { fill: #1a0a1e; stroke: var(--art-neon-pink-light); stroke-width: 1.2; }
-.pb-win { fill: #ffe066; } .pb-door { fill: var(--art-neon-pink); } .pb-chim { fill: var(--art-neon-pink-light); }
-.pb-rays { top: calc(-112px * var(--k, 1)); width: calc(170px * var(--k, 1)); height: calc(170px * var(--k, 1)); border-radius: 50%; pointer-events: none;
-  background: repeating-conic-gradient(rgba(var(--art-neon-pink-rgb),.42) 0 8deg, transparent 8deg 24deg);
-  -webkit-mask: radial-gradient(circle, #000 18%, transparent 68%); mask: radial-gradient(circle, #000 18%, transparent 68%); animation: pb-spin 9s linear infinite; }
-.pb-beam { top: 6px; width: 6px; height: var(--beam, 0px); background: linear-gradient(rgba(var(--art-neon-pink-rgb),.75), rgba(var(--art-neon-pink-rgb),0)); pointer-events: none; }
-.pb-label { top: calc(10px * var(--k, 1)); white-space: nowrap; font: 700 var(--fs-tag)/14px var(--f-head); color: var(--y-ink); background: rgba(26,10,30,.9);
-  border: 2px solid var(--art-neon-pink); padding: 2px 6px 3px; box-shadow: 0 0 10px rgba(var(--art-neon-pink-rgb),.6); }
-.pbeacon.live .pb-label::before { content: "● LIVE "; color: var(--art-neon-pink); }
-.pbeacon.edge .pb-rays, .pbeacon.edge .pb-beam { display: none; }
-.pbeacon.edge .pb-house { top: -26px; width: 34px; height: 30px; animation: none; }
-.pbeacon.edge .pb-label { top: 8px; font-size: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
-@keyframes pb-bob { 50% { translate: 0 -8px; } }
-@keyframes pb-pulse { 50% { filter: brightness(1.35); } }
-@keyframes pb-spin { to { transform: translateX(-50%) rotate(360deg); } }
-/* the party card under a beacon */
-#party-card { position: absolute; inset: 0; z-index: 260; display: flex; align-items: flex-end; justify-content: center; background: rgba(6,8,24,.5); animation: y-fade var(--y-fast) both; }
+.phouse-tag { position: absolute; left: 0; top: 0; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 5px 10px 5px 7px; border-radius: 999px;
+  font: 700 13px/16px var(--f-sys); white-space: nowrap; pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; transform-origin: 50% 100%;
+  box-shadow: var(--glass-shadow-sm), 0 0 0 1.5px rgba(var(--color-accent-rgb), .85), 0 0 16px rgba(var(--color-accent-rgb), calc(.45 - .2 * var(--day))); transition: opacity .3s ease; }
+.phouse-tag .ph-ico { width: 14px; height: 13px; flex: none; background: var(--color-accent); clip-path: polygon(50% 0, 100% 46%, 86% 46%, 86% 100%, 14% 100%, 14% 46%, 0 46%); }
+.phouse-tag .ph-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.phouse-tag .ph-n { font-weight: 600; color: var(--g-ink-soft); font-variant-numeric: tabular-nums; }
+.phouse-tag .ph-full:empty { display: none; }
+.phouse-tag .ph-full { font: 800 11px/1 var(--f-sys); font-style: normal; letter-spacing: .02em; text-transform: uppercase; padding: 3px 6px; border-radius: 999px;
+  background: var(--color-accent); color: var(--color-on-accent); text-shadow: none; }
+.phouse-tag.full .ph-ico { background: rgba(var(--g-ink-rgb), .5); }
+.phouse-tag.out { pointer-events: none; }
+/* the party card under a house */
+#party-card { position: absolute; inset: 0; z-index: 260; display: flex; align-items: flex-end; justify-content: center; }
 #party-card[hidden] { display: none; }
-.pc-sheet { width: min(100%, 440px); box-sizing: border-box; padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); animation: y-up var(--y-med) var(--y-pop) both; }
-.pc-head { display: flex; gap: 12px; align-items: center; }
-.pc-head b { display: block; font: 700 var(--fs-h2)/28px var(--f-head); }
-.pc-head small { font: var(--fs-small)/20px var(--f-small); color: var(--g-ink-soft); }
-.pc-house { width: 48px; height: 44px; flex: none; background: var(--art-neon-pink); filter: drop-shadow(0 0 8px var(--art-neon-pink));
-  clip-path: polygon(50% 0, 100% 45%, 88% 45%, 88% 100%, 12% 100%, 12% 45%, 0 45%); }
-.pc-stats { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 6px; font: var(--fs-small)/20px var(--f-small); }
-.pc-stats > span { padding: 4px 10px; border: 2px solid var(--y-line); background: var(--y-night-0); }
-.pc-stats b { color: var(--g-gold); }
-.pc-vibe { color: var(--y-ink-dark); }
+.pc-sheet { width: min(100%, 440px); box-sizing: border-box; padding: 8px 16px calc(14px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
+.pc-head { display: flex; gap: 14px; align-items: center; }
+.pc-char { position: relative; width: 104px; height: 128px; flex: none; border-radius: 16px; overflow: hidden; border: 1px solid var(--g-line);
+  background: radial-gradient(circle at 50% 38%, rgba(var(--color-accent-rgb), .3), rgba(var(--color-accent-rgb), 0) 70%), rgba(var(--g-ink-rgb), .06); }
+.pc-char canvas { width: 100% !important; height: 100% !important; display: block; }
+.pc-char .cv-spr { position: absolute; inset: 8px; background: center / contain no-repeat; image-rendering: pixelated; }
+.pc-who { min-width: 0; flex: 1; }
+.pc-who b { display: block; font: 700 20px/26px var(--f-sys); overflow-wrap: anywhere; }
+.pc-who small { display: block; font: 600 14px/20px var(--f-sys); color: var(--g-ink-soft); }
+.pc-stats { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; font: 600 13px/18px var(--f-sys); }
+.pc-stats > span { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--g-line); background: rgba(var(--g-ink-rgb), .08); }
+.pc-stats .pc-count { font-variant-numeric: tabular-nums; }
+.pc-stats .pc-count.full { background: var(--color-accent); color: var(--color-on-accent); border-color: transparent; text-shadow: none; }
+.pc-vibe { color: var(--color-on-accent); text-shadow: none; border-color: transparent !important; }
 .pc-vibe.v-chill { background: var(--y-aqua) !important; } .pc-vibe.v-chaotic { background: var(--color-accent) !important; } .pc-vibe.v-sporty { background: var(--y-lime) !important; }
-.pc-note { font: var(--fs-small)/20px var(--f-small); color: var(--g-ink-soft); margin: 4px 0 12px; }
-.pc-msg { font: var(--fs-small)/20px var(--f-small); color: var(--g-ink); margin: -4px 0 12px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
-.pc-btns { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
+.pc-status { display: flex; align-items: center; gap: 8px; font: 600 15px/20px var(--f-sys); }
+.pc-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: rgba(var(--g-ink-rgb), .55); }
+.pc-status.live .pc-dot { background: #3ce68c; box-shadow: 0 0 0 3px rgba(60, 230, 140, .25); }
+.pc-next { font: 600 14px/20px var(--f-sys); color: var(--g-gold); }
+.pc-next[hidden] { display: none; }
+.pc-join { width: 100%; min-height: 52px; font-size: 17px; }
+.pc-later { align-self: center; }
+.pc-note { font: 500 12px/17px var(--f-sys); color: var(--g-ink-faint); text-align: center; }
+.pc-msg { font: 600 14px/20px var(--f-sys); color: var(--g-ink); padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.pc-msg[hidden] { display: none; }
 /* style screen: your character, big */
 #style-screen { position: absolute; inset: 0; z-index: 270; display: flex; flex-direction: column; background: radial-gradient(circle at 50% 32%, var(--y-night-3), var(--y-night-0) 62%); color: var(--y-ink); }
 #style-screen[hidden] { display: none; }
@@ -476,7 +481,7 @@ body.in-lobby #navbar, body.in-lobby #pubchat { display: none !important; }
 .lr-fg { position: absolute; inset: 0; z-index: 100000; background-size: 100% 100%; image-rendering: pixelated; pointer-events: none;
   box-shadow: inset 0 0 calc(var(--px, 2px) * 24) rgba(6,4,16,.55); }
 @media (prefers-reduced-motion: reduce) {
-  .nav-host, .pb-house, .pb-house svg, .pb-rays, .pt-menu::before, .pt-menu::after, .pt-picker-sheet::before, #style-screen::before, .lr-light, .lr-lamp::before, .lr-tv.lr-furn::before, .pt-chan, .y-dlg-wrap { animation: none; }
+  .nav-host, .pt-menu::before, .pt-menu::after, .pt-picker-sheet::before, #style-screen::before, .lr-light, .lr-lamp::before, .lr-tv.lr-furn::before, .pt-chan, .y-dlg-wrap { animation: none; }
 }
 
 /* lobby: the mute toggle rides in the chat row */
@@ -734,9 +739,6 @@ body.in-lobby #navbar, body.in-lobby #pubchat { display: none !important; }
 .y-card-3d { border: 1px solid var(--g-line); border-radius: 16px; overflow: hidden; }
 .y-card-name { font: 700 20px/26px var(--f-sys); }
 .y-card-sec { color: #9fe8ff; }
-.pc-stats > span { border: 1px solid var(--g-line); border-radius: 999px; background: rgba(var(--g-ink-rgb), .08); }
-.pc-house { clip-path: none; border-radius: 14px; filter: none; }
-.pc-head b { font: 700 20px/26px var(--f-sys); }
 /* host a party */
 .pt-menu::before, .pt-menu::after, .pt-picker-sheet::before, #style-screen::before { display: none; }
 /* (every colour here from the glass tokens: light on the dark glass at
@@ -799,8 +801,7 @@ body.in-lobby #navbar, body.in-lobby #pubchat { display: none !important; }
 .pp-rest li { border-radius: 10px; background: rgba(var(--g-ink-rgb), .07); font: 600 14px/20px var(--f-sys); }
 .pp-name { font: 600 13px/18px var(--f-sys); }
 .pp-pts, .cb-n { font-weight: 800; }
-/* party card under a beacon */
-.pb-label { font: 600 12px/16px var(--f-sys); border-radius: 999px; padding: 2px 8px; }
+
 /* Side Quest + Humiliation Ritual stages: glass, no hard pixel shadows */
 .stage:has(.sq-setup), .stage:has(.sq-card), .stage:has(.hr-card, .hr-up, .hr-reveal) {
   background: var(--g-bg-strong); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); border: 1px solid var(--g-line); border-radius: 22px; }

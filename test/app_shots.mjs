@@ -189,7 +189,7 @@ await sleep(500);
 {
   await A.evaluate(() => window.__onb.party.togglePanel(false)); await sleep(3000);
   // bring the house to the middle of the screen (it's in your zone, not on you)
-  const at = await A.evaluate(() => { const b = document.querySelector(".pbeacon"); if (!b) return null; const m = b.style.transform.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/); return m ? [+m[1], +m[2]] : null; });
+  const at = await A.evaluate(() => { const b = document.querySelector(".phouse-tag"); if (!b) return null; const m = b.style.transform.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/); return m ? [+m[1], +m[2]] : null; });
   if (at) {
     const fb = await A.locator(".frame canvas").first().boundingBox();
     const dx = fb.width / 2 - at[0], dy = fb.height * 0.42 - at[1];
@@ -198,7 +198,7 @@ await sleep(500);
     await A.mouse.up(); await sleep(1500);
   }
   await shot(A, "11-beacon", "back on the map: the public party floats over its area (zone-snapped)");
-  await A.evaluate(() => document.querySelector(".pbeacon")?.click());
+  await A.evaluate(() => document.querySelector(".phouse-tag")?.click());
   await sleep(1200);
   await shot(A, "12-party-card", "tap the house: the party card");
 }

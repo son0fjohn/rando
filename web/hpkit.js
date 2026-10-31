@@ -43,6 +43,22 @@ export function syncGone(s, room) {
 export const active = s => Object.values(s.players || {}).filter(p => !p.gone);
 export const everyone = s => Object.values(s.players || {});
 
+// Late joiners: someone who joins the party while a game runs waits in the
+// lobby (they never break the turn that's on). A game that can take them
+// (`lateJoin: true` on its def) calls this on the host at the start of its
+// next round: everyone present without a seat gets one, and the party then
+// sends their phone the launch (party.js _watchGame), the way a phone that
+// reloaded comes back. Returns the ids it seated.
+export function seatLate(s, room, seat) {
+  const added = [];
+  for (const m of room.members) {
+    if (!m?.id || s.players[m.id] || /^bot-/.test(m.id)) continue;
+    s.players[m.id] = seat(m.id, m.handle ?? "player", false);
+    added.push(m.id);
+  }
+  return added;
+}
+
 // Did every still-present player finish this step? Vacuously true for an
 // empty room, which lets a phase drain instead of hanging forever.
 export function allDone(s, fn) { return active(s).every(fn); }

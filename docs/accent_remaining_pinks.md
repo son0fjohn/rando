@@ -22,8 +22,6 @@ can't tell the two apart.
 
 | Where | What | Why it's still pink |
 |---|---|---|
-| `theme.css` `--art-neon-pink*` → `.pb-house`, `.pb-roof`, `.pb-win/.pb-door/.pb-chim`, `.pb-rays`, `.pb-beam`, `.pb-label` border, `.pbeacon.live` | The public-party beacon on the map: a neon house with a beam | Map event art. It's the "something's happening here" neon, and it reads well against the navy-night map. Switching it is one line: `--art-neon-pink: var(--color-accent)`. |
-| `theme.css` `.pc-house` | The house icon on a party's map card | The same neon house, drawn small |
 | `theme.css` `.lr-stage[data-vibe="chaotic"] .lr-tv` | The TV glow in a "chaotic" party room | Room art (the TV's light) |
 | `roomart.js:24, 59, 76–86, 162` | The chaotic vibe's wall colours, the couch, a poster, the window lights | Room art drawn in code |
 | `hplobby.js:142` | The TV's pixel knobs | Room art |
