@@ -252,7 +252,7 @@ export const onboard = {
       else this.startScreen({ view: busy });
       // a phone still building the city: no dive then, so the 3D rests and the party comes first
       if (!scenery.live) world3d.setPaused(true);
-      const ok = kind === "start" ? await party.create() : kind === "id" ? await party.join(arg) : await party.joinByCode(arg);
+      const ok = kind === "start" ? await party.create({ cap: "max" }) : kind === "id" ? await party.join(arg) : await party.joinByCode(arg);
       if (ok !== true || !party.current) {
         // couldn't (full, mid-game, no connection, verification declined): say so on the glass
         const why = $("pt-err")?.textContent || "";
@@ -388,7 +388,8 @@ export const onboard = {
       sparkle(stage);
     };
     inp.oninput = () => { su.name = inp.value; su.typed = true; err.textContent = ""; };
-    setTimeout(() => { if (!inp.isConnected) return; inp.focus({ preventScroll: true }); if (!su.edit) inp.select(); }, 220);
+    // (not once they've started typing: on a slow phone this can land mid-word and the next key wipes it)
+    setTimeout(() => { if (!inp.isConnected || su.typed) return; inp.focus({ preventScroll: true }); if (!su.edit) inp.select(); }, 220);
     pn.querySelector("[data-have]")?.addEventListener("click", () => { sfx.cursor?.(); this.signInSheet(); });
     pn.querySelector("[data-back]")?.addEventListener("click", () => { sfx.back?.(); this._endSetup(false); });
     const go = async () => {

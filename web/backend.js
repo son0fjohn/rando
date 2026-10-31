@@ -2223,6 +2223,24 @@ const safeRefresh = () => refreshStatus().catch(e => {
   showAuth(true);
 });
 sb.auth.onAuthStateChange(() => { safeRefresh(); });
+
+// Closing the app (or leaving the page) takes you off the map at once, so
+// nobody sees you standing there for the 45 minutes a presence row
+// otherwise lasts (002_presence.sql). A request that outlives the page
+// (keepalive), with the token we already hold; a reload puts you back
+// (presence.sync, once the world screen is up). Swiped away without
+// a pagehide (it happens on iOS), the row still goes stale server-side.
+let liveToken = null;
+sb.auth.onAuthStateChange((_e, session) => { liveToken = session?.access_token ?? null; });
+sb.auth.getSession().then(({ data }) => { liveToken ??= data?.session?.access_token ?? null; }).catch(() => {});
+addEventListener("pagehide", e => {
+  if (e.persisted || !presence.myZone || !rooms.me?.id || !liveToken) return;
+  fetch(`${SUPABASE_URL}/rest/v1/presence?user_id=eq.${encodeURIComponent(rooms.me.id)}`, {
+    method: "DELETE", keepalive: true, headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${liveToken}` },
+  }).catch(() => {});
+});
+// back from the back/forward cache: the row went when the page did, put it back
+addEventListener("pageshow", e => { if (e.persisted && presence.myZone) presence.goOpen().catch(() => {}); });
 safeRefresh();
 
 // ---- notes on the map (web/notes.js, docs/notes.md): markers, Leave a note

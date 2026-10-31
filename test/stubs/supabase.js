@@ -44,6 +44,7 @@
 //             (Twilio's region error, as Supabase passes it on); =rate: the
 //             server's "only request this after 53 seconds"
 import { StubChannel } from "./bcchannel.js";
+import { mpShared, SHARED_TABLES } from "./mpshared.js";   // test/mp/: one server for many browser contexts
 import { ITEMS4, HAIRCOLOR_SHOP, STARTER_OUTFITS4 } from "/web/items4.js";
 import { notesStub } from "./notes_stub.js";   // notes on the map (migrations/019): RPCs, buckets, a fake moderator
 
@@ -69,7 +70,7 @@ const ZONES = [
 const LOOKS = STARTER_OUTFITS4.map(({ id, name, ...o }, i) => ({ skin: String(1 + (i * 3) % 8), eyes: ["sharp", "round", "cat", "sleepy", "sparkly", "narrow"][i], iris: ["brown", "lightblue", "green", "amber", "violet", "gray"][i],
   hair: o.hair ?? ["middle-part", "buzz", "bob", "wolf", "twin-buns", "slicked"][i], hairColor: ["darkbrown", "black", "blonde", "lightbrown", "black", "red"][i], ...o }));
 const NAMES = ["mina", "jae", "sol", "haru", "dana", "kit", "yuna", "rio", "bo", "lux", "ari", "noa"];
-const crowd = Math.max(0, Math.min(12, q.get("crowd") === null ? 5 : +q.get("crowd")));
+const crowd = Math.max(0, Math.min(12, q.get("crowd") === null ? (mpShared ? 0 : 5) : +q.get("crowd")));
 const strangers = Array.from({ length: crowd }, (_, i) => ({
   user_id: `u-${NAMES[i]}`, handle: NAMES[i], avatar: LOOKS[i % LOOKS.length],
   zone_id: ZONES[[0, 0, 1, 4, 2, 0, 5, 3, 1, 4, 0, 2][i]].id,
@@ -106,7 +107,9 @@ const idbPut = async v => { const d = await idb(); return new Promise(res => { c
 const load = () => CUR;
 const save = st => { CUR = st; dirty = true; };
 const cstate = () => load() ?? { ledger: [], games: {}, receipts: {}, inventory: {} };
+let TX = null;     // test/mp/: the shared state, while a call runs on it
 function withCoins(fn) {
+  if (mpShared) return mpShared.tx(st => { TX = st; CUR = st.coins ?? null; dirty = false; try { const r = fn(); if (dirty) st.coins = CUR; return r; } finally { TX = null; } });
   const go = async () => { CUR = await idbGet(); dirty = false; const r = fn(); if (dirty) await idbPut(CUR); return r; };
   return navigator.locks ? navigator.locks.request("stub-coins", go) : go();
 }
@@ -139,6 +142,24 @@ function hostReward(st, session, set) {
 }
 const wallet = st => ({ coins: balance(st, myId), owned: st.inventory[myId] ?? [] });
 window.__db = db;
+// test/mp/: this phone's profile on the one server (others' get_world shows it), and the plaza's seed lines once
+if (mpShared) await mpShared.tx(st => {
+  const P = (st.tables.profiles ??= []);
+  if (!P.some(p => p.id === myId)) P.push({ ...db.profiles[0] });
+  st.tables.public_messages ??= db.public_messages;
+  st.tables.presence ??= [];
+  st.tables.zones ??= db.zones;
+}).catch(() => {});
+// test/mp/: the app's raw request on its way out (backend.js pagehide: DELETE
+// /rest/v1/presence?user_id=eq.…, keepalive), played as PostgREST would
+if (mpShared) {
+  const f0 = window.fetch.bind(window);
+  window.fetch = (u, o = {}) => {
+    const m = /\/rest\/v1\/(presence)\?user_id=eq\.([^&]+)/.exec(String(u));
+    if (m && (o.method ?? "GET").toUpperCase() === "DELETE" && decodeURIComponent(m[2]) === myId) { window.__mpdb("delete", { table: m[1], user_id: myId }); return Promise.resolve(new Response(null, { status: 204 })); }
+    return f0(u, o);
+  };
+}
 
 // a tiny PostgREST-ish query builder: filters, order, limit, single rows
 class Query {
@@ -159,7 +180,18 @@ class Query {
   upsert(rows) { this.op = "upsert"; this.rows = [].concat(rows); return this; }
   update(patch) { this.op = "update"; this.patch = patch; return this; }
   delete() { this.op = "delete"; return this; }
-  then(res, rej) { return Promise.resolve().then(() => this._run()).then(res, rej); }
+  then(res, rej) {
+    // test/mp/: the tables everyone shares run on the one server (row changes go out once it's written)
+    if (mpShared && SHARED_TABLES.includes(this.t)) {
+      let held = [];
+      return mpShared.tx(st => {
+        held = []; pgHeld = held;
+        for (const k of SHARED_TABLES) db[k] = (st.tables[k] ??= []);
+        try { return this._run(); } finally { pgHeld = null; for (const k of SHARED_TABLES) st.tables[k] = db[k]; }
+      }).then(r => { for (const c of held) pgChange(...c); return r; }, e => ({ data: null, error: { message: e.message } })).then(res, rej);
+    }
+    return Promise.resolve().then(() => this._run()).then(res, rej);
+  }
   _run() {
     const T = (db[this.t] ??= []);
     const match = r => this.filters.every(f => f(r));
@@ -212,7 +244,9 @@ class Query {
 // row changes, to every channel listening on this page and on the other tabs
 const pgBus = new BroadcastChannel("sbstub:pg");
 const pgChannels = new Set();
+let pgHeld = null;
 function pgChange(table, eventType, row) {
+  if (pgHeld) { pgHeld.push([table, eventType, row]); return; }
   pgBus.postMessage({ table, eventType, row });
   setTimeout(() => { for (const ch of pgChannels) ch._pg(table, eventType, row); }, 0);
 }
@@ -240,7 +274,11 @@ const RPC = {
     const p = ritualDraws.get(key);
     return p ? { id: p.id, text: p.text } : null;
   },
-  get_world: () => [
+  get_world: () => TX ? [
+    // test/mp/: everyone open, on the one server (their handle and look from their profile)
+    ...strangers.map(s => ({ ...s, is_self: false })),
+    ...(TX.tables.presence ?? []).map(p => { const pr = (TX.tables.profiles ?? []).find(x => x.id === p.user_id); return { user_id: p.user_id, handle: pr?.handle ?? "rando", avatar: pr?.avatar ?? {}, zone_id: p.zone_id, is_self: p.user_id === myId }; }),
+  ] : [
     ...strangers.map(s => ({ ...s, is_self: false })),
     ...db.presence.filter(p => p.user_id === myId).map(p => ({ user_id: myId, handle, avatar: myAvatar, zone_id: p.zone_id, is_self: true })),
   ],
@@ -248,7 +286,8 @@ const RPC = {
   ensure_auto_zone: ({ p_cell_lat, p_cell_lng }) => {
     // the id as migrations/008 builds it: 'auto_' || replace(lat::text, '.', 'p') || '_' || …
     const z = { id: `auto_${String(p_cell_lat).replace(".", "p")}_${String(p_cell_lng).replace(".", "p")}`, name: `Area ${p_cell_lat}, ${p_cell_lng}`, lat: p_cell_lat, lng: p_cell_lng, kind: "auto" };
-    if (!db.zones.some(x => x.id === z.id)) db.zones.push(z);
+    const Z = TX ? (TX.tables.zones ??= db.zones) : db.zones;      // (test/mp/: the one server's zones)
+    if (!Z.some(x => x.id === z.id)) Z.push(z);
     return z;
   },
   ensure_dm: ({ p_other }) => `dm-${p_other}`,
