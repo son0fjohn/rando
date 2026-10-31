@@ -340,6 +340,8 @@ body.in-lobby #navbar, body.in-lobby #pubchat { display: none !important; }
 .pc-join { width: 100%; min-height: 52px; font-size: 17px; }
 .pc-later { align-self: center; }
 .pc-note { font: 500 12px/17px var(--f-sys); color: var(--g-ink-faint); text-align: center; }
+.pc-msg { font: 600 14px/20px var(--f-sys); color: var(--g-ink); padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.pc-msg[hidden] { display: none; }
 /* style screen: your character, big */
 #style-screen { position: absolute; inset: 0; z-index: 270; display: flex; flex-direction: column; background: radial-gradient(circle at 50% 32%, var(--y-night-3), var(--y-night-0) 62%); color: var(--y-ink); }
 #style-screen[hidden] { display: none; }

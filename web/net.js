@@ -127,6 +127,28 @@ export function peekRoom(id, { timeout = 7000 } = {}) {
   });
 }
 
+// Joining from the map: knock first. Send the host your (fuzzed, joinrange.js)
+// circle on the room's channel without joining it; the host's phone answers
+// { ok } or { ok: false, km }. Resolves that, or null when nobody answers in
+// time (the caller lets you in rather than block on silence).
+export function knockRoom(id, from, circle, { timeout = 6000 } = {}) {
+  const me = `knock-${Math.random().toString(36).slice(2, 10)}`;
+  const ch = sb.channel(`room-${id}`, { config: { broadcast: { self: false, ack: false }, presence: { key: me } } });
+  return new Promise(res => {
+    let done = false;
+    const finish = v => { if (done) return; done = true; clearTimeout(to); try { sb.removeChannel(ch); } catch {} res(v); };
+    const to = setTimeout(() => finish(null), timeout);
+    ch.on("broadcast", { event: "msg" }, ({ payload: p }) => {
+      if (p?.type === "knockreply" && p.to === me) finish({ ok: !!p.ok, km: p.km ?? null });
+    });
+    ch.subscribe(status => {
+      if (status !== "SUBSCRIBED") return;
+      const send = () => !done && ch.send({ type: "broadcast", event: "msg", payload: { type: "knock", from: me, who: from, circle, t: Date.now() } });
+      send(); setTimeout(send, 1500);           // again, in case one went out before the host was listening
+    });
+  });
+}
+
 // ---------------------------------------------------------------- directory
 export const directory = {
   ch: null,

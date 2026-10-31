@@ -2,9 +2,11 @@
 //
 // A party is a player-hosted Room (net.js) with metadata: a name, a vibe
 // label, and a player cap. Players join by 4-character code or by link
-// (?party=CODE), or from the map (a public party's house). There is NO
-// proximity check — anyone with the code is in, from anywhere; joining a
-// public party from the map asks only for phone verification (hooks.gate).
+// (?party=CODE) or a QR code: no distance check, having the code is enough.
+// Joining from the map (tapping a public party's house or its host) knocks
+// first: you must be within PARTY.JOIN_RANGE_M of the host, GPS accuracy
+// allowed for, checked on the host's phone from a fuzzed circle of yours
+// (joinrange.js), after phone verification (hooks.gate).
 //
 // Inside, the party is a full-screen 2D room (hplobby.js): everyone walks
 // around the vibe's generated backdrop while the lobby fills up, and comes
@@ -34,12 +36,13 @@
 // never the host's position: parties are often at someone's home). Every
 // phone stands the host's character in that zone with a house floating over
 // their head (partybeacon.js), the whole time the party runs, games
-// included. Tap it, see the party card, join: mid-game you wait in the lobby
-// and come in at the next round (a game with `lateJoin`) or the next game.
-// Invite-only parties are never announced anywhere: switching to invite only
-// takes the house off the map at once. FLAGS.PUBLIC_PARTIES switches the
-// whole public option off.
-import { Room, directory, mulberry } from "./net.js";
+// included. Tap it, see the party card, join (joinFromMap): mid-game you wait
+// in the lobby and come in at the next round (a game with `lateJoin`) or the
+// next game. Invite-only parties are never announced anywhere: switching to
+// invite only takes the house off the map at once. FLAGS.PUBLIC_PARTIES
+// switches the whole public option off.
+import { Room, directory, mulberry, knockRoom } from "./net.js";
+import { fuzzCircle, judge, knockLimiter } from "./joinrange.js";
 import { world3d } from "./world3d.js";
 import { sfx, buzz } from "./fx.js";
 import { rooms } from "./rooms.js";
@@ -141,9 +144,12 @@ export const party = {
   //   game's coins wait, unclaimed, until it's verified)
   //   invite(c) -> the invite sheet · joined(c) · beforeGame(g, c) ·
   //   gameEnded(c, g, results) · setEnded(c, rows)
+  //   fix() -> Promise<{ lat, lng, acc } | null>: this phone's GPS fix, only
+  //   if location is already allowed (never prompts); for the map join's
+  //   distance check (joinrange.js). Absent (test pages): no check
   //   left({ why, code, drop }) -> Promise: out of the party to the map
   //   (exit() below): calls drop() (the room goes) under its transition
-  hooks: { isFriend: null, report: null, beaconZone: null, coins: null, ritualDraw: null,
+  hooks: { isFriend: null, report: null, beaconZone: null, coins: null, ritualDraw: null, fix: null,
     holdInvite: null, gate: null, canEarn: null, invite: null, joined: null, beforeGame: null, gameEnded: null, setEnded: null, left: null },
   _view: null,
   _inited: false,
@@ -385,6 +391,16 @@ export const party = {
     room.on("hello", m => { if (room.isHost) { this._sendMeta(); this._resume(m.from); } });
     // someone looking at an invite link (net.js peekRoom): who's here, what's on.
     // Only what joining would show them anyway.
+    // someone on the map wants in: their fuzzed circle vs my own fix, on my
+    // phone only; the answer is ok or a coarse distance, never my position.
+    // No fix of my own (location off): let them in rather than block.
+    const mayAnswer = knockLimiter();
+    room.on("knock", async m => {
+      if (!room.isHost || !/^knock-/.test(m.from ?? "") || !mayAnswer(m.who ?? m.from)) return;
+      const c0 = m.circle, mine = await this.hooks.fix?.();
+      const ok = c0 && Number.isFinite(c0.lat) && Number.isFinite(c0.lng) && mine ? judge(c0, mine) : { ok: true };
+      room.send("knockreply", { to: m.from, ok: ok.ok, km: ok.km ?? null });
+    });
     room.on("peek", m => {
       if (!room.isHost || !/^peek-/.test(m.from ?? "")) return;
       const ms = room.members;
@@ -777,9 +793,10 @@ export const party = {
   async refreshNearby() { this.syncBeacons(); if (!this.current) this._renderList(); },
 
   // tapped a house (or its host): the party card slides up — the host and
-  // their character, the vibe, how many are in, what's on, Join. Joining is
-  // the same as anywhere else (no proximity check; a public party asks for
-  // phone verification, hooks.gate). Mid-game you go to the lobby and come
+  // their character, the vibe, how many are in, what's on, Join. Join goes
+  // through joinFromMap: phone verification (hooks.gate), then the distance
+  // knock (within PARTY.JOIN_RANGE_M of the host, judged on the host's
+  // phone), any refusal in #pc-msg. Mid-game you go to the lobby and come
   // in at the next round or game; full: no.
   showCard(r) {
     const el = $("party-card"); if (!el || !r) return;
@@ -794,6 +811,7 @@ export const party = {
           <div class="pc-stats">${VIBES.includes(r.vibe) ? `<span class="pc-vibe v-${esc(r.vibe)}">${esc(t(`ph.vibe.${r.vibe}`))}</span>` : ""}<span class="pc-count"></span></div></div></div>
         <div class="pc-status"><i class="pc-dot" aria-hidden="true"></i><span></span></div>
         <div class="pc-next" hidden></div>
+        <div class="pc-msg" id="pc-msg" role="status" hidden></div>
         <button type="button" class="glass-btn gold pc-join" id="pc-join"></button>
         <button type="button" class="glass-btn clear sm pc-later" id="pc-close">${esc(t("ph.later"))}</button>
         <div class="pc-note">${esc(t("ph.note"))}</div>
@@ -805,15 +823,16 @@ export const party = {
     $("pc-close").onclick = () => { sfx.back(); closePartyCard(); };
     $("pc-join").onclick = async () => {
       const cur = housesFrom(this.nearby).find(x => x.id === r.id) ?? r;
-      if (!this._joinState(cur).can) return;
-      if (this.hooks.gate && !(await this.hooks.gate("public"))) return;
-      closePartyCard(); this.togglePanel(true); this.join(r.id);
+      if (!this._joinState(cur).can || this._knocking) return;
+      this._knocking = true;
+      try { await this.joinFromMap(cur); } finally { this._knocking = false; }
     };
     el.onclick = e => { if (e.target === el) { sfx.back(); closePartyCard(); } };
   },
   _joinState(r) { return joinState(r, { mine: this.current?.room.id === r.id, lateJoin: !!gameById(r.game)?.lateJoin }); },
   // the card's live parts, patched in place as the announce changes (count,
-  // lobby / game and round, full)
+  // lobby / game and round, full); the Join button is left alone while it
+  // knocks (joinFromMap's "Checking…")
   _patchCard(r) {
     const el = $("party-card"); if (!el || el.hidden) return;
     const js = this._joinState(r), q = s => el.querySelector(s);
@@ -825,9 +844,29 @@ export const party = {
     const next = q(".pc-next");
     if (next) { next.hidden = !(js.why === "nextRound" || js.why === "nextGame"); set(".pc-next", next.hidden ? "" : t(js.why === "nextRound" ? "ph.nextRound" : "ph.nextGame")); }
     const btn = q("#pc-join");
-    if (btn) { btn.disabled = !js.can; set("#pc-join", js.why === "mine" ? t("ph.mine") : js.why === "full" ? t("ph.full") : t("ph.join")); }
+    if (btn && !this._knocking) { btn.disabled = !js.can; set("#pc-join", js.why === "mine" ? t("ph.mine") : js.why === "full" ? t("ph.full") : t("ph.join")); }
   },
   _card: null,
+
+  // the card's Join: near enough? (QR / code / link joins never come here)
+  async joinFromMap(r) {
+    if (this.hooks.gate && !(await this.hooks.gate("public"))) return;
+    const btn = $("pc-join"), label = btn?.textContent;
+    const say = text => {
+      const n = $("pc-msg"); if (n) { n.textContent = text; n.hidden = false; }
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+      sfx.back?.();
+    };
+    if (this.hooks.fix) {
+      if (btn) { btn.disabled = true; btn.textContent = t("join.checking"); }
+      const fix = await this.hooks.fix();
+      if (!fix) return say(t("join.noLoc"));
+      const ans = await knockRoom(r.id, this.me.id, fuzzCircle(fix));
+      if (this._card !== r.id) return;                       // the card went meanwhile
+      if (ans && !ans.ok) return say(t("join.far", { km: ans.km }));
+    }
+    closePartyCard(); this.togglePanel(true); this.join(r.id);
+  },
 
   // the map underneath stops drawing while the party room or a game covers it
   _syncPause() {
@@ -1010,9 +1049,11 @@ export const party = {
     el.dataset.sig = sig;
     if (!this.nearby.length) { el.innerHTML = `<div class="pt-empty">none right now</div>`; return; }
     el.innerHTML = this.nearby.map(r => `<div class="rl-row"><div class="rl-dot pt-dot"></div><div><b>${esc(r.name ?? r.hostName)}</b><span>${r.count}/${r.cap} · ${esc(statusText(r, t, gameTitle))}</span></div><button type="button" data-join="${esc(r.id)}" ${this._joinState(r).can ? "" : "disabled"}>join</button></div>`).join("");
-    el.querySelectorAll("button[data-join]").forEach(b => b.onclick = async () => {
-      if (this.hooks.gate && !(await this.hooks.gate("public"))) return;
-      this.join(b.dataset.join);
+    // (a public party nearby joins like its house on the map: its card, then
+    // joinFromMap: verification and the distance knock)
+    el.querySelectorAll("button[data-join]").forEach(b => b.onclick = () => {
+      const r = housesFrom(this.nearby).find(x => x.id === b.dataset.join) ?? this.nearby.find(x => x.id === b.dataset.join);
+      if (r) this.showCard(r);
     });
   },
 
