@@ -81,6 +81,14 @@ async function app(ctx, name, q = "") {
   await until(pg, () => !document.getElementById("auth-status")?.hidden && !!window.__onb?.party, null, 120000);
   // (a calmer frame rate: three software-GL maps on one machine)
   await pg.evaluate(async () => { (await import("/web/world3d.js")).world3d.maxFps = 15; });
+  // (this sandbox's software GL starves the pages' timers: a host's 2.5 s
+  // announce can arrive 8 s+ apart, past the directory's expiry, and the
+  // house would blink. Here an entry only goes with the host's "gone" — the
+  // party ending, going invite only, the host leaving — which is what's tested)
+  await pg.evaluate(async () => {
+    const { directory } = await import("/web/net.js");
+    setInterval(() => { for (const r of directory.rooms.values()) r.seenAt = Date.now(); }, 1000);
+  });
   return pg;
 }
 async function light(ctx, name, q = "") {
@@ -100,11 +108,19 @@ async function shot(pg, name, note = "") {
   await writeFile(join(OUT, `${name}.png`), Buffer.from(r.data, "base64"));
   console.log(`  shot ${name}.png${note ? ` — ${note}` : ""}`);
 }
+// the film: each phone shot about once a second (a live screencast of three
+// software-GL pages starves this sandbox; this keeps the pages responsive)
 async function screencast(pg) {
   const cdp = await pg.context().newCDPSession(pg), frames = [];
-  cdp.on("Page.screencastFrame", f => { frames.push({ t: f.metadata.timestamp, data: f.data }); cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {}); });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 80, maxWidth: 390, maxHeight: 844, everyNthFrame: 1 });
-  return { frames, stop: () => cdp.send("Page.stopScreencast").catch(() => {}) };
+  let on = true, busy = false;
+  const grab = async () => {
+    if (!on || busy) return;
+    busy = true;
+    try { const r = await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 70 }); frames.push({ t: Date.now() / 1000, data: r.data }); } catch {}
+    busy = false;
+  };
+  const timer = setInterval(grab, 1000);
+  return { frames, stop: async () => { on = false; clearInterval(timer); } };
 }
 async function writeFilm(name, casts) {
   await Promise.all(casts.map(c => c.stop()));
@@ -161,7 +177,7 @@ async function lightParty(H, { name = "Tony's party", vibe = "chaotic", cap = 6 
   await H.evaluate(({ name, vibe, cap }) => {
     party.hooks.beaconZone = async () => ({ id: "itaewon-station", lat: 37.5346, lng: 126.9946 });
     Object.assign(party.form, { privacy: "public", name, vibe, cap });
-    return party.create();
+    return party.create().then(() => party.togglePanel(true));
   }, { name, vibe, cap });
   return until(H, () => !!party.current?.zone, null, 10000);
 }
@@ -173,21 +189,27 @@ const hasHouse = (pg, hostId, ms = 90000) => until(pg, async id => {
 }, hostId, ms);
 const noHouse = (pg, ms = 20000) => until(pg, async () => (await import("/web/partybeacon.js")).partyBeacons.size === 0, null, ms);
 // the camera over the house: its host, the house and its tag in the frame
+// the camera (locked on you since #57: the house stands 15-35 m from your zone's centre) zoomed in or out
 async function look(pg, { dist = 150, theta = null } = {}) {
   await pg.evaluate(async ({ dist, theta }) => {
     const { world3d } = await import("/web/world3d.js");
     const { partyBeacons } = await import("/web/partybeacon.js");
     const h = partyBeacons.debug()[0];
     if (!h?.pos) return;
-    world3d.observing = true;
-    world3d.target.set(h.pos.x, h.ground ?? 0, h.pos.z);
     world3d.cam.dist = dist; if (theta != null) world3d.cam.theta = theta;
     world3d.camGoal = null;
     world3d.applyCamera(); world3d.needsRender = true;
   }, { dist, theta });
   await sleep(500);
 }
-const tapHouse = pg => pg.evaluate(() => { const t = document.querySelector(".phouse-tag:not(.out)"); t?.click(); return !!t; });
+const tapHouse = async pg => {
+  for (let i = 0; i < 40; i++) {
+    const r = await pg.evaluate(() => { const t = document.querySelector(".phouse-tag:not(.out)"); if (t && t.style.display !== "none") { t.click(); return true; } return false; }).catch(e => { console.log("    (tap:", e.message, ")"); return false; });
+    if (r) return true;
+    await sleep(1500);
+  }
+  return false;
+};
 const card = pg => pg.evaluate(() => {
   const el = document.getElementById("party-card");
   if (!el || el.hidden) return null;
