@@ -37,7 +37,7 @@ import { world3d } from "./world3d.js";
 import { sfx, buzz } from "./fx.js";
 import { rooms } from "./rooms.js";
 import { PARTY_CATALOG, gameById, gameTitle } from "./partycatalog.js";
-import { FLAGS, PARTY, DIARY } from "./hpconfig.js";
+import { FLAGS, PARTY, DIARY, GAME_BADGES } from "./hpconfig.js";
 import { esc, trash } from "./hpkit.js";
 import { makeBots, shareText, ui as gameUi } from "./gamekit.js";
 import { LobbyRoom } from "./hplobby.js";
@@ -92,8 +92,6 @@ export const inviteLink = (code, { name = "", count = 0 } = {}) => {
   if (count) q.set("c", String(count));
   return `${location.origin}/p/${code}${q.size ? `?${q}` : ""}`;
 };
-// the game suggested to a new group (a "Great first game" badge on its row)
-export const FIRST_GAME = "ritual";
 const minFor = g => g?.minPlayers ?? MIN_PLAYERS;
 // a game's options with defaults filled in
 function defaultsFor(g) {
@@ -1046,12 +1044,16 @@ export const party = {
       return `<span class="pv-opts">${g.options.map(opt => opt.choices.map(ch =>
         `<button type="button" class="pv-chip ${cur[opt.key] === ch.value ? "on" : ""}" data-opt="${esc(opt.key)}" data-val="${esc(ch.value)}" data-for="${g.id}">${esc(ch.label)}</button>`).join("")).join("")}</span>`;
     };
+    // the row's badges (hpconfig GAME_BADGES); a `fresh` one only for a new group
+    const fresh = !c.set.games.length && c.set.no === 1;
+    const badgesFor = g => (GAME_BADGES[g.id] ?? []).filter(b => !b.fresh || fresh)
+      .map(b => `<em class="pv-badge">${esc(t(b.key))}</em>`).join("");
     const rows = games.map(({ g, v }) => {
       const need = Math.max(0, minFor(g) - n);
       const attr = isHost ? `data-game="${g.id}"` : `data-vote="${g.id}"`;
       return `<div class="pv-row ${mine === g.id ? "mine" : ""} ${need && isHost ? "short" : ""} ${isHost && v && v === top ? "lead" : ""}" ${attr} role="button" tabindex="0" aria-label="${esc(g.title)}${v ? `, ${v} vote${v === 1 ? "" : "s"}` : ""}">
           <span class="pv-art" aria-hidden="true">${CHANNEL_ART[g.id] ?? ""}</span>
-          <span class="pv-t"><b>${esc(g.title)}</b>${g.id === FIRST_GAME && !c.set.games.length && c.set.no === 1 ? `<em class="pv-first">${esc(t("room.firstGame"))}</em>` : ""}<small>${mine === g.id ? "✓ your vote · " : ""}${need ? `needs ${need} more` : `${minFor(g)}+ players · ${esc(g.length ?? "")}`}</small>${optsFor(g)}</span>
+          <span class="pv-t"><b>${esc(g.title)}</b>${badgesFor(g)}<small>${mine === g.id ? "✓ your vote · " : ""}${need ? `needs ${need} more` : `${minFor(g)}+ players · ${esc(g.length ?? "")}`}</small>${optsFor(g)}</span>
           <span class="pv-n ${v ? "" : "zero"}">${v}<i>${v === 1 ? "vote" : "votes"}</i></span>
         </div>`;
     }).join("");

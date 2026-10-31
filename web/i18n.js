@@ -112,6 +112,7 @@ export const STRINGS = {
     "room.votes1": "1 vote",
     "room.pickGuest": "Vote for the next game",
     "room.firstGame": "Great first game",
+    "room.friendGroups": "Great for friend groups",
     "room.joinedNext": "Joining next round",
     // ---- safety, once before the first game
     "safe.title": "Before your first game",
@@ -336,6 +337,7 @@ export const STRINGS = {
     "room.votes1": "1표",
     "room.pickGuest": "다음 게임 투표",
     "room.firstGame": "첫 게임 추천",
+    "room.friendGroups": "친구 모임 추천",
     "room.joinedNext": "다음 라운드부터 참여",
     "safe.title": "첫 게임 전에",
     "safe.body": "매너 있게. 괴롭힘 금지. 싫다고 하면 존중하기. 이상한 건 신고하기.",
