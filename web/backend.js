@@ -131,9 +131,6 @@ async function refreshStatus() {
       if (error) console.warn("[rando] report failed", error.message);
       return !error;
     };
-    // a public party's map beacon sits in the host's ZONE (the same on-device
-    // snap presence uses), never at the host's position: parties are often
-    // at someone's home
     // coins: the host reports each completed game, every player confirms
     // they played it; the server pays only when both agree (migrations/013)
     party.hooks.coins = {
@@ -162,6 +159,13 @@ async function refreshStatus() {
       if (error) throw error;
       return data;
     };
+    // a public party's house: the host's phone announces only its presence
+    // ZONE (the same on-device snap presence uses: a launch zone or a ~2 km
+    // cell), and every phone stands the host's character at that zone's
+    // centre plus an offset from the party id, with the house over their head
+    // (partybeacon.js) — in the lobby and through every game too, where
+    // presence alone wouldn't show them. Never the host's position: parties
+    // are often at someone's home. Invite-only parties announce nothing.
     party.hooks.beaconZone = async () => {
       const z = presence.myZone ?? await presence.resolveZone();
       return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;

@@ -31,6 +31,8 @@ import { starterLook, e164, otpWait, otpError, OTP, needsSetup, ESSENTIALS, cycl
 import { invitePage } from "/api/invite.mjs";
 import { STARTER_OUTFITS4, normalizeAvatar4 } from "/web/items4.js";
 import * as CS from "/web/chatscope.js";
+import { announceFor, housesFrom, diffHouses, statusText, joinState, isFull, roundOf, beaconSpot } from "/web/partyhouse.js";
+import { gameTitle } from "/web/partycatalog.js";
 
 const out = document.getElementById("out");
 let pass = 0, fail = 0;
@@ -1462,6 +1464,114 @@ for (const [g, n] of [[SECRET_DIARY, 3], [SIDE_QUEST, 3], [HUMILIATION_RITUAL, 3
   ok(back && t.stateOf("p2")?.phase === t.s.phase && t.s.players.p2.gone === false, `${g.title}: re-launched, rendering the host's ${phase} phase, counted as present`);
   ok(t.errors().length === 0, `${g.title}: no errors: ` + (t.errors()[0] ?? "none"));
   ok(runOut(t, 40 * 60 * 1000), `${g.title}: plays out`);
+}
+
+// ===================================================================== late joiners
+group("Joining mid-game — you wait in the lobby, then come in at the next round");
+{
+  ok(SIDE_QUEST.lateJoin && HUMILIATION_RITUAL.lateJoin && MASK_OFF.lateJoin && !SECRET_DIARY.lateJoin && !ART_GALLERY.lateJoin && !MANHUNT_GAME.lateJoin,
+    "Side Quest, the Ritual and Mask Off seat late joiners at their next turn; the Diary, Art Gallery and Manhunt keep them for the next game");
+  // skip ahead (the host's skip) until the turn index moves on
+  const nextTurn = (t, ti) => { for (let i = 0; i < 12 && t.s.ti === ti; i++) { t.input(t.host.me.id, "skip"); adv(1600); } return t.s.ti !== ti; };
+  const cases = [
+    { def: SIDE_QUEST, go: t => t.input("p1", "sq-go"), during: "do" },
+    { def: HUMILIATION_RITUAL, go: () => {}, during: "act" },
+    { def: MASK_OFF, go: t => t.input("p1", "mo-go"), during: "choose" },
+  ];
+  for (const { def, go, during } of cases) {
+    const t = seatTable(def, 3);
+    adv(500); go(t); adv(1500);
+    ok(waitPhase(t, during), `${def.title}: a turn is on (${t.s.phase})`);
+    const ti = t.s.ti, turn0 = JSON.stringify(t.s.turn), turns0 = t.s.turns;
+    t.arrive("p4"); adv(2400);
+    ok(!t.s.players.p4 && t.s.ti === ti && JSON.parse(turn0).no === t.s.turn?.no, `${def.title}: someone who joins mid-turn gets no seat in it, and the turn goes on`);
+    ok(!t.launchLate("p4"), `${def.title}: …nor the game, yet (they wait in the lobby)`);
+    ok(nextTurn(t, ti), `${def.title}: the turn ends`);
+    ok(!!t.s.players.p4 && !t.s.players.p4.isBot && !t.s.players.p4.gone, `${def.title}: the next turn seats them`);
+    ok(def === SIDE_QUEST ? t.s.turns === turns0 : t.s.turns > turns0, `${def.title}: ${def === SIDE_QUEST ? "the host's number of turns stays" : "their own turns are added"} (${turns0} -> ${t.s.turns})`);
+    ok(t.launchLate("p4"), `${def.title}: …and the party launches the game on their phone`);
+    adv(2000);
+    ok(t.stateOf("p4")?.ti === t.s.ti && t.stateOf("p4")?.phase === t.s.phase, `${def.title}: their phone renders the live turn from the next snapshot`);
+    // they play: picked / performing / asked at some point, or watching and rating
+    let theirs = false;
+    for (let spent = 0; !t.allEnded() && spent < 60 * 60 * 1000; spent += 1600) {
+      const tn = t.s?.turn;
+      if (tn && [tn.who, tn.performer, tn.asker].includes("p4")) theirs = true;
+      if (def === SIDE_QUEST && t.s?.phase === "do" && tn && tn.who !== "p4" && tn.votes.p4 === undefined) t.input("p4", "rate", { v: 4 });
+      if (t.s?.phase === "do" || t.s?.phase === "act" || t.s?.phase === "talk") t.input(t.host.me.id, "skip");
+      adv(1600);
+    }
+    ok(t.allEnded(), `${def.title}: plays out with them in`);
+    ok(def === SIDE_QUEST ? true : theirs, `${def.title}: …${def === SIDE_QUEST ? "watching and rating" : "taking their own turn too"}`);
+    ok(t.byId("p4").results?.players.some(p => p.id === "p4"), `${def.title}: …and they're on its results`);
+    ok(t.errors().length === 0, `${def.title}: no errors: ` + (t.errors()[0] ?? "none"));
+  }
+  {
+    const t = seatTable(SECRET_DIARY, 3);
+    adv(6000);
+    t.arrive("p4"); adv(3000);
+    ok(runOut(t, 40 * 60 * 1000), "Secret Diary: plays out with someone waiting in the lobby");
+    ok(!t.s?.players?.p4 && !t.byId("p1").results?.players.some(p => p.id === "p4") && !t.launchLate("p4"), "…who never gets a seat in it (no lateJoin: the next game)");
+    ok(t.errors().length === 0, "Secret Diary: no errors: " + (t.errors()[0] ?? "none"));
+  }
+}
+
+// ===================================================================== the house on the map
+group("A public party's house — zone level only, gone when it goes invite only, moves with the host, gone at the end");
+{
+  const zone = { id: "itaewon-station", name: "Itaewon Station", kind: "fixed", lat: 37.5346, lng: 126.9946 };
+  const c = { room: { id: "party-ABCD", members: [{ id: "u-tony", handle: "tony" }, { id: "u-mina", handle: "mina" }] },
+    meta: { name: "Tony's party", vibe: "chaotic", cap: 6, privacy: "public", code: "ABCD" }, launched: false, zone, playingId: null };
+  const tony = { id: "u-tony", handle: "tony", avatar: { skin: "3", hair: "twists", gps: "37.53,126.99" } };
+  const a = announceFor(c, tony);
+  ok(JSON.stringify(Object.keys(a).sort()) === JSON.stringify(["cap", "count", "game", "hostId", "hostName", "id", "kind", "look", "name", "privacy", "round", "state", "vibe", "zone"]),
+    "the announce carries only: the party (name, vibe, cap, count), lobby or game + round, the host's name and look, the zone");
+  ok(JSON.stringify(Object.keys(a.zone).sort()) === '["id","lat","lng"]' && a.zone.lat === zone.lat && a.zone.lng === zone.lng, "…the zone as its id and its own (public) centre, nothing finer");
+  ok(!JSON.stringify(a).includes("mina") && !("code" in a) && !("gps" in a.look) && a.count === 2, "…no guest, no code, nothing but a look in the look; just how many are in");
+  ok(a.state === "lobby" && a.game === null && a.round === null && statusText(a, tr, gameTitle) === "In lobby", "in the lobby: \"In lobby\"");
+  c.launched = true; c.playingId = "sidequest"; c.ctx = { hostGame: { s: { phase: "setup", ti: 0 } } };
+  ok(statusText(announceFor(c, tony), tr, gameTitle) === "Playing Side Quest", "a game being set up: \"Playing Side Quest\" (no round yet)");
+  c.ctx.hostGame.s = { phase: "do", ti: 1 };
+  const p = announceFor(c, tony);
+  ok(p.state === "playing" && p.game === "sidequest" && p.round === 2 && statusText(p, tr, gameTitle) === "Playing Side Quest · round 2", "mid-game: \"Playing Side Quest · round 2\"");
+  ok(roundOf({ phase: "answer", qi: 0 }) === 1 && roundOf({ phase: "hunt" }) === null && roundOf({ phase: "end", ti: 4 }) === null, "the round: the turn or the question; none for Manhunt or the results");
+  c.meta.privacy = "private";
+  ok(announceFor(c, tony) === null, "an invite-only party announces nothing");
+  c.meta.privacy = "public"; c.launched = false;
+  // the directory's list -> the houses on the map
+  const ann = (o = {}) => ({ ...announceFor(c, tony), seenAt: 1, ...o });
+  const h1 = housesFrom([ann()]);
+  ok(h1.length === 1 && h1[0].key === "party-ABCD|u-tony" && h1[0].hostId === "u-tony" && !h1[0].full, "a public party with a zone: one house, over its host");
+  ok(housesFrom([ann({ privacy: "private" })]).length === 0 && housesFrom([ann({ zone: null })]).length === 0 && housesFrom([ann({ kind: "room" })]).length === 0 && housesFrom([{ id: "party-ABCD", gone: true }]).length === 0,
+    "no house for a private party, one with no zone, a room, or a party that's gone");
+  // the lifecycle, as partybeacon.js runs it (diffHouses)
+  let shown = [];
+  const step = list => { const d = diffHouses(shown, housesFrom(list)); shown = [...d.keep, ...d.add]; return d; };
+  let d = step([ann()]);
+  ok(d.add.length === 1 && !d.remove.length, "thrown public: the house pops in");
+  d = step([ann({ count: 3, seenAt: 2 })]);
+  ok(d.keep.length === 1 && !d.add.length && !d.remove.length, "someone joins: the same house, updated (no pop)");
+  d = step([]);
+  ok(d.remove[0] === "party-ABCD|u-tony" && !shown.length, "switched to invite only (the host stops announcing, \"gone\"): the house pops out");
+  step([ann()]);
+  const mina = { id: "u-mina", handle: "mina", avatar: {} };
+  const minaZone = { id: "hamilton-alley", lat: 37.5349, lng: 126.9941 };
+  const handed = { ...announceFor({ ...c, zone: minaZone }, mina), seenAt: 9 };
+  d = step([handed]);
+  ok(d.remove[0] === "party-ABCD|u-tony" && d.add[0] === "party-ABCD|u-mina", "the host leaves and mina hosts now: the house pops out over tony and in over mina");
+  ok(handed.zone.id === "hamilton-alley" && JSON.stringify(beaconSpot(handed.zone, handed.id)) !== JSON.stringify(beaconSpot(zone, handed.id)), "…at mina's own zone, never tony's");
+  d = step([]);
+  ok(d.remove.length === 1 && !shown.length, "the party ends: the house pops out");
+  ok(housesFrom([ann({ hostId: "u-tony", seenAt: 1 }), { ...ann({ id: "party-WXYZ", seenAt: 5 }) }]).map(h => h.id).join() === "party-WXYZ", "one house per host (their newest party)");
+  // where the host stands: the zone's centre + 15-35 m from the party id, the same on every phone
+  const s1 = beaconSpot(zone, "party-ABCD"), m = Math.hypot((s1.lat - zone.lat) * 110540, (s1.lng - zone.lng) * 111320 * Math.cos(zone.lat * Math.PI / 180));
+  ok(m >= 14.5 && m <= 35.5 && JSON.stringify(beaconSpot(zone, "party-ABCD")) === JSON.stringify(s1), `the host stands ${Math.round(m)} m from the zone's centre (15-35 m, from the party id): the same on every phone`);
+  // full, mid-game, yours
+  const full = housesFrom([ann({ count: 6 })])[0];
+  ok(full.full && isFull(full) && joinState(full).can === false && joinState(full).why === "full", "6/6: the house is Full, Join is off");
+  ok(joinState(ann({ state: "playing" }), { lateJoin: true }).why === "nextRound" && joinState(ann({ state: "playing" })).why === "nextGame" && joinState(ann({ state: "playing" })).can,
+    "a game on: you can join (the next round, or the next game)");
+  ok(joinState(ann(), { mine: true }).can === false && joinState(ann()).can && joinState(ann()).why === null, "your own party: no Join; otherwise Join");
 }
 
 // ===================================================================== kit

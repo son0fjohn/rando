@@ -2,8 +2,9 @@
 //
 // A party is a player-hosted Room (net.js) with metadata: a name, a vibe
 // label, and a player cap. Players join by 4-character code or by link
-// (?party=CODE). There is NO proximity check this pass — anyone with the code
-// is in, from anywhere.
+// (?party=CODE), or from the map (a public party's house). There is NO
+// proximity check — anyone with the code is in, from anywhere; joining a
+// public party from the map asks only for phone verification (hooks.gate).
 //
 // Inside, the party is a full-screen 2D room (hplobby.js): everyone walks
 // around the vibe's generated backdrop while the lobby fills up, and comes
@@ -26,12 +27,18 @@
 // ride on the host's `meta` broadcast, so whoever hosts the next game has
 // them. Prompts never repeat within a party session (ctx.session).
 //
-// Public parties: the host picks "invite only" (default) or "public". A public
-// party is announced to the shared directory with its ZONE only (never the
-// host's position: parties are often at someone's home) and shows up on the
-// map as a floating neon house in that area (partybeacon.js). Tap it, see the
-// party card, join. Invite-only parties are never announced anywhere.
-// FLAGS.PUBLIC_PARTIES switches the whole public option off.
+// Public parties: the host picks "invite only" (default) or "public", and can
+// switch it later in the party settings. A public party is announced to the
+// shared directory (partyhouse.js announceFor: name, vibe, cap, count,
+// lobby / which game and round, the host's name and look, the host's ZONE —
+// never the host's position: parties are often at someone's home). Every
+// phone stands the host's character in that zone with a house floating over
+// their head (partybeacon.js), the whole time the party runs, games
+// included. Tap it, see the party card, join: mid-game you wait in the lobby
+// and come in at the next round (a game with `lateJoin`) or the next game.
+// Invite-only parties are never announced anywhere: switching to invite only
+// takes the house off the map at once. FLAGS.PUBLIC_PARTIES switches the
+// whole public option off.
 import { Room, directory, mulberry } from "./net.js";
 import { world3d } from "./world3d.js";
 import { sfx, buzz } from "./fx.js";
@@ -42,7 +49,9 @@ import { esc, trash } from "./hpkit.js";
 import { makeBots, shareText, ui as gameUi } from "./gamekit.js";
 import { LobbyRoom } from "./hplobby.js";
 import { openCard, close as closeCard } from "./profilecard.js";
+import { mountCharView } from "./charview.js";
 import { partyBeacons } from "./partybeacon.js";
+import { announceFor, housesFrom, statusText, joinState } from "./partyhouse.js";
 import { muteButton, popIn } from "./retro.js";
 import { newSet, addGame, addPartial, standings, nextGameNo } from "./partyset.js";
 import { showPodium, closePodium, showCoins, coinBurst } from "./partyboard.js";
@@ -205,10 +214,9 @@ export const party = {
   async join(id, meta = null) {
     this.err("");
     const ann = directory.rooms.get(id);
-    if (ann) {
-      if (ann.count >= ann.cap) { this.err("that party is full"); return; }
-      if (ann.state === "playing") { this.err("they're mid-game — try again when the round ends"); return; }
-    }
+    // full: no. A game on: in, to the lobby; the game takes you at its next
+    // round (or the next game), never mid-turn
+    if (ann && ann.count >= ann.cap) { this.err("that party is full"); return; }
     await rooms.leave(); await this.leave();
     const room = new Room(id, this.me);
     this.current = {
@@ -230,6 +238,7 @@ export const party = {
     sfx.ping();
     this.render();
     this._armBack();
+    if (ann?.state === "playing") this._toast(t(gameById(ann.game)?.lateJoin ? "ph.nextRound" : "ph.nextGame"));
     this.hooks.joined?.(this.current);
     return true;
   },
@@ -318,17 +327,34 @@ export const party = {
     this._syncPause();
   },
 
-  // public parties only. The announce carries the party's ZONE (id + the
-  // zone's own centre, which is public), never where the host is.
+  // public parties only. The announce (partyhouse.js announceFor) carries
+  // the party's ZONE (id + the zone's own centre, which is public), never
+  // where the host is; it's re-read every few seconds, so the count, the
+  // game and its round stay current.
   _announce() {
     const c = this.current;
     if (!FLAGS.PUBLIC_PARTIES || c?.meta.privacy !== "public") return;
-    directory.announce(() => ({
-      id: c.room.id, kind: "party", privacy: "public", hostId: this.me.id, hostName: this.me.handle,
-      name: c.meta.name, vibe: c.meta.vibe, cap: c.meta.cap, count: c.room.members.length,
-      state: c.launched ? "playing" : "lobby",
-      zone: c.zone ? { id: c.zone.id, lat: c.zone.lat, lng: c.zone.lng } : null,
-    }));
+    directory.announce(() => (this.current === c && c.meta.privacy === "public" ? announceFor(c, this.me) : { id: c.room.id, gone: true }));
+  },
+  // host: public <-> invite only, from the party settings. Going invite only
+  // takes the house off everyone's map now (the directory's "gone"); going
+  // public asks for verification first, like throwing a public party.
+  async setPrivacy(privacy) {
+    const c = this.current;
+    if (!c?.room.isHost || !FLAGS.PUBLIC_PARTIES || c.meta.privacy === privacy) return;
+    if (privacy === "public") {
+      if (this.hooks.gate && !(await this.hooks.gate("public"))) return;
+      if (this.current !== c || !c.room.isHost) return;
+      c.meta.privacy = "public";
+      if (!c.zone) await this._findZone();
+      this._announce();
+    } else {
+      c.meta.privacy = "private";
+      directory.stopAnnouncing(c.room.id);
+    }
+    sfx.pop();
+    this._sendMeta();
+    this._renderPicker();
   },
   // the host's presence zone, snapped on this phone (backend.js); a new host
   // after a hand-off looks up their own
@@ -372,7 +398,7 @@ export const party = {
     });
     room.on("meta", m => {
       if (room.isHost) return;
-      c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) }, playing: m.playing ?? null };
+      c.meta = { ...c.meta, name: m.name, vibe: m.vibe, cap: m.cap, hostName: m.hostName, privacy: m.privacy ?? c.meta.privacy, settings: { ...c.meta.settings, ...(m.settings ?? {}) }, playing: m.playing ?? null, playingId: m.playingId ?? null };
       c.queue = m.queue ?? null;
       if (m.votes) c.votes = m.votes;
       if (m.set) c.set = m.set;
@@ -408,6 +434,7 @@ export const party = {
       privacy: c.meta.privacy, settings: c.meta.settings, diaryUsed: [...c.session.diaryUsed],
       // a game in progress: someone who joins now waits in the lobby for the next one
       playing: c.launched ? c.playing ?? null : null,
+      playingId: c.launched ? c.playingId ?? null : null,
       set: c.set, votes: c.votes ?? {},
     });
   },
@@ -499,6 +526,7 @@ export const party = {
     $("party-panel").classList.toggle("pt-behind", behind);
     if (behind) { this.pickerOpen = false; this._renderPicker(); }
     const humans = c.room.members.map(x => ({ id: x.id, handle: x.handle, avatar: x.avatar }));
+    c.inGame = new Set(humans.map(x => x.id));   // (who has the launch: late seats get theirs in _watchGame)
     const ctx = {
       room: c.room, me: this.me, humans, seed: m.seed, isHost: () => c.room.isHost, party: c.meta,
       options: { ...defaultsFor(g), ...(m.options ?? {}) },
@@ -532,6 +560,14 @@ export const party = {
       if (this.current !== c || !c.launched) { clearInterval(c.watch); this._hostCtl(null); return; }
       const phase = c.ctx?.hostGame?.s?.phase ?? null, host = c.room.isHost;
       const setup = !!phase && c.setupPhases.includes(phase);
+      // someone who joined mid-game: once the game gives them a seat (a
+      // `lateJoin` game, at its next round) they get the launch, like a phone
+      // coming back from a reload, and start from the next snapshot
+      if (host && c.ctx?.hostGame) for (const m of c.room.members) {
+        if (c.inGame?.has(m.id) || !c.ctx.hostGame.seated(m.id)) continue;
+        c.inGame?.add(m.id);
+        this._resume(m.id);
+      }
       this._hostCtl(host ? (setup ? "back" : "end") : null);
       const wait = !host && setup;
       if (wait !== !!c.setupWait) {
@@ -727,38 +763,71 @@ export const party = {
     }
   },
 
-  // ---------------------------------------------------------------- world beacons
-  // only public parties ever get a beacon, placed by zone (partybeacon.js);
-  // it goes when the host stops announcing (party over) or the entry expires
+  // ---------------------------------------------------------------- the houses on the map
+  // only public parties ever get a house (over their host, placed by zone:
+  // partybeacon.js); it goes when the host stops announcing (the party's
+  // over, it went invite only, the host left) or the entry expires, and
+  // moves when a new host takes over and announces
   syncBeacons() {
-    partyBeacons.sync(FLAGS.PUBLIC_PARTIES ? this.nearby.filter(r => r.zone) : []);
-    if (this._card && !this.nearby.some(r => r.id === this._card)) closePartyCard();
+    const houses = FLAGS.PUBLIC_PARTIES ? housesFrom(this.nearby) : [];
+    partyBeacons.sync(houses, { me: this.me?.id ?? null });
+    const open = this._card && houses.find(r => r.id === this._card);
+    if (this._card && !open) closePartyCard();
+    else if (open) this._patchCard(open);
   },
   // the bar's pull-to-refresh
   async refreshNearby() { this.syncBeacons(); if (!this.current) this._renderList(); },
 
-  // tapped a beacon: the party card slides up (host, vibe, who's in, join)
+  // tapped a house (or its host): the party card slides up — the host and
+  // their character, the vibe, how many are in, what's on, Join. Joining is
+  // the same as anywhere else (no proximity check; a public party asks for
+  // phone verification, hooks.gate). Mid-game you go to the lobby and come
+  // in at the next round or game; full: no.
   showCard(r) {
     const el = $("party-card"); if (!el || !r) return;
+    closePartyCard();
     this._card = r.id;
-    const full = r.count >= r.cap, playing = r.state === "playing", mine = this.current?.room.id === r.id;
-    el.innerHTML = `<div class="pc-sheet glass glass-sheet" role="dialog" aria-label="${esc(r.name)}">
+    const name = r.name || t("ph.partyOf", { host: r.hostName ?? "" });
+    el.innerHTML = `<div class="pc-sheet glass glass-sheet" role="dialog" aria-modal="true" aria-labelledby="pc-name">
         <div class="y-card-grip"></div>
-        <div class="pc-head"><span class="pc-house" aria-hidden="true"></span><div><b>${esc(r.name || `${r.hostName}'s party`)}</b>
-          <small><i class="lr-crown" aria-label="host"></i>${esc(r.hostName)} is hosting</small></div></div>
-        <div class="pc-stats"><span class="pc-vibe v-${esc(r.vibe)}">${esc(r.vibe)}</span><span><b>${r.count}</b>/${r.cap} in</span><span>${playing ? "mid-game" : "in the lobby"}</span></div>
-        <div class="pc-note">public party · somewhere around here — the exact spot is never shown</div>
-        <div class="pc-btns"><button type="button" class="glass-btn clear sm" id="pc-close">later</button>
-          <button type="button" class="glass-btn gold sm" id="pc-join" ${full || playing || mine ? "disabled" : ""}>${mine ? "you're in" : full ? "full" : playing ? "wait for the round" : "join ▶"}</button></div>
+        <div class="pc-head"><div class="pc-char" id="pc-char" aria-hidden="true"></div>
+          <div class="pc-who"><b id="pc-name">${esc(name)}</b>
+          <small><i class="lr-crown" aria-label="host"></i>${esc(t("room.hosting", { host: r.hostName ?? "" }))}</small>
+          <div class="pc-stats">${VIBES.includes(r.vibe) ? `<span class="pc-vibe v-${esc(r.vibe)}">${esc(t(`ph.vibe.${r.vibe}`))}</span>` : ""}<span class="pc-count"></span></div></div></div>
+        <div class="pc-status"><i class="pc-dot" aria-hidden="true"></i><span></span></div>
+        <div class="pc-next" hidden></div>
+        <button type="button" class="glass-btn gold pc-join" id="pc-join"></button>
+        <button type="button" class="glass-btn clear sm pc-later" id="pc-close">${esc(t("ph.later"))}</button>
+        <div class="pc-note">${esc(t("ph.note"))}</div>
       </div>`;
     el.hidden = false;
     sfx.open();
+    this._cardView = r.look ? mountCharView($("pc-char"), r.look, { yaw: 0.45 }) : null;
+    this._patchCard(r);
     $("pc-close").onclick = () => { sfx.back(); closePartyCard(); };
     $("pc-join").onclick = async () => {
+      const cur = housesFrom(this.nearby).find(x => x.id === r.id) ?? r;
+      if (!this._joinState(cur).can) return;
       if (this.hooks.gate && !(await this.hooks.gate("public"))) return;
       closePartyCard(); this.togglePanel(true); this.join(r.id);
     };
-    el.onclick = e => { if (e.target === el) closePartyCard(); };
+    el.onclick = e => { if (e.target === el) { sfx.back(); closePartyCard(); } };
+  },
+  _joinState(r) { return joinState(r, { mine: this.current?.room.id === r.id, lateJoin: !!gameById(r.game)?.lateJoin }); },
+  // the card's live parts, patched in place as the announce changes (count,
+  // lobby / game and round, full)
+  _patchCard(r) {
+    const el = $("party-card"); if (!el || el.hidden) return;
+    const js = this._joinState(r), q = s => el.querySelector(s);
+    const set = (s, text) => { const n = q(s); if (n && n.textContent !== text) n.textContent = text; };
+    set(".pc-count", t("ph.players", { n: r.count, cap: r.cap }));
+    q(".pc-count")?.classList.toggle("full", js.why === "full");
+    set(".pc-status span", statusText(r, t, gameTitle));
+    q(".pc-status")?.classList.toggle("live", r.state === "playing");
+    const next = q(".pc-next");
+    if (next) { next.hidden = !(js.why === "nextRound" || js.why === "nextGame"); set(".pc-next", next.hidden ? "" : t(js.why === "nextRound" ? "ph.nextRound" : "ph.nextGame")); }
+    const btn = q("#pc-join");
+    if (btn) { btn.disabled = !js.can; set("#pc-join", js.why === "mine" ? t("ph.mine") : js.why === "full" ? t("ph.full") : t("ph.join")); }
   },
   _card: null,
 
@@ -938,12 +1007,15 @@ export const party = {
 
   _renderList() {
     const el = $("pt-list"); if (!el) return;
-    const sig = this.nearby.map(r => `${r.id}:${r.name}:${r.count}/${r.cap}:${r.state}`).join("|");
+    const sig = this.nearby.map(r => `${r.id}:${r.name}:${r.count}/${r.cap}:${r.state}:${r.game}:${r.round}`).join("|");
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     if (!this.nearby.length) { el.innerHTML = `<div class="pt-empty">none right now</div>`; return; }
-    el.innerHTML = this.nearby.map(r => `<div class="rl-row"><div class="rl-dot pt-dot"></div><div><b>${esc(r.name ?? r.hostName)}</b><span>${r.count}/${r.cap} in · ${r.state}</span></div><button type="button" data-join="${esc(r.id)}" ${r.count >= r.cap || r.state === "playing" ? "disabled" : ""}>join</button></div>`).join("");
-    el.querySelectorAll("button[data-join]").forEach(b => b.onclick = () => this.join(b.dataset.join));
+    el.innerHTML = this.nearby.map(r => `<div class="rl-row"><div class="rl-dot pt-dot"></div><div><b>${esc(r.name ?? r.hostName)}</b><span>${r.count}/${r.cap} · ${esc(statusText(r, t, gameTitle))}</span></div><button type="button" data-join="${esc(r.id)}" ${this._joinState(r).can ? "" : "disabled"}>join</button></div>`).join("");
+    el.querySelectorAll("button[data-join]").forEach(b => b.onclick = async () => {
+      if (this.hooks.gate && !(await this.hooks.gate("public"))) return;
+      this.join(b.dataset.join);
+    });
   },
 
   _renderLobby() {
@@ -971,10 +1043,11 @@ export const party = {
     const c = this.current; const el = $("pt-next"); if (!c || !el) return;
     const isHost = c.room.isHost, host = c.room.presence[c.room.hostId]?.handle ?? "the host";
     const playing = !isHost && c.meta.playing;      // a game started before you got here
+    const late = playing && gameById(c.meta.playingId)?.lateJoin;   // …which takes you at its next round
     const nVotes = Object.keys(c.votes ?? {}).length, mine = c.votes?.[this.me.id];
     const gameNo = t("room.gameNo", { n: nextGameNo(c.set), of: PARTY.GAMES_PER_SET });
     const line = c.setupWait ? t("room.lineSetup", { host, game: c.playing ?? "the next game" })
-      : playing ? t("room.linePlaying", { game: playing })
+      : playing ? t(late ? "room.lineNextRound" : "room.linePlaying", { game: playing })
       : isHost ? (nVotes ? t("room.lineHostVotes", { gameNo, votes: nVotes === 1 ? t("room.votes1") : t("room.votesN", { n: nVotes }) }) : t("room.lineHost", { gameNo }))
       : mine ? t("room.lineVoted", { gameNo, game: gameTitle(mine), host }) : t("room.lineGuest", { gameNo, host });
     if (el.textContent !== line) el.textContent = line;
@@ -1031,7 +1104,7 @@ export const party = {
     const isHost = c.room.isHost, n = this.playerCount();
     const votes = c.votes ?? {}, mine = votes[this.me.id];
     const count = id => Object.values(votes).filter(v => v === id).length;
-    const sig = `${isHost ? 1 : 0}:${n}:${JSON.stringify(votes)}:${JSON.stringify(c.gameOpts ?? {})}:${JSON.stringify(c.meta.settings)}:${this.settingsOpen ? 1 : 0}`;
+    const sig = `${isHost ? 1 : 0}:${n}:${JSON.stringify(votes)}:${JSON.stringify(c.gameOpts ?? {})}:${JSON.stringify(c.meta.settings)}:${this.settingsOpen ? 1 : 0}:${c.meta.privacy}`;
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     const host = c.room.presence[c.room.hostId]?.handle ?? "the host";
@@ -1058,9 +1131,14 @@ export const party = {
     const st = c.meta.settings ?? {};
     const dflt = DIARY.DEFAULT_MAX[c.meta.privacy === "public" ? "public" : "private"];
     const effMax = (st.diaryMax === "unhinged" && !st.adult) ? "spicy" : (st.diaryMax || dflt);
+    const pub = c.meta.privacy === "public";
+    const privHtml = FLAGS.PUBLIC_PARTIES ? `<div class="pt-opt"><span>${esc(t("ph.who"))}</span><div class="pt-row">
+          <button type="button" class="pt-btn ${pub ? "" : "on"}" data-privacy="private">${esc(t("ph.private"))}</button>
+          <button type="button" class="pt-btn ${pub ? "on" : ""}" data-privacy="public">${esc(t("ph.public"))}</button></div>
+          <small>${esc(t(pub ? "ph.publicSub" : "ph.privateSub"))}</small></div>` : "";
     const settingsHtml = !isHost ? "" : `<div class="pt-settings pv-settings">
         <button type="button" class="pv-settings-h" id="pv-settings-h">Party settings <span>${this.settingsOpen ? "▴" : "▾"}</span></button>
-        ${this.settingsOpen ? `<div class="pt-opt"><span>18+ party</span><div class="pt-row">
+        ${this.settingsOpen ? `${privHtml}<div class="pt-opt"><span>18+ party</span><div class="pt-row">
           <button type="button" class="pt-btn ${st.adult ? "" : "on"}" data-set="adult" data-val="0">Off</button>
           <button type="button" class="pt-btn ${st.adult ? "on" : ""}" data-set="adult" data-val="1">On — everyone's 18+</button></div>
           <small>unlocks unhinged content</small></div>
@@ -1091,6 +1169,7 @@ export const party = {
       const k = b.dataset.set, v = b.dataset.val;
       this.setSetting(k, k === "adult" ? v === "1" : v);
     });
+    el.querySelectorAll("[data-privacy]").forEach(b => b.onclick = () => this.setPrivacy(b.dataset.privacy));
   },
 
   // walked up to the TV: the same game list as the vote button
@@ -1128,6 +1207,7 @@ export const party = {
 
 function closePartyCard() {
   const el = document.getElementById("party-card");
+  party._cardView?.dispose(); party._cardView = null;
   if (el) { el.hidden = true; el.innerHTML = ""; }
   party._card = null;
 }

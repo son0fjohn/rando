@@ -266,7 +266,7 @@ if (ONLY.includes("c")) await section("c. the map's chrome (?onb=0)", async () =
   await shot(A, "host-menu", "host a party (the ?onb=0 console)");
   await tap(A, "#pt-create"); await sleep(4000);
   await A.evaluate(() => window.__onb.party.togglePanel(false)); await sleep(3500);
-  const at = await A.evaluate(() => { const b = document.querySelector(".pbeacon"); if (!b) return null; const m = b.style.transform.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/); return m ? [+m[1], +m[2]] : null; });
+  const at = await A.evaluate(() => { const b = document.querySelector(".phouse-tag"); if (!b) return null; const m = b.style.transform.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/); return m ? [+m[1], +m[2]] : null; });
   if (at) {
     const fb = await A.locator(".frame canvas").first().boundingBox();
     const dx = fb.width / 2 - at[0], dy = fb.height * 0.42 - at[1];
@@ -274,7 +274,7 @@ if (ONLY.includes("c")) await section("c. the map's chrome (?onb=0)", async () =
     for (let i = 1; i <= 12; i++) { await A.mouse.move(fb.x + fb.width / 2 + dx * i / 12, fb.y + fb.height / 2 + dy * i / 12); await sleep(30); }
     await A.mouse.up(); await sleep(1500);
   }
-  await A.evaluate(() => document.querySelector(".pbeacon")?.click()); await sleep(1500);
+  await A.evaluate(() => document.querySelector(".phouse-tag")?.click()); await sleep(1500);
   await shot(A, "party-card", "a public party's card under its beacon");
   await ctx.close();
 });

@@ -46,7 +46,10 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   (`007_public_chat.sql`) live over Realtime, heard in the sender's AREA,
   `web/chatscope.js`: Itaewon's zones are one plaza, elsewhere the ~2.2 km
   cell; talking needs you on the map, so a hidden player is asked first),
-  `web/partybeacon.js` (public parties as neon houses over their ZONE),
+  `web/partybeacon.js` (a public party: its host's character standing in
+  their presence ZONE with a low-poly gold house floating over their head,
+  through the lobby and every game; tap -> the party card, `party.js`;
+  its pure parts, the announce and the lifecycle, in `web/partyhouse.js`),
   the city map, everywhere (see `docs/map_city.md`): near Itaewon its
   hand-made map with the procedural city round its edges, anywhere else the
   procedural city centred where you are (`world3d.worldAt`; `?city=tiles`
@@ -226,6 +229,7 @@ test/faces.html                        # every eye style × expression, flat (op
 node test/room_rec.mjs <dir>           # 5 phones in the party room: walk, TV -> game votes, profile card (FFMPEG=... for an mp4)
 node test/maskoff_shots.mjs <dir> [--bots=4]   # Mask Off round the table with real characters: first person from two seats, a pick by tapping someone, a raised card, the card on the table, looking round / glide back, the end; a 10-player party seats 8 + the seat bar
 node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (round the table, real characters: a pick, a card, an answer, Same, Go deeper, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
+node test/beacon_rec.mjs <dir> [--only=rec,light,full,private,late]   # a public party's house on the real app page: 3 phones side by side (throw it -> the house over the host -> tap, the card, join -> it stays up through a game -> the host leaves, it moves to the new host -> the end, it's gone; FFMPEG=... for house.mp4), the house by night / day / sunset, a Full party, public -> invite only, joining mid-game (next round)
 node test/leave_rec.mjs <dir> [--only=1,2,3,4,5] [--video]   # every way out of a party on the real app page (Leave, turned away past the cap, the party ended after the set's podium + recap, the host closing it, the phone's / browser's Back): straight onto the explore map on you, nothing over it, the camera pulled out of the building (--video + FFMPEG: frame-stepped mp4s)
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
 node test/chat_rec.mjs <dir> [--prefix=after] [--video]   # the plaza chat on 3 phones (2 in Itaewon, 1 in Calgary), Realtime as supabase-js really does it (?strictrt=1): after token refreshes, a line reaches its sender and the same area within 2 s and never another area; a hidden player is asked to show themselves first; a reload reads the area's lines back (FFMPEG=... for chat.mp4)
@@ -288,6 +292,11 @@ keyboard, safe areas) see `docs/dev-stack.md` → device testing.
   game cold from the next snapshot. So a game's local UI state must be
   rebuildable from the synced state (e.g. Art Gallery's own photos come from
   `s.players[me].photos`).
+- **Late joiners:** someone who joins while a game runs waits in the lobby
+  and never gets a seat in the turn that's on. A game with `lateJoin: true`
+  (Side Quest, the Ritual, Mask Off) calls `hpkit.js` `seatLate` on the host
+  at the start of its next turn; `party.js` then sends that phone the launch
+  (the reload path above). Other games keep them for the next game.
 - **Cleanup:** anything a game keeps (photos, answers, caches) registers a
   disposer with `trash` so it dies when the game or party ends.
 - **Backdrop:** a game def with `backdrop: "room"` (the Ritual, Mask Off) is played
@@ -320,10 +329,16 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   picks one, and no screen ever pairs a color (or its shape) with a name:
   no color by names, avatars, name tags, results or the host's deal screen.
   Per question, colors stay a list aligned with the unsigned diaries.
-- A public party's map beacon is placed from its host's presence ZONE only
-  (zone centre + an offset from the party id). The announce carries the zone,
-  never the host's position or an address; invite-only parties are never
-  announced at all.
+- A public party's house (and the host's character under it) is placed from
+  its host's presence ZONE only (zone centre + a 15-35 m offset from the
+  party id, `partyhouse.js` `beaconSpot`), on every phone, the whole time the
+  party runs — the lobby and games included, where presence alone wouldn't
+  show the host. The announce (`announceFor`) carries the zone, the party's
+  name / vibe / cap / count, lobby or game + round, and the host's name and
+  look: never the host's position, an address, the code or any guest.
+  Invite-only parties are never announced at all; switching a party to
+  invite only takes its house off the map at once ("gone"). A new host
+  announces their own zone.
 - Explore mode reads your location on the phone only (and only if location
   is already allowed) to bound panning; it's never sent anywhere.
 - Manhunt never sends a player's position off the phone. Location is read

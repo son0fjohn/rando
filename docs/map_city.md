@@ -211,9 +211,9 @@ Place. To add a model: put the glb under `web/` and set `glb` (and `status:
   of the screen (where the classic camera's view reaches the horizon) is
   clear, and that band is a light haze. A band in the fog's colour stands
   where the ground meets the sky, so there's never a hard edge. Names,
-  notes, beacons and labels fade where the haze is all but total
-  (`rangeFade`); a party beacon past it is pinned to the edge, pointing
-  the way. The start screen's drift keeps its wide view (`mapView` false)
+  notes, party houses and labels fade where the haze is all but total
+  (`rangeFade`); a party's house past it is gone with the rest (its
+  glow shows over rooftops). The start screen's drift keeps its wide view (`mapView` false)
   and a game that frames the map itself (Manhunt's zone overview) asks for
   a free view (`setFreeView`): its own fog, zoom out to 1500 u.
 - Chunks stream round the camera target, as far as the map says
