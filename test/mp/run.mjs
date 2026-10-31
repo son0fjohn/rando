@@ -130,6 +130,16 @@ async function writeResults() {
   await writeFile(join(OUT, "results.json"), JSON.stringify({ base: offline ? "offline" : base, started, players: PLAYERS, runs: RUNS, tests: ONLY, results }, null, 1));
 }
 
+// --merge=<dir>,<dir>: one table from several runs' results.json (shards run side by side)
+const MERGE = arg("merge", null);
+if (MERGE) {
+  const { readFile } = await import("node:fs/promises");
+  for (const d of String(MERGE).split(",")) results.push(...JSON.parse(await readFile(join(d, "results.json"), "utf8")).results);
+  await writeResults();
+  server?.close();
+  console.log(`merged ${results.length} results · ${join(OUT, "results.md")}`);
+  process.exit(0);
+}
 for (let run = 1; run <= RUNS; run++)
   for (const test of ONLY)
     for (const n of PLAYERS) {
