@@ -45,7 +45,13 @@ at randoirl.vercel.app; pushes to other branches get Vercel preview URLs.
   the style screen, NPC dialog, the plaza chat: stored lines
   (`007_public_chat.sql`) live over Realtime, heard in the sender's AREA,
   `web/chatscope.js`: Itaewon's zones are one plaza, elsewhere the ~2.2 km
-  cell; talking needs you on the map, so a hidden player is asked first),
+  cell; talking needs you on the map: without location the chat says to
+  turn it on),
+  on the map = the world screen: presence (your ZONE, snapped on the phone)
+  is on while the world screen is up and off on every other screen (start,
+  a party or game, Style, the app in the background); no toggle, no
+  hidden mode; the camera is always locked on you (one finger orbits);
+  no location -> not on the map, a small glass "Turn on location" notice,
   `web/partybeacon.js` (public parties as neon houses over their ZONE),
   the city map, everywhere (see `docs/map_city.md`): near Itaewon its
   hand-made map with the procedural city round its edges, anywhere else the
@@ -228,8 +234,8 @@ node test/maskoff_shots.mjs <dir> [--bots=4]   # Mask Off round the table with r
 node test/games_rec.mjs <dir> [sidequest|maskoff|ritual|artgallery|party|turns]   # phones playing Side Quest / Mask Off (round the table, real characters: a pick, a card, an answer, Same, Go deeper, a pass, the end) / a Ritual turn / an Art Gallery piece (Bunny: unveil → gavel → a tap on a 3D plaque → sold → result) / a full 3-game set + shop / 10 turns of each host game on 2 phones + 3 bots, orbiting, checking the chosen player; recorded side by side
 node test/leave_rec.mjs <dir> [--only=1,2,3,4,5] [--video]   # every way out of a party on the real app page (Leave, turned away past the cap, the party ended after the set's podium + recap, the host closing it, the phone's / browser's Back): straight onto the explore map on you, nothing over it, the camera pulled out of the building (--video + FFMPEG: frame-stepped mp4s)
 node test/nav_shots.mjs <dir>          # the world screen's bottom bar: flat edge, the gold Host ring, tap -> host flow, "My party", reduced motion (FFMPEG=... for ring.mp4)
-node test/chat_rec.mjs <dir> [--prefix=after] [--video]   # the plaza chat on 3 phones (2 in Itaewon, 1 in Calgary), Realtime as supabase-js really does it (?strictrt=1): after token refreshes, a line reaches its sender and the same area within 2 s and never another area; a hidden player is asked to show themselves first; a reload reads the area's lines back (FFMPEG=... for chat.mp4)
-node test/mapchrome_shots.mjs <dir> [--prefix=after] [--lights=night,sunset,day] [--widths=320,375,390,430]   # the map's round buttons (Home / Friends aligned, measured; the 📝 note button clear of the chat, the bar and Back to me), the plaza chat (no boxes), the bar's colour + label contrast, by night / sunset / day
+node test/chat_rec.mjs <dir> [--prefix=after] [--video]   # the plaza chat on 3 phones (2 in Itaewon, 1 in Calgary), Realtime as supabase-js really does it (?strictrt=1): after token refreshes, a line reaches its sender and the same area within 2 s and never another area; a phone without location isn't on the map, is told to turn it on, and talks once it does; a reload reads the area's lines back (FFMPEG=... for chat.mp4)
+node test/mapchrome_shots.mjs <dir> [--prefix=after] [--lights=night,sunset,day] [--widths=320,375,390,430]   # the map's round buttons (Home / Friends aligned, measured; the 📝 note button clear of the chat and the bar), the plaza chat (no boxes), the bar's colour + label contrast, by night / sunset / day
 node test/diary_fit.mjs [dir] [--video] # longest KO/EN answers fit the diary page on 320/375px phones
 node test/layout_shots.mjs <dir> [games] [--secs=40]   # every game's screens, and where the header / pill / action area / dialog box sit on each (layout.json)
 node test/howto_rec.mjs <dir> [games] [--ko]   # each host explaining their game: in full the first time, one line + How to play the next (FFMPEG=... for mp4s)
@@ -324,8 +330,11 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   (zone centre + an offset from the party id). The announce carries the zone,
   never the host's position or an address; invite-only parties are never
   announced at all.
-- Explore mode reads your location on the phone only (and only if location
-  is already allowed) to bound panning; it's never sent anywhere.
+- You're on the map only while the world screen (Explore) is open: presence
+  goes to your ZONE (snapped on the phone; a raw position is never sent) and
+  comes off on any other screen or with the app in the background. Others
+  appear at their zone only. There is no hidden mode, no visibility toggle and no
+  free pan: don't bring one back. Without location you're not on the map.
 - Manhunt never sends a player's position off the phone. Location is read
   only during the head start and the hunt. At a ping (and every 5 s while
   live, 30 s outside the zone) a runner's phone sends only a fuzzy circle

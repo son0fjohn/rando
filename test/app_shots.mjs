@@ -1,6 +1,6 @@
 // Screenshots of the REAL app page (web/index.html + backend.js + the 3D map)
 // running offline (test/appserve.mjs maps Supabase and the CDN locally), for
-// before/after design reviews: the map, going visible, tapping an NPC, the
+// before/after design reviews: the map (you on it), tapping an NPC, the
 // style screen, hosting a party, the party room with 4+ players, the TV.
 //
 //   node test/app_shots.mjs <dir> [--video] [--light=day|sunset|night]
@@ -101,22 +101,18 @@ const pullBar = pg => pg.evaluate(() => {
 });
 
 if (bar) {
-  await tap(A, "#nav-explore"); await sleep(2500);
-  await shot(A, "02-map-visible", "left button: you're visible on the map (the camera follows you)");
-  await tap(A, "#nav-explore"); await sleep(1500);
-  // explore: drag the map around, then "back to me"
+  await A.waitForFunction(() => document.getElementById("zone-name")?.textContent !== "–", null, { timeout: 60000 }).catch(() => {});
+  await shot(A, "02-map-visible", "the world screen: you're on the map in your zone (the camera locked on you)");
+  // one finger orbits round you (no pan: the camera stays on you)
   const box = await A.locator(".frame canvas").first().boundingBox();
   await A.mouse.move(box.x + 200, box.y + 400); await A.mouse.down();
   for (let i = 0; i < 12; i++) { await A.mouse.move(box.x + 200 - i * 12, box.y + 400 + i * 22); await sleep(30); }
   await A.mouse.up(); await sleep(800);
-  await shot(A, "03-map-explore", "hidden + exploring: pan freely (within ~1.5 km), 'back to me' appears");
+  await shot(A, "03-map-orbit", "a one-finger drag orbits round you");
   await pullBar(A); await sleep(60);
   await A.screenshot({ path: join(OUT, "04-refresh.png"), timeout: 120000 });
   shots.push("04-refresh.png — pull the bar down: nearby parties and people reload (spinner)");
-  await tap(A, "#nav-backtome"); await sleep(1500);
-} else {
-  await tap(A, "#open-toggle"); await sleep(2500);
-  await shot(A, "02-map-visible", "after tapping the eye: you're visible on the map");
+  await tap(A, "#nav-explore"); await sleep(1500);
 }
 
 // NPC tap
