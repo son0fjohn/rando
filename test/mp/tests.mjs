@@ -148,6 +148,7 @@ export async function games(T) {
   const list = T.opts.games ?? GAMES;
   for (const g of list) {
     const id = `game:${g}`;
+    if (g === "manhunt" && T.n < 3) { T.row(id, null, "needs 3 phones: Manhunt seats no bots (it's played on real streets)"); continue; }
     try {
       await nextSetIfDone(P[0], T.log);
       const seen = await playGame(g, P, { log: T.log, ctx: { photoFiles: photos }, maxMs: (T.opts.gameMin ?? 14) * 60000, onTick: syncWatch(T, P) });

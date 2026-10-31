@@ -140,9 +140,14 @@ if (MERGE) {
   console.log(`merged ${results.length} results · ${join(OUT, "results.md")}`);
   process.exit(0);
 }
+// --resume=<results.json>: the cells already in it are kept, not run again (a matrix picked up after a stop)
+const RESUME = arg("resume", null);
+const prior = RESUME ? JSON.parse(await (await import("node:fs/promises")).readFile(RESUME, "utf8")).results : [];
 for (let run = 1; run <= RUNS; run++)
   for (const test of ONLY)
     for (const n of PLAYERS) {
+      const done = prior.find(r => r.test === test && r.players === n && r.run === run);
+      if (done) { results.push(done); continue; }
       try { await runOne(test, n, run); }
       catch (e) { console.log(`FAIL  ${test} ${n}p run ${run}: harness error ${e.message}`); results.push({ test, players: n, run, pass: false, cause: `harness: ${e.message}`, rows: [], notes: [], checks: 0, failedChecks: [], ms: 0, artifacts: null }); await writeResults(); }
     }
