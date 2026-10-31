@@ -335,6 +335,14 @@ Repo-specific invariants. A change that breaks one is a P1 at least.
   comes off on any other screen or with the app in the background. Others
   appear at their zone only. There is no hidden mode, no visibility toggle and no
   free pan: don't bring one back. Without location you're not on the map.
+- Joining a party from the map checks distance (`web/joinrange.js`,
+  200 m with both GPS accuracies allowed for); QR, code and invite-link joins
+  never do. The host's position never leaves the host's phone: the joiner's
+  phone sends only a fuzzed circle (10 m grid, moved 25-50 m, radius grown)
+  on the party's channel, the host's phone checks it and forgets it, and
+  answers only ok / "about N km" (never finer than 0.5 km), a few times per
+  joiner (`knockLimiter`). Nothing is stored or logged; neither phone prompts
+  for location for it (no fix = a friendly message; QR / code still work).
 - Manhunt never sends a player's position off the phone. Location is read
   only during the head start and the hunt. At a ping (and every 5 s while
   live, 30 s outside the zone) a runner's phone sends only a fuzzy circle

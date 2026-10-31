@@ -162,6 +162,9 @@ async function refreshStatus() {
       if (error) throw error;
       return data;
     };
+    // the join-range check (joinrange.js): your own fix, only if location is
+    // already allowed; it never leaves the phone as is
+    party.hooks.fix = () => passiveCoords();
     party.hooks.beaconZone = async () => {
       const z = presence.myZone ?? await presence.resolveZone();
       return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;
@@ -431,11 +434,21 @@ const exploreBtn = document.getElementById("nav-explore");
 export async function readDeviceCoords() {
   if (params.get("devlat") && params.get("devlng")) {
     console.warn("[rando] DEV coordinates override active");
-    return { lat: Number(params.get("devlat")), lng: Number(params.get("devlng")) };
+    return { lat: Number(params.get("devlat")), lng: Number(params.get("devlng")), acc: Number(params.get("devacc")) || 20 };
   }
   const pos = await new Promise((res, rej) =>
     navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
-  return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+  return { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+}
+
+// a fix only if location is already allowed (never brings up the system
+// prompt), else null; for the party's join-range check (joinrange.js)
+export async function passiveCoords() {
+  if (!(params.get("devlat") && params.get("devlng"))) {
+    try { const st = await navigator.permissions.query({ name: "geolocation" }); if (st.state !== "granted") return null; }
+    catch { return null; }
+  }
+  try { return await readDeviceCoords(); } catch { return null; }
 }
 
 export const presence = {
