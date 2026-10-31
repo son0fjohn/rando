@@ -331,9 +331,8 @@ export const world3d = {
   camGoal: null,               // eased recenter target
   target: new THREE.Vector3(0, 0, 0),
   followPos: null,
-  observing: false,            // true after a pan: camera roams free
-  homePos: null,               // explore mode (invisible): where "back to me"
-  exploreR: null,              // returns, and how far you can pan from it
+  observing: false,            // something else holds the camera (a game's overview, the scenery, a notes hub)
+  restPos: null,               // where the camera rests while your character isn't on the map (your last zone; null: the station)
   paused: false,               // a full-screen screen covers the map: don't draw it
   player: null, playerShadow: null,
   remoteGroup: null,
@@ -645,7 +644,7 @@ export const world3d = {
   // the ground's height at a world point (the hills round Itaewon, flat in a city)
   groundY(x, z) { return terrainY(x, z); },
 
-  // The world for a spot on Earth (the player's, or Explore's): near
+  // The world for a spot on Earth (the player's, or where the camera rests): near
   // Itaewon its hand-made map with the procedural city round its edges,
   // anywhere else the procedural city centred there. Cheap to call often:
   // it only acts when the answer changes. While the start screen's scenery
@@ -793,7 +792,7 @@ export const world3d = {
       // is, with the city streaming round the wrong place. Placed again now
       // the world reaches that far.
       const far = o => o?.lat != null && Math.hypot(...Object.values(geoPosRaw(o.lat, o.lng))) > edge0;
-      if (far(this._lastPlayerOpts) || (this._lastExplore && far({ lat: this._lastExplore[0], lng: this._lastExplore[1] }))) this.replaceAll();
+      if (far(this._lastPlayerOpts) || (this._lastRest && far({ lat: this._lastRest[0], lng: this._lastRest[1] }))) this.replaceAll();
       else if (this._lastRemotes) this.setRemotes(this._lastRemotes);
       if (!this.ground) this.buildCityGround();
       this.ground.visible = true;
@@ -874,7 +873,7 @@ export const world3d = {
     // (a new origin: you're there at once, not walking over from the old one)
     if (this.player) { this.removeChar(this.player, this.scene); this.player = null; this.followPos = null; }
     if (this._lastPlayerOpts) this.setPlayer(this._lastPlayerOpts);
-    if (this._lastExplore) this.setExplore(...this._lastExplore);
+    if (this._lastRest) this.setRest(...this._lastRest);
     for (const def of ARCH_NPC_DEFS) {
       const rec = this.archRecs?.[def.id];
       if (rec) { const p = geoPos(def.lat, def.lng); rec.api.group.position.copy(p); rec.baseY = p.y; }
@@ -2509,7 +2508,7 @@ export const world3d = {
         this.player = this.makeChar(opts.avatar, spawnAt, this.scene, api);
         if (!spawnAt.equals(pos)) this.player.walkTarget = pos.clone();
         this.followPos = this.player.api.group.position; // live ref: camera tracks walking
-        this.observing = false; // going open snaps attention back to you
+        this.observing = false; // on the map: the camera back on you
         this.needsRender = true;
       };
       if (GLB_MODE) {
@@ -2697,30 +2696,19 @@ export const world3d = {
     this.camGoal = { ...this.CAM_DEFAULT };
   },
 
-  // explore mode: while invisible you can look around within radiusM metres
-  // of your real location (read on this phone, never sent); null turns it off
-  setExplore(lat, lng, radiusM = 1500) {
-    if (lat == null || lng == null) { this.homePos = null; this.exploreR = null; this._lastExplore = null; return; }
+  // where the camera rests while your character isn't on the map (no
+  // location yet, or between screens): a zone's centre, never a raw position
+  setRest(lat, lng) {
+    if (lat == null || lng == null) { this.restPos = null; this._lastRest = null; return; }
     this.worldAt(lat, lng);
-    this._lastExplore = [lat, lng, radiusM];
-    this.homePos = geoPos(lat, lng);
-    this.exploreR = radiusM * GEO_SCALE;
-    this.clampTarget();
+    this._lastRest = [lat, lng];
+    this.restPos = geoPos(lat, lng);
     this.needsRender = true;
   },
   clampTarget() {
-    if (this.homePos && this.exploreR) {
-      const dx = this.target.x - this.homePos.x, dz = this.target.z - this.homePos.z, d = Math.hypot(dx, dz);
-      if (d > this.exploreR) { this.target.x = this.homePos.x + dx / d * this.exploreR; this.target.z = this.homePos.z + dz / d * this.exploreR; }
-    }
     const box = cityOn ? 8000 : this.blending ? 2000 : 1100;
     this.target.x = Math.max(-box, Math.min(box, this.target.x));
     this.target.z = Math.max(-box, Math.min(box, this.target.z));
-  },
-  // how far the camera has wandered from where it would rest (world units)
-  awayFromHome() {
-    const goal = this.followPos ?? this.homePos ?? new THREE.Vector3(0, 0, 0);
-    return Math.hypot(this.target.x - goal.x, this.target.z - goal.z);
   },
   setPaused(on) { this.paused = !!on; if (!on) this.needsRender = true; },
   // the buildings are up (loaded and risen): the start screen's still image
@@ -2738,9 +2726,10 @@ export const world3d = {
   maxFps: 0,                   // 0 = every frame; the start screen draws at 30
   _lastDraw: 0,
 
-  // One-finger drag PANS (free observer); two fingers pinch-zoom, twist to
-  // rotate, move vertically together to tilt. Desktop: drag pans, wheel
-  // zooms, right-click or Ctrl+drag orbits. Recenter returns to follow.
+  // The map's camera is locked on you: one finger orbits round you, two
+  // fingers pinch-zoom, twist to rotate, move vertically together to tilt.
+  // Desktop: drag orbits, wheel zooms. Only a game's own overview of the map
+  // (freeView: Manhunt's zone) pans with one finger.
   // tap-to-chat: short, drag-free press on a remote character fires
   // onCharTap(meta). Set by backend.js; meta = { userId, handle, avatar }.
   onCharTap: null,
@@ -2804,10 +2793,8 @@ export const world3d = {
           dist0: this.cam.dist, theta0: this.cam.theta, elev0: this.cam.elev,
         };
       } else if (pointers.size === 1) {
-        // locked on your character while open: one finger orbits around
-        // you (no ghost/spectator pan); free pan only while invisible
-        gesture = { type: this.followPos ? "orbit"
-          : (e.button === 2 || e.ctrlKey) ? "orbit" : "pan" };
+        // locked on you: one finger orbits (a game's overview pans)
+        gesture = { type: this.freeView && !(e.button === 2 || e.ctrlKey) ? "pan" : "orbit" };
       }
       el.style.cursor = "grabbing";
     });
@@ -2830,7 +2817,7 @@ export const world3d = {
         this.cam.elev = Math.min(ZOOM.elevMax, Math.max(ZOOM.elevMin, this.cam.elev + (e.clientY - prev.y) * 0.004));
         this.applyCamera();
       } else if (gesture && gesture.type === "pan") {
-        this.observing = true; // free observer mode until recenter
+        this.observing = true; // (a game's overview: held where it's panned to)
         const k = this.cam.dist * 0.0016;
         const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
         const sin = Math.sin(this.cam.theta), cos = Math.cos(this.cam.theta);
@@ -2843,7 +2830,7 @@ export const world3d = {
     const up = e => {
       pointers.delete(e.pointerId);
       if (pointers.size < 2 && gesture && gesture.type === "two") {
-        gesture = pointers.size === 1 ? { type: "pan" } : null;
+        gesture = pointers.size === 1 ? { type: this.freeView ? "pan" : "orbit" } : null;
       }
       if (!pointers.size) {
         gesture = null;
@@ -3060,9 +3047,9 @@ export const world3d = {
       }
     }
 
-    // glide the camera target home — unless the user is roaming free
+    // glide the camera target onto you (or where it rests) — unless something else holds it
     if (!this.observing) {
-      const goal = this.followPos ?? this.homePos ?? new THREE.Vector3(0, 0, 0);
+      const goal = this.followPos ?? this.restPos ?? new THREE.Vector3(0, 0, 0);
       if (this.target.distanceTo(goal) > 0.5) {
         this.target.lerp(goal, 0.18);
         this.applyCamera();

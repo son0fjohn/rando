@@ -174,7 +174,7 @@ export const scenery = {
 
   // Explore the world: from wherever the drift is, a glide down onto the
   // map's own view over a spot (world x/z), as smooth as the dive; the map
-  // takes over from there (scenery.off, then the explore mode)
+  // takes over from there (scenery.off, then the world screen, on you)
   glide(to, ms = 1800) {
     if (!on || REDUCED) return Promise.resolve(false);
     const w = world3d, cam = w.camera, d = w.CAM_DEFAULT;
@@ -209,14 +209,14 @@ export const scenery = {
   // itself (the scenery is off). The camera starts just over the party's
   // building's roof looking down into it, rises out over it and settles on
   // the map's own view over you (where the map rests: your character, or
-  // your spot while you're hidden), then the map's camera takes over. Far
-  // from that building (a city elsewhere) it lifts off the street right over
-  // you instead. Reduced motion: no flight, the map's view at once.
+  // your last zone until you're back on the map), then the map's camera
+  // takes over. Far from that building (a city elsewhere) it lifts off the
+  // street right over you instead. Reduced motion: no flight, the map's view at once.
   pullOut(seed = "", ms = 1400) {
     const w = world3d, cam = w.camera;
     if (!cam) return Promise.resolve(false);
     const d = w.CAM_DEFAULT;
-    const home = () => w.followPos ?? w.homePos ?? { x: 0, y: 0, z: 0 };
+    const home = () => w.followPos ?? w.restPos ?? { x: 0, y: 0, z: 0 };
     const rest = () => {
       const T = home(), y = T.y ?? terrainY(T.x, T.z);
       return { T: { x: T.x, y, z: T.z },

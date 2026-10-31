@@ -183,7 +183,7 @@ own dialog, and "Not now" always works (a note says Settings can turn it on):
 
 | | When | Pre-prompt |
 | --- | --- | --- |
-| Location | Join a party → "nearby", the Explore tab (going visible), Manhunt's "I'm in" | "See parties happening nearby. We only show your area, never your exact spot." |
+| Location | Join a party → "nearby", Explore the world, the world screen's first open (you're on the map while it's up), Manhunt's "I'm in" | "See parties happening nearby. We only show your area, never your exact spot." |
 | Notifications | right after the first finished game; again as a button on the recap | "Want to know when friends throw a party?" |
 | Contacts | only on "Invite from contacts" | "Pick who to text. Your contacts never leave your phone." |
 | Camera / photos | the first time you add an Art Gallery photo | "Take or pick photos for this game. They're gone when the party ends." |

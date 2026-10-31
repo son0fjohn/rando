@@ -267,8 +267,6 @@
 #nav-refresh.spinning { opacity: 1; transform: translateY(-8px); }
 #nav-refresh.spinning i { animation: nav-spin .7s linear infinite; }
 @keyframes nav-spin { to { transform: rotate(360deg); } }
-#nav-backtome { position: absolute; right: 12px; bottom: calc(var(--nav-h) + 84px + env(safe-area-inset-bottom)); z-index: 125; }
-#nav-backtome[hidden] { display: none; }
 /* chat sits just above the bar: clear text straight on the map, no box
    behind a line; light text with a soft dark shadow keeps it readable on the
    map by day and by night (names in cyan) */
@@ -279,12 +277,11 @@
 #pubchat-open, #pubchat-send { border-radius: 50%; background: var(--g-bg); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); border: 1px solid var(--g-line); color: var(--g-ink); }
 #pubchat-input { border-radius: 999px; font: 16px/20px var(--f-sys); background: var(--g-bg-strong); -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur);
   border: 1px solid var(--g-line); color: var(--g-ink); }
-/* hidden and about to talk: show yourself first (a small glass panel over the input) */
-#pubchat-ask { pointer-events: auto; padding: 12px 14px; border-radius: 16px; max-width: 340px; }
-#pubchat-ask b { display: block; font: 600 var(--fs-body)/21px var(--f-sys); color: var(--g-ink); }
-#pubchat-ask p { margin: 3px 0 10px; font: 400 var(--fs-small)/17px var(--f-sys); color: var(--g-ink); opacity: .82; }
-#pubchat-ask .pa-btns { display: flex; gap: 8px; }
-#pubchat-ask .glass-btn { flex: 1; min-width: 0; }
+/* no location, so not on the map: one small glass line over the chat, a button to try again */
+#loc-note { pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 16px; max-width: 340px; box-sizing: border-box; }
+#loc-note[hidden] { display: none; }
+#loc-note span { flex: 1; min-width: 0; font: 600 var(--fs-small)/18px var(--f-sys); color: var(--g-ink); }
+#loc-note .glass-btn { flex: none; }
 /* friends / match chat: top right, round glass, level with Home on the left
    (#nav-home, the same size, top and edge distance; test/mapchrome_shots.mjs) */
 #side-actions { top: calc(env(safe-area-inset-top) + 12px); right: 12px; bottom: auto; }
@@ -296,10 +293,8 @@
 /* (between the round buttons at the top corners) */
 #osm-credit { position: absolute; left: 62px; right: 62px; top: calc(6px + env(safe-area-inset-top)); z-index: 100; font: 500 9px/12px var(--f-sys); color: var(--g-ink-faint);
   text-align: center; text-shadow: var(--g-text-shadow); pointer-events: none; }
-.tag.ghost { background: var(--g-bg); color: var(--g-name); border: 1px dashed currentColor; font: 600 var(--fs-tag)/14px var(--f-sys); border-radius: 999px;
-  -webkit-backdrop-filter: var(--g-blur); backdrop-filter: var(--g-blur); }
 /* no bar in the party room */
-body.in-lobby #navbar, body.in-lobby #pubchat, body.in-lobby #nav-backtome { display: none !important; }
+body.in-lobby #navbar, body.in-lobby #pubchat { display: none !important; }
 /* NPC says hi */
 #npc-dlg { position: absolute; left: 12px; right: 12px; bottom: calc(var(--nav-h) + 76px + env(safe-area-inset-bottom)); z-index: 140; pointer-events: none; }
 #npc-dlg .y-dlg-wrap { pointer-events: auto; }
@@ -1722,7 +1717,7 @@ body:has(#onb .onb-sheet:not(.out)) .onb-hint { display: none; }
 @media (prefers-reduced-motion: reduce) { .onb-screen, .onb-btn.pulse, .onb-land-people figure, .onb-recap-people img, .onb-hint-ring { animation: none; } }
 /* while an onboarding screen is up, the map is only the night city behind it */
 body.onb-on #pubchat, body.onb-on #navbar, body.onb-on #friends-btn, body.onb-on .wlabel, body.onb-on .bubble-anchor,
-body.onb-on #nav-backtome, body.onb-on #npc-dlg, body.onb-on #match-card { visibility: hidden !important; }
+body.onb-on #npc-dlg, body.onb-on #match-card { visibility: hidden !important; }
 
 /* ================================================================ the shared game screen
    Every game, and every how-to-play, puts the same things in the same
@@ -2158,7 +2153,7 @@ body.world-arrive #label-layer, body.world-arrive #beacon-layer, body.world-arri
 body:not(.notes-on) #notes-layer, body:not(.notes-on) #notes-leave { display: none; }
 /* leave a note: a round glass 📝 bottom-right, the size of the map's other
    round buttons, level with the plaza chat's button bottom-left (the chat's
-   lines sit above that row, "Back to me" above it on the right). With the
+   lines sit above that row). With the
    chat's field open, the row stops short of it. */
 #notes-leave { position: absolute; right: 12px; bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom)); z-index: 125; }
 body.notes-on #pubchat-row { padding-right: 50px; }
