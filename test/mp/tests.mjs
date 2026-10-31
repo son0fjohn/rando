@@ -220,9 +220,13 @@ export async function hostcontrols(T) {
   const pause = controls.find(c => /pause/.test(c));
   if (!pause) problems.push(new NotImplemented(`no pause / resume for the host mid-game (looked for #hp-pause or [data-testid=host-pause]; the host has: ${controls.join(", ")})`));
   else {
+    // (how quickly each page answers right now: a starved page shows everything late)
+    T.log(`page response times: ${(await Promise.all(P.map(async ph => { const t = Date.now(); await ph.r(() => document.querySelectorAll("canvas").length).catch(() => {}); return `${ph.name} ${Date.now() - t} ms (${await ph.page.evaluate(() => [...document.querySelectorAll("canvas")].filter(c => c.getClientRects().length).length + " canvases shown, scenery " + document.body.classList.contains("scenery")).catch(() => "?")})`; }))).join(", ")}`);
     await H.tap(`#${pause}`);
-    const paused = await Promise.all(P.map(ph => ph.until(R => R.game()?.paused && !!document.getElementById("hp-paused"), null, 40000)));
+    const tp = Date.now();
+    const paused = await Promise.all(P.map(ph => ph.until(R => R.game()?.paused && !!document.getElementById("hp-paused"), null, 90000)));
     for (const [i, ph] of P.entries()) if (!paused[i]) T.log(`  ${ph.name} on pause: ${JSON.stringify(await ph.r(R => ({ paused: R.game()?.paused, phase: R.game()?.phase, sheet: !!document.getElementById("hp-paused"), launched: R.party()?.launched, screen: R.screen() })).catch(e => e.message))}`);
+    if (Date.now() - tp > 15000) T.note(`pause took ${Math.round((Date.now() - tp) / 1000)} s to show on the slowest phone (a page starved of CPU here: software GL)`);
     T.check(paused.every(Boolean), `pause reaches every phone, the paused sheet on each (${paused.filter(Boolean).length}/${P.length}${paused.every(Boolean) ? "" : `; not: ${P.filter((_, i) => !paused[i]).map(p => p.name).join(", ")}`})`);
     const l0 = await H.r(R => R.game()?.left); await sleep(4000); const l1 = await H.r(R => R.game()?.left);
     T.check(Math.abs(l0 - l1) < 200, `the clock stands still while paused (${Math.round(l0)} -> ${Math.round(l1)} ms left)`);
