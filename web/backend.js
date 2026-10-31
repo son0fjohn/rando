@@ -14,10 +14,10 @@ import { ITEMS4, IRIS4, EYE_NAMES, STARTER_OUTFITS4, HAIRCOLOR_SHOP, randomAvata
 import { drawFace4 } from "./face4.js";
 import { onboard } from "./onboard.js";
 import { setSink } from "./analytics.js";
-import { askPermission } from "./permissions.js";
+import { askPermission, permState, asked as permAsked, toast } from "./permissions.js";
 import { FLAGS } from "./hpconfig.js";
 import { t } from "./i18n.js";
-import { PLAZA, areaOfZone, areaAt, inArea } from "./chatscope.js";
+import { PLAZA, areaOfZone, inArea } from "./chatscope.js";
 // the new player character (avatar4) everywhere; the old names stay local so
 // the rest of this file reads unchanged
 const DEFAULT_AVATAR = DEFAULT_AVATAR4;
@@ -111,7 +111,7 @@ async function refreshStatus() {
   out.textContent = "sign out";
   out.addEventListener("click", async e => {
     e.preventDefault();
-    await presence.goClosed().catch(() => {});
+    await presence.goOff().catch(() => {});
     await sb.auth.signOut();
   });
   statusEl.append(out);
@@ -163,11 +163,15 @@ async function refreshStatus() {
     // ZONE (the same on-device snap presence uses: a launch zone or a ~2 km
     // cell), and every phone stands the host's character at that zone's
     // centre plus an offset from the party id, with the house over their head
-    // (partybeacon.js) — in the lobby and through every game too, where
-    // presence alone wouldn't show them. Never the host's position: parties
-    // are often at someone's home. Invite-only parties announce nothing.
+    // (partybeacon.js) — in the lobby and through every game too. That's the
+    // one exception to presence.sync() (on the map only while the world
+    // screen is up): the host's presence row still goes off in the party;
+    // the announce, not presence, keeps them on the map, at zone level.
+    // Never the host's position: parties are often at someone's home.
+    // Invite-only parties announce nothing.
     party.hooks.beaconZone = async () => {
-      const z = presence.myZone ?? await presence.resolveZone();
+      let z = presence.myZone;
+      if (!z) { try { z = await presence.resolveZone(); } catch (e) { z = presence.lastZone; if (!z) throw e; } }
       return z ? { id: z.id, lat: z.lat, lng: z.lng } : null;
     };
     // the onboarding's moments (onboard.js): an invite link's landing, phone
@@ -213,28 +217,30 @@ const onboardEnv = {
     avatar.applyOwn();
     return {};
   },
-  // the map: hidden and exploring (around you, if location is allowed now)
-  openMap() {
+  // the map (the world screen): you're on it while it's open (presence.sync).
+  // spot: where Explore the world landed, for the camera until you're there
+  openMap(spot = null) {
     party.togglePanel(false);
-    if (!presence.myZone) explore.enter();
+    if (spot && !presence.myZone) world3d.setRest(spot.lat, spot.lng);
     world3d.recenter();
+    presence.sync();
   },
-  // back on the map from a party (onboard.toWorld): where it rests, on you
-  // (your character while visible, your spot while exploring hidden)
+  // back on the map from a party (onboard.toWorld): on you, once you're back
+  // on it (meanwhile your last zone)
   toMap() {
-    if (!presence.myZone && !world3d.homePos) explore.enter();
     world3d.recenter();
+    presence.sync();
   },
   openStyle() { styleView.open(); },
-  // where Explore the world lands: this phone's location if it's allowed
-  // (read here, never sent), else your last zone, else null (Itaewon)
+  // where Explore the world lands: your zone (snapped on this phone, as
+  // presence does) if location is allowed, else your last zone, else null (Itaewon)
   async exploreHome() {
     try {
-      const devOk = params.get("devlat") && params.get("devlng");
-      const st = devOk ? null : await navigator.permissions?.query({ name: "geolocation" });
-      if (devOk || st?.state === "granted") return await readDeviceCoords();
+      const dev = params.get("devzone") || (params.get("devlat") && params.get("devlng"));
+      if (dev || await permState("location") === "granted") { const z = await presence.resolveZone(); return { lat: z.lat, lng: z.lng }; }
     } catch {}
-    return presence.myZone ? { lat: presence.myZone.lat, lng: presence.myZone.lng } : null;
+    const z = presence.myZone ?? presence.lastZone;
+    return z ? { lat: z.lat, lng: z.lng } : null;
   },
   friendParties: () => party.nearby.filter(r => party.hooks.isFriend?.(r.hostId)).map(r => ({ id: r.id, name: r.name ?? r.hostName, hostName: r.hostName, count: r.count })),
   // the account: everyone starts as a guest (anonymous sign-in, kept on this
@@ -426,7 +432,6 @@ const zoneNameEl = document.getElementById("zone-name");
 const zminEl = document.getElementById("zmin");
 const navbar = document.getElementById("navbar");
 const exploreBtn = document.getElementById("nav-explore");
-const backBtn = document.getElementById("nav-backtome");
 
 // on-device coordinate read, shared by zone resolution, encounter
 // proximity confirm and house-party joins; ?devlat=&devlng= lets any of
@@ -443,7 +448,8 @@ export async function readDeviceCoords() {
 
 export const presence = {
   zones: [],
-  myZone: null,       // zone row while open, else null
+  myZone: null,       // zone row while you're on the map, else null
+  lastZone: null,     // the zone you were last on the map in (this session)
   pollTimer: null,
   heartbeatTimer: null,
   lastFetch: null,
@@ -474,18 +480,20 @@ export const presence = {
       const { data: mine } = await sb
         .from("presence").select("zone_id").eq("user_id", session.user.id).maybeSingle();
       this.myZone = mine ? this.zones.find(z => z.id === mine.zone_id) ?? null : null;
-      this.renderToggle();
-      if (!this.myZone) explore.enter();
+      if (this.myZone) { this.lastZone = this.myZone; world3d.setRest(this.myZone.lat, this.myZone.lng); }
+      this.renderBar();
       this.startPolling();
     } catch (e) {
       console.warn("[rando] sign-in restore failed (world stays browsable):", e);
-      this.renderToggle();
-      if (!this.myZone) explore.enter();
+      this.renderBar();
     }
+    // on the map only while the world screen is up (a reload lands on the start screen)
+    this.sync();
   },
 
   onSignedOut() {
-    explore.leave();
+    clearTimeout(this._syncT);
+    locNote.show(false);
     clearInterval(this.pollTimer);
     clearInterval(this.heartbeatTimer);
     this.pollTimer = this.heartbeatTimer = null;
@@ -493,7 +501,7 @@ export const presence = {
     world3d.setRemotes([]);
     world3d.setPlayer(null);
     this.removeYouTag();
-    this.renderToggle();
+    this.renderBar();
   },
 
   haversine(lat1, lng1, lat2, lng2) {
@@ -537,32 +545,70 @@ export const presence = {
     return zone;
   },
 
+  // onto the map, in your zone (snapped on this phone; only the zone is sent)
   async goOpen() {
     const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
     const zone = await this.resolveZone();
+    if (!onWorld()) return;                   // left the world screen meanwhile
     const { error } = await sb.from("presence")
       .upsert({ user_id: session.user.id, zone_id: zone.id });
     if (error) throw error;
-    this.myZone = zone;
-    explore.leave();
-    this.renderToggle();
+    this.myZone = this.lastZone = zone;
+    world3d.setRest(zone.lat, zone.lng);
+    this.renderBar();
     this.startPolling();
-    await this.refreshWorld();
+    clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = setInterval(() => this.heartbeat(), HEARTBEAT_MS);
+    await this.refreshWorld();
   },
 
-  // going closed is instant and unconditional (never rate-limited)
-  async goClosed() {
+  // off the map: instant and unconditional (never rate-limited); the camera
+  // rests on your last zone
+  async goOff() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return;
     await sb.from("presence").delete().eq("user_id", session.user.id);
     clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
-    const last = this.myZone;
     this.myZone = null;
-    this.renderToggle();
+    this.renderBar();
     await this.refreshWorld();
-    explore.enter(last);
+  },
+
+  // On the world screen you're on the map; on any other screen (the start
+  // screen, a party, a game, Style) or with the app in the background you're
+  // off it. No toggle. Going on needs location: the pre-prompt the first
+  // time; declined or unavailable, you stay off the map and a small notice
+  // offers to try again.
+  _syncT: null,
+  _chain: Promise.resolve(),
+  _run(f) { this._chain = this._chain.then(f).catch(e => console.warn("[rando] presence:", e?.message || e)); return this._chain; },
+  sync() {
+    clearTimeout(this._syncT);
+    if (statusEl.hidden) return;              // signed out
+    if (!onWorld()) {
+      locNote.show(false);
+      this._run(() => this.myZone && this.goOff());
+      return;
+    }
+    // (a beat first: screens hand over through a moment with neither up)
+    this._syncT = setTimeout(() => this._run(() => this.showUp()), 600);
+  },
+  async showUp(ask = false) {
+    if (this.myZone || !onWorld()) { if (this.myZone) locNote.show(false); return; }
+    let ok = !!(params.get("devzone") || params.get("devlat"));
+    if (!ok) {
+      const st = await permState("location");
+      ok = st === "granted";
+      // the pre-prompt once on its own (the start screen's Explore asks too); again from the notice
+      if (!ok && st === "prompt" && (ask || !permAsked.has("location"))) ok = await askPermission("location");
+      else if (!ok && ask) toast(t("perm.denied"));
+    }
+    if (ok && onWorld()) {
+      try { await this.goOpen(); } catch (e) { console.warn("[rando] not on the map:", e?.message || e); }
+    }
+    locNote.show(!this.myZone && onWorld());
   },
 
   async heartbeat() {
@@ -579,8 +625,9 @@ export const presence = {
       await sb.from("presence")
         .upsert({ user_id: session.user.id, zone_id: this.myZone.id });
     } else if (zone.id !== this.myZone.id) {
-      this.myZone = zone;
-      this.renderToggle();
+      this.myZone = this.lastZone = zone;
+      world3d.setRest(zone.lat, zone.lng);
+      this.renderBar();
       await this.refreshWorld();
     }
   },
@@ -667,77 +714,59 @@ export const presence = {
     zminEl.textContent = String(Math.round((Date.now() - this.lastFetch) / 60000));
   },
 
-  // the bar's left button: hidden (exploring) or visible on the map
-  renderToggle() {
-    const signedOut = statusEl.hidden;
-    navbar.hidden = signedOut;
-    if (signedOut) return;
-    const open = !!this.myZone;
-    exploreBtn.classList.toggle("seen", open);
-    exploreBtn.classList.toggle("on", !open);           // the active tab while you're exploring
-    exploreBtn.setAttribute("aria-pressed", String(!open));
-    exploreBtn.title = open ? `You're visible · ${this.myZone.name} — tap to hide and explore` : "You're hidden and exploring — tap to be visible";
-    zoneNameEl.textContent = open ? this.myZone.name : "hidden · exploring";
+  // the bar (signed in only) and the zone you're on the map in
+  renderBar() {
+    navbar.hidden = statusEl.hidden;
+    zoneNameEl.textContent = this.myZone ? this.myZone.name : "–";
   },
 };
 
-// ===================== explore (invisible) =====================
-// While you're hidden nobody sees you, and the map is yours to pan around —
-// within ~1.5 km of where you really are. That spot is read ON this phone
-// (only if location is already allowed; never prompts on its own) and never
-// leaves it; without it, your last zone or the station is home.
-const EXPLORE_M = 1500;
-const explore = {
-  marker: null,
-  async enter(lastZone = null) {
-    let home = lastZone ? { lat: lastZone.lat, lng: lastZone.lng } : null;
-    try {
-      const devOk = params.get("devlat") && params.get("devlng");
-      const st = devOk ? null : await navigator.permissions?.query({ name: "geolocation" });
-      if (devOk || st?.state === "granted") home = await readDeviceCoords();
-    } catch { /* no permission: keep the fallback */ }
-    if (presence.myZone) return;              // went visible meanwhile
-    home ??= { lat: 37.5346, lng: 126.9946 };
-    this.home = home;                         // (the plaza chat reads its area from it, on this phone)
-    pubchat.setArea().catch(() => {});
-    world3d.setExplore(home.lat, home.lng, EXPLORE_M);
-    world3d.recenter();
-    if (!this.marker) {
-      this.marker = document.createElement("div");
-      this.marker.className = "bubble-anchor";
-      this.marker.innerHTML = `<div class="tag ghost">you · hidden</div>`;
-      bubbleLayer.appendChild(this.marker);
-      world3d.anchor(this.marker, () => world3d.homePos ? world3d.homePos.clone().setY(world3d.homePos.y + 4) : null);
+// ===================== on the map: the world screen =====================
+// Is the world screen what's on screen? (not the start screen or another
+// onboarding screen, not a party or its game, not Style, not in the background)
+function onWorld() {
+  const b = document.body.classList;
+  return !document.hidden && !statusEl.hidden && !b.contains("onb-on") && !b.contains("in-lobby") && !b.contains("hp-on-map")
+    && document.getElementById("style-screen")?.hidden !== false;
+}
+{
+  const sync = () => presence.sync();
+  new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  const ss = document.getElementById("style-screen");
+  if (ss) new MutationObserver(sync).observe(ss, { attributes: true, attributeFilter: ["hidden"] });
+  document.addEventListener("visibilitychange", sync);
+}
+// no location (declined, or none to read): you're not on the map. One small
+// glass line over the chat, with a button to try again.
+const locNote = {
+  el: null,
+  show(on) {
+    if (!on) { if (this.el) this.el.hidden = true; return; }
+    if (!this.el) {
+      this.el = document.createElement("div");
+      this.el.id = "loc-note";
+      this.el.className = "glass";
+      this.el.setAttribute("role", "status");
+      this.el.innerHTML = `<span>${escHtml(t("loc.off"))}</span><button type="button" class="glass-btn gold xs fit">${escHtml(t("loc.retry"))}</button>`;
+      const btn = this.el.querySelector("button");
+      btn.addEventListener("click", () => {
+        btn.disabled = true;
+        sfx.confirm();
+        presence._run(() => presence.showUp(true)).finally(() => { btn.disabled = false; matching.renderButton(); });
+      });
+      document.getElementById("pubchat").insertBefore(this.el, document.getElementById("pubchat-row"));
     }
-  },
-  leave() {
-    world3d.setExplore(null);
-    this.marker?.remove(); this.marker = null;
-    backBtn.hidden = true;
+    this.el.hidden = false;
   },
 };
 
-exploreBtn.addEventListener("click", async () => {
+// the Explore tab is the world screen's own tab: tapping it brings the camera back onto you
+exploreBtn.addEventListener("click", () => {
   if (nav.swallow()) return;
-  exploreBtn.disabled = true;
-  sfx.confirm();
-  try {
-    if (presence.myZone) await presence.goClosed();
-    else if (params.get("devlat") || await askPermission("location")) await presence.goOpen();
-    matching.renderButton();
-  } catch (e) {
-    alert(e.message || String(e));
-  } finally {
-    exploreBtn.disabled = false;
-  }
+  sfx.cursor();
+  world3d.recenter();
+  presence.sync();
 });
-// "back to me" shows once you've panned away from home
-world3d.tickHooks.push(() => {
-  const away = !presence.myZone && world3d.homePos && world3d.observing && world3d.awayFromHome() > 40;
-  if (backBtn.hidden === !away) return;
-  backBtn.hidden = !away;
-});
-backBtn.addEventListener("click", () => { sfx.back(); world3d.recenter(); backBtn.hidden = true; });
 
 // ===================== matching =====================
 // Explicit "match me" tap -> zone-scoped queue -> server-side pairing.
@@ -1452,9 +1481,9 @@ presence.onSignedOut = function () {
   _onSignedOut();
   matching.onSignedOut();
 };
-const _goClosed = presence.goClosed.bind(presence);
-presence.goClosed = async function () {
-  await _goClosed();
+const _goOff = presence.goOff.bind(presence);
+presence.goOff = async function () {
+  await _goOff();
   matching.queued = false; // server trigger already dropped the queue row
   matching.stopPolling();
   matching.renderButton();
@@ -1891,8 +1920,8 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") styleView.re
 // come in live over Realtime postgres_changes. Who hears a line is its AREA
 // (chatscope.js): Itaewon's fixed zones are one plaza, anywhere else your
 // ~2.2 km cell. The server stamps each line with the sender's presence zone,
-// so talking needs you on the map; hidden, you read your area's lines but
-// the chat asks to show you first. The sender's handle is shown; the bubble
+// so talking needs you on the map (you are while the world screen is up and
+// location is on; without location the chat says to turn it on). The sender's handle is shown; the bubble
 // floats over the sender's ZONE, never a person (presence stays identity-free).
 
 const pubEl = document.getElementById("pubchat");
@@ -1909,12 +1938,11 @@ export const pubchat = {
   seen: new Set(),     // ids in the feed: your own line shows at once, then its realtime echo is skipped
   _buf: null,          // lines that came in while the feed was (re)loading
 
-  // the feed's area: your zone's while you're on the map; while hidden, the
-  // area round where you explore from, worked out on this phone, never sent
+  // the feed's area: your zone's while you're on the map, else the last one
+  // you were on it in (else the plaza)
   currentArea() {
-    if (presence.myZone) return areaOfZone(presence.myZone.id);
-    const h = explore.home;
-    return h ? areaAt(h.lat, h.lng, presence.zones) : PLAZA;
+    const z = presence.myZone ?? presence.lastZone;
+    return z ? areaOfZone(z.id) : PLAZA;
   },
 
   async onSignedIn() {
@@ -1929,7 +1957,6 @@ export const pubchat = {
   onSignedOut() {
     if (this.channel) { sb.removeChannel(this.channel); this.channel = null; }
     this.area = null; this.myId = null;
-    this.closeAsk();
     pubEl.hidden = true;
     pubForm.hidden = true;
     pubOpenBtn.hidden = false;
@@ -1941,8 +1968,8 @@ export const pubchat = {
   // hands back a live channel of the same name, so the old remove-then-
   // resubscribe under "pubchat" got the channel that was still leaving, which
   // never joins again: the chat went deaf after every refresh.
-  // Every insert comes in, and the area is checked here: a hidden phone never
-  // tells the server where it is.
+  // Every insert comes in, and the area is checked here: a phone off the map
+  // never tells the server where it is.
   subscribe() {
     if (this.channel) return;
     const ch = sb.channel(`pubchat-${Math.random().toString(36).slice(2, 10)}`)
@@ -1970,7 +1997,7 @@ export const pubchat = {
     let q = sb.from("public_messages").select("*").order("created_at", { ascending: false });
     if (presence.myZone && area === PLAZA) q = q.in("zone_id", presence.zones.filter(z => z.kind !== "auto").map(z => z.id)).limit(25);
     else if (presence.myZone) q = q.eq("zone_id", presence.myZone.id).limit(25);   // the server has your zone already
-    else q = q.limit(100);                    // hidden: the latest lines, sorted out on this phone
+    else q = q.limit(100);                    // off the map: the latest lines, sorted out on this phone
     const { data, error } = await q;
     if (this.area !== area || this._buf !== buf) return;   // moved on meanwhile
     this._buf = null;
@@ -2026,44 +2053,13 @@ export const pubchat = {
     }, 4000);
   },
 
-  // hidden: "show yourself here to talk", over the input. Resolves true once
-  // you're on the map (the same way as the bar's Explore button: the location
-  // pre-prompt, then your zone), false for "not now" or no location.
-  ask: null,
-  askToShow() {
-    this.closeAsk();
-    return new Promise(res => {
-      const el = document.createElement("div");
-      el.id = "pubchat-ask";
-      el.className = "glass";
-      el.setAttribute("role", "dialog");
-      el.innerHTML = `<b>${escHtml(t("chat.askTitle"))}</b><p>${escHtml(t("chat.askBody"))}</p>
-        <div class="pa-btns"><button type="button" class="glass-btn clear" data-no>${escHtml(t("chat.askNo"))}</button><button type="button" class="glass-btn gold" data-yes>${escHtml(t("chat.askYes"))}</button></div>`;
-      pubEl.insertBefore(el, document.getElementById("pubchat-row"));
-      const done = v => { if (this.ask === el) this.ask = null; el.remove(); res(v); };
-      el.querySelector("[data-no]").onclick = () => { sfx.back(); done(false); };
-      el.querySelector("[data-yes]").onclick = async e => {
-        e.currentTarget.disabled = true;
-        sfx.confirm();
-        try {
-          if (params.get("devlat") || await askPermission("location")) await presence.goOpen();
-          else this.addLine(t("chat.noLoc"), true);
-          matching.renderButton();
-        } catch (err) { this.addLine(err.message || String(err), true); }
-        done(!!presence.myZone);
-      };
-      el._cancel = () => done(false);
-      this.ask = el;
-    });
-  },
-  closeAsk() { this.ask?._cancel?.(); },
-
   // true once it's sent (and already in your feed)
   async send(text) {
-    if (!presence.myZone && !(await this.askToShow())) return false;
+    // not on the map (no location): the chat can't place you, so it says to turn it on
+    if (!presence.myZone) { this.addLine(t("chat.noLoc"), true); locNote.show(onWorld()); return false; }
     const { data, error } = await sb.from("public_messages").insert({ body: text }).select().maybeSingle();
     if (error) {
-      this.addLine(/open/i.test(error.message) ? t("chat.hidden") : t("chat.failed"), true);
+      this.addLine(/open/i.test(error.message) ? t("chat.noLoc") : t("chat.failed"), true);
       console.warn("[rando] plaza chat send:", error.message);
       return false;
     }
@@ -2088,7 +2084,6 @@ pubForm.addEventListener("submit", async e => {
 });
 pubInput.addEventListener("keydown", e => {
   if (e.key === "Escape") {
-    pubchat.closeAsk();
     pubForm.hidden = true;
     pubOpenBtn.hidden = false;
   }
@@ -2112,14 +2107,14 @@ presence.onSignedOut = function () {
   friends.onSignedOut();
 };
 // on or off the map, a new zone: the feed follows your area
-for (const k of ["goOpen", "goClosed", "heartbeat"]) {
+for (const k of ["goOpen", "goOff", "heartbeat"]) {
   const f = presence[k].bind(presence);
   presence[k] = async function (...a) { try { return await f(...a); } finally { pubchat.setArea().catch(() => {}); } };
 }
 
 // ===================== the bottom bar =====================
 // center: host a party (opens the party screen, or your party if you're in
-// one) · left: explore/visible (above) · right: style (above).
+// one) · left: Explore, the world screen itself (above) · right: style (above).
 // Pull the bar down to refresh nearby parties and people (the map itself
 // pans, so the gesture lives on the bar).
 const nav = {

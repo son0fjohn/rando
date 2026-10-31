@@ -28,14 +28,14 @@ famous landmarks. Itaewon keeps its hand-made map.
   `blendGround`). The hand-made grass stays grass: repaving it turned
   Namsan into paving, since the baked data has no park outline there.
   When the blend starts, the world reaches out to 3.75 km and you (and
-  Explore's spot, and the others) are placed again: before, someone 1.9–3
+  the camera's resting spot, and the others) are placed again: before, someone 1.9–3
   km out (Yongsan Station, Huam-dong, Oksu) stood at the hand-made map's
   old edge, up to 800 m from where they were, among another neighbourhood's
   streets.
 - **Anywhere else**: the procedural city, centred where you are. It
   re-centres when you go more than 2.5 km from its origin.
-- The spot is the player's (presence) or Explore's (read on the phone, only
-  if location is allowed; never sent). While the start screen is up the
+- The spot is the player's (presence: their zone) or, while they're not on
+  the map, where the camera rests (their last zone; else the station). While the start screen is up the
   world is held on Itaewon (its still image is Itaewon) and catches up when
   it closes.
 - `?city=tiles` is the old city-only mode (Manhunt's zones, tests); `?blend=0`

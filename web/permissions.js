@@ -21,6 +21,8 @@ const ICON = {
   camera: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`,
 };
 const KEYS = { location: "perm.loc", notifications: "perm.notif", contacts: "perm.contacts", camera: "perm.camera" };
+// the kinds whose card has been up this session (so it isn't put up again on its own)
+export const asked = new Set();
 
 export async function permState(kind) {
   try {
@@ -47,6 +49,7 @@ export function prePrompt(kind, { title, body, onYes } = {}) {
   const root = document.getElementById("onb");
   if (!root) { onYes?.(); return Promise.resolve(true); }
   const k = KEYS[kind];
+  asked.add(kind);
   track("permission_prompted", { permission: kind });
   return new Promise(res => {
     const el = document.createElement("div");

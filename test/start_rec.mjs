@@ -345,10 +345,10 @@ for (const [where, lat, lng] of [["Itaewon", 37.5347, 126.9945], ["Calgary", 51.
   const s1 = await E.evaluate(async () => {
     const { world3d } = await import("/web/world3d.js");
     const nav = document.getElementById("navbar");
-    return { going: window.__ex.going, nav: !nav.hidden && getComputedStyle(nav).display !== "none", explore: !!world3d.homePos, mode: world3d.blending ? "blend" : world3d.cityOn ? "city" : "itaewon",
+    return { going: window.__ex.going, nav: !nav.hidden && getComputedStyle(nav).display !== "none", explore: !!(world3d.followPos ?? world3d.restPos), mode: world3d.blending ? "blend" : world3d.cityOn ? "city" : "itaewon",
       origin: world3d.city?.origin ?? null, credit: document.getElementById("osm-credit")?.textContent };
   });
-  ok(s1.going && s1.nav && s1.explore, `${where}: the bar slides in, exploring round where you are (${JSON.stringify({ nav: s1.nav, explore: s1.explore })})`);
+  ok(s1.going && s1.nav && s1.explore, `${where}: the bar slides in, the camera on where you are (${JSON.stringify({ nav: s1.nav, explore: s1.explore })})`);
   ok(where === "Itaewon" ? s1.mode === "blend" : s1.mode === "city" && Math.abs(s1.origin[0] - lat) < 0.01,
     `${where}: ${where === "Itaewon" ? "Itaewon's own map, with the procedural city round its edges" : "the procedural city there, centred on you"} (${s1.mode})`);
   ok(/OpenStreetMap/.test(s1.credit ?? "") && /Overture/.test(s1.credit ?? ""), `${where}: the map data's credit in the corner ("${s1.credit}")`);
