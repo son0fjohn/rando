@@ -80,7 +80,5 @@ export async function flush() {
   if (queue.length) schedule();
 }
 // backend.js: rows -> Promise (throws on failure)
-// (a multiplayer test run (web/e2e.js's flag, never on production) sends no events: test phones stay out of the numbers)
-const E2E = (globalThis.__RANDO_E2E || /[?&]e2e=1(&|$)/.test(globalThis.location?.search ?? "")) && globalThis.location?.hostname !== "randoirl.vercel.app";
-export function setSink(fn) { if (E2E) return; sink = fn; schedule(); }
+export function setSink(fn) { sink = fn; schedule(); }
 globalThis.addEventListener?.("pagehide", () => { flush(); });

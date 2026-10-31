@@ -29,9 +29,6 @@ export class StubChannel {
     if (this.strict && (this.leaving || this.bc)) return this;
     this.bc = new BroadcastChannel(`sbstub:${this.name}`);
     this.bc.onmessage = e => this._rx(e.data);
-    // the server hands a new subscriber the presence state as it is, without
-    // its own track(): ask whoever's here (an invite link's peek reads it)
-    if (this.cfg.presence) this.bc.postMessage({ k: "who" });
     open.add(this);
     // (strict: the join is a round trip to the server; until it's back the channel is "joining")
     setTimeout(() => { if (this.bc || !this.strict) { this.joined = !!this.bc; cb?.("SUBSCRIBED"); } }, this.strict ? 150 : 5);
@@ -56,7 +53,6 @@ export class StubChannel {
   }
   _rx(d) {
     if (d.k === "bc") return this._emit("broadcast", d.event, { payload: d.payload });
-    if (d.k === "who") { if (this.mine) this.bc.postMessage({ k: "here", key: this.key, meta: this.mine }); return; }
     if (d.k === "join") {
       this.state[d.key] = [d.meta];
       if (this.mine) this.bc.postMessage({ k: "here", key: this.key, meta: this.mine });

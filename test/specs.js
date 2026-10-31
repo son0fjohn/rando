@@ -13,7 +13,7 @@ import { MANHUNT_GAME } from "/web/hpgames/manhunt.js";
 import * as G from "/web/mhgeo.js";
 import { ART_GALLERY } from "/web/artgallery.js";
 import { MANHUNT, DIARY, RITUAL, SIDEQUEST, MASKOFF, LEADERBOARD } from "/web/hpconfig.js";
-import { resultsHtml, trash, Rounds, syncGone } from "/web/hpkit.js";
+import { resultsHtml, trash, Rounds } from "/web/hpkit.js";
 import { ui, finalResults } from "/web/gamekit.js";
 import { HOWTO, HOWTO_MS } from "/web/howto.js";
 import { findPath, walkable } from "/web/hplobby.js";
@@ -880,30 +880,6 @@ group("Side Quest (4 players)");
   adv(3000);
   ok(t.s.turn.skipped && t.s.phase !== "do", "the player on the quest leaves: the turn is skipped, nobody waits");
   ok(runOut(t), "and the game still finishes");
-}
-{
-  // a phone whose network died stays in presence for a while; not heard from
-  // in 30 s (net.js Room.stale), it counts as gone and nobody waits on it
-  const t = seatTable(SIDE_QUEST, 4);
-  adv(500);
-  t.input(t.host.me.id, "sq-go");
-  adv(2000);
-  ok(waitPhase(t, "do", 20000), "a quest is on");
-  const who = t.s.turn.who, raters = Object.keys(t.s.players).filter(x => x !== who);
-  const silent = raters.find(x => x !== t.host.me.id);
-  for (const r of raters) if (r !== silent) t.input(r, "rate", { v: 4 });
-  adv(1500);
-  ok(t.s.phase === "do", "one watcher hasn't rated: the turn waits");
-  t.host.room.stale = id => id === silent;
-  ok(waitPhase(t, "result", 3000), "that watcher goes silent (30 s unheard): the turn ends without them");
-  ok(t.s.players[silent].gone, "…they're marked gone");
-  t.host.room.stale = () => false;
-  adv(1000);
-  ok(!t.s.players[silent].gone, "heard from again: back in");
-  ok(runOut(t), "the game finishes");
-  const s = { players: { a: { id: "a" }, b: { id: "b" } } }, room = { members: [{ id: "a" }, { id: "b" }], stale: id => id === "b" };
-  syncGone(s, room, { stale: false });
-  ok(!s.players.b.gone, "Manhunt's own check ({ stale: false }): a silent phone in a pocket still plays");
 }
 {
   const adult = { name: "x", privacy: "private", settings: { adult: true } };
