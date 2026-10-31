@@ -1,12 +1,14 @@
 // The world screen's chrome on the REAL app page (offline, test/appserve.mjs):
 // the round buttons (Home top-left, Friends top-right, the note button
-// bottom-right), the plaza chat over the map, "Back to me" and the bottom bar,
+// bottom-right), the plaza chat over the map, the location notice and the bottom bar,
 // by night, sunset and day, at 320 / 375 / 390 / 430 px wide. Asserts:
 //   - Home and Friends: the same size, the same top, the same distance from
 //     their screen edge, and the same CSS top (both off env(safe-area-inset-top));
 //   - the note button: as big as the other round map buttons, liquid glass,
 //     bottom-right, clear of the nav bar, the chat lines, the chat row (open
-//     or closed) and "Back to me";
+//     or closed) and the location notice;
+//   - no visibility switch: no "Back to me", no "you · hidden" tag, the
+//     Explore tab just the active tab; you're on the map (your zone);
 //   - the plaza chat: no box behind a line, a text shadow instead;
 //   - the bar: navy (#0F1A3A) at every light (it never follows --day), its
 //     labels light (the active one gold), each >= 4.5:1 on it.
@@ -56,7 +58,8 @@ for (const light of LIGHTS) {
   await until(pg, () => !document.getElementById("navbar")?.hidden, null, 60000);
   ok(await until(pg, () => document.body.classList.contains("notes-on") && !!document.getElementById("notes-leave"), null, 60000), "the note button is on the world screen");
   // what a returning player sees: Home (shown once onboarding hides), Friends
-  // (once the friends list loads), the plaza chat with a few lines, Back to me
+  // (once the friends list loads), the plaza chat with a few lines, and the
+  // location notice (shown here as a phone without location would see it)
   await pg.evaluate(lines => {
     document.getElementById("nav-home").hidden = false;
     document.getElementById("friends-btn").hidden = false;
@@ -64,8 +67,18 @@ for (const light of LIGHTS) {
     const feed = document.getElementById("pubchat-feed");
     for (const [h, m] of lines) { const d = document.createElement("div"); d.className = "pub-line"; const b = document.createElement("b"); b.textContent = h; d.append(b, document.createTextNode(m)); feed.appendChild(d); }
   }, LINES);
-  // "Back to me" (it shows once you've panned away; held on, after backend.js's own check each frame)
-  await pg.evaluate(() => import("/web/world3d.js").then(W => W.world3d.tickHooks.push(() => { document.getElementById("nav-backtome").hidden = false; })));
+  // you're on the map just by having the world screen open: no switch, no hidden tag
+  ok(await until(pg, () => !["–", "…", ""].includes(document.getElementById("zone-name")?.textContent ?? ""), null, 60000), `${light}: on the map with the world screen open (${await pg.evaluate(() => document.getElementById("zone-name")?.textContent)})`);
+  ok(await pg.evaluate(() => !document.getElementById("nav-backtome") && ![...document.querySelectorAll(".tag")].some(t => /hidden/i.test(t.textContent)) && !document.getElementById("nav-explore").hasAttribute("aria-pressed")),
+    `${light}: no Back to me, no "you · hidden" tag, the Explore tab is just a tab`);
+  // the location notice, as a phone without location sees it (forced on here: this phone has a location)
+  const LOC = await pg.evaluate(async () => {
+    const { t } = await import("/web/i18n.js");
+    const el = document.createElement("div"); el.id = "loc-note"; el.className = "glass";
+    el.innerHTML = `<span>${t("loc.off")}</span><button type="button" class="glass-btn gold xs fit">${t("loc.retry")}</button>`;
+    document.getElementById("pubchat").insertBefore(el, document.getElementById("pubchat-row"));
+    return true;
+  });
   await sleep(6000);                                    // the world streams in, --day settles
   report[light] = {};
   for (const w of WIDTHS) {
@@ -84,7 +97,7 @@ for (const light of LIGHTS) {
       const lbl = [...bar.querySelectorAll(".nav-tab")].map(t => ({ id: t.id, on: t.classList.contains("on"), color: cs(t).color }));
       return { frame: { l: frame.left, r: frame.right, t: frame.top, b: frame.bottom, w: frame.width }, home: R($("nav-home")), friends: R($("friends-btn")), note: R(note),
         noteText: note?.textContent.trim(), noteCls: note?.className, noteBlur: ns?.backdropFilter, noteRadius: ns?.borderRadius,
-        back: R($("nav-backtome")), nav: R(bar), row: R($("pubchat-row")), chatOpen: R($("pubchat-open")), lines,
+        locNote: R($("loc-note")), nav: R(bar), row: R($("pubchat-row")), chatOpen: R($("pubchat-open")), lines,
         homeTop: ruleTop("#nav-home"), friendsTop: ruleTop("#side-actions"),
         lineBg: line && cs(line).backgroundColor, lineShadow: line && cs(line).textShadow, lineBlur: line && cs(line).backdropFilter, nameColor: line && cs(line.querySelector("b")).color,
         barBg: cs(bar).backgroundColor, lbl, day: cs(document.documentElement).getPropertyValue("--day").trim() };
@@ -107,7 +120,7 @@ for (const light of LIGHTS) {
       ok(!hit(g.note, g.nav), `${tag}: …clear of the nav bar (note bottom ${g.note.b}, bar top ${g.nav.t})`);
       ok(!g.lines.some(l => hit(g.note, l, 4)), `${tag}: …clear of the chat lines`);
       ok(!hit(g.note, g.chatOpen, 4), `${tag}: …clear of the chat button`);
-      ok(!hit(g.note, g.back, 4), `${tag}: …clear of Back to me (note top ${g.note.t}, Back to me bottom ${g.back?.b})`);
+      ok(!LOC || !hit(g.note, g.locNote, 4), `${tag}: …clear of the location notice (note top ${g.note.t}, notice bottom ${g.locNote?.b})`);
     }
     report[light][w] = g;
     await shot(pg, `${light}-${w}-map`);

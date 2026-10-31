@@ -179,7 +179,7 @@ async function landed(pg, tag) {
     const vis = el => !!el && getComputedStyle(el).display !== "none" && getComputedStyle(el).visibility !== "hidden" && +getComputedStyle(el).opacity > 0.05 && el.getClientRects().length > 0;
     const over = [...document.querySelectorAll(".onb-screen, .onb-sheet, .onb-perm, .onb-hint, .onb-toast, .glass-toast, .pt-confirm, #pp, #pt-create, #pt-err, .y-card-wrap, #party-card:not([hidden]) > *, #dive-veil.on")]
       .filter(vis).filter(el => !el.classList.contains("out")).map(el => el.id || el.className.split(" ").slice(0, 2).join("."));
-    const home = world3d.followPos ?? world3d.homePos;
+    const home = world3d.followPos ?? world3d.restPos;
     let ndc = null;
     if (home) { const v = home.clone(); v.y += CHAR_H / 2; v.project(world3d.camera); ndc = [+v.x.toFixed(3), +v.y.toFixed(3)]; }
     const c = world3d.cam, d = world3d.CAM_DEFAULT;
@@ -188,7 +188,7 @@ async function landed(pg, tag) {
       nav: vis(document.getElementById("navbar")) && !document.body.classList.contains("in-lobby"),
       scenery: document.body.classList.contains("scenery"), paused: !!world3d.paused, onb: document.body.classList.contains("onb-on"),
       host: document.querySelector("#nav-host .nav-lbl")?.textContent,
-      on: !!home, who: world3d.followPos ? "character" : world3d.homePos ? "hidden spot" : "none",
+      on: !!home, who: world3d.followPos ? "character" : world3d.restPos ? "last zone" : "none",
       off: home ? +Math.hypot(world3d.target.x - home.x, world3d.target.z - home.z).toFixed(2) : null,
       cam: [+(c.theta - d.theta).toFixed(3), +(c.elev - d.elev).toFixed(3), +(c.dist - d.dist).toFixed(1)], fov: world3d.camera.fov,
       ndc, pull: window.__pull?.ys ?? [],
@@ -204,6 +204,10 @@ async function landed(pg, tag) {
     const top = Math.max(...r.pull), y0 = r.pull[0], y1 = r.pull[r.pull.length - 1];
     ok(r.pull.length > (VIDEO ? 6 : 10) && y0 < y1 - 40 && (VIDEO || top > y1 + 10), `${tag}: the camera pulled out of the building and settled on you (height ${r.pull.filter((_, i, a) => i % Math.ceil(a.length / 8) === 0 || i === a.length - 1).join(" → ")})`);
   } else if (process.env.LEAVE_NEED_PULL !== "0") ok(false, `${tag}: the camera pulled out of the building (no frames recorded)`);
+  // the world screen is up again: you're back on the map (your zone), your character on it
+  await pg.evaluate(async () => { window.__W = (await import("/web/world3d.js")).world3d; });
+  ok(await until(pg, () => !["–", "…", ""].includes(document.getElementById("zone-name")?.textContent ?? "") && !!window.__W.followPos, null, 30000),
+    `${tag}: back on the map, your character on it (the world screen open = on the map)`);
   return r;
 }
 

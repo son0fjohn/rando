@@ -10,9 +10,10 @@
 //     INITIAL_SESSION and then about every hour) the chat still gets lines
 //   - bob (on the map) says something: bob sees his own line, alice (same
 //     area) sees it, carol (another area) doesn't
-//   - another refresh; alice (hidden, exploring) says something: the chat
-//     asks to show her on the map first, then she sees her own line, bob sees
-//     it, carol doesn't
+//   - alice opens the app without location (the pre-prompt: Not now): she's
+//     not on the map, a notice says to turn location on, and her line doesn't
+//     go (the chat says to turn location on); location on, Try again: she's
+//     on the map, then she sees her own line, bob sees it, carol doesn't
 //   - carol says something in Calgary: she sees it, alice and bob don't
 //   - a reload reads the area's lines back (they're stored), and only them
 // Exits 1 if any check fails. <dir>/<prefix>-{alice,bob,carol}.png are the
@@ -52,7 +53,7 @@ const errors = [];
 const results = [];
 const check = (ok, what) => { results.push({ ok: !!ok, what }); console.log(`${ok ? "ok  " : "FAIL"} ${what}`); };
 
-const ITAEWON = "devlat=37.5347&devlng=126.9945", CALGARY = "devlat=51.0447&devlng=-114.0719";
+const ITAEWON = "devlat=37.5347&devlng=126.9945", CALGARY = "devlat=51.0447&devlng=-114.0719", NO_LOC = "nolocation=1";
 async function phone(name, where) {
   const pg = await ctx.newPage();
   pg.on("pageerror", e => errors.push(`${name}: ${e.message}`));
@@ -84,7 +85,9 @@ async function arrival(pg, text, sentAt, wait = 8000) {
   }
 }
 const inTime = (ms, what) => check(ms !== null && ms <= 2000, `${what}${ms !== null ? ` (${ms} ms)` : " (never)"}`);
-const visible = pg => pg.evaluate(() => document.getElementById("zone-name")?.textContent !== "hidden · exploring");
+// on the map: the bar's zone field holds your zone ("–" while you're not on it)
+const visible = pg => pg.evaluate(() => !["–", "…", ""].includes(document.getElementById("zone-name")?.textContent ?? ""));
+const noteUp = pg => pg.evaluate(() => { const n = document.getElementById("loc-note"); return !!n && !n.hidden && n.getBoundingClientRect().height > 0; });
 const ready = pg => pg.waitForFunction(() => !document.getElementById("auth-status")?.hidden, null, { timeout: 180000 });
 
 // a tap on a button that must be on top where a finger lands (nothing over
@@ -100,24 +103,24 @@ async function tap(pg, sel, label = sel) {
   if (top !== "ok") check(false, `${label} is tappable (${top})`);
   await pg.evaluate(s => document.querySelector(s)?.click(), sel);
 }
-// say something in the plaza chat, as a player would: the chat button, type, send
-// (and, if the chat asks to show you on the map first, yes). Returns when it
-// went (that phone's clock) and whether it was asked.
+// say something in the plaza chat, as a player would: the chat button, type,
+// send. Returns when it went (that phone's clock).
 async function say(pg, text) {
   await pg.bringToFront();
   if (await pg.locator("#pubchat-open").isVisible()) await tap(pg, "#pubchat-open", "the chat button");
   await pg.fill("#pubchat-input", text);
-  let sentAt = await pg.evaluate(() => Date.now());
+  const sentAt = await pg.evaluate(() => Date.now());
   await tap(pg, "#pubchat-send", "the send button");
-  const ask = pg.locator("#pubchat-ask [data-yes]");
-  try { await ask.waitFor({ state: "visible", timeout: 1500 }); } catch { return { sentAt, asked: false }; }
-  await moment("alice is asked to show herself first");
-  sentAt = await pg.evaluate(() => Date.now());
-  await tap(pg, "#pubchat-ask [data-yes]", "the chat's Show me button");
-  return { sentAt, asked: true };
+  return { sentAt };
 }
 
-const alice = await phone("alice", ITAEWON);
+// alice has no location yet: no ?devlat, and the browser hasn't been asked
+// (the location pre-prompt comes up on the world screen; she says Not now)
+const alice = await phone("alice", NO_LOC);
+const perm = alice.locator(".onb-perm [data-no]");
+let prompted = true;
+try { await perm.waitFor({ state: "visible", timeout: 30000 }); await perm.click(); } catch { prompted = false; }
+check(prompted, "alice, no location yet: the location pre-prompt comes up on the world screen (she says Not now)");
 const bob = await phone("bob", ITAEWON);
 const carol = await phone("carol", CALGARY);
 const all = [["alice", alice], ["bob", bob], ["carol", carol]];
@@ -138,14 +141,14 @@ async function moment(what) {
   console.log(`  [frame ${i}] ${what}`);
 }
 
-// bob and carol go on the map the way the bar offers it (alice stays hidden, exploring)
+// bob and carol are on the map just by having the world screen open (no toggle)
 for (const [n, pg] of [["bob", bob], ["carol", carol]]) {
-  await pg.bringToFront();
-  await tap(pg, "#nav-explore", "the bar's Explore button");
-  await pg.waitForFunction(() => document.getElementById("zone-name")?.textContent !== "hidden · exploring", null, { timeout: 90000 }).catch(() => {});
-  check(await visible(pg), `${n} is on the map after tapping the bar's Explore button`);
+  await pg.waitForFunction(() => !["–", "…", ""].includes(document.getElementById("zone-name")?.textContent ?? ""), null, { timeout: 90000 }).catch(() => {});
+  check(await visible(pg), `${n} is on the map with the world screen open`);
+  check(!(await noteUp(pg)), `${n}: no location notice`);
 }
-await moment("bob and carol on the map, alice hidden");
+check(await alice.evaluate(() => !document.getElementById("nav-explore")?.hasAttribute("aria-pressed") && !document.getElementById("nav-backtome")), "the Explore tab is just a tab (no visibility switch, no Back to me)");
+await moment("bob and carol on the map, alice without location");
 await refresh();
 
 // 1. bob, on the map, in Itaewon
@@ -155,10 +158,22 @@ inTime(await arrival(alice, "hi from bob", s.sentAt), "alice (same area) gets bo
 check(!(await has(carol, "hi from bob")), "carol (Calgary) doesn't get bob's message");
 await moment("bob said hi: bob and alice have it, carol (Calgary) doesn't");
 
-// 2. another refresh; alice, hidden: the chat asks to show her first
+// 2. another refresh; alice, no location: not on the map, the notice; her line doesn't go
 await refresh();
+check(!(await visible(alice)), "alice (no location) is not on the map");
+check(await noteUp(alice), "alice sees the notice: turn on location to appear on the map");
+s = await say(alice, "can anyone hear me");
+await sleep(1500);
+check(await has(alice, "Turn on location to talk here") && !(await has(alice, "can anyone hear me")), "alice's line doesn't go: the chat says to turn on location");
+check(!(await has(bob, "can anyone hear me")), "…and bob never gets it");
+await moment("alice without location: the notice, the chat says to turn it on");
+// location on, Try again: she's on the map, and talks
+await ctx.setGeolocation({ latitude: 37.5347, longitude: 126.9945 });
+await ctx.grantPermissions(["geolocation"]);
+await tap(alice, "#loc-note button", "the notice's Try again");
+await alice.waitForFunction(() => !["–", "…", ""].includes(document.getElementById("zone-name")?.textContent ?? ""), null, { timeout: 60000 }).catch(() => {});
+check(await visible(alice) && !(await noteUp(alice)), "location on + Try again: alice is on the map, the notice gone");
 s = await say(alice, "hey bob, at the station");
-check(s.asked, "alice (hidden) is asked to show herself on the map before her message goes");
 inTime(await arrival(alice, "hey bob, at the station", s.sentAt), "alice sees her own message");
 inTime(await arrival(bob, "hey bob, at the station", s.sentAt), "bob (same area) gets alice's message");
 check(await visible(alice), "alice is on the map now");
@@ -177,13 +192,15 @@ await sleep(1500);
 // the three phones at the end
 for (const [n, pg] of all) await pg.screenshot({ path: join(OUT, `${PREFIX}-${n}.png`), timeout: 120000 }).catch(e => console.warn("screenshot:", e.message));
 
-// 4. stored: a reload reads the area's lines back
-await bob.reload(); await ready(bob); await holdMap(bob);
+// 4. stored: a reload reads the area's lines back (the reload took each phone
+// off the map; with the world screen up again it's back on, in its area)
+const backOn = pg => pg.waitForFunction(() => !["–", "…", ""].includes(document.getElementById("zone-name")?.textContent ?? ""), null, { timeout: 60000 }).catch(() => {});
+await bob.reload(); await ready(bob); await holdMap(bob); await backOn(bob);
 await bob.waitForFunction(() => document.querySelectorAll("#pubchat-feed .pub-line").length > 2, null, { timeout: 30000 }).catch(() => {});
 check(await has(bob, "hey bob, at the station") && await has(bob, "hi from bob"), "after a reload bob reads both Itaewon messages back");
 check(!(await has(bob, "calgary")), "…and not Calgary's");
-await carol.reload(); await ready(carol); await holdMap(carol);
-await carol.waitForFunction(() => document.querySelectorAll("#pubchat-feed .pub-line").length > 0, null, { timeout: 30000 }).catch(() => {});
+await carol.reload(); await ready(carol); await holdMap(carol); await backOn(carol);
+await carol.waitForFunction(() => [...document.querySelectorAll("#pubchat-feed .pub-line")].some(l => /calgary/.test(l.textContent)), null, { timeout: 30000 }).catch(() => {});
 check(await has(carol, "hello from calgary"), "after a reload carol reads Calgary's message back");
 check(!(await has(carol, "hi from bob")) && !(await has(carol, "coffee line")), "…and none of Itaewon's");
 

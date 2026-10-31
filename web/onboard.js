@@ -270,8 +270,9 @@ export const onboard = {
   },
 
   // Explore the world: no party, the map itself. The panel fades, the camera
-  // glides down to where you are (read on this phone, only if location is
-  // allowed; else Itaewon), the bar slides in and the spots and pins fade in.
+  // glides down to your zone (worked out on this phone, only if location is
+  // allowed; else your last zone or Itaewon), the bar slides in and the spots
+  // and pins fade in; you're on the map there (backend.js presence.sync).
   // Somewhere far from Itaewon, the city there swaps in under a quick navy
   // blink first.
   async explore() {
@@ -293,7 +294,7 @@ export const onboard = {
       veil.classList.remove("on");
       if (scenery.live) await scenery.glide(world3d.geo(spot.lat, spot.lng));
       hide();
-      env.openMap?.();
+      env.openMap?.(spot);
       document.body.classList.add("world-arrive");
       setTimeout(() => document.body.classList.remove("world-arrive"), 2200);
     } finally { this._going = false; document.getElementById("dive-veil")?.classList.remove("on"); }
