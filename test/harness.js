@@ -152,9 +152,26 @@ export function seatTable(gamedef, n, { seed = 42, ids = null, options = {}, par
       launch(c);
       return true;
     },
+    // someone joins the party while the game runs: in the room (presence),
+    // without the game; party.js launches it for them once the host's game
+    // gives them a seat (a lateJoin game, at its next round): launchLate()
+    arrive(id) {
+      const me = { id, handle: id, avatar: {}, joinedAt: Date.now() };
+      const c = { me, room: new FakeRoom("party-TEST", me, bus, me.joinedAt), ended: false, late: true };
+      clients.push(c);
+      c.room.join();
+      return c;
+    },
+    launchLate(id) {
+      const c = this.byId(id);
+      if (!c || c.game || !this.host?.game?.seated(id)) return false;
+      launch(c);
+      return true;
+    },
     errors() {
       return clients.flatMap(c => (c.game?.errs ?? []).map(e => `${c.me.id}: ${e.where}: ${e.msg.split("\n")[0]}`));
     },
-    allEnded() { return clients.every(c => c.ended || c.dropped); },
+    // (a late arrival still waiting in the lobby has no game to end)
+    allEnded() { return clients.every(c => c.ended || c.dropped || (c.late && !c.game)); },
   };
 }

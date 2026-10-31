@@ -41,8 +41,8 @@
 // The prompts live in web/data/ritual_prompts.json (a draft); ids are permanent.
 import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
-import { RITUAL } from "./../hpconfig.js";
-import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash } from "./../hpkit.js";
+import { RITUAL, PICKER } from "./../hpconfig.js";
+import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash, seatLate } from "./../hpkit.js";
 import { Beats, flyFrom, confetti, impact, nameSlam, takeover, banner, stampOn } from "./../npcscene.js";
 import { dialogBox } from "./../dialog.js";
 import { HOWTO_MS, howto, howtoOn, howtoInput, howtoDone, howtoTally } from "./../howto.js";
@@ -211,6 +211,8 @@ export const HUMILIATION_RITUAL = {
   blurb: "charades, in public. the Boss picks a performer, only they get the secret prompt, everyone types guesses, the performer taps the right one.",
   minPlayers: 3, maxPlayers: 12, length: "~1.5 min per turn",
   backdrop: "room",            // played over the party room (dimmed), not the map
+  // someone who joins mid-game sits in from the next turn (hpkit seatLate)
+  lateJoin: true,
   options: [{
     key: "rounds", label: "rounds",
     choices: [
@@ -414,6 +416,9 @@ export const HUMILIATION_RITUAL = {
     // the next turn: a fair pick of the performer, and the turn's cast (up to
     // 5 players, the performer among them). No prompt here.
     function deal(s) {
+      // anyone who joined the party meanwhile gets a seat: they guess from
+      // now on, and perform too (their turns are added, picked from the back)
+      for (const id of seatLate(s, room, seat)) { s.weights = { ...s.weights, [id]: PICKER.FLOOR }; s.turns += PER; }
       const ids = active(s).map(x => x.id);
       const { id, weights } = fairPick(s.weights, ids, game.rng);
       s.weights = weights;

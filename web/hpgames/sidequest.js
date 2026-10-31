@@ -34,8 +34,8 @@
 // The quests live in web/data/side_quests.json; their ids are permanent.
 import { HostGame, makeBots, ui } from "./../gamekit.js";
 import { sfx, buzz } from "./../fx.js";
-import { SIDEQUEST } from "./../hpconfig.js";
-import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash } from "./../hpkit.js";
+import { SIDEQUEST, PICKER } from "./../hpconfig.js";
+import { Rounds, syncGone, active, esc, shuffle, showResults, hostSkip, bindHostSkip, trash, seatLate } from "./../hpkit.js";
 import { fairPick } from "./../fairpick.js";
 import { Beats, flyFrom, impact, nameSlam, takeover, banner, stampOn, countdown } from "./../npcscene.js";
 import { dialogBox } from "./../dialog.js";
@@ -146,6 +146,8 @@ export const SIDE_QUEST = {
   // picking the quests is the host's own setup: everyone else waits in the
   // lobby, and the host can back out of it (party.js)
   hostSetup: ["setup"],
+  // someone who joins mid-game sits in from the next turn (hpkit seatLate)
+  lateJoin: true,
   describe: meta => (meta?.settings?.adult ? "unhinged quests on" : ""),
 
   start(ctx) {
@@ -221,7 +223,7 @@ export const SIDE_QUEST = {
       // he explains it (howto.js): over once everyone's heard it
       { name: "howto", ms: HOWTO_MS, enter: s => { s.howto = {}; }, done: howtoDone, next: () => "spin" },
       // first who (the ball lands on a face), then what (it swirls up the quest)
-      { name: "spin", ms: SPIN_MS, enter: s => pick(s), next: () => "quest" },
+      { name: "spin", ms: SPIN_MS, enter: s => { seatNew(s); pick(s); }, next: () => "quest" },
       { name: "quest", ms: QUEST_MS, enter: s => deal(s), next: () => "do" },
       {
         // the quest and the rating at once: done when they give up, or when
@@ -314,7 +316,12 @@ export const SIDE_QUEST = {
       s.turns = s.setup.turns ?? Math.max(1, active(s).length);
       s.ti = 0;
     }
-    // a new turn: first the fair pick of who's up…
+    // a new turn: anyone who joined the party meanwhile gets a seat (they
+    // watch and rate from now on; picked like anyone, starting at the back)…
+    function seatNew(s) {
+      for (const id of seatLate(s, room, seat)) s.weights = { ...s.weights, [id]: PICKER.FLOOR };
+    }
+    // …then the fair pick of who's up…
     function pick(s) {
       const { id, weights } = fairPick(s.weights, active(s).map(p => p.id), game.rng);
       s.weights = weights;
