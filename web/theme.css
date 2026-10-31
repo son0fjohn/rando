@@ -1713,7 +1713,7 @@ body:has(#onb .onb-sheet:not(.out)) .onb-hint { display: none; }
 .pt-empty-qr .qr { width: min(52vw, 190px); height: auto; aspect-ratio: 1; border-radius: 12px; display: block; }
 .pt-empty-inv { width: 100%; }
 .pt-empty-card .pt-empty-x { position: absolute; right: 8px; top: 8px; width: 32px; height: 32px; z-index: 1; }
-.pv-t .pv-first { display: inline-block; align-self: flex-start; width: auto; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--color-accent); color: var(--color-on-accent); font: 800 11px var(--f-sys); font-style: normal; vertical-align: 2px; }
+.pv-t .pv-badge { display: inline-block; align-self: flex-start; width: auto; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--color-accent); color: var(--color-on-accent); font: 800 11px var(--f-sys); font-style: normal; vertical-align: 2px; }
 /* the map's way back Home */
 #nav-home { position: absolute; left: 12px; top: calc(env(safe-area-inset-top) + 12px); z-index: 126; }
 #nav-home svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }

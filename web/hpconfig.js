@@ -40,6 +40,14 @@ export const PARTY = {
   GAMES_PER_SET: 3,
 };
 
+// Badges on the game list's rows (the host's Game votes sheet): per game id,
+// the i18n keys of its badges, in order. `fresh: true` shows a badge only to
+// a new group (first set, nothing played yet). Add a game here to badge it.
+export const GAME_BADGES = {
+  artgallery: [{ key: "room.firstGame", fresh: true }],
+  sidequest: [{ key: "room.friendGroups" }],
+};
+
 // The room leaderboard: each completed game turns into party points by
 // finishing place (ties share a place), so a 100-point game and a 6-point
 // game count the same. Everyone who finished gets at least the last value.

@@ -112,6 +112,7 @@ export const STRINGS = {
     "room.votes1": "1 vote",
     "room.pickGuest": "Vote for the next game",
     "room.firstGame": "Great first game",
+    "room.friendGroups": "Great for friend groups",
     "room.joinedNext": "Joining next round",
     "room.lineNextRound": "{game} is on — you'll join at the next round",
     // ---- a public party's house on the map, and its card
@@ -360,6 +361,7 @@ export const STRINGS = {
     "room.votes1": "1표",
     "room.pickGuest": "다음 게임 투표",
     "room.firstGame": "첫 게임 추천",
+    "room.friendGroups": "친구 모임 추천",
     "room.joinedNext": "다음 라운드부터 참여",
     "room.lineNextRound": "지금 {game} 하는 중이에요. 다음 라운드부터 함께해요.",
     "ph.partyOf": "{host}의 파티",
