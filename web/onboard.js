@@ -252,7 +252,7 @@ export const onboard = {
       else this.startScreen({ view: busy });
       // a phone still building the city: no dive then, so the 3D rests and the party comes first
       if (!scenery.live) world3d.setPaused(true);
-      const ok = kind === "start" ? await party.create() : kind === "id" ? await party.join(arg) : await party.joinByCode(arg);
+      const ok = kind === "start" ? await party.create({ cap: "max" }) : kind === "id" ? await party.join(arg) : await party.joinByCode(arg);
       if (ok !== true || !party.current) {
         // couldn't (full, mid-game, no connection, verification declined): say so on the glass
         const why = $("pt-err")?.textContent || "";

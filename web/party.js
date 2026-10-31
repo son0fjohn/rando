@@ -171,12 +171,14 @@ export const party = {
   },
 
   // ---------------------------------------------------------------- host / join / leave
-  async create() {
+  // cap: how many can be in (the start screen's private party: up to PARTY.CAP_MAX, friends bringing friends;
+  // the host form's stepper otherwise)
+  async create({ cap: capArg = null } = {}) {
     const { vibe } = this.form;
     const privacy = FLAGS.PUBLIC_PARTIES && this.form.privacy === "public" ? "public" : "private";
     // phone verification only for a public party (strangers); a private one with friends needs none
     if (privacy === "public" && this.hooks.gate && !(await this.hooks.gate("public"))) return false;
-    const cap = Math.max(PARTY.CAP_MIN, Math.min(PARTY.CAP_MAX, +this.form.cap || PARTY.CAP_DEFAULT));
+    const cap = Math.max(PARTY.CAP_MIN, Math.min(PARTY.CAP_MAX, (capArg === "max" ? PARTY.CAP_MAX : +capArg) || +this.form.cap || PARTY.CAP_DEFAULT));
     const name = (this.form.name || "").trim().slice(0, PARTY.NAME_MAX) || `${this.me.handle}'s party`;
     this.err("");
     await rooms.leave(); await this.leave();
