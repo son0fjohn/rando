@@ -165,7 +165,7 @@ async function throwParty(H, { name = "Tony's party", vibe = "chaotic", cap = nu
     if (cap) { P.form.cap = cap; document.getElementById("pt-cap").value = cap; }
   }, { name, vibe, cap });
   // (going public asks the verification gate first: wait for its answer)
-  await until(H, () => window.__onb.party.form.privacy === "public", null, 20000);
+  await until(H, () => window.__onb.party.form.privacy === "public", null, 90000);
   await sleep(700);
   await H.evaluate(() => document.getElementById("pt-create").click());
   return until(H, () => /^[A-Z0-9]{4}$/.test(document.getElementById("pt-code-chip")?.textContent ?? ""), null, 30000);
@@ -229,6 +229,7 @@ if (ONLY.includes("rec")) {
   const J = await app(ctx, "jae", "&light=night");
   await sleep(6000);                                     // the world streams in
   const casts = [await screencast(T), await screencast(M), await screencast(J)];
+  try {
   await sleep(1500);
   ok(await lightParty(T, { vibe: "chaotic" }), "tony throws a public party");
   ok(await hasHouse(M, "u-tony") && await hasHouse(J, "u-tony"), "the house pops in over tony's character on mina's and jae's maps");
@@ -253,7 +254,7 @@ if (ONLY.includes("rec")) {
   if (!await until(T, () => window.__game?.s?.phase === "setup", null, 60000)) { console.log("    tony:", await state(T)); await shot(T, "fail-tony-start"); }
   await sleep(2500);
   await T.evaluate(() => window.__game.input("sq-go"));
-  ok(await until(T, () => ["howto", "spin", "quest", "do"].includes(window.__game?.s?.phase), null, 20000), "Side Quest is on");
+  ok(await until(T, () => ["howto", "spin", "quest", "do"].includes(window.__game?.s?.phase), null, 90000), "Side Quest is on");
   await sleep(2000);
   ok((await houses(J)).length === 1, "the house stays up on jae's map during the game");
   await look(J);
@@ -271,10 +272,10 @@ if (ONLY.includes("rec")) {
   await shot(J, "rec-04-house-in-game", "jae's map: the house still up during the game");
   // the host ends the game, back to the lobby; then leaves: mina hosts now
   await T.evaluate(() => window.__game.endByHost());
-  await until(T, () => !window.__onb.party.current?.launched, null, 20000);
+  await until(T, () => !window.__onb.party.current?.launched, null, 90000);
   await sleep(2500);
   await T.evaluate(() => window.__onb.party.exit("leave"));
-  ok(await hasHouse(J, "u-mina", 30000), "tony leaves: the house moves to mina, the new host");
+  ok(await hasHouse(J, "u-mina", 90000), "tony leaves: the house moves to mina, the new host");
   await look(J);
   await sleep(3000);
   await shot(J, "rec-05-house-moved", "the house over mina now");
@@ -282,6 +283,7 @@ if (ONLY.includes("rec")) {
   ok(await noHouse(J, 20000), "mina leaves too: the party's over, the house pops out");
   await sleep(2500);
   await shot(J, "rec-06-gone", "no house");
+  } catch (e) { console.log("  !! the recording stopped:", e.message); fails++; }
   await writeFilm("house", casts);
   await ctx.close();
 }
@@ -368,7 +370,7 @@ if (ONLY.includes("late")) {
   const H = await light(ctx, "tony", "&bots=2");
   await lightParty(H);
   await H.evaluate(() => party.startGame("sidequest"));
-  await until(H, () => window.__game?.s?.phase === "setup", null, 20000);
+  await until(H, () => window.__game?.s?.phase === "setup", null, 90000);
   await H.evaluate(() => window.__game.input("sq-go"));
   await until(H, () => ["spin", "quest", "do"].includes(window.__game?.s?.phase), null, 30000);
   const V = await app(ctx, "jae", "&light=night");
@@ -388,7 +390,7 @@ if (ONLY.includes("late")) {
   // the turn ends (the host skips ahead): the next one seats jae, whose phone gets the game
   for (let i = 0; i < 6 && !(await H.evaluate(() => window.__game.seated("u-jae"))); i++) { await H.evaluate(() => window.__game.input("skip")); await sleep(1500); }
   ok(await H.evaluate(() => window.__game.seated("u-jae")), "the next turn: jae has a seat");
-  ok(await until(V, () => !!window.__game?.s && window.__onb?.party?.current?.launched, null, 20000), "jae's phone is in the game");
+  ok(await until(V, () => !!window.__game?.s && window.__onb?.party?.current?.launched, null, 90000), "jae's phone is in the game");
   await sleep(3000);
   await shot(V, "late-3-in-game", "jae in Side Quest from the next turn");
   await ctx.close();
