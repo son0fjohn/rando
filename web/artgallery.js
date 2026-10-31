@@ -389,7 +389,7 @@ export const ART_GALLERY = {
     // ---- host helpers ----
     function syncGone(s) {
       const present = new Set(room.members.map(m => m.id));
-      for (const p of Object.values(s.players)) if (!p.isBot) p.gone = !present.has(p.id);
+      for (const p of Object.values(s.players)) if (!p.isBot) p.gone = !present.has(p.id) || !!room.stale?.(p.id);   // (not heard from in 30 s: net.js)
     }
     function addPhoto(s, owner, pid, src) {
       const p = s.players[owner];

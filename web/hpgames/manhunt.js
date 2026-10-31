@@ -151,7 +151,7 @@ export const MANHUNT_GAME = {
         rounds.enter(s, "setup");
       },
       hostTick(s, dt) {
-        syncGone(s, room);
+        syncGone(s, room, { stale: false });     // (a locked phone in a pocket is still playing)
         rounds.hostStep(s, dt);
         if (s.phase === "hunt") huntTick(s, dt);
         if (s.phase === "end" && s.left <= 0) game.finish();

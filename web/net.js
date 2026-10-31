@@ -21,6 +21,14 @@ import { sb } from "./backend.js";
 const DIR_CHANNEL = "rooms-directory-v1";
 const ANNOUNCE_MS = 2500;
 const EXPIRE_MS = 8000;
+// liveness: every phone in a room says it's still here every HEARTBEAT_MS.
+// Presence alone can take a minute or more to notice a phone whose network
+// died (no goodbye: the server has to time the socket out), and a game
+// waiting on that player would sit there all that time; a member not heard
+// from for STALE_MS is treated as gone by the games (hpkit syncGone) until
+// they're heard from again.
+export const HEARTBEAT_MS = 5000;
+export const STALE_MS = 30000;
 
 export class Room {
   constructor(id, me) {
@@ -32,6 +40,7 @@ export class Room {
     this.joinedAt = Date.now();
     this.onPresence = null;       // fn(members)
     this.alive = false;
+    this.seen = {};               // userId -> when we last heard from them (any message, or their arrival)
   }
 
   async join() {
@@ -46,6 +55,7 @@ export class Room {
         if (metas && metas.length) p[key] = metas[0];
       }
       this.presence = p;
+      for (const id of Object.keys(p)) this.seen[id] ??= Date.now();
       this.onPresence?.(this.members);
     });
     await new Promise((res, rej) => {
@@ -55,6 +65,7 @@ export class Room {
           await this.ch.track({ id: this.me.id, handle: this.me.handle, avatar: this.me.avatar,
                                 joined_at: this.joinedAt });
           this.alive = true;
+          this._hb = setInterval(() => this.send("hb"), HEARTBEAT_MS);
           clearTimeout(to);
           res();
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
@@ -76,6 +87,7 @@ export class Room {
 
   leave() {
     this.alive = false;
+    clearInterval(this._hb);
     if (this.ch) { try { sb.removeChannel(this.ch); } catch {} }
     this.ch = null;
   }
@@ -86,6 +98,8 @@ export class Room {
   }
   get hostId() { const m = this.members; return m.length ? m[0].id : null; }
   get isHost() { return this.hostId === this.me.id; }
+  // not heard from in STALE_MS (their phone dropped off the network, or stopped running)
+  stale(id, now = Date.now()) { return id !== this.me.id && this.seen[id] != null && now - this.seen[id] > STALE_MS; }
 
   // -> the channel's answer ("ok" / "error" / "timed out"), for callers that care (a big photo)
   send(type, payload = {}) {
@@ -95,6 +109,7 @@ export class Room {
   on(type, fn) { (this.handlers[type] ??= []).push(fn); return this; }
   off(type, fn) { this.handlers[type] = (this.handlers[type] || []).filter(f => f !== fn); }
   _dispatch(p) {
+    if (p?.from) this.seen[p.from] = Date.now();
     for (const fn of this.handlers[p.type] || []) { try { fn(p); } catch (e) { console.warn("[room] handler", p.type, e); } }
     for (const fn of this.handlers["*"] || []) { try { fn(p); } catch (e) { console.warn("[room] handler *", e); } }
   }
