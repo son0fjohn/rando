@@ -37,6 +37,9 @@ export const PARTY = {
   // comes back to the room between them, and after the last the party
   // results (podium) — then a new set, or the end of the party
   GAMES_PER_SET: 3,
+  // joining from the map (not by QR / code / link): how close to the host,
+  // in metres, once both phones' GPS accuracy is taken off (joinrange.js)
+  JOIN_RANGE_M: 200,
 };
 
 // Badges on the game list's rows (the host's Game votes sheet): per game id,

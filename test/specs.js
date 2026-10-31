@@ -26,6 +26,7 @@ import { omtChunks } from "/web/cityomt.js";
 import { setDay, getDay } from "/web/daylight.js";
 import { sunAltitude, sunPosition, sunVector, lightAt, phaseOf, localClock, zoneAt, shadowSweep, SHADOW_CLASSIC } from "/web/sun.js";
 import { STRINGS, NAME_PARTS, suggestName, t as tr, setLang, lang as lang0 } from "/web/i18n.js";
+import { distM, fuzzCircle, judge as nearJudge, coarseKm, knockLimiter, KNOCKS } from "/web/joinrange.js";
 import { EVENTS, clean, track } from "/web/analytics.js";
 import { starterLook, e164, otpWait, otpError, OTP, needsSetup, ESSENTIALS, cycleLook } from "/web/onbkit.js";
 import { invitePage } from "/api/invite.mjs";
@@ -1931,6 +1932,26 @@ group("Onboarding — English and Korean, guest setup, invite links, analytics")
   ok(row.length === 1 && JSON.stringify(Object.keys(row[0].props)) === JSON.stringify(["source", "ms"]) && row[0].device && !("user" in row[0]), "an event keeps only whitelisted props (no code, name or place), with an install id, no account");
   ok(EVENTS.length === 22 && JSON.stringify(clean({ permission: "location", trigger: "public", count: 3 })) === JSON.stringify({ permission: "location", trigger: "public", count: 3 }), "the 22 onboarding events, and their props");
   ok(JSON.stringify(clean({ provider: "kakao", reason: "provider" })) === JSON.stringify({ provider: "kakao", reason: "provider" }) && !("provider" in clean({ provider: "naver" })) && !("reason" in clean({ reason: "Error sending to +821012345678" })), "accounts and SMS codes: only the provider and a fixed reason, never a number");
+}
+{
+  group("Joining from the map: within 200 m of the host, GPS accuracy allowed for");
+  const host = { lat: 37.5345, lng: 126.9946, acc: 15 };
+  const at = (m, acc) => ({ lat: host.lat + m / 111195, lng: host.lng, acc });
+  ok(Math.abs(distM(host, at(1000)) - 1000) < 5, "distances in metres");
+  ok(nearJudge(at(150, 10), host).ok && !nearJudge(at(400, 10), host).ok, "150 m away joins, 400 m with a good fix doesn't");
+  ok(nearJudge(at(300, 100), host).ok && nearJudge(at(330, 90), { ...host, acc: 60 }).ok && !nearJudge(at(400, 100), host).ok, "a ±100 m fix inside a bar still joins when the circles come within 200 m (and not when they don't)");
+  ok(!nearJudge(at(5000, 50000), host).ok, "…but a ±50 km fix doesn't pass everything (accuracy is capped)");
+  const far = nearJudge(at(1430, 10), host);
+  ok(!far.ok && far.km === 1.5 && coarseKm(300) === 0.5 && coarseKm(7400) === 7, "too far says about how far, never finer than half a kilometre");
+  let seed = 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const spots = Array.from({ length: 40 }, () => fuzzCircle(at(0, 12), rnd)), moved = spots.map(c => distM(c, at(0)));
+  ok(moved.every(m => m >= 18 && m <= 58) && spots.every(c => c.acc >= 72), "the joiner's circle leaves the phone moved 25-50 m and snapped, its radius grown to cover it");
+  ok(new Set(spots.map(c => `${c.lat},${c.lng}`)).size > 15 && spots.every(c => nearJudge(c, host).ok), "a fresh draw each knock, and someone at the party still gets in");
+  let t0 = 0; const may = knockLimiter(() => t0);
+  const answered = Array.from({ length: 10 }, () => may("u-x")).filter(Boolean).length;
+  t0 += KNOCKS.perMs + 1;
+  ok(answered === KNOCKS.max && may("u-x") && may("u-y"), `the host answers each joiner ${KNOCKS.max} times per 10 minutes at most (no walking circles round the party)`);
+  ok(CONFIG.PARTY.JOIN_RANGE_M === 200, "the range is 200 m (hpconfig PARTY.JOIN_RANGE_M)");
 }
 log("head", `\n${pass} passed, ${fail} failed`);
 window.__done = { pass, fail };

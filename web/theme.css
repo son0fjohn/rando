@@ -335,6 +335,7 @@ body.in-lobby #navbar, body.in-lobby #pubchat { display: none !important; }
 .pc-vibe { color: var(--y-ink-dark); }
 .pc-vibe.v-chill { background: var(--y-aqua) !important; } .pc-vibe.v-chaotic { background: var(--color-accent) !important; } .pc-vibe.v-sporty { background: var(--y-lime) !important; }
 .pc-note { font: var(--fs-small)/20px var(--f-small); color: var(--g-ink-soft); margin: 4px 0 12px; }
+.pc-msg { font: var(--fs-small)/20px var(--f-small); color: var(--g-ink); margin: -4px 0 12px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
 .pc-btns { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
 /* style screen: your character, big */
 #style-screen { position: absolute; inset: 0; z-index: 270; display: flex; flex-direction: column; background: radial-gradient(circle at 50% 32%, var(--y-night-3), var(--y-night-0) 62%); color: var(--y-ink); }
