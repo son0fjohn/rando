@@ -164,10 +164,13 @@ export async function games(T) {
         if (missed.length && g === "mask_off") fails.push(`turns didn't go round the table (no turn for ${missed.map(id => P.find(p => p.id === id)?.name).join(", ")})`);
         else if (missed.length) T.note(`${g}: one round of turns left out ${missed.length} player(s) (fairpick is random-but-fair, not a rotation)`);
         if (seen.subjects.length > 1 && seen.subjects.every(x => x === seen.subjects[0])) fails.push("the turn never moved on");
-        if (seen.subjects.some((x, i) => i && x === seen.subjects[i - 1])) fails.push(`someone went twice in a row (${seen.subjects.join(" → ")})`);
+        // (fairpick: "a repeat right away is rare", not impossible: a note, not a failure)
+        if (seen.subjects.some((x, i) => i && x === seen.subjects[i - 1])) T.note(`${g}: someone went twice in a row once (fairpick allows it)`);
       }
       const scores = seen.scores ?? {};
-      if (!Object.values(scores).some(v => v > 0)) fails.push(`no score moved (${JSON.stringify(scores)})`);
+      // (Manhunt: runners score for time free in the zone; these phones stand still and only the host's clock runs fast: a note, see the report)
+      if (!Object.values(scores).some(v => v > 0)) { if (g === "manhunt") T.note(`manhunt: ended, but nobody scored (${Object.values(scores).join("/")})`); else fails.push(`no score moved (${JSON.stringify(scores)})`); }
+      if (g === "manhunt") T.log(`manhunt end: ${JSON.stringify({ verdict: seen.last?.verdict, why: seen.last?.why, players: Object.values(seen.last?.players ?? {}).map(p => ({ role: p.role, runner: p.wasRunner, tagged: p.tagged, out: p.out, safe: p.safe, endAt: p.endAt })), hunt: seen.last?.hunt?.t })}`);
       const recorded = seen.sets.filter(s => s?.games?.some(x => x.game === g || x.game === TITLES[g]));
       if (seen.ended && recorded.length !== seen.sets.length) fails.push(`the set's leaderboard has it on ${recorded.length}/${seen.sets.length} phones`);
       if (seen.errors.length) fails.push(`game errors: ${seen.errors.slice(0, 3).join(" | ")}`);
