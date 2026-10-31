@@ -31,6 +31,7 @@ const bubbleLayer = document.getElementById("bubble-layer");
 // ?acct=2 gives this tab its own session storage so two accounts can be
 // tested side by side on one machine (dev convenience, no product effect)
 const params = new URLSearchParams(location.search);
+const ss = { get: k => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} } };
 const acct = params.get("acct");
 export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { storageKey: "rando-auth" + (acct ? "-" + acct : "") },
@@ -471,6 +472,8 @@ export const presence = {
         .from("presence").select("zone_id").eq("user_id", session.user.id).maybeSingle();
       this.myZone = mine ? this.zones.find(z => z.id === mine.zone_id) ?? null : null;
       this.renderToggle();
+      // visible when the page went (a reload: the row went with the page, see pagehide below): visible again
+      if (!this.myZone && ss.get("rando-open")) await this.goOpen().catch(e => console.warn("[rando] couldn't show you again:", e?.message ?? e));
       if (!this.myZone) explore.enter();
       this.startPolling();
     } catch (e) {
@@ -540,6 +543,7 @@ export const presence = {
       .upsert({ user_id: session.user.id, zone_id: zone.id });
     if (error) throw error;
     this.myZone = zone;
+    ss.set("rando-open", "1");
     explore.leave();
     this.renderToggle();
     this.startPolling();
@@ -552,6 +556,7 @@ export const presence = {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return;
     await sb.from("presence").delete().eq("user_id", session.user.id);
+    ss.set("rando-open", null);
     clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
     const last = this.myZone;
@@ -2211,6 +2216,24 @@ const safeRefresh = () => refreshStatus().catch(e => {
   showAuth(true);
 });
 sb.auth.onAuthStateChange(() => { safeRefresh(); });
+
+// Closing the app (or leaving the page) takes you off the map at once, so
+// nobody sees you standing there for the 45 minutes a presence row
+// otherwise lasts (002_presence.sql). A request that outlives the page
+// (keepalive), with the token we already hold; a reload puts you back
+// (sessionStorage "rando-open", presence.onSignedIn). Swiped away without
+// a pagehide (it happens on iOS), the row still goes stale server-side.
+let liveToken = null;
+sb.auth.onAuthStateChange((_e, session) => { liveToken = session?.access_token ?? null; });
+sb.auth.getSession().then(({ data }) => { liveToken ??= data?.session?.access_token ?? null; }).catch(() => {});
+addEventListener("pagehide", e => {
+  if (e.persisted || !presence.myZone || !rooms.me?.id || !liveToken) return;
+  fetch(`${SUPABASE_URL}/rest/v1/presence?user_id=eq.${encodeURIComponent(rooms.me.id)}`, {
+    method: "DELETE", keepalive: true, headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${liveToken}` },
+  }).catch(() => {});
+});
+// back from the back/forward cache: the row went when the page did, put it back
+addEventListener("pageshow", e => { if (e.persisted && presence.myZone) presence.goOpen().catch(() => {}); });
 safeRefresh();
 
 // ---- notes on the map (web/notes.js, docs/notes.md): markers, Leave a note

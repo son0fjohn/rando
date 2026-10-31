@@ -171,12 +171,14 @@ export const party = {
   },
 
   // ---------------------------------------------------------------- host / join / leave
-  async create() {
+  // cap: how many can be in (the start screen's private party: up to PARTY.CAP_MAX, friends bringing friends;
+  // the host form's stepper otherwise)
+  async create({ cap: capArg = null } = {}) {
     const { vibe } = this.form;
     const privacy = FLAGS.PUBLIC_PARTIES && this.form.privacy === "public" ? "public" : "private";
     // phone verification only for a public party (strangers); a private one with friends needs none
     if (privacy === "public" && this.hooks.gate && !(await this.hooks.gate("public"))) return false;
-    const cap = Math.max(PARTY.CAP_MIN, Math.min(PARTY.CAP_MAX, +this.form.cap || PARTY.CAP_DEFAULT));
+    const cap = Math.max(PARTY.CAP_MIN, Math.min(PARTY.CAP_MAX, (capArg === "max" ? PARTY.CAP_MAX : +capArg) || +this.form.cap || PARTY.CAP_DEFAULT));
     const name = (this.form.name || "").trim().slice(0, PARTY.NAME_MAX) || `${this.me.handle}'s party`;
     this.err("");
     await rooms.leave(); await this.leave();
@@ -310,6 +312,16 @@ export const party = {
     directory.stopAnnouncing(c.room.id);
     c.lobby?.destroy();
     closeCard($("party-panel"), true);
+    // out mid-game (left, removed, the party ended): the game stops on this
+    // phone too, and its screen goes (it would stay up over the map, dead)
+    if (c.launched) {
+      clearInterval(c.watch);
+      try { c.ctx?.hostGame?.stop(); } catch {}
+      c.launched = false;
+      gameUi.hide(); $("game-layer").hidden = true;
+      this._hostCtl(null); $("hp-paused")?.remove();
+      document.body.classList.remove("hp-setup-wait");
+    }
     c.room.leave();
     this.current = null;
     this.pickerOpen = false; this.chatOpen = false;
@@ -351,6 +363,7 @@ export const party = {
         if (c.meta.privacy === "public" && !directory.announcing) { if (!c.zone) this._findZone().then(() => this._announce()); else this._announce(); }
         this._sendMeta();
         this._enforceCap();
+        for (const m of room.members) if (c.kicked?.has(m.id)) room.send("kick", { id: m.id });   // (back with the same id: out again)
         for (const id of arrived) this._resume(id);
       } else {
         if (directory.announcing) directory.stopAnnouncing();
@@ -400,6 +413,8 @@ export const party = {
     // the host ended the party, or turned this phone away (past the cap): out to the map
     room.on("partyend", m => { if (m.from === room.hostId && !room.isHost && this.current === c) this.exit("ended"); });
     room.on("full", m => { if (m.id === this.me.id && this.current === c) this.exit("full"); });
+    // the host removed this phone from the party (mid-game too: the pause sheet)
+    room.on("kick", m => { if (m.from === room.hostId && !room.isHost && m.id === this.me.id && this.current === c) this.exit("kicked"); });
   },
   _sendMeta() {
     const c = this.current; if (!c?.room.isHost) return;
@@ -529,10 +544,11 @@ export const party = {
   _watchGame(c) {
     clearInterval(c.watch);
     const tick = () => {
-      if (this.current !== c || !c.launched) { clearInterval(c.watch); this._hostCtl(null); return; }
+      if (this.current !== c || !c.launched) { clearInterval(c.watch); this._hostCtl(null); $("hp-paused")?.remove(); return; }
       const phase = c.ctx?.hostGame?.s?.phase ?? null, host = c.room.isHost;
       const setup = !!phase && c.setupPhases.includes(phase);
       this._hostCtl(host ? (setup ? "back" : "end") : null);
+      this._paused(c, !!c.ctx?.hostGame?.s?.paused && !setup);
       const wait = !host && setup;
       if (wait !== !!c.setupWait) {
         c.setupWait = wait;
@@ -549,16 +565,53 @@ export const party = {
   _hostCtl(mode) {
     const layer = $("game-layer");
     if (layer && !$("hp-back")) {
-      layer.insertAdjacentHTML("beforeend", `<button type="button" id="hp-back" class="hp-ctl" hidden aria-label="Back to the lobby">&#8249; Back</button><button type="button" id="hp-end" class="hp-ctl" hidden>End game</button>`);
+      layer.insertAdjacentHTML("beforeend", `<button type="button" id="hp-back" class="hp-ctl" hidden aria-label="Back to the lobby">&#8249; Back</button><button type="button" id="hp-end" class="hp-ctl" hidden>End game</button><button type="button" id="hp-pause" class="hp-ctl" style="right:108px;width:34px;padding:0" hidden aria-label="Pause the game">&#10074;&#10074;</button>`);
       $("hp-back").onclick = () => this.backOut();
       $("hp-end").onclick = () => this.askEnd();
+      $("hp-pause").onclick = () => this.pause(true);
     }
-    const back = $("hp-back"), end = $("hp-end");
+    const back = $("hp-back"), end = $("hp-end"), pause = $("hp-pause");
     if (back) back.hidden = mode !== "back";
     if (end) end.hidden = mode !== "end";
+    if (pause) pause.hidden = mode !== "end" || !!this.current?.ctx?.hostGame?.s?.paused;
     document.body.classList.toggle("hp-ctl-back", mode === "back");
     document.body.classList.toggle("hp-ctl-end", mode === "end");
     if (mode !== "end") $("hp-end-ask")?.remove();
+  },
+  // host: pause / resume the game for everyone (gamekit: the clock stands still)
+  pause(on) {
+    const c = this.current, g = c?.ctx?.hostGame;
+    if (!c?.launched || !c.room.isHost || !g) return;
+    on ? sfx.cursor() : sfx.confirm();
+    g.input("__pause", { on: !!on });
+  },
+  // host: take someone out of the party (and the game: they leave its room,
+  // so it goes on without them); back with the same id, they're sent off again
+  kick(id) {
+    const c = this.current;
+    if (!c?.room.isHost || id === this.me.id) return;
+    (c.kicked ??= new Set()).add(id);
+    c.room.send("kick", { id });
+    sfx.back();
+  },
+  // the paused sheet over the game, on every phone; the host's has Resume and
+  // who's here, each with Remove
+  _paused(c, on) {
+    let el = $("hp-paused");
+    if (!on) { el?.remove(); return; }
+    const host = c.room.isHost, others = host ? c.room.members.filter(m => m.id !== this.me.id) : [];
+    const key = `${host}|${others.map(m => m.id).join(",")}`;
+    if (el?.dataset.key === key) return;
+    el?.remove();
+    el = document.createElement("div");
+    el.id = "hp-paused"; el.className = "hp-ask glass-scrim"; el.dataset.key = key;
+    el.innerHTML = `<div class="hp-ask-card glass glass-dialog" role="dialog" aria-labelledby="hp-paused-t"><b id="hp-paused-t">Paused</b>
+      <p>${host ? "The game waits for you. Someone has to go? Take them out of the party here." : "The host paused the game. Hang tight."}</p>
+      ${others.map(m => `<div class="hp-ask-btns" style="align-items:center;margin-bottom:6px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.handle)}</span><button type="button" class="glass-btn clear sm" data-kick="${esc(m.id)}" style="flex:0 0 auto">Remove</button></div>`).join("")}
+      ${host ? `<div class="hp-ask-btns"><button type="button" class="glass-btn gold sm" id="hp-resume">Resume</button></div>` : ""}</div>`;
+    $("game-layer").appendChild(el);
+    $("hp-resume")?.addEventListener("click", () => this.pause(false));
+    el.querySelectorAll("[data-kick]").forEach(b => b.onclick = () => { b.disabled = true; this.kick(b.dataset.kick); });
   },
   // host: leave a setup screen without starting anything
   backOut() {
@@ -615,7 +668,7 @@ export const party = {
     // no coins, and it isn't one of the set's 3 games
     if (results?.ended && !results.backout && c.room.isHost) c.set = addPartial(c.set, c.playingId, results);
     clearInterval(c.watch);
-    this._hostCtl(null);
+    this._hostCtl(null); $("hp-paused")?.remove();
     c.setupWait = false;
     document.body.classList.remove("hp-setup-wait");
     c.ctx = null;
