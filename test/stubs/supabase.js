@@ -217,6 +217,8 @@ class Query {
         const key = this.t === "presence" ? "user_id" : "id";
         const i = this.op === "upsert" ? T.findIndex(x => x[key] === row[key]) : -1;
         if (i >= 0) T[i] = { ...T[i], ...row }; else T.push(row);
+        // the match and friend threads hear new lines over postgres_changes, every tab
+        if (this.op === "insert" && (this.t === "messages" || this.t === "friend_messages")) pgChange(this.t, "INSERT", row);
         return row;
       });
     } else if (this.op === "update") {
@@ -400,6 +402,7 @@ export function createClient() {
       if (strictRT) { ch.strict = true; liveChannels.set(name, ch); }
       return ch;
     },
+    getChannels: () => [...pgChannels],      // (realtime-js: the channels still listed, leaving ones included)
     __phoneAuth: phoneAuth,
     __authSettings: { phone: phoneAuth, ...Object.fromEntries(oauthOn.map(p => [p, true])) },
     removeChannel: async ch => {
@@ -408,7 +411,7 @@ export function createClient() {
       if (!strictRT || !ch.joined) return gone();
       // joined: the leave goes to the server and back before the channel is gone
       ch.leaving = true;
-      await new Promise(r => setTimeout(r, 60));
+      await new Promise(r => setTimeout(r, +(q.get("rtleave") ?? 60)));   // &rtleave=MS: a slower leave
       return gone();
     },
   };
